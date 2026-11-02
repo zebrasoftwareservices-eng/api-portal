@@ -1,27 +1,9 @@
-# dependencies
 node_modules/
-.pnpm-store/
-
-# builds
 dist/
-build/
 .next/
 .turbo/
 coverage/
+.env
+.env.local
 playwright-report/
 test-results/
-
-# env and secrets
-.env
-.env.*
-!.env.example
-
-# editors and OS
-.DS_Store
-.vscode/*
-!.vscode/extensions.json
-.idea/
-
-# agents (personal settings and local worktrees)
-.claude/settings.local.json
-.claude/worktrees/
