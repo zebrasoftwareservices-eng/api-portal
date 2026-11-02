@@ -21,7 +21,7 @@ A **coordinator** (Claude Code, `factory` skill) runs the pipeline in Orca. It s
 as a supervised worker and never does a role's work itself.
 
 ## Workflow
-Each feature is one spec file and one Orca worktree (`feat/<id>-<slug>`). Its `status` moves:
+Each feature is one spec file and one Orca worktree (`feat/<linear-key>-<id>-<slug>`). Its `status` moves:
 
 `draft` → **Elango approves** → `ready` → tech-lead → `designed` → ui-designer → `building`
 → backend + frontend → `testing` → qa-tester → `uat` → user-tester → `review` → tech-lead

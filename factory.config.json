@@ -13,13 +13,16 @@
       "agent": "claude"
     },
     "backend-developer": {
-      "agent": "codex"
+      "agent": "codex",
+      "model": "gpt-5.6-terra"
     },
     "frontend-developer": {
-      "agent": "codex"
+      "agent": "codex",
+      "model": "gpt-5.6-terra"
     },
     "qa-tester": {
-      "agent": "codex"
+      "agent": "codex",
+      "model": "gpt-5.6-terra"
     },
     "user-tester": {
       "agent": "claude"

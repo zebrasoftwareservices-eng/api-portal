@@ -35,7 +35,7 @@ deploy/              docker-compose.yml, helm/
 docs/specs           Feature specs — the factory's work orders
 docs/adr             Architecture decision records
 docs/design          UX flows, screen specs, tokens
-factory/roles        The six role definitions (source for .claude/agents and .codex/agents)
+factory/roles        The seven role definitions (source for .claude/agents and .codex/agents)
 scripts/factory.mjs  Factory runner (status, plan, prompts, start)
 ```
 

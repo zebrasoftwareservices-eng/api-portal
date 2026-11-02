@@ -12,6 +12,8 @@ Claude does the thinking and reviewing; Codex does the high-volume building and 
 Code is always reviewed by a different model from the one that wrote it.
 Change any role's agent in `factory.config.json` (`"claude"` or `"codex"`), for example
 when one subscription hits its usage limit. Add `"model"` and `"effort"` to a role to pin them.
+The Codex roles are pinned to `gpt-5.6-terra`, a model the ChatGPT account signed in to Codex
+offers (see *When a worker fails*).
 
 ## One-time setup
 1. Open Orca, then in a terminal run:
@@ -24,8 +26,7 @@ when one subscription hits its usage limit. Add `"model"` and `"effort"` to a ro
    check Orca's account switcher.
 3. Install pnpm (`npm install -g pnpm`). Without it the worktree setup falls back to `npx pnpm`.
 4. Keep Docker Desktop running; Kong, Postgres and the tests need it.
-5. Optional: create a public GitHub repo and push `main`
-   (`gh repo create <org>/api-portal --public --source . --push`). Orca then uses
+5. The private GitHub repo `zebrasoftwareservices-eng/api-portal` is `origin`; Orca uses
    `origin/main` as the base for new worktrees.
 
 ## Run a spec
@@ -93,7 +94,8 @@ Linear bug. You can watch its browser tab in the spec's Orca workspace.
   workspaces from `origin/main`.
 - Vercel project **api-portal** (team ZSS) builds `apps/portal`. Every merge to `main` deploys
   to production; every pull request gets a preview URL. The first real deploy happens when
-  spec 001 merges, because `apps/portal` doesn't exist on `main` before that.
+  spec 001 merges, because `apps/portal` doesn't exist on `main` before that. Until then every
+  push to `main` shows a failed deployment ("Root Directory apps/portal does not exist"); that is expected.
 - The portal needs `SERVER_URL` pointing at a running API server. Vercel hosts only the Next.js
   portal; the API server, Postgres and Kong need their own hosting before the live site works.
 - Vercel deployments are protected by Vercel login (your team default). Turn that off in the
@@ -128,6 +130,17 @@ Paste it into any agent tab in that worktree (Orca: new tab → Claude Code or C
 
 After three trips back to `building`, the coordinator stops and asks you.
 
+## When a worker fails
+Open the worker's terminal in Orca to read its error, or run
+`orca orchestration worker-list --run <run id>` to see each worker's state and model.
+- **"The '<model>' model is not supported when using Codex with a ChatGPT account"** — the
+  ChatGPT plan Codex is signed in with doesn't offer that model. Run `codex`, then `/status` to
+  see which account and plan are signed in and `/model` to see the models it offers. Put an
+  offered model on the Codex roles in `factory.config.json`, commit it on `main`, then tell the
+  coordinator: "Stop the failed worker, run `git merge main --no-edit`, and continue."
+- **Usage limit reached** — switch that role's `agent` to the other subscription in
+  `factory.config.json`, commit, and tell the coordinator the same.
+
 ## Keeping the roles in step
 Role instructions live in `factory/roles/*.md`. After editing one, run
 `node scripts/sync-agents.mjs` to regenerate `.claude/agents/` and `.codex/agents/`.
@@ -136,7 +149,7 @@ Role instructions live in `factory/roles/*.md`. After editing one, run
 - `orca.yaml` — setup script for each new worktree (`pnpm install` once `package.json` exists)
 - `.worktreeinclude` — gitignored files (`.env`) copied into new worktrees
 - `AGENTS.md` — shared instructions (Codex reads it; `CLAUDE.md` imports it)
-- `factory/roles/` — the six roles (source); `.claude/agents/`, `.codex/agents/` are generated
+- `factory/roles/` — the seven roles (source); `.claude/agents/`, `.codex/agents/` are generated
 - `.agents/skills/factory/` — the coordinator skill (copied to `.claude/skills/factory/`)
 - `factory/claude-settings.json` — Claude Code permissions (copied to `.claude/settings.json`)
 - `factory.config.json` — which agent plays which role, and the Linear workspace, team, project and states
