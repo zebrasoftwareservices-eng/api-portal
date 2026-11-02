@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node scripts/factory.mjs:*)",
+      "Bash(node scripts/sync-agents.mjs:*)",
+      "Bash(orca:*)",
+      "Bash(pnpm:*)",
+      "Bash(npx --yes pnpm@10:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(docker compose:*)"
+    ],
+    "deny": [
+      "Bash(git push:*)",
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ]
+  }
+}

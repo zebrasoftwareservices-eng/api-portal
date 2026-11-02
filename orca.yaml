@@ -1,0 +1,11 @@
+# Orca project config (https://www.onorca.dev/docs)
+scripts:
+  # Runs once in each new worktree. Safe before the monorepo exists (spec 001 creates it).
+  setup: |
+    if [ -f package.json ]; then
+      if command -v pnpm >/dev/null 2>&1; then
+        pnpm install
+      else
+        npx --yes pnpm@10 install
+      fi
+    fi

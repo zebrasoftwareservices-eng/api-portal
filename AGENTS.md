@@ -1,0 +1,85 @@
+# API Developer Portal — agent instructions
+
+Shared instructions for every coding agent on this repo. Codex reads this file directly;
+Claude Code reads it through `CLAUDE.md`.
+
+Free, open-source (Apache 2.0) API developer portal that connects to API gateways —
+Kong first, AWS API Gateway second, then APISIX, Envoy Gateway, Apigee, Azure APIM.
+Built by Zebra Software Services as a reputation project: adoption and quality matter
+more than feature count. Product context: `docs/product-brief.md`.
+
+## The one rule
+`docker compose up` must give a working portal against a real Kong in under five minutes.
+Never merge anything that breaks the quickstart.
+
+## Stack
+- TypeScript everywhere (strict mode), pnpm workspaces + Turborepo
+- Portal UI: Next.js (App Router), Tailwind, shadcn/ui; API reference via Zudoku or Scalar components
+- Server: Fastify, OpenAPI-first (`apps/server/openapi.yaml` is the contract)
+- Database: PostgreSQL + Drizzle ORM; background jobs with pg-boss
+- Auth: Better Auth for developer/admin login; bring-your-own OIDC later
+- Gateway adapters: Kong Admin API over HTTP; AWS SDK v3 for API Gateway
+- Tests: Vitest (unit + integration), Playwright (e2e), Testcontainers (real Kong + Postgres)
+- Shipping: Docker images, `deploy/docker-compose.yml`, Helm chart, GitHub Actions, Changesets
+
+## Repo layout
+```
+apps/portal          Next.js developer portal (public docs, developer area, admin)
+apps/server          Fastify control-plane API + reconcile jobs
+packages/adapter-sdk GatewayAdapter interface + conformance test suite
+packages/adapter-kong, packages/adapter-aws
+packages/db          Drizzle schema + migrations
+packages/ui          Shared components + design tokens (CSS variables)
+packages/sdk         Generated TypeScript client for the server API
+deploy/              docker-compose.yml, helm/
+docs/specs           Feature specs — the factory's work orders
+docs/adr             Architecture decision records
+docs/design          UX flows, screen specs, tokens
+factory/roles        The six role definitions (source for .claude/agents and .codex/agents)
+scripts/factory.mjs  Factory runner (status, plan, prompts, start)
+```
+
+## Commands (once spec 001 scaffolds the monorepo)
+- `pnpm install` · `pnpm dev` · `pnpm build`
+- `pnpm test` (unit + integration) · `pnpm test:e2e` (Playwright) · `pnpm lint` · `pnpm typecheck`
+- `docker compose -f deploy/docker-compose.yml up` — portal + server + Postgres + Kong
+
+## Conventions
+- OpenAPI-first: change `openapi.yaml` before handlers; the frontend uses the generated client.
+- Errors are RFC 9457 problem+json. IDs are UUIDv7. Timestamps are UTC ISO 8601.
+- Every gateway call is idempotent and tags gateway objects with the portal ID.
+- Never log or return secrets. Gateway admin credentials are encrypted at rest.
+- Conventional Commits with DCO sign-off (`git commit -s`).
+- Full conventions: `docs/engineering-conventions.md`.
+
+## Git and Orca
+- Work happens in Orca. Each spec gets its own Orca worktree on branch `feat/<spec-id>-<slug>`.
+- Agents commit inside their worktree but never create, switch, merge or push branches.
+  Elango opens the PR, merges, and pushes.
+
+## The software factory
+Six roles. Each role's instructions live in `factory/roles/<role>.md`.
+`node scripts/sync-agents.mjs` generates the Claude Code subagents (`.claude/agents/`), the
+Codex custom agents (`.codex/agents/`), the Claude copy of the factory skill and
+`.claude/settings.json` from them. Default agents per role are set in `factory.config.json`.
+
+| Role | Default agent | Owns |
+| --- | --- | --- |
+| product-manager | Claude Code | Specs: stories, acceptance criteria, scope |
+| tech-lead | Claude Code | Technical design, API contract, ADRs, code review |
+| ui-designer | Claude Code | Flows, screens, states, copy, design tokens |
+| backend-developer | Codex | Server, database, gateway adapters |
+| frontend-developer | Codex | Portal UI |
+| qa-tester | Codex | Integration + e2e tests, test report, bugs |
+
+A spec's `status` moves: `draft` → **Elango approves** → `ready` → tech-lead → `designed`
+→ ui-designer → `building` → backend + frontend → `testing` → qa-tester → `review`
+→ tech-lead → `approved` → **Elango merges** → `done`.
+QA bugs and blocking review findings send it back to `building`.
+
+To run it, start the coordinator with the `factory` skill (Claude Code: `/factory 001`;
+Codex: `$factory 001`). It asks `node scripts/factory.mjs plan <id> --json` what comes next
+and starts each role as a supervised Orca worker. To play one role by hand, run
+`node scripts/factory.mjs prompt <role> <id>` and paste the output into any agent.
+
+Never mark your own work approved, and never pass one of Elango's two gates.

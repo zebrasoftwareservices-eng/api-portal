@@ -1,0 +1,13 @@
+{
+  "coordinator": { "agent": "claude" },
+  "roles": {
+    "product-manager": { "agent": "claude" },
+    "tech-lead": { "agent": "claude" },
+    "ui-designer": { "agent": "claude" },
+    "backend-developer": { "agent": "codex" },
+    "frontend-developer": { "agent": "codex" },
+    "qa-tester": { "agent": "codex" }
+  },
+  "parallelBuild": true,
+  "maxBuildLoops": 3
+}
