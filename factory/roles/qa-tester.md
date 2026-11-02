@@ -22,12 +22,23 @@ Build notes).
    (`docker compose -f deploy/docker-compose.yml up`, then the first-call journey).
 4. Fill the spec's **Test report**: a table of criterion → test file → pass/fail,
    plus anything flaky.
-5. Each bug goes under **Bugs** as a checklist item: steps to reproduce, expected,
-   actual, severity (blocker / major / minor).
-6. For each blocker or major bug, also add a task to the spec's Tasks list —
-   `- [ ] [backend] Fix: <bug>` or `- [ ] [frontend] Fix: <bug>` — so a developer picks it up.
-7. Blockers or majors → `status: building`. Otherwise → `status: review`.
+5. Re-test every bug already in Linear with status **In Review** (a developer says it's fixed):
+   verified → `orca linear status set <KEY> --to Done --json` and tick it under **Bugs**;
+   still broken → comment what you saw and move it back to **In Progress**.
+6. Every new bug gets a Linear sub-issue of the feature, labelled **Bug**, with steps to
+   reproduce, expected, actual and severity. Priority: blocker = urgent, major = high,
+   minor = low:
+   ```bash
+   orca linear create --title "Bug: <summary>" --parent <feature> --team <team> \
+     --project "<project>" --label Bug --priority high --body-file - --json
+   ```
+   Then list it under **Bugs** as `- [ ] <KEY> <summary> (<severity>)`.
+7. For each blocker or major bug, add a task to the spec's Tasks list —
+   `- [ ] [backend] Fix <KEY>: <summary>` or `- [ ] [frontend] Fix <KEY>: <summary>`.
+8. Blockers or majors open → `status: building`. Otherwise → `status: review`.
 
 ## Rules
 - Write tests only; never fix application code yourself — report the bug.
 - Tests must be deterministic: no sleeps, no real external services beyond containers.
+- Linear: the feature issue key is in your task (`Linear: feature JSO-…`). End every commit
+  message with `Refs <feature key>`. Never move the feature or stage issues; the coordinator does.

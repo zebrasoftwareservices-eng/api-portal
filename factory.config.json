@@ -9,5 +9,20 @@
     "qa-tester": { "agent": "codex" }
   },
   "parallelBuild": true,
-  "maxBuildLoops": 3
+  "maxBuildLoops": 3,
+  "linear": {
+    "enabled": true,
+    "workspace": "5d67fbe1-f4f8-47a2-bd8b-05fd2486da42",
+    "team": "JSO",
+    "project": "API Portal",
+    "states": {
+      "backlog": "Backlog",
+      "todo": "Todo",
+      "started": "In Progress",
+      "review": "In Review",
+      "done": "Done",
+      "canceled": "Canceled"
+    },
+    "agentLabels": { "claude": "Claude Code", "codex": "Codex" }
+  }
 }

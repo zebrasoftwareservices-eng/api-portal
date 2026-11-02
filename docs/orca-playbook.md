@@ -31,26 +31,58 @@ when one subscription hits its usage limit. Add `"model"` and `"effort"` to a ro
 ## Run a spec
 ```bash
 cd ~/Documents/ZSS/api-portal
-node scripts/factory.mjs status          # every spec and what's next
-node scripts/factory.mjs start 001       # new worktree feat/001-… + Claude coordinator
+node scripts/factory.mjs status          # every spec, its Linear issue, and what's next
+node scripts/factory.mjs start 001       # new worktree feat/jso-117-001-… + Claude coordinator
 ```
-`start` runs `orca worktree create … --agent claude --prompt "…factory skill…"`. In the new
-worktree the coordinator plans the next stage, starts the workers, waits, and moves on. You
-watch the workers in Orca's panes and can type into any of them.
+`start` runs `orca worktree create … --agent claude --linear-issue JSO-117 --prompt "…factory skill…"`.
+In the new worktree the coordinator plans the next stage, starts the workers, waits, updates
+Linear, and moves on. You watch the workers in Orca's panes and can type into any of them.
 
-New feature from an idea:
+New feature — three ways in:
 ```bash
+node scripts/factory.mjs start JSO-130                          # from a Linear issue you wrote
 node scripts/factory.mjs start --idea "AWS API Gateway REST adapter"
 ```
+Either way the product manager writes the spec and the coordinator runs
+`node scripts/factory.mjs linear-init <id>` to create the feature's stage issues. You can also
+write a spec by hand and run `linear-init` yourself.
+
+## Tracking in Linear
+Project **API Portal** in Linear holds the whole SDLC:
+
+| Linear | What it is | Who moves it |
+| --- | --- | --- |
+| Feature issue (label Feature) | One per spec, in a release milestone (v0.1, v0.2, v0.3) | Coordinator, from the spec status |
+| Stage sub-issues | Requirements → Technical design → UX design → Backend → Frontend → Testing → Code review → Release | Coordinator: start comment, summary comment with commits, Done when passed |
+| Bug sub-issues (label Bug) | Every bug QA finds, priority by severity | QA creates and closes; developers move to In Review when fixed |
+| Review sub-issues (label Code Review) | Every blocking review finding | Tech lead creates and closes |
+
+Feature status: Backlog = spec draft · Todo = approved · In Progress = design, build, test ·
+In Review = code review or waiting to merge · Done = merged.
+
+Useful commands:
+```bash
+node scripts/factory.mjs track 001 sync     # re-sync Linear with the spec (safe any time)
+orca linear issue JSO-117 --children        # the feature and its stages from the terminal
+```
+Linear problems never stop the factory: the coordinator logs a warning and you can re-sync later.
+
+**Commits and PRs in Linear** need the repo on GitHub plus Linear's GitHub integration
+(Linear → Settings → Integrations → GitHub). The branch name contains the feature key, every
+commit says `Refs JSO-117`, and the PR says `Fixes JSO-117`, so Linear links all of them to the
+feature and closes it on merge.
 
 Resume after a stop (gate, limit, restart): open the spec's worktree in Orca, start Claude
 Code and type `/factory 001` (Codex: `$factory 001`).
 
 ## Your two gates
-1. **Spec approval.** The coordinator stops at `draft`. Read the spec, answer its open
-   questions, change `status: draft` to `status: ready`, commit, and run `/factory 001` again.
-2. **Merge.** The coordinator stops at `approved`. Review the diff in Orca, push, open the PR
-   (`gh pr create --fill --base main`), merge, and set `status: done`.
+1. **Spec approval** (Linear: the Requirements issue, assigned to you). The coordinator stops
+   at `draft`. Read the spec, answer its open questions, run
+   `node scripts/factory.mjs set-status 001 ready`, commit, and run `/factory 001` again.
+2. **Merge** (Linear: the Release issue, assigned to you). The coordinator stops at `approved`.
+   Review the diff in Orca, push, open the PR with `Fixes JSO-117` in the description
+   (the coordinator prints the exact `gh pr create` command), merge, then run
+   `node scripts/factory.mjs set-status 001 done`.
 
 ## Play one role by hand
 ```bash
@@ -82,4 +114,4 @@ Role instructions live in `factory/roles/*.md`. After editing one, run
 - `factory/roles/` — the six roles (source); `.claude/agents/`, `.codex/agents/` are generated
 - `.agents/skills/factory/` — the coordinator skill (copied to `.claude/skills/factory/`)
 - `factory/claude-settings.json` — Claude Code permissions (copied to `.claude/settings.json`)
-- `factory.config.json` — which agent plays which role
+- `factory.config.json` — which agent plays which role, and the Linear workspace, team, project and states

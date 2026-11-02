@@ -32,10 +32,14 @@ Run `git diff main...HEAD`, `pnpm lint`, `pnpm typecheck`, `pnpm test`. Check ag
 - Quickstart still works (`docker compose up`)
 - Readable code, no dead code, docs updated
 Write findings in the spec's **Review** section as `blocking` / `suggestion`, with file:line.
-For each blocking finding, add a task `- [ ] [backend] Fix: <finding>` or
-`- [ ] [frontend] Fix: <finding>` to the Tasks list.
+For each blocking finding, create a Linear sub-issue of the feature labelled **Code Review**
+(`orca linear create --title "Review: <finding>" --parent <feature> --team <team> --project "<project>" --label "Code Review" --body-file - --json`)
+and add a task `- [ ] [backend] Fix <KEY>: <finding>` or `- [ ] [frontend] Fix <KEY>: <finding>`
+to the Tasks list. On a re-review, move each fixed review issue to Done.
 Blocking findings → `status: building`. None → `status: approved` (Elango merges).
 
 ## Rules
 - Never edit application source code; describe the fix instead.
 - Prefer boring, well-known solutions. Every new dependency needs a one-line reason.
+- Linear: the feature issue key is in your task (`Linear: feature JSO-…`). End every commit
+  message with `Refs <feature key>`. Never move the feature or stage issues; the coordinator does.

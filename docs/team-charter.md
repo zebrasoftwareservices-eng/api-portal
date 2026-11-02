@@ -28,6 +28,8 @@ Each feature is one spec file and one Orca worktree (`feat/<id>-<slug>`). Its `s
 
 - QA bugs or blocking review findings send it back to `building`; after 3 loops, stop and ask Elango.
 - Code is reviewed by a different model from the one that wrote it.
+- Everything is tracked in Linear project **API Portal**: a feature issue per spec, a sub-issue per
+  SDLC stage, and sub-issues for every bug and blocking review finding.
 - Start with `node scripts/factory.mjs start <id>`; details in `docs/orca-playbook.md`.
 
 ## Definition of Done
@@ -43,4 +45,5 @@ Each feature is one spec file and one Orca worktree (`feat/<id>-<slug>`). Its `s
 - Unknowns are written as open questions, never guessed.
 - Decisions that last get an ADR.
 - Agents commit in their worktree but never create, switch, merge or push branches.
+- Every commit ends with `Refs <feature key>`; only the coordinator moves feature and stage issues.
 - Open source in public: write specs, ADRs and commits as if contributors will read them.
