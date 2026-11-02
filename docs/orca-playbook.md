@@ -28,6 +28,10 @@ The Codex roles are pinned to `gpt-6.1-sol`, the Codex coding model on ChatGPT P
 4. Keep Docker Desktop running; Kong, Postgres and the tests need it.
 5. The private GitHub repo `zebrasoftwareservices-eng/api-portal` is `origin`; Orca uses
    `origin/main` as the base for new worktrees.
+6. In Orca's settings, set the agent permission mode to **Auto** (it starts as **Ask**). In Ask
+   mode every Codex worker runs read-only and stops to wait for you on each file edit and
+   command. In Auto mode the agent's own reviewer approves routine actions (Claude's auto mode,
+   Codex's approve-for-me), so workers run without you.
 
 ## Run a spec
 ```bash
@@ -140,6 +144,14 @@ Open the worker's terminal in Orca to read its error, or run
   coordinator: "Stop the failed worker, run `git merge main --no-edit`, and continue."
 - **Usage limit reached** — switch that role's `agent` to the other subscription in
   `factory.config.json`, commit, and tell the coordinator the same.
+- **Tab says "Action Required" or "Would you like to make the following edits?"** — the worker
+  is waiting for your approval because it was started in Ask mode. Approve it, type
+  `/permissions` in that tab to stop the prompts for this session, and set Orca's permission
+  mode to Auto (one-time setup, step 6) so new workers don't ask.
+
+## Cleaning up finished workers
+A worker with a green check is done: its work is committed in the worktree and its summary is
+on its Linear issue. Close its tab. Leave the coordinator and any worker that is still running.
 
 ## Keeping the roles in step
 Role instructions live in `factory/roles/*.md`. After editing one, run
