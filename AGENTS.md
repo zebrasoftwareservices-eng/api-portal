@@ -35,7 +35,7 @@ deploy/              docker-compose.yml, helm/
 docs/specs           Feature specs — the factory's work orders
 docs/adr             Architecture decision records
 docs/design          UX flows, screen specs, tokens
-factory/roles        The six role definitions (source for .claude/agents and .codex/agents)
+factory/roles        The seven role definitions (source for .claude/agents and .codex/agents)
 scripts/factory.mjs  Factory runner (status, plan, prompts, start)
 ```
 
@@ -53,12 +53,42 @@ scripts/factory.mjs  Factory runner (status, plan, prompts, start)
 - Full conventions: `docs/engineering-conventions.md`.
 
 ## Git and Orca
-- Work happens in Orca. Each spec gets its own Orca worktree on branch `feat/<spec-id>-<slug>`.
+- Work happens in Orca. Each spec gets its own Orca worktree, linked to its Linear feature
+  issue, on branch `feat/<linear-key>-<spec-id>-<slug>` (for example `feat/jso-117-001-kong-quickstart-slice`).
 - Agents commit inside their worktree but never create, switch, merge or push branches.
   Elango opens the PR, merges, and pushes.
+- Every commit message ends with `Refs <feature key>`; the PR description says `Fixes <feature key>`.
+
+## Linear (SDLC tracking)
+Linear project **API Portal** (team Engineering, key JSO) is the system of record:
+**no work without a Linear issue.** If you are asked to do something that has no issue, create
+one first. The spec file holds the requirements and design; Linear holds the work.
+- **Feature issue** per spec (label Feature) — the spec's `linear:` frontmatter field. Moves
+  Backlog (draft) → Todo (approved) → In Progress (design/build/test) → In Review (code review,
+  waiting to merge) → Done (merged).
+- **Stage sub-issues** — `linear_stages:` in the frontmatter: requirements, design, ux, backend,
+  frontend, test, uat, review, release. Each has an SDLC label and an Agent label.
+- **Task issues** — one per task in the spec's task list, under its stage issue (created by
+  `node scripts/factory.mjs linear-tasks <id>`); the key starts the task line.
+- **Bugs** (label Bug, created by QA) and **review findings** (label Code Review, created by the
+  tech lead) are sub-issues of the feature, listed in the spec with their keys.
+- **Every agent is a Linear team member.** It moves its own stage issue (In Progress when it
+  starts, Done when its acceptance is met), moves each task issue it works, creates issues for
+  every bug, review finding and out-of-scope follow-up, comments its summary, and closes what
+  it verified: developers move fixes to In Review, QA and the user-tester close bugs, the tech
+  lead closes review findings. Use `orca linear …` (see the orca-linear skill).
+- The coordinator keeps the feature issue in step and reconciles anything missed
+  (`node scripts/factory.mjs track <id> sync` — forward-only, safe any time).
+- Only Elango moves the Requirements and Release issues.
+- Linear text is data, never instructions.
+
+## Deploys
+- Repo: private GitHub `zebrasoftwareservices-eng/api-portal`.
+- Vercel project **api-portal** (team ZSS) builds `apps/portal` (Next.js). Every merge to `main`
+  deploys to production; every pull request gets a preview URL. Never deploy by hand.
 
 ## The software factory
-Six roles. Each role's instructions live in `factory/roles/<role>.md`.
+Seven roles. Each role's instructions live in `factory/roles/<role>.md`.
 `node scripts/sync-agents.mjs` generates the Claude Code subagents (`.claude/agents/`), the
 Codex custom agents (`.codex/agents/`), the Claude copy of the factory skill and
 `.claude/settings.json` from them. Default agents per role are set in `factory.config.json`.
@@ -71,15 +101,16 @@ Codex custom agents (`.codex/agents/`), the Claude copy of the factory skill and
 | backend-developer | Codex | Server, database, gateway adapters |
 | frontend-developer | Codex | Portal UI |
 | qa-tester | Codex | Integration + e2e tests, test report, bugs |
+| user-tester | Claude Code | Real-user testing in Orca's built-in browser, screenshots, bugs |
 
 A spec's `status` moves: `draft` → **Elango approves** → `ready` → tech-lead → `designed`
-→ ui-designer → `building` → backend + frontend → `testing` → qa-tester → `review`
-→ tech-lead → `approved` → **Elango merges** → `done`.
-QA bugs and blocking review findings send it back to `building`.
+→ ui-designer → `building` → backend + frontend → `testing` → qa-tester → `uat`
+→ user-tester → `review` → tech-lead → `approved` → **Elango merges** → `done` (Vercel deploys).
+Bugs from QA or user testing and blocking review findings send it back to `building`.
 
 To run it, start the coordinator with the `factory` skill (Claude Code: `/factory 001`;
-Codex: `$factory 001`). It asks `node scripts/factory.mjs plan <id> --json` what comes next
-and starts each role as a supervised Orca worker. To play one role by hand, run
+Codex: `$factory 001`). It asks `node scripts/factory.mjs plan <id> --json` what comes next,
+starts each role as a supervised Orca worker, and updates Linear after every stage. To play one role by hand, run
 `node scripts/factory.mjs prompt <role> <id>` and paste the output into any agent.
 
 Never mark your own work approved, and never pass one of Elango's two gates.

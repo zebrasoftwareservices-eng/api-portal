@@ -1,9 +1,11 @@
 ---
 id: NNN
 title: <short feature name>
-status: draft   # draft → ready → designed → building → testing → review → approved → done
+status: draft   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: YYYY-MM-DD
+linear:            # feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init NNN`
+linear_stages:     # stage issues — filled by linear-init
 ---
 
 # NNN — <Feature name>
@@ -51,12 +53,18 @@ Summary + link to `docs/design/NNN-*.md`
 | --- | --- | --- |
 
 ### Bugs
+<!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [ ] …
+
+## User testing  _(user-tester)_
+| User story | Result | Screenshot |
+| --- | --- | --- |
 
 ## Review  _(tech-lead)_
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
+- [ ] Every user story passes in the browser (User testing section)
 - [ ] lint, typecheck, unit, integration and e2e all green in CI
 - [ ] Quickstart (`docker compose up`) still works end to end
 - [ ] API contract, README and docs updated

@@ -1,13 +1,51 @@
 {
-  "coordinator": { "agent": "claude" },
+  "coordinator": {
+    "agent": "claude"
+  },
   "roles": {
-    "product-manager": { "agent": "claude" },
-    "tech-lead": { "agent": "claude" },
-    "ui-designer": { "agent": "claude" },
-    "backend-developer": { "agent": "codex" },
-    "frontend-developer": { "agent": "codex" },
-    "qa-tester": { "agent": "codex" }
+    "product-manager": {
+      "agent": "claude"
+    },
+    "tech-lead": {
+      "agent": "claude"
+    },
+    "ui-designer": {
+      "agent": "claude"
+    },
+    "backend-developer": {
+      "agent": "codex",
+      "model": "gpt-6.1-sol"
+    },
+    "frontend-developer": {
+      "agent": "codex",
+      "model": "gpt-6.1-sol"
+    },
+    "qa-tester": {
+      "agent": "codex",
+      "model": "gpt-6.1-sol"
+    },
+    "user-tester": {
+      "agent": "claude"
+    }
   },
   "parallelBuild": true,
-  "maxBuildLoops": 3
+  "maxBuildLoops": 3,
+  "linear": {
+    "enabled": true,
+    "workspace": "5d67fbe1-f4f8-47a2-bd8b-05fd2486da42",
+    "team": "JSO",
+    "project": "API Portal",
+    "states": {
+      "backlog": "Backlog",
+      "todo": "Todo",
+      "started": "In Progress",
+      "review": "In Review",
+      "done": "Done",
+      "canceled": "Canceled"
+    },
+    "agentLabels": {
+      "claude": "Claude Code",
+      "codex": "Codex"
+    }
+  }
 }

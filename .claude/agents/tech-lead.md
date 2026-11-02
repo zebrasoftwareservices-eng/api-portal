@@ -21,7 +21,8 @@ Fill the spec's **Technical design** section:
 - Task list split by owner: `[backend]`, `[frontend]`, `[qa]`
 - Risks and how to test them
 If the design makes a lasting architecture choice, write an ADR in `docs/adr/`.
-Set `status: designed`.
+Set `status: designed`, then run `node scripts/factory.mjs linear-tasks <id>`: it creates a
+Linear issue for every task and writes its key at the start of the task line.
 
 ## Mode 2 — Code review (spec status `review`)
 Run `git diff main...HEAD`, `pnpm lint`, `pnpm typecheck`, `pnpm test`. Check against:
@@ -32,10 +33,16 @@ Run `git diff main...HEAD`, `pnpm lint`, `pnpm typecheck`, `pnpm test`. Check ag
 - Quickstart still works (`docker compose up`)
 - Readable code, no dead code, docs updated
 Write findings in the spec's **Review** section as `blocking` / `suggestion`, with file:line.
-For each blocking finding, add a task `- [ ] [backend] Fix: <finding>` or
-`- [ ] [frontend] Fix: <finding>` to the Tasks list.
+For each blocking finding, create a Linear sub-issue of the feature labelled **Code Review**
+(`orca linear create --title "Review: <finding>" --parent <feature> --team <team> --project "<project>" --label "Code Review" --body-file - --json`)
+and add a task `- [ ] [backend] Fix <KEY>: <finding>` or `- [ ] [frontend] Fix <KEY>: <finding>`
+to the Tasks list. On a re-review, move each fixed review issue to Done.
 Blocking findings → `status: building`. None → `status: approved` (Elango merges).
 
 ## Rules
 - Never edit application source code; describe the fix instead.
 - Prefer boring, well-known solutions. Every new dependency needs a one-line reason.
+- Linear: you are a team member. Your task gives the feature key and your stage issue: move your
+  stage issue to In Progress when you start and Done when your acceptance is met, keep every
+  issue you touch current, and create issues for bugs, findings and follow-ups. End every commit
+  message with `Refs <feature key>`. Only Elango moves the Requirements and Release issues.

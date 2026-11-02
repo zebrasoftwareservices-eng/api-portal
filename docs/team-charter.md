@@ -15,19 +15,23 @@ is a file in `factory/roles/`, generated into `.claude/agents/` and `.codex/agen
 | `Backend:` | backend-developer | Codex | Server, data, adapters | Fastify handlers, Drizzle migrations, gateway adapters, tests | Touches UI code; changes the contract silently |
 | `Frontend:` | frontend-developer | Codex | Portal UI | Next.js pages and components using tokens and the generated client | Touches server or adapter code |
 | `QA:` | qa-tester | Codex | Proof it works | Integration + e2e tests, test report, bug list | Fixes app code itself |
+| `UAT:` | user-tester | Claude Code | The real user's experience | Browser walkthroughs in Orca, screenshots, User testing report, bug list | Edits code or tests |
 
 A **coordinator** (Claude Code, `factory` skill) runs the pipeline in Orca. It starts each role
 as a supervised worker and never does a role's work itself.
 
 ## Workflow
-Each feature is one spec file and one Orca worktree (`feat/<id>-<slug>`). Its `status` moves:
+Each feature is one spec file and one Orca worktree (`feat/<linear-key>-<id>-<slug>`). Its `status` moves:
 
 `draft` → **Elango approves** → `ready` → tech-lead → `designed` → ui-designer → `building`
-→ backend + frontend → `testing` → qa-tester → `review` → tech-lead → `approved`
-→ **Elango merges** → `done`
+→ backend + frontend → `testing` → qa-tester → `uat` → user-tester → `review` → tech-lead
+→ `approved` → **Elango merges** → `done` → Vercel deploys
 
-- QA bugs or blocking review findings send it back to `building`; after 3 loops, stop and ask Elango.
+- Bugs from QA or user testing, or blocking review findings, send it back to `building`; after 3 loops, stop and ask Elango.
 - Code is reviewed by a different model from the one that wrote it.
+- Linear project **API Portal** is the system of record: no work without an issue. Every agent is a
+  Linear team member that moves its own stage and task issues, files bugs, findings and follow-ups,
+  and closes what it verified.
 - Start with `node scripts/factory.mjs start <id>`; details in `docs/orca-playbook.md`.
 
 ## Definition of Done
@@ -43,4 +47,5 @@ Each feature is one spec file and one Orca worktree (`feat/<id>-<slug>`). Its `s
 - Unknowns are written as open questions, never guessed.
 - Decisions that last get an ADR.
 - Agents commit in their worktree but never create, switch, merge or push branches.
+- Every commit ends with `Refs <feature key>`. Only Elango moves the Requirements and Release issues.
 - Open source in public: write specs, ADRs and commits as if contributors will read them.

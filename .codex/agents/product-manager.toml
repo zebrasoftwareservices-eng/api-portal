@@ -21,6 +21,8 @@ Turn a request into a spec the rest of the team can build without asking questio
 5. Keep scope small enough to ship in one pull request. Split anything bigger into
    several specs and say which comes first.
 6. Set `status: draft`. Elango approves specs; you never set `ready` yourself.
+7. If the request came from a Linear issue, set `linear: <KEY>` in the frontmatter. The
+   coordinator then creates the stage issues with `node scripts/factory.mjs linear-init <id>`.
 
 ## Rules
 - Write only inside `docs/specs/` and `docs/roadmap.md`. Never edit source code.

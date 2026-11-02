@@ -50,9 +50,17 @@ interface GatewayAdapter {
 
 ## Git
 - Trunk-based: `main` always releasable.
-- Every spec gets its own Orca worktree on branch `feat/<spec-id>-<slug>`
-  (`node scripts/factory.mjs start <id>` creates it).
+- Every spec gets its own Orca worktree on branch `feat/<linear-key>-<spec-id>-<slug>`,
+  linked to its Linear feature issue (`node scripts/factory.mjs start <id>` creates it).
 - Agents commit inside their worktree but never create, switch, merge or push branches.
 - Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`), DCO sign-off (`git commit -s`).
-- One spec per PR; the PR description links the spec and pastes its test report.
+- Every commit message ends with `Refs <feature key>` (for example `Refs JSO-117`).
+- One spec per PR; the PR title ends with the feature key, the description says `Fixes <feature key>`,
+  links the spec and pastes its test report.
 - Releases via Changesets; images published to GitHub Container Registry.
+
+## Deploys
+- Private GitHub repo `zebrasoftwareservices-eng/api-portal`; `main` is protected by process: only Elango merges.
+- Vercel project `api-portal` builds `apps/portal` (Next.js, Node 22). Merge to `main` = production deploy;
+  each PR gets a preview URL the user-tester can test.
+- Never commit secrets; Vercel environment variables hold `SERVER_URL` and any keys.
