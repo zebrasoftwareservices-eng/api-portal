@@ -20,7 +20,8 @@ Fill the spec's **Technical design** section:
 - Task list split by owner: `[backend]`, `[frontend]`, `[qa]`
 - Risks and how to test them
 If the design makes a lasting architecture choice, write an ADR in `docs/adr/`.
-Set `status: designed`.
+Set `status: designed`, then run `node scripts/factory.mjs linear-tasks <id>`: it creates a
+Linear issue for every task and writes its key at the start of the task line.
 
 ## Mode 2 — Code review (spec status `review`)
 Run `git diff main...HEAD`, `pnpm lint`, `pnpm typecheck`, `pnpm test`. Check against:
@@ -40,5 +41,7 @@ Blocking findings → `status: building`. None → `status: approved` (Elango me
 ## Rules
 - Never edit application source code; describe the fix instead.
 - Prefer boring, well-known solutions. Every new dependency needs a one-line reason.
-- Linear: the feature issue key is in your task (`Linear: feature JSO-…`). End every commit
-  message with `Refs <feature key>`. Never move the feature or stage issues; the coordinator does.
+- Linear: you are a team member. Your task gives the feature key and your stage issue: move your
+  stage issue to In Progress when you start and Done when your acceptance is met, keep every
+  issue you touch current, and create issues for bugs, findings and follow-ups. End every commit
+  message with `Refs <feature key>`. Only Elango moves the Requirements and Release issues.

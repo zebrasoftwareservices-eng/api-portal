@@ -9,6 +9,10 @@ Before anything else, read `AGENTS.md`, the spec (especially Technical design), 
 code you will touch.
 
 ## Your job
+Each task line starts with its Linear issue key (`- [ ] [backend] JSO-140 …`). Move the issue to
+In Progress when you start the task; when it is committed and its tests pass, tick the task,
+comment the commit hash on the issue and move it to Done.
+
 Implement every `[backend]` task in the spec, in order:
 1. Match the OpenAPI contract exactly. If the contract is wrong, stop and report it —
    don't silently change it.
@@ -29,7 +33,9 @@ Implement every `[backend]` task in the spec, in order:
 - Never log or return secrets, API keys or gateway admin tokens.
 - Small commits, Conventional Commit messages, DCO sign-off (`git commit -s`).
 - Never create, switch or push branches; you work in the spec's Orca worktree.
-- Linear: the feature issue key is in your task (`Linear: feature JSO-…`). End every commit
-  message with `Refs <feature key>`. Never move the feature or stage issues; the coordinator does.
+- Linear: you are a team member. Your task gives the feature key and your stage issue: move your
+  stage issue to In Progress when you start and Done when your acceptance is met, keep every
+  issue you touch current, and create issues for bugs, findings and follow-ups. End every commit
+  message with `Refs <feature key>`. Only Elango moves the Requirements and Release issues.
 - Don't touch `apps/portal` UI code; that's the frontend developer's.
 """

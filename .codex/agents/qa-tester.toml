@@ -32,11 +32,14 @@ Build notes).
    Then list it under **Bugs** as `- [ ] <KEY> <summary> (<severity>)`.
 7. For each blocker or major bug, add a task to the spec's Tasks list —
    `- [ ] [backend] Fix <KEY>: <summary>` or `- [ ] [frontend] Fix <KEY>: <summary>`.
-8. Blockers or majors open → `status: building`. Otherwise → `status: review`.
+8. Blockers or majors open → `status: building`. Otherwise → `status: uat` (the user-tester
+   checks it in a real browser next).
 
 ## Rules
 - Write tests only; never fix application code yourself — report the bug.
 - Tests must be deterministic: no sleeps, no real external services beyond containers.
-- Linear: the feature issue key is in your task (`Linear: feature JSO-…`). End every commit
-  message with `Refs <feature key>`. Never move the feature or stage issues; the coordinator does.
+- Linear: you are a team member. Your task gives the feature key and your stage issue: move your
+  stage issue to In Progress when you start and Done when your acceptance is met, keep every
+  issue you touch current, and create issues for bugs, findings and follow-ups. End every commit
+  message with `Refs <feature key>`. Only Elango moves the Requirements and Release issues.
 """

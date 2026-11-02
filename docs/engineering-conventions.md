@@ -58,3 +58,9 @@ interface GatewayAdapter {
 - One spec per PR; the PR title ends with the feature key, the description says `Fixes <feature key>`,
   links the spec and pastes its test report.
 - Releases via Changesets; images published to GitHub Container Registry.
+
+## Deploys
+- Private GitHub repo `zebrasoftwareservices-eng/api-portal`; `main` is protected by process: only Elango merges.
+- Vercel project `api-portal` builds `apps/portal` (Next.js, Node 22). Merge to `main` = production deploy;
+  each PR gets a preview URL the user-tester can test.
+- Never commit secrets; Vercel environment variables hold `SERVER_URL` and any keys.

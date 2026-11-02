@@ -5,7 +5,7 @@ status: ready   # draft → ready → designed → building → testing → revi
 owner: product-manager
 created: 2026-11-02
 linear: JSO-117
-linear_stages: requirements=JSO-118 design=JSO-119 ux=JSO-120 backend=JSO-121 frontend=JSO-122 test=JSO-123 review=JSO-124 release=JSO-125
+linear_stages: requirements=JSO-118 design=JSO-119 ux=JSO-120 backend=JSO-121 frontend=JSO-122 test=JSO-123 review=JSO-124 release=JSO-125 uat=JSO-126
 ---
 
 # 001 — Kong quickstart: from OpenAPI spec to a working API key

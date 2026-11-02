@@ -1,12 +1,29 @@
 {
-  "coordinator": { "agent": "claude" },
+  "coordinator": {
+    "agent": "claude"
+  },
   "roles": {
-    "product-manager": { "agent": "claude" },
-    "tech-lead": { "agent": "claude" },
-    "ui-designer": { "agent": "claude" },
-    "backend-developer": { "agent": "codex" },
-    "frontend-developer": { "agent": "codex" },
-    "qa-tester": { "agent": "codex" }
+    "product-manager": {
+      "agent": "claude"
+    },
+    "tech-lead": {
+      "agent": "claude"
+    },
+    "ui-designer": {
+      "agent": "claude"
+    },
+    "backend-developer": {
+      "agent": "codex"
+    },
+    "frontend-developer": {
+      "agent": "codex"
+    },
+    "qa-tester": {
+      "agent": "codex"
+    },
+    "user-tester": {
+      "agent": "claude"
+    }
   },
   "parallelBuild": true,
   "maxBuildLoops": 3,
@@ -23,6 +40,9 @@
       "done": "Done",
       "canceled": "Canceled"
     },
-    "agentLabels": { "claude": "Claude Code", "codex": "Codex" }
+    "agentLabels": {
+      "claude": "Claude Code",
+      "codex": "Codex"
+    }
   }
 }
