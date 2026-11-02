@@ -14,15 +14,15 @@
     },
     "backend-developer": {
       "agent": "codex",
-      "model": "gpt-5.6-terra"
+      "model": "gpt-6.1-sol"
     },
     "frontend-developer": {
       "agent": "codex",
-      "model": "gpt-5.6-terra"
+      "model": "gpt-6.1-sol"
     },
     "qa-tester": {
       "agent": "codex",
-      "model": "gpt-5.6-terra"
+      "model": "gpt-6.1-sol"
     },
     "user-tester": {
       "agent": "claude"

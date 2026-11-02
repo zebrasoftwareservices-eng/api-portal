@@ -12,8 +12,8 @@ Claude does the thinking and reviewing; Codex does the high-volume building and 
 Code is always reviewed by a different model from the one that wrote it.
 Change any role's agent in `factory.config.json` (`"claude"` or `"codex"`), for example
 when one subscription hits its usage limit. Add `"model"` and `"effort"` to a role to pin them.
-The Codex roles are pinned to `gpt-5.6-terra`, a model the ChatGPT account signed in to Codex
-offers (see *When a worker fails*).
+The Codex roles are pinned to `gpt-6.1-sol`, the Codex coding model on ChatGPT Pro
+(see *When a worker fails*).
 
 ## One-time setup
 1. Open Orca, then in a terminal run:
