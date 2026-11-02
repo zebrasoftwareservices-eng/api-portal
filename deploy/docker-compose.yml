@@ -1,0 +1,118 @@
+# SPDX-License-Identifier: Apache-2.0
+name: portal
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-portal}
+      POSTGRES_DB: portal
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init.sql:/docker-entrypoint-initdb.d/01-kong.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U portal -d portal]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  kong-migrations:
+    image: kong:3.9
+    command: kong migrations bootstrap
+    environment: &kong-env
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: postgres
+      KONG_PG_USER: portal
+      KONG_PG_PASSWORD: ${POSTGRES_PASSWORD:-portal}
+      KONG_PG_DATABASE: kong
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+  kong:
+    image: kong:3.9
+    environment:
+      <<: *kong-env
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_ADMIN_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+      KONG_ADMIN_ERROR_LOG: /dev/stderr
+    ports:
+      - '8000:8000'
+      - '127.0.0.1:8001:8001'
+    depends_on:
+      kong-migrations:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, kong, health]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  httpbin:
+    image: mccutchen/go-httpbin:v2.15.0
+  server:
+    image: portal-server
+    build:
+      context: ..
+      dockerfile: apps/server/Dockerfile
+    environment:
+      # INSECURE local evaluation defaults. Production rejects these secrets.
+      NODE_ENV: development
+      DATABASE_URL: postgres://portal:${POSTGRES_PASSWORD:-portal}@postgres:5432/portal
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-INSECURE-local-auth-secret-change-me-123456}
+      PORTAL_ENCRYPTION_KEY: ${PORTAL_ENCRYPTION_KEY:-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=}
+      PORTAL_PUBLIC_URL: ${PORTAL_PUBLIC_URL:-http://localhost:3000}
+      KONG_ADMIN_URL: http://kong:8001
+      KONG_ADMIN_TOKEN: ${KONG_ADMIN_TOKEN:-}
+      KONG_PROXY_INTERNAL_URL: http://kong:8000
+      KONG_PROXY_PUBLIC_URL: ${KONG_PROXY_PUBLIC_URL:-http://localhost:8000}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-now}
+      SEED_SAMPLE: ${SEED_SAMPLE:-true}
+    ports:
+      - '4000:4000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kong:
+        condition: service_healthy
+      httpbin:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://localhost:4000/api/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 6s
+      retries: 30
+  portal:
+    image: portal-web
+    build:
+      context: ..
+      dockerfile: apps/portal/Dockerfile
+    environment:
+      SERVER_URL: http://server:4000
+      PORT: '3000'
+      HOSTNAME: 0.0.0.0
+    ports:
+      - '3000:3000'
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+volumes:
+  postgres-data:

@@ -18,21 +18,23 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm --filter @portal/sdk generate && git diff --exit-code -- packages/sdk/src/schema.d.ts
       - run: pnpm test
-      - run: pnpm --filter portal exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
   compose-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
       - name: Quickstart within five minutes
-        run: |
-          start=$(date +%s)
-          timeout 300 docker compose -f deploy/docker-compose.yml up --build -d --wait
-          curl --fail --retry 3 http://localhost:3000
-          elapsed=$(( $(date +%s) - start ))
-          echo "Quickstart: ${elapsed}s" >> "$GITHUB_STEP_SUMMARY"
-          test "$elapsed" -lt 300
+        run: node deploy/quickstart-smoke.mjs
+      - run: node deploy/smoke.mjs
+      - run: node deploy/outage-smoke.mjs
+      - run: pnpm test:e2e
       - if: always()
         run: docker compose -f deploy/docker-compose.yml logs
       - if: always()
