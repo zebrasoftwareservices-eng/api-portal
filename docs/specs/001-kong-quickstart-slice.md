@@ -327,13 +327,13 @@ non-admin opening `/admin` gets a 404 page. All data calls go through `packages/
 - [ ] [backend] JSO-141 `apps/server`: `gateway-reconcile` pg-boss job (orphan consumers, revoked/missing credential cleanup, drift warning), singleton, at startup and every 5 minutes
 - [ ] [backend] JSO-142 `apps/server`: try-it proxy `/v1/try-it` per ADR 0003 (allowlist on path-segment boundary, public→internal rewrite, header allowlist, no redirects, 1 MiB caps, 10 s timeout, `@fastify/rate-limit` 60/min/IP, pass-through status/headers/body)
 - [ ] [backend] JSO-143 `deploy/`: `docker-compose.yml` (postgres with `portal` + `kong` DBs, kong-migrations, kong 3.9, go-httpbin, server, portal) with healthchecks and `depends_on: condition`, `.env.example`, multi-stage Dockerfiles for server and portal (Next.js standalone); `docker compose up` must reach a loaded home page under 5 minutes
-- [ ] [frontend] JSO-144 `packages/ui`: Tailwind preset and CSS-variable tokens from the ui-designer's `docs/design/tokens.md`, shadcn/ui base components (button, input, card, dialog, toast, form, table, badge)
-- [ ] [frontend] JSO-145 `apps/portal` scaffold: Next.js App Router, `/api/:path*` rewrite to `SERVER_URL`, layout with header (sign-in state, admin link for admins), middleware route protection, sdk client wiring, error-to-toast handling of problem+json
-- [ ] [frontend] JSO-146 Catalog `/` and API reference `/apis/[slug]` with `@scalar/api-reference-react` (document URL, `proxyUrl: /api/v1/try-it`, apiKey auth input, themed with tokens) and a "Get an API key" CTA to `/dashboard/apps/new?api=<slug>`
-- [ ] [frontend] JSO-147 `/sign-up` and `/sign-in` with Better Auth React client; validation and error states; redirect to `/dashboard` (or `next`) on success
-- [ ] [frontend] JSO-148 Developer dashboard: `/dashboard` app list with empty state, `/dashboard/apps/new` create form (preselect via `?api=`, pending-disabled submit, gateway-unavailable message with retry), `/dashboard/apps/[appId]` with subscriptions, key list, create key, revoke with confirm
-- [ ] [frontend] JSO-149 One-time key dialog: shows full key and header name, copy button with "Copied" feedback, warning that it won't be shown again, closes only via "I've saved it"
-- [ ] [frontend] JSO-150 Admin `/admin/apis`: published list, import form (file upload or URL, service picker with route/key-auth info, optional slug), shows the problem `detail` naming the first validation error, success links to the published API
+- [x] [frontend] JSO-144 `packages/ui`: Tailwind preset and CSS-variable tokens from the ui-designer's `docs/design/tokens.md`, shadcn/ui base components (button, input, card, dialog, toast, form, table, badge)
+- [x] [frontend] JSO-145 `apps/portal` scaffold: Next.js App Router, `/api/:path*` rewrite to `SERVER_URL`, layout with header (sign-in state, admin link for admins), middleware route protection, sdk client wiring, error-to-toast handling of problem+json
+- [x] [frontend] JSO-146 Catalog `/` and API reference `/apis/[slug]` with `@scalar/api-reference-react` (document URL, `proxyUrl: /api/v1/try-it`, apiKey auth input, themed with tokens) and a "Get an API key" CTA to `/dashboard/apps/new?api=<slug>`
+- [x] [frontend] JSO-147 `/sign-up` and `/sign-in` with Better Auth React client; validation and error states; redirect to `/dashboard` (or `next`) on success
+- [x] [frontend] JSO-148 Developer dashboard: `/dashboard` app list with empty state, `/dashboard/apps/new` create form (preselect via `?api=`, pending-disabled submit, gateway-unavailable message with retry), `/dashboard/apps/[appId]` with subscriptions, key list, create key, revoke with confirm
+- [x] [frontend] JSO-149 One-time key dialog: shows full key and header name, copy button with "Copied" feedback, warning that it won't be shown again, closes only via "I've saved it"
+- [x] [frontend] JSO-150 Admin `/admin/apis`: published list, import form (file upload or URL, service picker with route/key-auth info, optional slug), shows the problem `detail` naming the first validation error, success links to the published API
 - [ ] [qa] JSO-151 AC 1: compose smoke — `docker compose -f deploy/docker-compose.yml up -d --wait` on a clean Docker, home page 200 at :3000, wall time recorded (must be < 5 min)
 - [ ] [qa] JSO-152 AC 2: fresh start shows the sample API in the catalog; Kong has service/route `portal-sample` with key-auth; restarting the server does not duplicate anything
 - [ ] [qa] JSO-153 AC 3 + 4: integration and e2e for admin import by file and by URL linked to a Kong service (appears in catalog), and for invalid documents (bad YAML, schema error, Swagger 2.0) returning the first error with nothing stored
@@ -380,6 +380,8 @@ with shadcn names, mapped onto Scalar's variables).
   proxy problems, because Scalar shows them as-is (design §6).
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend: `90f652b` implements JSO-144–JSO-150: token-based shared UI, server-rendered catalog, Scalar reference with try-it proxy and non-persistent auth, Better Auth screens and protected routes, developer apps/keys and admin imports. All 24 portal component/navigation/middleware tests pass, including one-time key copying and dismissal, duplicate-submit prevention, gateway retry, failed revoke preservation and first-error import feedback. Workspace `pnpm lint`, `pnpm typecheck` and `pnpm test` pass; QA should exercise the full browser flow and Compose quickstart with the backend-owned build.
 
 ## Test report  _(qa-tester)_
 | Criterion | Test file | Result |
