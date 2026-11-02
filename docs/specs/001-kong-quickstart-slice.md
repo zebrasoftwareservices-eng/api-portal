@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Kong quickstart — first vertical slice
-status: draft   # draft → ready → designed → building → testing → review → approved → done
+status: ready   # draft → ready → designed → building → testing → review → approved → done
 owner: product-manager
 created: 2026-11-02
 ---
