@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Kong quickstart — first vertical slice
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-02
 linear: JSO-117
@@ -430,6 +430,60 @@ Validation:
 
 No product bugs found. Linear query for project API Portal, label Bug returned zero issues
 (not truncated), so there were no In Review bugs requiring re-test or state changes.
+
+User testing (JSO-126, 2026-11-02). There were no In Review bugs to re-test. New bugs:
+- [ ] JSO-160 OpenAPI import with no `info` object says "Document must be an object at /" instead of naming the missing `info` (AC 4 message) (major)
+- [ ] [backend] Fix JSO-160: report the first real validation error (for example "must have required property 'info' at /") when a top-level required property is missing
+- [ ] JSO-161 Focus goes to `<body>` after Cancel or Escape on the revoke-key confirmation, not back to **Revoke** (minor)
+- [ ] JSO-162 Catalog card base URL runs into "View reference →" with no gap (minor)
+- [ ] JSO-163 Account menu is a raw `<details>` disclosure with a ▶ marker, not the designed `DropdownMenu` (minor)
+- [ ] JSO-164 Scalar's "Ask AI Agent" box appears on the API reference, though AI features are out of scope (minor)
+
+Out-of-scope follow-up (Backlog, no parent): JSO-165, hide API keys from upstreams (Kong
+key-auth `hide_credentials`).
+
+## User testing  _(user-tester)_
+
+Tested 2026-11-02 in Orca's built-in browser (Chromium) at 1280×800, at 390×844 mobile, and by
+keyboard only. The stack was the running quickstart, compose project `portal-qa-20261102`
+(Kong 3.9.4, Postgres 17). Screenshots are in `docs/uat/001/`.
+
+| User story / AC | Result | Evidence |
+| --- | --- | --- |
+| Engineer: start portal + Kong with one command (AC 1) | Pass, with a caveat: stack was already up | `01-catalog.png`. I couldn't run a fresh `docker compose up` (see notes), so I'm relying on QA's 84.9 s timing. The portal, server, Kong, Postgres and httpbin were all healthy, and the home page returned 200. |
+| Sample API seeded and published (AC 2) | Pass | `01-catalog.png`, `02-reference.png`: Sample HTTP API at `/apis/sample`, Kong service `portal-sample` with key-auth on |
+| Engineer: import OpenAPI and link to a Kong service (AC 3) | Pass | `18-admin-apis.png`, `20-import-success.png`, `21-imported-reference.png`: uploaded YAML published as `/apis/uat-echo-api` and shown in the public catalog |
+| Invalid OpenAPI is rejected, nothing published (AC 4) | **Fail (JSO-160)** | `19-import-invalid.png`: rejected and "Nothing was published" (catalog count unchanged), but a missing `info` is reported as "Document must be an object at /". Other errors (missing `info.title`, bad `responses`) are named correctly. |
+| Developer: sign up, reach dashboard (AC 5) | Pass | `04`, `05`, `15`, `16`: field validation, short password, duplicate email with "Sign in instead", fresh sign-up lands on the empty dashboard. The `next` link from "Get an API key" lands on create-app with the API preselected (`06`). |
+| Developer: create app, get key once with copy (AC 6) | Pass | `07`, `09`, `28`: key shown once, Copy shows "✓ Copied" plus a live-region announcement, Escape doesn't close the dialog, "I've saved it" closes it, and the key isn't in the URL, localStorage or sessionStorage. Kong consumer `portal-app-<appId>` is tagged `portal`, `portal-instance-…` and `portal-app-<appId>`. Double-click sends one request. |
+| Developer: try a request from the docs (AC 7) | Pass | `03-tryit-no-key.png` shows Kong's 401 "No API key found in request". `08-tryit-with-key.png` shows 200 from httpbin via Kong 3.9.4. |
+| Gateway unavailable on create app (AC 8) | Not walked in the browser | Stopping Kong was refused by the session's permission policy (see notes). QA's real-Kong outage tests cover it (`deploy/outage-smoke.mjs`, `apps/portal/e2e/gateway.ts`). |
+| Revoked key returns 401 (AC 9) | Pass | `10-revoke-confirm.png`, `11-key-revoked.png`: confirm copy is clear, toast "Key …edrg revoked.", and calling Kong with the revoked key returns 401 |
+| Mobile (390×844) main journey | Pass | `22`–`28`: no horizontal scroll, menu in a sheet, sign-up → create app → key dialog all usable (the dialog scrolls to "I've saved it") |
+| Keyboard-only main journey | Pass, with one minor bug (JSO-161) | Catalog → reference → "Get an API key" → create app (Enter submits) → dialog (focus on Copy, trapped) → "I've saved it" (focus moves to the new key row) → revoke (`29`). Focus rings are visible everywhere. Cancel or Escape on the revoke confirmation drops focus to `<body>` (`30`). |
+| Health | Pass | No console errors and no unexpected failed requests (only the intended 401s). |
+
+Notes:
+- **Status: building.** JSO-160 is major because it fails AC 4's "names the first validation
+  error" for a common mistake. The design's own example message for this case is the one that
+  comes out wrong. Everything else passes or has only minor issues.
+- The rest of the journey felt fast: every page and action finished in under a second. Error
+  copy is clear and specific throughout: sign-up and sign-in validation, wrong password (field
+  cleared, no hint which one was wrong), "Choose at least one API", the developer 404 on
+  `/admin/apis` (`17`), and `next` kept through sign-in. Back after creating an app returns to the
+  dashboard, not the used form, so nothing is created twice.
+- A small mismatch inside the design itself: it says a wrong password should focus the password
+  field, and also that form-level errors focus the alert. The build focuses the alert. I didn't
+  file this as a bug.
+- Test data: the UAT stack still had QA's imported APIs (`qa-…` slugs, two cards titled "Sample
+  HTTP API"), so the catalog looked noisy in a way a fresh install won't. I tried to start a fresh
+  stack and to stop Kong for AC 8; both were refused by this session's permission policy
+  (stopping or starting shared containers). For the same reason the stack is still running.
+  UAT added the accounts `uat-dev-1`, `uat-dev-2` and `uat-mobile-1` @example.com, the API
+  `uat-echo-api`, and four apps. Every key that appears in a screenshot has been revoked.
+- Screenshot `23-mobile-menu-open.png` was taken at device scale 3, where Orca's capture
+  repeats the top of the page. That's a capture artefact: the DOM has one header. The other
+  mobile shots were retaken at scale 1.
 
 ## Review  _(tech-lead)_
 
