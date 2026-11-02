@@ -153,7 +153,19 @@ Open the worker's terminal in Orca to read its error, or run
 
 ## Cleaning up finished workers
 A worker with a green check is done: its work is committed in the worktree and its summary is
-on its Linear issue. Close its tab. Leave the coordinator and any worker that is still running.
+on its Linear issue. Close that one tab with its ✕. Never close the coordinator's tab, a worker
+that is still running, or the whole workspace while a spec is in progress: that stops them.
+
+## If the coordinator stops
+If the coordinator's tab was closed, Orca restarted, or the tab shows a plain shell prompt
+instead of Claude, restart it from any terminal in the repo:
+```bash
+cd ~/Documents/ZSS/api-portal && node scripts/factory.mjs resume 001
+```
+It opens a new coordinator tab in the spec's workspace. The coordinator picks up the existing
+Orca run, cleans up stopped workers, keeps any uncommitted work, and carries on from where
+the spec is. Close any idle Codex or Claude tabs Orca reopened for old workers first; the
+coordinator starts fresh ones.
 
 ## Keeping the roles in step
 Role instructions live in `factory/roles/*.md`. After editing one, run

@@ -8,6 +8,7 @@
 //   node scripts/factory.mjs set-status <id> <status>     move a spec, then mirror it to Linear
 //   node scripts/factory.mjs start <id> | --idea "<text>" | <KEY-123> [--dry-run]
 //                                                         new Orca worktree + coordinator agent
+//   node scripts/factory.mjs resume <id> [--dry-run]      restart a stopped coordinator in the spec's worktree
 //   node scripts/factory.mjs linear-init <id>             create the spec's Linear feature + stage issues
 //   node scripts/factory.mjs linear-tasks <id>            create a Linear issue for every task in the spec's task list
 //   node scripts/factory.mjs track <id> sync              move Linear issues to match the spec status
@@ -596,6 +597,42 @@ function mainRepoRoot() {
 function coordinatorPrompt(target) {
   return `You are the factory coordinator. Read .agents/skills/factory/SKILL.md and follow it for ${target}. Stop at Elango's gates and tell him what to do.`;
 }
+function resumePrompt(spec) {
+  return [
+    `You are the factory coordinator. Read .agents/skills/factory/SKILL.md and follow it for spec ${spec.id} (${spec.rel}).`,
+    'This is a resume: the previous coordinator stopped (its tab was closed or Orca restarted).',
+    "First find this worktree's existing Orca run with `orca orchestration run-list` and bind to it with `orca orchestration run-use --id <run id>`; create a new run only if there is none.",
+    'Settle stale dispatches (failed, exited or abandoned workers) before starting new ones.',
+    'Keep every uncommitted change in the worktree: never reset, stash or discard it.',
+    `Then continue the normal loop from \`node scripts/factory.mjs plan ${spec.id} --json\`. Stop at Elango's gates and tell him what to do.`,
+  ].join(' ');
+}
+function specWorktree(spec) {
+  const r = spawnSync('git', ['worktree', 'list', '--porcelain'], { cwd: mainRepoRoot(), encoding: 'utf8' });
+  if (r.status !== 0) return null;
+  const suffix = `${spec.id}-${spec.slug}`;
+  for (const block of r.stdout.split(/\n\s*\n/)) {
+    const path = (block.match(/^worktree (.+)$/m) || [])[1];
+    const branch = (block.match(/^branch refs\/heads\/(.+)$/m) || [])[1];
+    if (path && branch && branch.startsWith('feat/') && branch.endsWith(suffix)) return path;
+  }
+  return null;
+}
+function resume(args) {
+  const dry = Boolean(flag(args, '--dry-run'));
+  const spec = findSpec(args[0]);
+  const wt = specWorktree(spec);
+  if (!wt) die(`spec ${spec.id} has no worktree yet. Start it with: node scripts/factory.mjs start ${spec.id}`);
+  const agent = config.coordinator?.agent || 'claude';
+  const argv = ['agent', 'launch', '--agent', agent, '--worktree', `path:${wt}`, '--surface', 'terminal', '--focus', '--prompt', resumePrompt(spec)];
+  if (dry) {
+    console.log(['orca', ...argv.map((a) => (/[\s"'()`]/.test(a) ? JSON.stringify(a) : a))].join(' '));
+    return;
+  }
+  const r = spawnSync('orca', argv, { stdio: 'inherit' });
+  if (r.error) die(`could not run orca (${r.error.message}). Is the Orca CLI installed and Orca open?`);
+  process.exit(r.status ?? 1);
+}
 function start(args) {
   const dry = Boolean(flag(args, '--dry-run'));
   const idea = flag(args, '--idea');
@@ -683,6 +720,9 @@ switch (cmd) {
   case 'start':
     start(args);
     break;
+  case 'resume':
+    resume(args);
+    break;
   case 'linear-init':
     linearInit(findSpec(args[0]));
     break;
@@ -693,6 +733,6 @@ switch (cmd) {
     track(args);
     break;
   default:
-    console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 20).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+    console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 21).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
     process.exit(cmd ? 1 : 0);
 }
