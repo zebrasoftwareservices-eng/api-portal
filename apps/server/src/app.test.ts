@@ -13,6 +13,7 @@ import {
   credentials,
   user,
   instanceSettings,
+  session,
 } from '@portal/db';
 import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
@@ -202,6 +203,58 @@ describe('contract endpoints', () => {
       (await server.inject('/api/v1/apis/sample/openapi.json')).json().servers,
     ).toEqual([{ url: 'http://localhost:8000/sample' }]);
     expect((await server.inject('/api/v1/apis/missing')).statusCode).toBe(404);
+  });
+  it('rejects invalid app bodies and expired sessions without gateway side effects', async () => {
+    const calls = vi.mocked(adapter.ensureConsumer).mock.calls.length;
+    for (const payload of [
+      { name: '', apiIds: [apiId] },
+      { name: 'invalid', apiIds: [] },
+      { name: 'invalid', apiIds: ['not-a-uuid'] },
+    ]) {
+      const result = await server.inject({
+        method: 'POST',
+        url: '/api/v1/apps',
+        headers: { cookie },
+        payload,
+      });
+      expect(result.statusCode, result.body).toBe(400);
+      expect(result.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+    }
+    const expired = await server.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      headers: { cookie: 'better-auth.session_token=expired.invalid' },
+      payload: { name: 'expired', apiIds: [apiId] },
+    });
+    expect(expired.statusCode).toBe(401);
+    expect(vi.mocked(adapter.ensureConsumer).mock.calls).toHaveLength(calls);
+    expect(await connection.db.select().from(apps)).toHaveLength(0);
+  });
+  it('rejects a previously valid session after its stored expiry', async () => {
+    const signup = await server.inject({
+      method: 'POST',
+      url: '/api/auth/sign-up/email',
+      payload: {
+        name: 'Expired',
+        email: 'expired@example.com',
+        password: 'test-password-123',
+      },
+    });
+    expect(signup.statusCode).toBe(200);
+    const expiredCookie =
+      signup.headers['set-cookie']?.toString().split(';')[0] ?? '';
+    await connection.db
+      .update(session)
+      .set({ expiresAt: new Date(0) })
+      .where(eq(session.userId, signup.json().user.id));
+    const result = await server.inject({
+      url: '/api/v1/me',
+      headers: { cookie: expiredCookie },
+    });
+    expect(result.statusCode).toBe(401);
+    expect(result.json().type).toBe('/problems/unauthenticated');
   });
   it('compensates a credential failure and permits a clean retry', async () => {
     vi.mocked(adapter.issueCredential).mockRejectedValueOnce(

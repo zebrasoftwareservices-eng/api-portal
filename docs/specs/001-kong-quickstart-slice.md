@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Kong quickstart — first vertical slice
-status: building   # draft → ready → designed → building → testing → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-02
 linear: JSO-117
@@ -334,15 +334,15 @@ non-admin opening `/admin` gets a 404 page. All data calls go through `packages/
 - [x] [frontend] JSO-148 Developer dashboard: `/dashboard` app list with empty state, `/dashboard/apps/new` create form (preselect via `?api=`, pending-disabled submit, gateway-unavailable message with retry), `/dashboard/apps/[appId]` with subscriptions, key list, create key, revoke with confirm
 - [x] [frontend] JSO-149 One-time key dialog: shows full key and header name, copy button with "Copied" feedback, warning that it won't be shown again, closes only via "I've saved it"
 - [x] [frontend] JSO-150 Admin `/admin/apis`: published list, import form (file upload or URL, service picker with route/key-auth info, optional slug), shows the problem `detail` naming the first validation error, success links to the published API
-- [ ] [qa] JSO-151 AC 1: compose smoke — `docker compose -f deploy/docker-compose.yml up -d --wait` on a clean Docker, home page 200 at :3000, wall time recorded (must be < 5 min)
-- [ ] [qa] JSO-152 AC 2: fresh start shows the sample API in the catalog; Kong has service/route `portal-sample` with key-auth; restarting the server does not duplicate anything
-- [ ] [qa] JSO-153 AC 3 + 4: integration and e2e for admin import by file and by URL linked to a Kong service (appears in catalog), and for invalid documents (bad YAML, schema error, Swagger 2.0) returning the first error with nothing stored
-- [ ] [qa] JSO-154 AC 5: e2e sign-up lands on `/dashboard` signed in; duplicate email shows an error; non-admin gets 403 on `/api/v1/admin/*` and 404 on `/admin`
-- [ ] [qa] JSO-155 AC 6: e2e create app subscribed to the sample API shows the key once with working copy; integration asserts the Kong consumer and credential carry `portal-app-<appId>` and instance tags and the DB stores only the key hint
-- [ ] [qa] JSO-156 AC 7: e2e try-it on `GET /get` with the key returns 200 through Kong; without the key shows Kong's 401; proxy rejects non-allowlisted targets
-- [ ] [qa] JSO-157 AC 8: integration with Kong stopped — create app returns 503 problem, no app row, no tagged consumer; Kong restarted — retry succeeds with exactly one tagged consumer; plus compensation unit test for failure after consumer upsert
-- [ ] [qa] JSO-158 AC 9: revoke a key then call `GET /sample/get` through Kong with it → 401; revoking again → 204; revoke with Kong down → 503 and key still active
-- [ ] [qa] JSO-159 Security checks: no `pk_` key or password in server logs during the e2e run; another developer's app returns 404; try-it allowlist bypass attempts rejected
+- [x] [qa] JSO-151 AC 1: compose smoke — `docker compose -f deploy/docker-compose.yml up -d --wait` on a clean Docker, home page 200 at :3000, wall time recorded (must be < 5 min)
+- [x] [qa] JSO-152 AC 2: fresh start shows the sample API in the catalog; Kong has service/route `portal-sample` with key-auth; restarting the server does not duplicate anything
+- [x] [qa] JSO-153 AC 3 + 4: integration and e2e for admin import by file and by URL linked to a Kong service (appears in catalog), and for invalid documents (bad YAML, schema error, Swagger 2.0) returning the first error with nothing stored
+- [x] [qa] JSO-154 AC 5: e2e sign-up lands on `/dashboard` signed in; duplicate email shows an error; non-admin gets 403 on `/api/v1/admin/*` and 404 on `/admin`
+- [x] [qa] JSO-155 AC 6: e2e create app subscribed to the sample API shows the key once with working copy; integration asserts the Kong consumer and credential carry `portal-app-<appId>` and instance tags and the DB stores only the key hint
+- [x] [qa] JSO-156 AC 7: e2e try-it on `GET /get` with the key returns 200 through Kong; without the key shows Kong's 401; proxy rejects non-allowlisted targets
+- [x] [qa] JSO-157 AC 8: integration with Kong stopped — create app returns 503 problem, no app row, no tagged consumer; Kong restarted — retry succeeds with exactly one tagged consumer; plus compensation unit test for failure after consumer upsert
+- [x] [qa] JSO-158 AC 9: revoke a key then call `GET /sample/get` through Kong with it → 401; revoking again → 204; revoke with Kong down → 503 and key still active
+- [x] [qa] JSO-159 Security checks: no `pk_` key or password in server logs during the e2e run; another developer's app returns 404; try-it allowlist bypass attempts rejected
 
 ## UX  _(ui-designer)_
 Full design: [docs/design/001-kong-quickstart-slice.md](../design/001-kong-quickstart-slice.md).
@@ -392,10 +392,44 @@ with shadcn names, mapped onto Scalar's variables).
 - Backend verification (2026-11-02): verified deployment/CI commit `6b007a4` for JSO-129 and JSO-143 without code changes. `pnpm lint`, `pnpm typecheck`, `pnpm test`, SDK regeneration/drift check, uncached Postgres migration and Kong conformance tests, `deploy/smoke.mjs`, `deploy/outage-smoke.mjs`, and Playwright quickstart smoke all pass. Timed Compose build/start plus seeded home page: 15.6 s with the existing database, then 14.7 s with a fresh database volume in project `portal-backend-verify-20261102`; Docker build layers/images were cached, so this does not establish cold-download/build timing. One fresh-volume attempt hit a Docker Hub metadata timeout before startup; retry passed. Other stacks were stopped without deleting volumes; the fresh verification stack remains running for QA. CI workflow is implemented and its commands verified locally; remote GitHub Actions execution awaits Elango's push/PR.
 
 ## Test report  _(qa-tester)_
+
+QA completed 2026-11-02 against real PostgreSQL 17 and Kong 3.9. All nine acceptance
+criteria pass locally; no blocker or major bug is open. The next stage is user testing.
+
 | Criterion | Test file | Result |
 | --- | --- | --- |
+| AC 1 — Compose starts and serves the portal within five minutes | `deploy/quickstart-smoke.mjs`; `deploy/e2e/quickstart.spec.ts` | PASS — **84.9 s**, fresh database volume and rebuilt application layers in project `portal-qa-20261102`; home 200 with seeded API. Base images and pnpm dependency layers were cached; this does not establish cold-download timing. Existing-stack run: 8.5 s. |
+| AC 2 — sample OpenAPI, Kong service/route and key-auth are seeded once | `apps/portal/e2e/gateway.ts` (seed convergence); `deploy/e2e/quickstart.spec.ts` | PASS — fresh catalog contains sample; service, route and plugin IDs remain identical after server restart; one sample row and one key-auth plugin. |
+| AC 3 — admin imports OpenAPI by file and URL, links service and publishes | `apps/portal/e2e/journeys.ts` (admin journey); `apps/server/src/app.test.ts` (admin import); `apps/server/src/security.test.ts` (URL refs) | PASS — uploaded 3.1 document and URL fetched from local server both publish and appear in catalog; real Kong service selected. |
+| AC 4 — invalid documents name first error and publish nothing | `apps/portal/e2e/journeys.ts`; `apps/server/src/app.test.ts`; `apps/server/src/security.test.ts`; `apps/portal/components/admin-apis.test.tsx` | PASS — malformed YAML, invalid schema and Swagger 2.0 return 422; catalog count unchanged; first-error detail and nothing-published UI verified. |
+| AC 5 — signup reaches dashboard signed in | `apps/portal/e2e/journeys.ts`; `apps/server/src/app.test.ts`; `apps/portal/lib/middleware.test.ts` | PASS — browser signup/dashboard/session, duplicate email, developer admin API 403/admin page 404, missing session and stored expired session 401. |
+| AC 6 — app creates tagged consumer/credential; key shown once and copy works | `apps/portal/e2e/journeys.ts`; `packages/adapter-kong/src/conformance.test.ts`; `apps/server/src/app.test.ts`; `apps/portal/components/key-reveal-dialog.test.tsx` | PASS — real Kong app/credential/instance tags, exact clipboard key, Escape protection, acknowledgment and reload conceal key; DB stores hint only and detail omits raw key. |
+| AC 7 — try-it shows real Kong response with/without key | `apps/portal/e2e/journeys.ts`; `apps/server/src/security.test.ts`; `apps/server/src/app.test.ts` | PASS — Scalar Test Request/Send routes through same-origin proxy, displays Kong missing-key error/401, then returns 200 with key; external targets and allowlist bypasses rejected. |
+| AC 8 — gateway outage leaves no partial app; retry has no duplicate consumer | `apps/portal/e2e/gateway.ts`; `apps/server/src/app.test.ts`; `apps/portal/components/create-app.test.tsx`; `deploy/outage-smoke.mjs` | PASS — real Kong stopped: 503 problem plus Retry-After, app count unchanged; restart/retry: one tagged consumer and credential; duplicate submission 409; credential-failure compensation and UI retry/value preservation pass. |
+| AC 9 — revoked key returns Kong 401 | `apps/portal/e2e/journeys.ts`; `apps/portal/e2e/gateway.ts`; `apps/server/src/app.test.ts`; `apps/portal/components/app-detail.test.tsx`; `deploy/smoke.mjs` | PASS — browser revoke/real Kong 401, repeat revoke 204; real Kong outage returns 503 and preserves active status, then successful revoke after recovery. |
+| Security and failure paths | `apps/server/src/security.test.ts`; `apps/server/src/app.test.ts`; `apps/portal/e2e/gateway.ts`; portal component tests | PASS — invalid app bodies, forged/expired/missing sessions, role escalation, owner 404, duplicate requests/key limit, import limits/schemes/refs, SSRF, proxy headers/caps/timeout/rate limit, production secrets and log redaction. Compose server logs contain neither full portal keys nor test/admin passwords. |
+
+Validation:
+- `pnpm lint` and `pnpm typecheck`: PASS. Explicit ESLint check includes new browser tests,
+  which the portal lint script does not select itself.
+- `pnpm test`: PASS — **46 tests** (24 portal, 17 server, 4 Kong adapter, 1 database).
+  An uncached `pnpm exec turbo run test --force` also passed all 44 pre-existing tests;
+  the two added server tests passed in direct and workspace runs against Testcontainers Postgres.
+- `COMPOSE_PROJECT_NAME=portal-qa-20261102 pnpm test:e2e`: PASS — **5 tests**, 25.5 s,
+  Chromium against the production Compose portal and real Kong/Postgres. The root suite
+  registers the portal journeys through `deploy/e2e/journeys.test.ts`.
+- `node deploy/smoke.mjs` and real gateway `deploy/outage-smoke.mjs`: PASS.
+- No product flakiness observed. Initial browser failures were corrected test selectors
+  (copy/status symbols and duplicate API titles); the seeded catalog now selects its stable href.
+  Sandbox EPERM attempts were rerun successfully with authorized access. Remote CI has not run;
+  Elango's push/PR is still required.
+- The fresh QA stack remains healthy on ports 3000/4000/8000/8001 for UAT; the previous
+  `portal-backend-verify-20261102` stack is stopped with its volumes preserved.
 
 ### Bugs
+
+No product bugs found. Linear query for project API Portal, label Bug returned zero issues
+(not truncated), so there were no In Review bugs requiring re-test or state changes.
 
 ## Review  _(tech-lead)_
 

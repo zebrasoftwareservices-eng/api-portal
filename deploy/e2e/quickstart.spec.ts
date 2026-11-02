@@ -10,9 +10,7 @@ test('quickstart serves the seeded catalog and same-origin API', async ({
   await expect(
     page.getByRole('heading', { name: 'APIs', exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByRole('link', { name: /Sample HTTP API/ }),
-  ).toBeVisible();
+  await expect(page.locator('a[href="/apis/sample"]')).toBeVisible();
   const catalog = await request.get('/api/v1/apis');
   expect(catalog.status()).toBe(200);
   expect((await catalog.json()).items).toEqual(
