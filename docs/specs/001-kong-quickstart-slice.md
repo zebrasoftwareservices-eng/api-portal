@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Kong quickstart — first vertical slice
-status: designed   # draft → ready → designed → building → testing → review → approved → done
+status: building   # draft → ready → designed → building → testing → review → approved → done
 owner: product-manager
 created: 2026-11-02
 ---
@@ -343,6 +343,39 @@ non-admin opening `/admin` gets a 404 page. All data calls go through `packages/
 - [ ] [qa] Security checks: no `pk_` key or password in server logs during the e2e run; another developer's app returns 404; try-it allowlist bypass attempts rejected
 
 ## UX  _(ui-designer)_
+Full design: [docs/design/001-kong-quickstart-slice.md](../design/001-kong-quickstart-slice.md).
+Tokens: [docs/design/tokens.md](../design/tokens.md) (new; one light theme, CSS variables
+with shadcn names, mapped onto Scalar's variables).
+
+- **Flows:**
+  - A: catalog → reference → sign up (`next` kept) → create app (API preselected) → key
+    shown once → back to the reference to try it.
+  - B: admin import and publish.
+  - C: revoke a key.
+  - D: gateway unavailable on create app, then retry.
+  - E: additional key.
+- **Screens:** catalog `/`; API reference `/apis/[slug]` (header strip with base URL, "Get an
+  API key" and a one-line try-it hint above Scalar); sign-up and sign-in; dashboard with
+  an onboarding empty state; create app; app detail with keys table and "Try your key"
+  panel; admin `/admin/apis` (import form plus published list). Each screen has
+  ASCII wireframes at 375px and 1280px and covers loading, empty, error, success and
+  no-permission states.
+- **Key handover (AC 6):** `KeyRevealDialog` is an alert dialog. It can only be closed with
+  "I've saved it", gives a Copy button with "Copied" feedback, and shows the header name.
+  The key is kept in memory only and never goes in a URL or storage.
+- **Errors:** every problem type in the contract maps to specific copy. A 503 keeps the
+  form, says "Nothing was created" and shows a "Try again" countdown driven by `Retry-After`
+  (AC 8). A 422 invalid OpenAPI shows the problem `detail` verbatim plus "Nothing was
+  published" (AC 4). Revoke failures keep the key shown as Active.
+- **Components:** shadcn/ui throughout. New components: `PageHeader`, `EmptyState`,
+  `CopyButton`, `CodeValue`, `KeyHint`, `StatusBadge`, `ProblemAlert`, `KeyRevealDialog`,
+  `ApiCard`, `GatewayServiceOption`.
+- **Accessibility:** targets WCAG 2.2 AA. The doc gives the keyboard path for flow A, the
+  focus rules, the labelling and live regions, and checked contrast ratios.
+- **Responsive:** tables become cards at 375px, the header nav moves into a Sheet, and
+  form actions go full width.
+- **For the backend (optional):** the design suggests `detail` strings for the try-it
+  proxy problems, because Scalar shows them as-is (design §6).
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
