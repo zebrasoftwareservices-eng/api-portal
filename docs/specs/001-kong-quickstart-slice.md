@@ -343,8 +343,8 @@ non-admin opening `/admin` gets a 404 page. All data calls go through `packages/
 - [x] [qa] JSO-157 AC 8: integration with Kong stopped — create app returns 503 problem, no app row, no tagged consumer; Kong restarted — retry succeeds with exactly one tagged consumer; plus compensation unit test for failure after consumer upsert
 - [x] [qa] JSO-158 AC 9: revoke a key then call `GET /sample/get` through Kong with it → 401; revoking again → 204; revoke with Kong down → 503 and key still active
 - [x] [qa] JSO-159 Security checks: no `pk_` key or password in server logs during the e2e run; another developer's app returns 404; try-it allowlist bypass attempts rejected
-- [ ] [backend] Fix JSO-167: try-it rate limit is keyed on the portal container's IP, so it is one global 60/min bucket; trust only the portal hop for `X-Forwarded-For`, publish port 4000 on `127.0.0.1` only, and test per-client buckets
-- [ ] [backend] Fix JSO-168: log the error object for unexpected 500s, pg-boss errors and seed failures (only call it "gateway unavailable" for `GatewayUnavailableError`), with a test that the log has the message and no `pk_`
+- [x] [backend] Fix JSO-167: try-it rate limit is keyed on the portal container's IP, so it is one global 60/min bucket; trust only the portal hop for `X-Forwarded-For`, publish port 4000 on `127.0.0.1` only, and test per-client buckets
+- [x] [backend] Fix JSO-168: log the error object for unexpected 500s, pg-boss errors and seed failures (only call it "gateway unavailable" for `GatewayUnavailableError`), with a test that the log has the message and no `pk_`
 
 ## UX  _(ui-designer)_
 Full design: [docs/design/001-kong-quickstart-slice.md](../design/001-kong-quickstart-slice.md).
@@ -382,6 +382,9 @@ with shadcn names, mapped onto Scalar's variables).
   proxy problems, because Scalar shows them as-is (design §6).
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Backend review fixes (2026-11-02): `294dcd6` fixes JSO-167 and JSO-168. Fastify trusts only the immediate portal peer resolved from `PORTAL_PROXY_HOST` (`portal` in Compose, `localhost` for local dev), refreshes DNS every five seconds, and disables trust on lookup failure; server port 4000 is published only on loopback. Unexpected request failures now log the error and request ID; pg-boss and deferred seed logs include the error, and only `GatewayUnavailableError` is called gateway unavailable. Logger overrides retain the default secret redaction and query-free request serializer. All workspace lint/typecheck/test checks pass, including 25 server tests (five new regressions); unchanged package results used the Turbo cache. Real-Kong Compose build/start and seeded home page passed in 76.1 s with cached dependencies/base images and an existing database; signup/app/key/try-it/revoke smoke passed. Live forwarding checks confirmed separate client budgets through Next.js and ignored forged XFF from direct untrusted peers. QA/tech lead should verify both findings, left In Review; separate out-of-scope Backlog follow-up JSO-169 (no parent) tracks the confirmed ability to forge XFF through the public Next.js ingress, which requires portal/ingress changes outside backend ownership. Spec status is unchanged.
+
 
 - Backend fix JSO-160: `6bd89a4` lets schema validation report missing or malformed `info` before checking `info.version`, preserving explicit version requirements. Regression coverage checks missing `info` in JSON/YAML for OpenAPI 3.0/3.1, missing 3.0 `paths`, nested error pointers, and the admin endpoint's 422 problem response with no publication. `pnpm lint`, `pnpm typecheck`, and `pnpm test` pass (20 server tests run; other packages reused passing cache entries). QA/UAT should re-test the missing-`info` upload; the bug remains open pending verification.
 
