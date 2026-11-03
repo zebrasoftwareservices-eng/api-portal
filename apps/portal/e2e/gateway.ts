@@ -134,3 +134,24 @@ test('sample seed converges across server restarts against real Kong', async ({
   expect(logs).not.toContain('QA-password-123');
   expect(logs).not.toContain('change-me-now');
 });
+
+// Keep the public-ingress security regression executable while JSO-169 is open.
+// An unexpected pass asks QA to remove the annotation and close the issue.
+test('JSO-169: public ingress cannot rotate a client rate-limit budget with forged XFF', async ({
+  request,
+}) => {
+  const suffix = crypto.randomUUID().replaceAll('-', '');
+  const call = (client: string) =>
+    request.get('/api/v1/try-it', {
+      headers: { 'x-forwarded-for': client },
+    });
+  // Unique documentation-range IPv6 addresses isolate this test from other runs.
+  const client = `2001:db8:${suffix.slice(0, 4)}:${suffix.slice(4, 8)}::1`;
+  const forged = `2001:db8:${suffix.slice(0, 4)}:${suffix.slice(4, 8)}::2`;
+  for (let i = 0; i < 60; i++)
+    expect((await call(client)).status()).toBe(400);
+  expect((await call(client)).status()).toBe(429);
+  // Same TCP source must retain its exhausted budget regardless of this header.
+  test.fail(true, 'JSO-169: Next.js currently forwards caller-controlled XFF');
+  expect((await call(forged)).status()).toBe(429);
+});

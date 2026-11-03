@@ -343,6 +343,7 @@ non-admin opening `/admin` gets a 404 page. All data calls go through `packages/
 - [x] [qa] JSO-157 AC 8: integration with Kong stopped — create app returns 503 problem, no app row, no tagged consumer; Kong restarted — retry succeeds with exactly one tagged consumer; plus compensation unit test for failure after consumer upsert
 - [x] [qa] JSO-158 AC 9: revoke a key then call `GET /sample/get` through Kong with it → 401; revoking again → 204; revoke with Kong down → 503 and key still active
 - [x] [qa] JSO-159 Security checks: no `pk_` key or password in server logs during the e2e run; another developer's app returns 404; try-it allowlist bypass attempts rejected
+- [ ] [frontend] JSO-170 Fix JSO-169: sanitize forwarded client addresses at the public portal ingress and make the forged-XFF regression pass
 - [x] [backend] Fix JSO-167: try-it rate limit is keyed on the portal container's IP, so it is one global 60/min bucket; trust only the portal hop for `X-Forwarded-For`, publish port 4000 on `127.0.0.1` only, and test per-client buckets
 - [x] [backend] Fix JSO-168: log the error object for unexpected 500s, pg-boss errors and seed failures (only call it "gateway unavailable" for `GatewayUnavailableError`), with a test that the log has the message and no `pk_`
 
@@ -400,13 +401,16 @@ with shadcn names, mapped onto Scalar's variables).
 
 ## Test report  _(qa-tester)_
 
-QA re-verification completed 2026-11-02 against backend fix `6bd89a4`, real PostgreSQL 17
-and Kong 3.9. All nine acceptance criteria pass locally; JSO-160 is verified and Done.
-Four minor UAT bugs remain in Backlog; no blocker or major bug is open. The next stage is UAT.
+QA re-verification completed 2026-11-02 against backend review fixes `294dcd6`
+and report commit `e38d916`, real PostgreSQL 17 and Kong 3.9. All nine acceptance
+criteria pass locally, but a new public-ingress regression confirms existing JSO-169
+is a **major** rate-limit bypass. Status is **building** pending the frontend fix.
+Five minor UAT bugs remain in Backlog; JSO-160 remains Done. Backend review-fix
+regressions pass; JSO-167 and JSO-168 remain In Review for tech-lead closure.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
-| AC 1 — Compose starts and serves the portal within five minutes | `deploy/quickstart-smoke.mjs`; `deploy/e2e/quickstart.spec.ts` | PASS — **84.9 s**, fresh database volume and rebuilt application layers in project `portal-qa-20261102`; home 200 with seeded API. Base images and pnpm dependency layers were cached; this does not establish cold-download timing. Latest rebuilt existing-database run: **124.1 s** (cached base/dependency layers); earlier existing-stack run: 8.5 s. |
+| AC 1 — Compose starts and serves the portal within five minutes | `deploy/quickstart-smoke.mjs`; `deploy/e2e/quickstart.spec.ts` | PASS — **84.9 s**, fresh database volume and rebuilt application layers in project `portal-qa-20261102`; home 200 with seeded API. Base images and pnpm dependency layers were cached; this does not establish cold-download timing. Latest rebuilt existing-database run: **11.8 s** (project `portal`, cached build layers); previous run: **124.1 s** (cached base/dependency layers); earlier existing-stack run: 8.5 s. |
 | AC 2 — sample OpenAPI, Kong service/route and key-auth are seeded once | `apps/portal/e2e/gateway.ts` (seed convergence); `deploy/e2e/quickstart.spec.ts` | PASS — fresh catalog contains sample; service, route and plugin IDs remain identical after server restart; one sample row and one key-auth plugin. |
 | AC 3 — admin imports OpenAPI by file and URL, links service and publishes | `apps/portal/e2e/journeys.ts` (admin journey); `apps/server/src/app.test.ts` (admin import); `apps/server/src/security.test.ts` (URL refs) | PASS — uploaded 3.1 document and URL fetched from local server both publish and appear in catalog; real Kong service selected. |
 | AC 4 — invalid documents name first error and publish nothing | `apps/portal/e2e/journeys.ts`; `apps/server/src/app.test.ts`; `apps/server/src/security.test.ts`; `apps/portal/components/admin-apis.test.tsx` | PASS — malformed YAML, invalid schema and Swagger 2.0 return 422; catalog count unchanged; first-error detail and nothing-published UI verified. JSO-160 regression: missing `info` in JSON and YAML for 3.0.3 and 3.1.0 names the missing property at `/` in API and browser UI; each rejection leaves catalog unchanged. |
@@ -416,31 +420,43 @@ Four minor UAT bugs remain in Backlog; no blocker or major bug is open. The next
 | AC 8 — gateway outage leaves no partial app; retry has no duplicate consumer | `apps/portal/e2e/gateway.ts`; `apps/server/src/app.test.ts`; `apps/portal/components/create-app.test.tsx`; `deploy/outage-smoke.mjs` | PASS — real Kong stopped: 503 problem plus Retry-After, app count unchanged; restart/retry: one tagged consumer and credential; duplicate submission 409; credential-failure compensation and UI retry/value preservation pass. |
 | AC 9 — revoked key returns Kong 401 | `apps/portal/e2e/journeys.ts`; `apps/portal/e2e/gateway.ts`; `apps/server/src/app.test.ts`; `apps/portal/components/app-detail.test.tsx`; `deploy/smoke.mjs` | PASS — browser revoke/real Kong 401, repeat revoke 204; real Kong outage returns 503 and preserves active status, then successful revoke after recovery. |
 | Security and failure paths | `apps/server/src/security.test.ts`; `apps/server/src/app.test.ts`; `apps/portal/e2e/gateway.ts`; portal component tests | PASS — invalid app bodies, forged/expired/missing sessions, role escalation, owner 404, duplicate requests/key limit, import limits/schemes/refs, SSRF, proxy headers/caps/timeout/rate limit, production secrets and log redaction. Compose server logs contain neither full portal keys nor test/admin passwords. |
+| Public ingress rate-limit failure path (JSO-169) | `apps/portal/e2e/gateway.ts` | **FAIL (major)** — changing caller-controlled XFF resets the same public client’s exhausted budget; regression is marked expected failure until JSO-170 fixes ingress. |
 
 Validation (latest QA re-run):
-- `pnpm lint` and `pnpm typecheck`: PASS. Explicit `pnpm exec eslint apps/portal/e2e/`
-  and portal `tsc --noEmit` also pass for the expanded browser tests.
-- `pnpm exec turbo run test --force`: PASS — **49 tests** (24 portal, 20 server,
-  4 Kong adapter, 1 database), with no cache, in 28.1 s. `pnpm test` also passes.
-  Testcontainers runs real Postgres migration/integration and Kong conformance tests.
-- `COMPOSE_PROJECT_NAME=portal-qa-20261102 pnpm test:e2e`: PASS — **5 tests**, 20.2 s,
-  Chromium against the rebuilt production portal and real Kong/Postgres. Includes all four
-  JSO-160 upload variants, admin file/URL imports, signup/key/copy/try-it/revoke,
-  real gateway outage/recovery, duplicate prevention, seed restart convergence and log checks.
-- `COMPOSE_PROJECT_NAME=portal-qa-20261102 node deploy/quickstart-smoke.mjs`: PASS —
-  **124.1 s** for Compose build/start and seeded home page, with existing database and
-  cached base/dependency layers. Prior fresh-database run was 84.9 s (see AC 1); neither
-  result establishes cold-download timing.
-- `node deploy/smoke.mjs` and `deploy/outage-smoke.mjs` against the same project: PASS.
-- No product flakiness observed in this re-run. Sandbox EPERM blocked an initial standalone
-  outage check and Linear comments; authorized reruns succeeded. Remote CI awaits Elango's push/PR.
-- The QA stack remains healthy on ports 3000/4000/8000/8001 for UAT.
+- `pnpm lint`, `pnpm typecheck`, and `pnpm test`: PASS. Explicit e2e ESLint
+  and portal `tsc --noEmit` also pass for the added ingress regression.
+- `pnpm exec turbo run test --force`: PASS — **54 tests** (24 portal, 25 server,
+  4 Kong adapter, 1 database), no cache, in 17.5 s. Testcontainers uses real
+  Postgres and Kong. New backend regressions in `apps/server/src/review-fixes.test.ts`
+  and `apps/server/src/startup.test.ts` verify separate client budgets, untrusted-hop
+  spoof rejection, fail-closed DNS, error messages/stacks/request IDs, secret redaction,
+  pg-boss error objects and correct seed-failure diagnosis (JSO-167/JSO-168).
+- `pnpm test:e2e`: **5 normal passes plus 1 expected failure**, 16.6 s, against
+  the rebuilt production portal and real Kong/Postgres. All nine ACs pass.
+  The new `JSO-169` case in `apps/portal/e2e/gateway.ts` confirms 60 requests
+  from one forged XFF address return 400 (missing target), request 61 returns 429,
+  then changing only XFF returns **400 instead of 429** from the same client.
+  The expected-failure annotation applies only to the final security assertion;
+  remove it when the fix lands. Playwright's green exit does not mean this bug passes.
+- `node deploy/quickstart-smoke.mjs`: PASS — **11.8 s** for Compose build/start
+  and seeded home page, existing database and cached build layers in project `portal`.
+  Prior fresh-database run was 84.9 s; cold-download/build timing remains unproven.
+- `node deploy/smoke.mjs` and `node deploy/outage-smoke.mjs`: PASS — real Kong
+  first-call/revoke flow and outage/retry without partial apps or duplicate consumers.
+- No flaky results observed. The isolated JSO-169 re-run reproduces the same final
+  assertion failure. Remote CI awaits Elango's push/PR.
+- The `portal` Compose stack remains running for subsequent build/testing work.
 
 ### Bugs
 
-Latest QA query for project API Portal, label Bug returned five issues (not truncated).
-JSO-160 was the only In Review bug; QA verified the rebuilt API and browser upload flow
-and moved it to Done. JSO-161–JSO-164 remain minor Backlog issues; no new bugs were found.
+Latest QA query for project API Portal, label Bug returned seven issues (not truncated).
+No Bug issue was In Review, so none needed closure or reopening. JSO-160 remains Done;
+JSO-161–JSO-164 and JSO-166 remain minor Backlog bugs. Existing JSO-169 was reproduced,
+classified major, prioritized high and parented to JSO-117 rather than duplicated
+(frontend fix task JSO-170 under JSO-122):
+it affects the shipped try-it security boundary and blocks this slice.
+
+- [ ] JSO-169 Public Next.js ingress forwards forged XFF, allowing one client to rotate its try-it rate-limit budget (major)
 
 User testing (JSO-126, 2026-11-02). There were no In Review bugs to re-test. New bugs:
 - [x] JSO-160 OpenAPI import with no `info` object says "Document must be an object at /" instead of naming the missing `info` (AC 4 message) (major)
