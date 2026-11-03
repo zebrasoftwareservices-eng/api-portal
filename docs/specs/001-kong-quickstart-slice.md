@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Kong quickstart — first vertical slice
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-02
 linear: JSO-117
@@ -343,6 +343,8 @@ non-admin opening `/admin` gets a 404 page. All data calls go through `packages/
 - [x] [qa] JSO-157 AC 8: integration with Kong stopped — create app returns 503 problem, no app row, no tagged consumer; Kong restarted — retry succeeds with exactly one tagged consumer; plus compensation unit test for failure after consumer upsert
 - [x] [qa] JSO-158 AC 9: revoke a key then call `GET /sample/get` through Kong with it → 401; revoking again → 204; revoke with Kong down → 503 and key still active
 - [x] [qa] JSO-159 Security checks: no `pk_` key or password in server logs during the e2e run; another developer's app returns 404; try-it allowlist bypass attempts rejected
+- [ ] [backend] Fix JSO-167: try-it rate limit is keyed on the portal container's IP, so it is one global 60/min bucket; trust only the portal hop for `X-Forwarded-For`, publish port 4000 on `127.0.0.1` only, and test per-client buckets
+- [ ] [backend] Fix JSO-168: log the error object for unexpected 500s, pg-boss errors and seed failures (only call it "gateway unavailable" for `GatewayUnavailableError`), with a test that the log has the message and no `pk_`
 
 ## UX  _(ui-designer)_
 Full design: [docs/design/001-kong-quickstart-slice.md](../design/001-kong-quickstart-slice.md).
@@ -497,6 +499,64 @@ Notes:
   Restart it with `docker compose -p portal-qa-20261102 -f deploy/docker-compose.yml start`.
 
 ## Review  _(tech-lead)_
+
+**Round 1: 2026-11-02**, `git diff main...HEAD` (18 commits up to `e77ffac`). `pnpm lint`,
+`pnpm typecheck` and `pnpm test` pass (49 tests: 24 portal, 20 server, 4 Kong adapter, 1 db).
+I didn't re-run compose or Playwright; QA and UAT ran them against this code (see Test report).
+
+**Verdict: changes requested, 2 blocking.** The slice is in good shape. Every acceptance
+criterion is implemented and covered by an automated test. The contract, data model and
+adapter calls match the design. Errors are problem+json, keys are never stored or logged,
+and gateway calls are idempotent and tagged. The gateway-first create with compensation,
+plus the shared/exclusive advisory lock that stops reconcile racing an in-flight create, is
+careful work. The two blocking items are small, contained backend fixes.
+
+### Blocking
+1. **JSO-167: try-it rate limit is global, not per IP.** `apps/server/src/proxy.ts:64`,
+   `apps/server/src/app.ts:28`. Browser calls reach the server through the Next.js rewrite,
+   so the peer address is always the portal container and Fastify has no `trustProxy`. All
+   visitors share one 60/min bucket, which breaks ADR 0003 and JSO-142 and makes try-it fail
+   for everyone under light load. Trust only the portal hop for `X-Forwarded-For`, stop
+   publishing `4000` on all interfaces in `deploy/docker-compose.yml:72-73` (bind
+   `127.0.0.1`) so the header can't be spoofed from outside, and add a per-client test.
+2. **JSO-168: unexpected errors are logged without the error.** `apps/server/src/problem.ts:69`
+   drops `err` on 500s. `apps/server/src/startup.ts:93` drops pg-boss errors, so reconcile
+   failures are invisible. `apps/server/src/startup.ts:89-91` always says "gateway
+   unavailable", whatever the cause. Operators of a self-hosted quickstart get no message or
+   stack. Log `{ err }` (redaction still applies) and add a test.
+
+### Suggestions (non-blocking; fix now or later)
+- `apps/server/src/problem.ts:30-35`: every `GatewayUnavailableError` uses the create-app
+  detail "Nothing was created". Revoke, the admin service picker and the try-it proxy
+  (`apps/server/src/proxy.ts:181-185`) send the same text, and it's wrong there. Pass a
+  detail per operation (revoke: "The key is still active").
+- `apps/server/src/catalog.ts:6-12, 56-59`: `publishedApis` selects every full `document`
+  (up to 5 MiB each). `GET /v1/apis`, each slug lookup and the try-it allowlist load all of
+  them. Select summary columns for the list, and query by slug for detail.
+- `apps/server/src/apps.ts:104-175`: Kong calls run inside the open DB transaction, holding
+  a pooled connection for up to 10 s when Kong is slow. This is deliberate (the shared
+  advisory lock keeps reconcile out), but it ties pool size to gateway latency. Add a
+  comment, or bound concurrent creates.
+- `apps/server/src/apps.ts:261-265`: revoke deletes in Kong before the DB update. If the
+  update fails, the row stays `active` and reconcile logs `drift` every 5 minutes for good.
+  Reconcile could mark these rows revoked rather than only warning.
+- `apps/server/src/import.ts:288-296`: a title with no ASCII letters (for example a
+  Japanese title) gives a too-short default slug. The ZodError then becomes a generic
+  400 "Request validation failed". Return 422 asking for an explicit slug.
+- `apps/server/src/seed.ts:55-61`: the seed upserts slug `sample` on every boot. If
+  `SEED_SAMPLE` was off at first and an admin published their own `sample`, turning seeding
+  on overwrites it. Skip the seed when `sample` is linked to another service.
+- `apps/portal/components/reference.tsx:34-40`: the document is fetched once to check it
+  loads, then fetched again by Scalar from `url`. Pass the fetched document as `content`.
+- `apps/server/src/startup.ts:71-81`: the admin is created through `signUpEmail` outside
+  the transaction that then sets `role`. A crash in between leaves a developer account with
+  the admin email, and the next boot refuses to start. Create the user and set the role in
+  one step, or recover that case.
+- Spec housekeeping: tick the three Open questions. ADR 0003 answered the two tech-lead ones,
+  and the working name `portal` covers the naming one until Elango picks a name.
+
+Minor UAT bugs JSO-161–JSO-164 and JSO-166, and follow-up JSO-165, are not blocking for
+this slice.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
