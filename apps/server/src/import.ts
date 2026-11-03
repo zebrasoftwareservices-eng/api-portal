@@ -181,9 +181,6 @@ export async function importDocument(
       'unsupported-openapi-version',
       'Only OpenAPI 3.0.x and 3.1.x documents are supported.',
     );
-  const info = object(document.info);
-  if (typeof info.version !== 'string' || !info.version)
-    throw invalid('info.version is required', '/info/version');
   prepareRefs(document, source);
   try {
     let refs = 0;
@@ -234,6 +231,11 @@ export async function importDocument(
     if (error instanceof Problem) throw error;
     throw invalid('Document references could not be resolved', '/$ref');
   }
+  // Validate the schema first so missing or malformed info gets its real path.
+  // Scalar may default info.version on its clone; require it in the import itself.
+  const info = object(document.info);
+  if (typeof info.version !== 'string' || !info.version)
+    throw invalid('info.version is required', '/info/version');
   return { document, sourceUrl: source ?? null };
 }
 export function registerImport(

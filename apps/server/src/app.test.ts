@@ -408,6 +408,30 @@ info: {}`,
     expect(invalid.statusCode, invalid.body).toBe(422);
     expect(invalid.json().errors).toHaveLength(1);
     expect(await connection.db.select().from(apis)).toHaveLength(1);
+    for (const content of [
+      '{"openapi":"3.0.3","paths":{}}',
+      'openapi: 3.1.0\npaths: {}',
+    ]) {
+      const missingInfo = await server.inject({
+        method: 'POST',
+        url: '/api/v1/admin/apis',
+        headers: { cookie },
+        payload: { spec: { content }, gatewayServiceId: 'service' },
+      });
+      expect(missingInfo.statusCode, missingInfo.body).toBe(422);
+      expect(missingInfo.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(missingInfo.json()).toMatchObject({
+        type: '/problems/invalid-openapi',
+        detail:
+          "Invalid OpenAPI document: must have required property 'info' at /",
+        errors: [
+          { message: "must have required property 'info'", pointer: '' },
+        ],
+      });
+      expect(await connection.db.select().from(apis)).toHaveLength(1);
+    }
     const content = JSON.stringify({
       openapi: '3.1.0',
       info: { title: 'Imported API', version: '1.0' },

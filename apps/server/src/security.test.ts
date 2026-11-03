@@ -89,6 +89,53 @@ describe('security boundaries', () => {
       }),
     ).rejects.toMatchObject({ code: 'invalid-openapi' });
   });
+  it.each(['3.0.3', '3.1.0'])(
+    'names missing info in JSON and YAML OpenAPI %s imports',
+    async (openapi) => {
+      for (const content of [
+        JSON.stringify({ openapi, paths: {} }),
+        `openapi: ${openapi}\npaths: {}`,
+      ]) {
+        await expect(importDocument({ content })).rejects.toMatchObject({
+          status: 422,
+          code: 'invalid-openapi',
+          message:
+            "Invalid OpenAPI document: must have required property 'info' at /",
+          errors: [
+            { message: "must have required property 'info'", pointer: '' },
+          ],
+        });
+      }
+    },
+  );
+  it('reports other schema paths and still requires an explicit info.version', async () => {
+    for (const [input, message, pointer] of [
+      [
+        { openapi: '3.0.3', info: document.info },
+        "must have required property 'paths'",
+        '',
+      ],
+      [{ ...document, info: null }, 'type must be object', '/info'],
+      [
+        { ...document, info: { version: '1' } },
+        "must have required property 'title'",
+        '/info',
+      ],
+      [
+        { ...document, info: { title: 'Pets' } },
+        'info.version is required',
+        '/info/version',
+      ],
+    ] as const) {
+      await expect(
+        importDocument({ content: JSON.stringify(input) }),
+      ).rejects.toMatchObject({
+        status: 422,
+        code: 'invalid-openapi',
+        errors: [{ message, pointer }],
+      });
+    }
+  });
   it('caps URL imports and rejects schemes, redirect loops and oversized responses', async () => {
     const fetcher = vi
       .fn()
