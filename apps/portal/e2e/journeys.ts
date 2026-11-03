@@ -196,6 +196,46 @@ test('admin imports files and URLs and rejects invalid files without publication
       (await (await context.request.get('/api/v1/apis')).json()).items,
     ).toHaveLength(before);
   }
+  // JSO-160: a missing top-level info must name the actual schema error.
+  for (const version of ['3.0.3', '3.1.0']) {
+    for (const format of ['json', 'yaml']) {
+      const content =
+        format === 'json'
+          ? JSON.stringify({ openapi: version, paths: {} })
+          : `openapi: ${version}\npaths: {}`;
+      await page.getByLabel('OpenAPI file', { exact: true }).setInputFiles({
+        name: `missing-info.${format}`,
+        mimeType: format === 'json' ? 'application/json' : 'application/yaml',
+        buffer: Buffer.from(content),
+      });
+      const result = page.waitForResponse(
+        (r) =>
+          r.url().endsWith('/api/v1/admin/apis') &&
+          r.request().method() === 'POST',
+      );
+      await page.getByRole('button', { name: 'Import and publish' }).click();
+      const response = await result;
+      expect(response.status()).toBe(422);
+      expect(response.headers()['content-type']).toContain(
+        'application/problem+json',
+      );
+      const detail =
+        "Invalid OpenAPI document: must have required property 'info' at /";
+      expect(await response.json()).toMatchObject({
+        detail,
+        errors: [
+          { message: "must have required property 'info'", pointer: '' },
+        ],
+      });
+      await expect(page.getByText(detail, { exact: true })).toBeVisible();
+      await expect(
+        page.getByText('Nothing was published.', { exact: true }),
+      ).toBeVisible();
+      expect(
+        (await (await context.request.get('/api/v1/apis')).json()).items,
+      ).toHaveLength(before);
+    }
+  }
   const slug = `qa-${crypto.randomUUID()}`;
   await page.getByLabel('OpenAPI file', { exact: true }).setInputFiles({
     name: 'valid.json',

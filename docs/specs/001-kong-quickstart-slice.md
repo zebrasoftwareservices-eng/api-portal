@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Kong quickstart — first vertical slice
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-02
 linear: JSO-117
@@ -395,15 +395,16 @@ with shadcn names, mapped onto Scalar's variables).
 
 ## Test report  _(qa-tester)_
 
-QA completed 2026-11-02 against real PostgreSQL 17 and Kong 3.9. All nine acceptance
-criteria pass locally; no blocker or major bug is open. The next stage is user testing.
+QA re-verification completed 2026-11-02 against backend fix `6bd89a4`, real PostgreSQL 17
+and Kong 3.9. All nine acceptance criteria pass locally; JSO-160 is verified and Done.
+Four minor UAT bugs remain in Backlog; no blocker or major bug is open. The next stage is UAT.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
-| AC 1 — Compose starts and serves the portal within five minutes | `deploy/quickstart-smoke.mjs`; `deploy/e2e/quickstart.spec.ts` | PASS — **84.9 s**, fresh database volume and rebuilt application layers in project `portal-qa-20261102`; home 200 with seeded API. Base images and pnpm dependency layers were cached; this does not establish cold-download timing. Existing-stack run: 8.5 s. |
+| AC 1 — Compose starts and serves the portal within five minutes | `deploy/quickstart-smoke.mjs`; `deploy/e2e/quickstart.spec.ts` | PASS — **84.9 s**, fresh database volume and rebuilt application layers in project `portal-qa-20261102`; home 200 with seeded API. Base images and pnpm dependency layers were cached; this does not establish cold-download timing. Latest rebuilt existing-database run: **124.1 s** (cached base/dependency layers); earlier existing-stack run: 8.5 s. |
 | AC 2 — sample OpenAPI, Kong service/route and key-auth are seeded once | `apps/portal/e2e/gateway.ts` (seed convergence); `deploy/e2e/quickstart.spec.ts` | PASS — fresh catalog contains sample; service, route and plugin IDs remain identical after server restart; one sample row and one key-auth plugin. |
 | AC 3 — admin imports OpenAPI by file and URL, links service and publishes | `apps/portal/e2e/journeys.ts` (admin journey); `apps/server/src/app.test.ts` (admin import); `apps/server/src/security.test.ts` (URL refs) | PASS — uploaded 3.1 document and URL fetched from local server both publish and appear in catalog; real Kong service selected. |
-| AC 4 — invalid documents name first error and publish nothing | `apps/portal/e2e/journeys.ts`; `apps/server/src/app.test.ts`; `apps/server/src/security.test.ts`; `apps/portal/components/admin-apis.test.tsx` | PASS — malformed YAML, invalid schema and Swagger 2.0 return 422; catalog count unchanged; first-error detail and nothing-published UI verified. |
+| AC 4 — invalid documents name first error and publish nothing | `apps/portal/e2e/journeys.ts`; `apps/server/src/app.test.ts`; `apps/server/src/security.test.ts`; `apps/portal/components/admin-apis.test.tsx` | PASS — malformed YAML, invalid schema and Swagger 2.0 return 422; catalog count unchanged; first-error detail and nothing-published UI verified. JSO-160 regression: missing `info` in JSON and YAML for 3.0.3 and 3.1.0 names the missing property at `/` in API and browser UI; each rejection leaves catalog unchanged. |
 | AC 5 — signup reaches dashboard signed in | `apps/portal/e2e/journeys.ts`; `apps/server/src/app.test.ts`; `apps/portal/lib/middleware.test.ts` | PASS — browser signup/dashboard/session, duplicate email, developer admin API 403/admin page 404, missing session and stored expired session 401. |
 | AC 6 — app creates tagged consumer/credential; key shown once and copy works | `apps/portal/e2e/journeys.ts`; `packages/adapter-kong/src/conformance.test.ts`; `apps/server/src/app.test.ts`; `apps/portal/components/key-reveal-dialog.test.tsx` | PASS — real Kong app/credential/instance tags, exact clipboard key, Escape protection, acknowledgment and reload conceal key; DB stores hint only and detail omits raw key. |
 | AC 7 — try-it shows real Kong response with/without key | `apps/portal/e2e/journeys.ts`; `apps/server/src/security.test.ts`; `apps/server/src/app.test.ts` | PASS — Scalar Test Request/Send routes through same-origin proxy, displays Kong missing-key error/401, then returns 200 with key; external targets and allowlist bypasses rejected. |
@@ -411,30 +412,33 @@ criteria pass locally; no blocker or major bug is open. The next stage is user t
 | AC 9 — revoked key returns Kong 401 | `apps/portal/e2e/journeys.ts`; `apps/portal/e2e/gateway.ts`; `apps/server/src/app.test.ts`; `apps/portal/components/app-detail.test.tsx`; `deploy/smoke.mjs` | PASS — browser revoke/real Kong 401, repeat revoke 204; real Kong outage returns 503 and preserves active status, then successful revoke after recovery. |
 | Security and failure paths | `apps/server/src/security.test.ts`; `apps/server/src/app.test.ts`; `apps/portal/e2e/gateway.ts`; portal component tests | PASS — invalid app bodies, forged/expired/missing sessions, role escalation, owner 404, duplicate requests/key limit, import limits/schemes/refs, SSRF, proxy headers/caps/timeout/rate limit, production secrets and log redaction. Compose server logs contain neither full portal keys nor test/admin passwords. |
 
-Validation:
-- `pnpm lint` and `pnpm typecheck`: PASS. Explicit ESLint check includes new browser tests,
-  which the portal lint script does not select itself.
-- `pnpm test`: PASS — **46 tests** (24 portal, 17 server, 4 Kong adapter, 1 database).
-  An uncached `pnpm exec turbo run test --force` also passed all 44 pre-existing tests;
-  the two added server tests passed in direct and workspace runs against Testcontainers Postgres.
-- `COMPOSE_PROJECT_NAME=portal-qa-20261102 pnpm test:e2e`: PASS — **5 tests**, 25.5 s,
-  Chromium against the production Compose portal and real Kong/Postgres. The root suite
-  registers the portal journeys through `deploy/e2e/journeys.test.ts`.
-- `node deploy/smoke.mjs` and real gateway `deploy/outage-smoke.mjs`: PASS.
-- No product flakiness observed. Initial browser failures were corrected test selectors
-  (copy/status symbols and duplicate API titles); the seeded catalog now selects its stable href.
-  Sandbox EPERM attempts were rerun successfully with authorized access. Remote CI has not run;
-  Elango's push/PR is still required.
-- The fresh QA stack remains healthy on ports 3000/4000/8000/8001 for UAT; the previous
-  `portal-backend-verify-20261102` stack is stopped with its volumes preserved.
+Validation (latest QA re-run):
+- `pnpm lint` and `pnpm typecheck`: PASS. Explicit `pnpm exec eslint apps/portal/e2e/`
+  and portal `tsc --noEmit` also pass for the expanded browser tests.
+- `pnpm exec turbo run test --force`: PASS — **49 tests** (24 portal, 20 server,
+  4 Kong adapter, 1 database), with no cache, in 28.1 s. `pnpm test` also passes.
+  Testcontainers runs real Postgres migration/integration and Kong conformance tests.
+- `COMPOSE_PROJECT_NAME=portal-qa-20261102 pnpm test:e2e`: PASS — **5 tests**, 20.2 s,
+  Chromium against the rebuilt production portal and real Kong/Postgres. Includes all four
+  JSO-160 upload variants, admin file/URL imports, signup/key/copy/try-it/revoke,
+  real gateway outage/recovery, duplicate prevention, seed restart convergence and log checks.
+- `COMPOSE_PROJECT_NAME=portal-qa-20261102 node deploy/quickstart-smoke.mjs`: PASS —
+  **124.1 s** for Compose build/start and seeded home page, with existing database and
+  cached base/dependency layers. Prior fresh-database run was 84.9 s (see AC 1); neither
+  result establishes cold-download timing.
+- `node deploy/smoke.mjs` and `deploy/outage-smoke.mjs` against the same project: PASS.
+- No product flakiness observed in this re-run. Sandbox EPERM blocked an initial standalone
+  outage check and Linear comments; authorized reruns succeeded. Remote CI awaits Elango's push/PR.
+- The QA stack remains healthy on ports 3000/4000/8000/8001 for UAT.
 
 ### Bugs
 
-No product bugs found. Linear query for project API Portal, label Bug returned zero issues
-(not truncated), so there were no In Review bugs requiring re-test or state changes.
+Latest QA query for project API Portal, label Bug returned five issues (not truncated).
+JSO-160 was the only In Review bug; QA verified the rebuilt API and browser upload flow
+and moved it to Done. JSO-161–JSO-164 remain minor Backlog issues; no new bugs were found.
 
 User testing (JSO-126, 2026-11-02). There were no In Review bugs to re-test. New bugs:
-- [ ] JSO-160 OpenAPI import with no `info` object says "Document must be an object at /" instead of naming the missing `info` (AC 4 message) (major)
+- [x] JSO-160 OpenAPI import with no `info` object says "Document must be an object at /" instead of naming the missing `info` (AC 4 message) (major)
 - [x] [backend] Fix JSO-160: report the first real validation error (for example "must have required property 'info' at /") when a top-level required property is missing
 - [ ] JSO-161 Focus goes to `<body>` after Cancel or Escape on the revoke-key confirmation, not back to **Revoke** (minor)
 - [ ] JSO-162 Catalog card base URL runs into "View reference →" with no gap (minor)
