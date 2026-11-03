@@ -170,4 +170,19 @@ test('JSO-169: public ingress cannot rotate a client rate-limit budget with forg
   expect((await call(client)).status()).toBe(429);
   // Same TCP source must retain its exhausted budget regardless of this header.
   expect((await call(forged)).status()).toBe(429);
+  const spoofedHeaders: Record<string, string>[] = [
+    {},
+    { 'x-forwarded-for': `${forged}, 198.51.100.1` },
+    { 'x-forwarded-for': 'not-an-ip' },
+    {
+      forwarded: 'for=198.51.100.2;proto=https',
+      'x-real-ip': '198.51.100.3',
+      'x-forwarded-for': forged,
+    },
+  ];
+  for (const headers of spoofedHeaders) {
+    expect(
+      (await request.get('/api/v1/try-it', { headers })).status(),
+    ).toBe(429);
+  }
 });
