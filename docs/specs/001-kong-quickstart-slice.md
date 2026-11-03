@@ -381,6 +381,8 @@ with shadcn names, mapped onto Scalar's variables).
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
+- Backend fix JSO-160: `6bd89a4` lets schema validation report missing or malformed `info` before checking `info.version`, preserving explicit version requirements. Regression coverage checks missing `info` in JSON/YAML for OpenAPI 3.0/3.1, missing 3.0 `paths`, nested error pointers, and the admin endpoint's 422 problem response with no publication. `pnpm lint`, `pnpm typecheck`, and `pnpm test` pass (20 server tests run; other packages reused passing cache entries). QA/UAT should re-test the missing-`info` upload; the bug remains open pending verification.
+
 - Frontend: `90f652b` implements JSO-144–JSO-150: token-based shared UI, server-rendered catalog, Scalar reference with try-it proxy and non-persistent auth, Better Auth screens and protected routes, developer apps/keys and admin imports. All 24 portal component/navigation/middleware tests pass, including one-time key copying and dismissal, duplicate-submit prevention, gateway retry, failed revoke preservation and first-error import feedback. Workspace `pnpm lint`, `pnpm typecheck` and `pnpm test` pass; QA should exercise the full browser flow and Compose quickstart with the backend-owned build.
 
 - Backend: workspace and CI scaffold committed in `8c31fc1`; tooling checks run with no application packages yet. CI includes generated-client drift check and a five-minute Compose smoke deadline.
@@ -433,7 +435,7 @@ No product bugs found. Linear query for project API Portal, label Bug returned z
 
 User testing (JSO-126, 2026-11-02). There were no In Review bugs to re-test. New bugs:
 - [ ] JSO-160 OpenAPI import with no `info` object says "Document must be an object at /" instead of naming the missing `info` (AC 4 message) (major)
-- [ ] [backend] Fix JSO-160: report the first real validation error (for example "must have required property 'info' at /") when a top-level required property is missing
+- [x] [backend] Fix JSO-160: report the first real validation error (for example "must have required property 'info' at /") when a top-level required property is missing
 - [ ] JSO-161 Focus goes to `<body>` after Cancel or Escape on the revoke-key confirmation, not back to **Revoke** (minor)
 - [ ] JSO-162 Catalog card base URL runs into "View reference →" with no gap (minor)
 - [ ] JSO-163 Account menu is a raw `<details>` disclosure with a ▶ marker, not the designed `DropdownMenu` (minor)
