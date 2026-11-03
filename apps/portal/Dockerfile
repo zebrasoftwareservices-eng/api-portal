@@ -15,6 +15,7 @@ WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 COPY --from=build --chown=node:node /app/apps/portal/.next/standalone ./
 COPY --from=build --chown=node:node /app/apps/portal/.next/static ./apps/portal/.next/static
+COPY --from=build --chown=node:node /app/apps/portal/dist ./apps/portal/dist
 USER node
 EXPOSE 3000
-CMD ["node", "apps/portal/server.js"]
+CMD ["node", "apps/portal/dist/start.js"]

@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --hostname 0.0.0.0",
-    "build": "next build",
-    "start": "next start --hostname 0.0.0.0",
-    "lint": "eslint app components lib middleware.ts",
+    "dev": "tsc -p tsconfig.ingress.json && node dist/start.js dev",
+    "build": "tsc -p tsconfig.ingress.json && next build",
+    "start": "node dist/start.js start",
+    "lint": "eslint app components lib ingress middleware.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
