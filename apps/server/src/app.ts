@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { portalProxy } from './trusted-proxy.js';
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import {
   serializerCompiler,
@@ -25,34 +26,41 @@ export interface AppOptions {
 export async function createApp(options: AppOptions) {
   const { db, config, adapter, gatewayId } = options;
   const auth = options.auth ?? createAuth(db, config);
+  const proxy = portalProxy(config.PORTAL_PROXY_HOST);
   const app = Fastify({
+    trustProxy: proxy.trust,
     bodyLimit: 1024 * 1024,
-    logger: options.logger ?? {
-      level: 'info',
-      redact: {
-        paths: [
-          'key',
-          'apikey',
-          'authorization',
-          'cookie',
-          'password',
-          'req.headers.apikey',
-          'req.headers.authorization',
-          'req.headers.cookie',
-          '*.password',
-          '*.key',
-          '*.apikey',
-        ],
-        censor: '[REDACTED]',
-      },
-      serializers: {
-        req: (request: { method: string; url: string }) => ({
-          method: request.method,
-          url: request.url.split('?')[0],
-        }),
-      },
-    },
+    logger:
+      options.logger === false
+        ? false
+        : {
+            level: 'info',
+            ...(typeof options.logger === 'object' ? options.logger : {}),
+            redact: {
+              paths: [
+                'key',
+                'apikey',
+                'authorization',
+                'cookie',
+                'password',
+                'req.headers.apikey',
+                'req.headers.authorization',
+                'req.headers.cookie',
+                '*.password',
+                '*.key',
+                '*.apikey',
+              ],
+              censor: '[REDACTED]',
+            },
+            serializers: {
+              req: (request: { method: string; url: string }) => ({
+                method: request.method,
+                url: request.url.split('?')[0],
+              }),
+            },
+          },
   });
+  app.addHook('onRequest', proxy.refresh);
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   problemHandler(app);

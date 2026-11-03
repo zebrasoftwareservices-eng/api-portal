@@ -3,6 +3,7 @@ import { connect, migrate, instanceSettings, gateways, user } from '@portal/db';
 import { eq, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import PgBoss from 'pg-boss';
+import { GatewayUnavailableError } from '@portal/adapter-sdk';
 import { KongAdapter } from '@portal/adapter-kong';
 import type { Config } from './config.js';
 import { encrypt } from './crypto.js';
@@ -86,11 +87,16 @@ export async function start(config: Config) {
     if (config.SEED_SAMPLE)
       try {
         await seedSample(db, adapter, gateway.id, instance.instanceId);
-      } catch {
+      } catch (err) {
         seedPending = true;
-        app.log.warn('Sample seed deferred: gateway unavailable');
+        app.log.warn(
+          { err },
+          err instanceof GatewayUnavailableError
+            ? 'Sample seed deferred: gateway unavailable'
+            : 'Sample seed deferred: unexpected failure',
+        );
       }
-    boss.on('error', () => app.log.error('Background job failed'));
+    boss.on('error', (err) => app.log.error({ err }, 'Background job failed'));
     await boss.start();
     await boss.createQueue('gateway-reconcile', {
       name: 'gateway-reconcile',

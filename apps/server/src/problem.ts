@@ -66,7 +66,7 @@ export function problemHandler(app: FastifyInstance) {
       p = new Problem(400, 'validation', 'Request validation failed.');
     else {
       p = new Problem(500, 'internal', 'An unexpected error occurred.');
-      app.log.error({ code: 'internal' }, 'Request failed');
+      app.log.error({ err, reqId: req.id, code: 'internal' }, 'Request failed');
     }
     if (p.status === 503) reply.header('Retry-After', '5');
     return reply

@@ -61,6 +61,7 @@ services:
       DATABASE_URL: postgres://portal:${POSTGRES_PASSWORD:-portal}@postgres:5432/portal
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-INSECURE-local-auth-secret-change-me-123456}
       PORTAL_ENCRYPTION_KEY: ${PORTAL_ENCRYPTION_KEY:-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=}
+      PORTAL_PROXY_HOST: portal
       PORTAL_PUBLIC_URL: ${PORTAL_PUBLIC_URL:-http://localhost:3000}
       KONG_ADMIN_URL: http://kong:8001
       KONG_ADMIN_TOKEN: ${KONG_ADMIN_TOKEN:-}
@@ -70,7 +71,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-now}
       SEED_SAMPLE: ${SEED_SAMPLE:-true}
     ports:
-      - '4000:4000'
+      - '127.0.0.1:4000:4000'
     depends_on:
       postgres:
         condition: service_healthy
