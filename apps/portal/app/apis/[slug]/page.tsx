@@ -4,11 +4,18 @@ import { CodeValue, PageHeader } from '@portal/ui';
 import { serverClient, currentUser } from '../../../lib/server';
 import { keyDestination } from '../../../lib/navigation';
 import { Reference } from '../../../components/reference';
+import { DemoReference } from '../../../components/demo-reference';
+import { isDemo } from '../../../lib/demo';
+import { demoData } from '../../../lib/demo-data';
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  if (isDemo()) {
+    if ((await params).slug !== 'sample') return { title: 'API not found' };
+    return { title: demoData().api.title };
+  }
   const client = await serverClient();
   const { data } = await client.GET('/v1/apis/{slug}', {
     params: { path: await params },
@@ -21,6 +28,29 @@ export default async function ApiPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  if (isDemo()) {
+    if (slug !== 'sample') notFound();
+    const { api, document } = demoData();
+    return (
+      <div className="stack">
+        <PageHeader
+          title={api.title}
+          breadcrumb={[{ label: 'APIs', href: '/' }, { label: api.title }]}
+        />
+        <span className="badge">v{api.version}</span>
+        <CodeValue
+          value={api.gatewayBaseUrl}
+          label="Base URL in a local quickstart"
+        />
+        <div className="alert">
+          <span aria-hidden="true">ⓘ</span> This reference is read-only here, so
+          you can&apos;t send requests from it. To send real requests, run the
+          quickstart.
+        </div>
+        <DemoReference document={document} />
+      </div>
+    );
+  }
   const client = await serverClient();
   const [{ data, error }, user] = await Promise.all([
     client.GET('/v1/apis/{slug}', { params: { path: { slug } } }),

@@ -6,11 +6,11 @@ import { Button } from '@portal/ui';
 import '@scalar/api-reference-react/style.css';
 import { api } from '../lib/client';
 import { useResource } from './use-resource';
-const Scalar = dynamic(
+export const Scalar = dynamic(
   () => import('@scalar/api-reference-react').then((m) => m.ApiReferenceReact),
   { ssr: false, loading: () => <p role="status">Loading API reference…</p> },
 );
-class ReferenceBoundary extends Component<
+export class ReferenceBoundary extends Component<
   { children: ReactNode; retry: () => void },
   { failed: boolean }
 > {

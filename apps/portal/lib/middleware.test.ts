@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // @vitest-environment node
 import { NextRequest } from 'next/server';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { middleware } from '../middleware';
 
 const { getSession } = vi.hoisted(() => ({ getSession: vi.fn() }));
@@ -10,7 +10,19 @@ vi.mock('better-auth/client', () => ({
 }));
 
 describe('protected portal routes', () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.stubEnv('PORTAL_DEMO_ACTIVE', 'false');
+  });
+  afterEach(() => vi.unstubAllEnvs());
+  it('skips session requests for gated demo routes', async () => {
+    vi.stubEnv('PORTAL_DEMO_ACTIVE', 'true');
+    const response = await middleware(
+      new NextRequest('https://portal.example/admin/apis'),
+    );
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(getSession).not.toHaveBeenCalled();
+  });
 
   it('preserves the requested path and API preselection when signing in', async () => {
     getSession.mockResolvedValue({ data: null });

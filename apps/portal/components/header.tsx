@@ -2,7 +2,7 @@
 'use client';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button, Dialog, toast } from '@portal/ui';
-import { auth } from '../lib/client';
+import { isDemo, QUICKSTART_URL } from '../lib/demo';
 import { usePortal } from './providers';
 export function Header() {
   const { user } = usePortal();
@@ -13,7 +13,11 @@ export function Header() {
       <a href="/" aria-current={pathname === '/' ? 'page' : undefined}>
         APIs
       </a>
-      {user ? (
+      {isDemo() ? (
+        <a href={QUICKSTART_URL} className="button">
+          Run the quickstart
+        </a>
+      ) : user ? (
         <>
           <a
             href="/dashboard"
@@ -36,6 +40,7 @@ export function Header() {
             <Button
               variant="ghost"
               onClick={async () => {
+                const { auth } = await import('../lib/client');
                 const { error } = await auth.signOut();
                 if (error) {
                   toast.error("We couldn't sign you out. Try again.");

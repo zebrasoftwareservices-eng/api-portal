@@ -4,6 +4,12 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig({
   resolve: {
     alias: {
+      'server-only': fileURLToPath(
+        new URL(
+          './node_modules/next/dist/compiled/server-only/empty.js',
+          import.meta.url,
+        ),
+      ),
       '@portal/sdk': fileURLToPath(
         new URL('../../packages/sdk/src/index.ts', import.meta.url),
       ),

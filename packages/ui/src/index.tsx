@@ -100,12 +100,14 @@ export function CopyButton({
   label = 'Copy',
   ariaLabel,
   onCopyError,
+  copiedMessage,
   autoFocus,
 }: {
   value: string;
   label?: string;
   ariaLabel?: string;
   onCopyError?: () => void;
+  copiedMessage?: string;
   autoFocus?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
@@ -132,7 +134,7 @@ export function CopyButton({
         {copied ? '✓ Copied' : label}
       </Button>
       <span className="sr-only" aria-live="polite">
-        {copied ? `${ariaLabel || 'API key'} copied.` : ''}
+        {copied ? copiedMessage || `${ariaLabel || 'API key'} copied.` : ''}
       </span>
     </>
   );
@@ -145,7 +147,11 @@ export function CodeValue({ value, label }: { value: string; label: string }) {
         <code className="code-value" aria-label={label}>
           {value}
         </code>
-        <CopyButton value={value} ariaLabel={`Copy ${label.toLowerCase()}`} />
+        <CopyButton
+          value={value}
+          ariaLabel={`Copy ${label.toLowerCase()}`}
+          copiedMessage={`${label} copied.`}
+        />
       </div>
     </div>
   );
