@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Kong quickstart — first vertical slice
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-02
 linear: JSO-117
@@ -510,7 +510,52 @@ the local and UTC dates matched during this run. New bugs, all minor:
 - [ ] JSO-183 Some browser tab titles don't follow the design pattern (minor)
 - [ ] JSO-184 Malformed YAML error doesn't say where the problem is (minor)
 
+User testing round 4 (JSO-126, 2026-11-04): no Bug-labelled issue was In Review, so there was nothing
+to close. JSO-171 and JSO-164 (already Done by QA) were re-checked in the browser and stay fixed.
+New bugs, all minor:
+- [ ] JSO-189 **Try again** on the error page never recovers after the server comes back (minor)
+- [ ] JSO-190 Dashboard shows a bare unstyled text page during a server outage (minor)
+- [ ] JSO-191 Signed-in developer sees Sign in and Sign up during a server outage (minor)
+- [ ] JSO-192 **I've saved it** is hidden below the fold in the key dialog at 1280×800 (minor)
+
 ## User testing  _(user-tester)_
+
+**Round 4: 2026-11-04**, against images built from `b6cf61a` (stack `portal-jso186`, existing
+database with QA data). Tested in Orca's built-in browser at 865×812, 1280×800, 390×844 mobile and by
+keyboard. Screenshots: `docs/uat/001/r4-*.png`. Text evidence: `docs/uat/001/r4-notes.md`.
+
+| User story / AC | Result | Evidence |
+| --- | --- | --- |
+| No third-party requests from the reference or try-it (JSO-171, JSO-186) | Pass | `r4-01`, `r4-03`, `r4-08`, `r4-43`, `r4-48`, `r4-53`: 736 requests across every journey and width, all to `localhost:3000`, log not truncated. |
+| No Ask AI box (JSO-164, JSO-186) | Pass | `r4-01`, `r4-02`, `r4-31`, `r4-43`, `r4-46`: absent at all three widths, on the reference and in the client. |
+| Reference document failure shows a retry and recovers | Pass | `r4-09`–`r4-11`: alert and **Try again**, still failing on a retry, then the reference renders on the same page. Also at 390 px (`r4-33`, `r4-34`) and by keyboard (`r4-41`). The failure was an aborted document request. |
+| Server down at page load, then back | **Minor bug** | `r4-12`–`r4-15`: **Try again** on the full-page error never recovers (JSO-189). Reload and **Go to APIs** do. Also JSO-190, JSO-191. |
+| Engineer: start portal + Kong with one command (AC 1) | Pass, not re-timed | `r4-01`: reused the healthy stack. QA's timing stands (226.6 s with cached base layers). |
+| Sample API seeded and published (AC 2) | Pass | `r4-01`, `r4-43`. |
+| Engineer: import OpenAPI and link it to a Kong service (AC 3) | Pass | `r4-26`–`r4-28`: file upload published to the public catalog. URL import wasn't repeated. |
+| Invalid OpenAPI is rejected, nothing published (AC 4) | Pass | `r4-25`: names the missing `info`, says "Nothing was published"; catalog count unchanged. |
+| Developer: sign up, reach dashboard (AC 5) | Pass | `r4-04`, `r4-05`, `r4-23`: empty form and wrong password messages; sign-up keeps `next` and lands on create app with the API preselected. |
+| Developer: create app, get key once with copy (AC 6) | Pass | `r4-06`, `r4-07`, `r4-17`: clipboard holds the exact key, Escape doesn't close the dialog, key gone after dismissal and reload. One Kong consumer per app. Minor: JSO-192. |
+| Developer: try a request from the docs (AC 7) | Pass | `r4-03`, `r4-46`: Kong's 401. `r4-08`, `r4-48`: 200 with the key. Minor: JSO-172 still shows at 1280 px. |
+| Gateway unavailable on create app (AC 8) | Pass | `r4-20`, `r4-21`: nothing created, form kept, countdown; retry after Kong restarts creates the app. |
+| Revoked key returns 401 (AC 9) | Pass | `r4-19`, `r4-40`: Kong direct returns 200 before and 401 after, on desktop and mobile. |
+| Mobile (390×844) main journey | Pass | `r4-30`–`r4-40`, `r4-48`: includes the try-it 200 that round 3 didn't repeat at this size. |
+| Keyboard-only | Pass | `r4-41`, `r4-51`–`r4-53`: sign-in to key, revoke dialog, and reference to try-it by real Tab order. JSO-161 still present. |
+| Health | Pass | Only console errors are React #441 from JSO-189. Failed requests were all intended. No full key or password in the logs. |
+
+Notes:
+- **Status: review.** The loop-5 fixes hold from a user's view. No blocker or major bug is open. This
+  round adds 4 minor bugs (JSO-189–JSO-192).
+- **JSO-189 is worth a tech-lead look.** It's minor by the severity rule because reload and **Go to
+  APIs** recover, but it's the retry a real server restart reaches, and the button does nothing. The
+  in-page document retry the fix targeted works; this is the separate full-page error.
+- JSO-172 only shows at wider widths. Its Share menu offers **Upload Document**. Opening it sends
+  nothing, and I didn't click it. Details on the issue.
+- Not tested: quickstart timing or a cold build, URL import, try-it on the imported API, real phones,
+  a real hostname, and JSO-166 (dates matched).
+- All keys, including those in screenshots, are revoked. I stopped `portal-jso186` with `down`; its
+  volume and images remain. Restart with
+  `docker compose -p portal-jso186 -f deploy/docker-compose.yml up -d --wait`.
 
 **Round 3: 2026-11-04**, against `24617af` (images built from `496b6dc`; later commits change only
 tests and docs). Tested in Orca's built-in browser at 865 px and 1280 px wide, at 390×844 mobile and
