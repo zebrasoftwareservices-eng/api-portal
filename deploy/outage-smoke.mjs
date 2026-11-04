@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-// Tests AC 8 against this run's local Compose gateway; always restarts Kong.
+// Tests gateway recovery (spec 001 AC 8) and no demo fallback (spec 002 AC 10).
+// Always restarts the Compose services stopped by each check.
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { chromium, expect } from '@playwright/test';
 const server = process.env.SMOKE_SERVER_URL ?? 'http://localhost:4000';
 const admin = process.env.SMOKE_ADMIN_URL ?? 'http://localhost:8001';
+const portal = process.env.PORTAL_PUBLIC_URL ?? 'http://localhost:3000';
 const catalog = await (await fetch(server + '/api/v1/apis')).json();
 const sample = catalog.items.find((api) => api.slug === 'sample');
 assert.ok(sample);
@@ -63,4 +66,39 @@ assert.equal(keys.data.length, 1, 'Retry produces one credential');
 assert.ok(keys.data[0].tags.includes('portal-cred-' + credential.id));
 console.log(
   'PASS: Kong outage returns 503 with no partial app; retry creates one tagged consumer and credential',
+);
+
+// Read the rendered page: Next may stream a 200 before its error boundary renders.
+// A fresh browser also rules out a previously loaded catalog masking the outage.
+const browser = await chromium.launch();
+try {
+  compose('stop', 'server');
+  const page = await browser.newPage();
+  await page.goto(portal, { waitUntil: 'networkidle' });
+  await expect(
+    page.getByRole('heading', { name: 'Something went wrong', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Try again', exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Go to APIs', exact: true }),
+  ).toBeVisible();
+  await expect(page.locator('a[href="/apis/sample"]')).toHaveCount(0);
+  await expect(page.getByText(sample.title, { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Demo notice' })).toHaveCount(
+    0,
+  );
+  await expect(page.getByText('This is a demo', { exact: false })).toHaveCount(
+    0,
+  );
+} finally {
+  try {
+    compose('up', '-d', '--wait', 'server');
+  } finally {
+    await browser.close();
+  }
+}
+console.log(
+  'PASS: Server outage renders the portal error page without a sample catalog or demo notice',
 );
