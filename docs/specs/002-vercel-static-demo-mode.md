@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -238,7 +238,24 @@ read this file. Update `pnpm-lock.yaml` with it, or the quickstart's frozen inst
 - [ ] [qa] JSO-213 Vercel preview check: signed in to Vercel, confirm the preview is in demo mode with no project env vars set; record that the signed-out check of AC 3 waits for the repo to go public and the merge
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/002-*.md`
+Full design: [`docs/design/002-vercel-static-demo-mode.md`](../design/002-vercel-static-demo-mode.md).
+No new design tokens.
+
+- **Demo notice:** a calm `--accent` band between the header and page content on every page. It says
+  what needs the quickstart and has the command, **Copy** and **Quickstart instructions on GitHub**.
+  It doesn't stick and can't be dismissed.
+- **Header:** **Sign in** and **Sign up** are replaced by **Run the quickstart** in both navs.
+- **Catalog:** no **How it works** card, and the card's address is labelled "Base URL in a local
+  quickstart".
+- **API page:** **Get an API key** is removed with nothing in its place, and a read-only note replaces
+  the paste-your-key alert.
+- **Quickstart required:** one page for every gated route, with the command, the link and **Go to APIs**.
+  It repeats the notice's command by design, because AC 3 and AC 6 both require it.
+- **Seed description:** stays word for word on the card. The notice directly above says keys need the
+  quickstart, so it needs no extra wording (answers the question in the risk table).
+- **Shared components:** `CopyButton` gets an optional `copiedMessage` prop so screen readers hear a
+  sensible message, and new `DemoNotice` and `QuickstartCommand` components are specified.
+- **README:** the design asks JSO-210 to add a clone step to the Quickstart section.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
