@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -225,17 +225,19 @@ read this file. Update `pnpm-lock.yaml` with it, or the quickstart's frozen inst
 | The seed's description says "for trying your portal API key", and AC 1 requires that description. | Left as it is, because editing the seed would change the quickstart. UX can decide if the notice needs to address it. |
 
 ### Tasks
-- [ ] [backend] JSO-203 CI wiring for the demo suite (no server changes): add `deploy/playwright.demo.config.ts` (`testDir: ./e2e-demo`, a `webServer` that builds the portal with `PORTAL_DEMO_MODE=on`, with no `SERVER_URL`, and starts it on its own port with `reuseExistingServer: false`), a root `test:e2e:demo` script, and a `demo-smoke` CI job that needs no Docker
-- [ ] [backend] JSO-204 Extend `deploy/outage-smoke.mjs` for AC 10: with the server stopped, the portal's `/` shows the existing error page and contains neither the sample catalog nor the demo notice
-- [ ] [frontend] JSO-205 Build switch: `lib/demo-build.ts` with unit tests for every detection case, async `next.config.ts` (`env`, demo `rewrites()` per the design), `apps/portal/turbo.json`, `yaml` devDependency and lockfile; helper imported statically from `next.config.ts`, with `yaml` loaded lazily inside it; confirm with `turbo run build --dry=json` that the hash changes with `VERCEL` and the seed file
-- [ ] [frontend] JSO-206 Runtime seam: `lib/demo.ts`, server-only `lib/demo-data.ts`, early returns in `currentUser()` and `middleware.ts`, with unit tests
-- [ ] [frontend] JSO-207 Catalog and API page in demo mode (AC 1, 2, 4, 7): shared catalog view, slug `sample` or `notFound()` in the page and `generateMetadata`, no key button or paste-your-key copy, base URL labelled as the local quickstart address
-- [ ] [frontend] JSO-208 `components/demo-reference.tsx` with the exact Scalar configuration in the design (AC 2, 5), reusing the dynamic import and error boundary from `reference.tsx`
-- [ ] [frontend] JSO-209 Demo notice in the root layout and demo header in both navs (AC 3, 4), at desktop and 375px
-- [ ] [frontend] JSO-210 `app/quickstart-required/page.tsx`, 404 unless demo (AC 6), and the README demo-mode section
+- [x] [backend] JSO-203 CI wiring for the demo suite (no server changes): add `deploy/playwright.demo.config.ts` (`testDir: ./e2e-demo`, a `webServer` that builds the portal with `PORTAL_DEMO_MODE=on`, with no `SERVER_URL`, and starts it on its own port with `reuseExistingServer: false`), a root `test:e2e:demo` script, and a `demo-smoke` CI job that needs no Docker
+- [x] [backend] JSO-204 Extend `deploy/outage-smoke.mjs` for AC 10: with the server stopped, the portal's `/` shows the existing error page and contains neither the sample catalog nor the demo notice
+- [x] [frontend] JSO-205 Build switch: `lib/demo-build.ts` with unit tests for every detection case, async `next.config.ts` (`env`, demo `rewrites()` per the design), `apps/portal/turbo.json`, `yaml` devDependency and lockfile; helper imported statically from `next.config.ts`, with `yaml` loaded lazily inside it; confirm with `turbo run build --dry=json` that the hash changes with `VERCEL` and the seed file
+- [x] [frontend] JSO-206 Runtime seam: `lib/demo.ts`, server-only `lib/demo-data.ts`, early returns in `currentUser()` and `middleware.ts`, with unit tests
+- [x] [frontend] JSO-207 Catalog and API page in demo mode (AC 1, 2, 4, 7): shared catalog view, slug `sample` or `notFound()` in the page and `generateMetadata`, no key button or paste-your-key copy, base URL labelled as the local quickstart address
+- [x] [frontend] JSO-208 `components/demo-reference.tsx` with the exact Scalar configuration in the design (AC 2, 5), reusing the dynamic import and error boundary from `reference.tsx`
+- [x] [frontend] JSO-209 Demo notice in the root layout and demo header in both navs (AC 3, 4), at desktop and 375px
+- [x] [frontend] JSO-210 `app/quickstart-required/page.tsx`, 404 unless demo (AC 6), and the README demo-mode section
 - [ ] [qa] JSO-211 `deploy/e2e-demo/demo.test.ts` for AC 1 to 8 against the demo build: catalog card; reference title, version and all five operations read from the seed file at test time; notice, command and link `href` on every page at desktop and 375px; header including the mobile menu; no Test Request, Send, visible input or `client.scalar.com` link; each gated route; `/apis/nope`; a network listener failing on any `/api/*`, `localhost` or `scalar.com` request and on console errors; `/api/v1/health` is 404
 - [ ] [qa] JSO-212 `deploy/e2e/demo-off.test.ts` for AC 9: no notice on the quickstart and `/quickstart-required` is 404; run the full compose smoke, spec 001 journeys and the outage smoke; confirm cold start stays under five minutes
 - [ ] [qa] JSO-213 Vercel preview check: signed in to Vercel, confirm the preview is in demo mode with no project env vars set; record that the signed-out check of AC 3 waits for the repo to go public and the merge
+- [x] [frontend] Fix JSO-216: non-demo `/quickstart-required` returns a real 404 (`force-static`), in `b031ccc`; QA re-tests
+- [x] [frontend] Fix JSO-217: unknown demo API title is `API not found · Developer Portal`, in `b031ccc`; QA re-tests
 
 ## UX  _(ui-designer)_
 Full design: [`docs/design/002-vercel-static-demo-mode.md`](../design/002-vercel-static-demo-mode.md).
@@ -259,13 +261,23 @@ No new design tokens.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
+- Frontend (JSO-205–210, commit `b031ccc`): added the build-time switch, original-seed inlining, server-free catalog/reference, route gates, notice/mobile navigation and quickstart guidance; README includes cloning and mode detection. Added 24 tests (51 portal tests total); `pnpm lint`, `pnpm typecheck` and `pnpm test` pass (unchanged package checks may use Turbo cache), as do real demo-on and demo-off Turbopack builds.
+- Verified Turbo cache invalidation with `turbo run build --dry=json`: default `9f90a9644a476a4b` → `VERCEL=1` `13f1db37cb29341c`; seed-only edit in an isolated copy → `8e381c91194964ed`. The shared server seed was never modified.
+- Production Chromium smoke at 1280px and 375px passes: all five operations, no send controls/visible inputs/client link, no `/api/*`, localhost or Scalar network calls on catalog/reference, no load console errors, no horizontal overflow, mobile quickstart navigation, all gated routes and direct health HTTP 404. Repeatable local smoke: `/tmp/jso193-frontend-demo-smoke.mjs`; QA still owns the committed acceptance e2e suite.
+- Installed Scalar types renamed `showToolbar` to `showDeveloperTools`; use `showDeveloperTools: 'never'` with the remaining design flags, without casts. Unknown API metadata returns the specified title while the page calls `notFound()`, matching the live-route metadata pattern. `/apis/nope` can stream HTTP 200: the smoke initially failed on its extra HTTP-404 assertion, and now verifies the required API-not-found h1, catalog link and exact title instead (AC 7).
+- JSO-216: non-demo `/quickstart-required` initially streamed HTTP 200; marking this data-free route `force-static` resolves its `notFound()` at build time, verified HTTP 404 in the real non-demo build. JSO-217: unknown demo API initially used the generic title; corrected and verified `API not found · Developer Portal`. Both fixes await QA in In Review. No spec status or approval gate changed; public GitHub access still requires Elango's pre-merge action.
+
+- Backend (JSO-203, commit `4d2ec03`): added the Docker-free demo CI job and root Playwright script; the demo config builds with `PORTAL_DEMO_MODE=on` and no `SERVER_URL`, then serves on 3100/3101 without reusing a server. Fixed config loading for the CommonJS root. Lint, tests and formatting pass; `test:e2e:demo --list` loads the config but reports no tests until QA adds JSO-211. After frontend commit `b031ccc`, re-ran `pnpm lint`, `pnpm typecheck` and `pnpm test`: all pass.
+- Backend (JSO-204, commit `91df2ba`): the outage smoke now opens a fresh Chromium page with the control-plane server stopped, checks the existing error page, and rejects sample content and the demo notice; it restarts the server in `finally`. Verified against real Compose project `portal-jso193-backend`: quickstart built, started and rendered the seeded home page in 220.3s; outage smoke exited 0 with both Kong recovery and server-outage assertions passing. Removed the stack and its disposable volume afterward.
+
 ## Test report  _(qa-tester)_
 | Criterion | Test file | Result |
 | --- | --- | --- |
 
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
+- [ ] JSO-216 Non-demo quickstart-required streamed HTTP 200 (fixed in `b031ccc`, awaiting QA)
+- [ ] JSO-217 Unknown demo API used the generic browser title (fixed in `b031ccc`, awaiting QA)
 
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |
