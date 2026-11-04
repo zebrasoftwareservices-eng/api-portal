@@ -307,3 +307,41 @@ test('JSO-186: reference and try-it only contact the portal origin on localhost'
   await page.waitForLoadState('networkidle');
   expect(externalRequests).toEqual([]);
 });
+
+test('reference document failure shows a retry and recovers without reloading the page', async ({
+  page,
+}) => {
+  let unavailable = true;
+  await page.route('**/api/v1/apis/sample/openapi.json', async (route) => {
+    if (!unavailable) return route.continue();
+    await route.fulfill({
+      status: 503,
+      contentType: 'application/problem+json',
+      body: JSON.stringify({
+        type: '/problems/service-unavailable',
+        title: 'Service unavailable',
+        status: 503,
+        detail: 'Reference temporarily unavailable',
+      }),
+    });
+  });
+  await page.goto('/apis/sample');
+  const alert = page.getByRole('alert').filter({
+    hasText: "The API reference didn't load.",
+  });
+  await expect(alert).toBeVisible();
+  await expect(page.getByRole('button', { name: /Test Request/ })).toHaveCount(0);
+  unavailable = false;
+  const recovered = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/v1/apis/sample/openapi.json' &&
+      response.status() === 200,
+  );
+  await alert.getByRole('button', { name: 'Try again', exact: true }).click();
+  await recovered;
+  await expect(alert).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: /Test Request/ }).first(),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/apis\/sample$/);
+});
