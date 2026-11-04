@@ -354,7 +354,7 @@ non-admin opening `/admin` gets a 404 page. All data calls go through `packages/
 - [x] [backend] Fix JSO-167: try-it rate limit is keyed on the portal container's IP, so it is one global 60/min bucket; trust only the portal hop for `X-Forwarded-For`, publish port 4000 on `127.0.0.1` only, and test per-client buckets
 - [x] [backend] Fix JSO-168: log the error object for unexpected 500s, pg-boss errors and seed failures (only call it "gateway unavailable" for `GatewayUnavailableError`), with a test that the log has the message and no `pk_`
 - [x] [backend] Fix JSO-185: log `gateway-reconcile` and `seed-sample` handler failures with `{ err, queue }` and rethrow, because pg-boss doesn't emit `error` for them; test the log entry, no `pk_`, the failed job state and the `seed-sample` retries
-- [x] [frontend] Fix JSO-186: set `agent: { disabled: true }` (and `withDefaultFonts: false`) in the Scalar configuration, and add a Playwright test that `/apis/sample` plus a try-it request on `localhost` only contact the portal origin
+- [x] [frontend] Fix JSO-186 (fixes JSO-171): set `agent: { disabled: true }` (and `withDefaultFonts: false`) in the Scalar configuration, and add a Playwright test that `/apis/sample` plus a try-it request on `localhost` only contact the portal origin
 
 ## UX  _(ui-designer)_
 Full design: [docs/design/001-kong-quickstart-slice.md](../design/001-kong-quickstart-slice.md).
