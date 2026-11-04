@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -225,6 +225,8 @@ read this file. Update `pnpm-lock.yaml` with it, or the quickstart's frozen inst
 | The seed's description says "for trying your portal API key", and AC 1 requires that description. | Left as it is, because editing the seed would change the quickstart. UX can decide if the notice needs to address it. |
 
 ### Tasks
+- [ ] [frontend] Fix JSO-219: isolate intermittent quickstart signup/sign-in submissions that remain on the form, fix the cause and add deterministic regression coverage.
+- [ ] [backend] Fix JSO-218: investigate the 300-second quickstart timeout during server image packaging on the 4 GB QA host and verify startup within five minutes.
 - [x] [backend] JSO-203 CI wiring for the demo suite (no server changes): add `deploy/playwright.demo.config.ts` (`testDir: ./e2e-demo`, a `webServer` that builds the portal with `PORTAL_DEMO_MODE=on`, with no `SERVER_URL`, and starts it on its own port with `reuseExistingServer: false`), a root `test:e2e:demo` script, and a `demo-smoke` CI job that needs no Docker
 - [x] [backend] JSO-204 Extend `deploy/outage-smoke.mjs` for AC 10: with the server stopped, the portal's `/` shows the existing error page and contains neither the sample catalog nor the demo notice
 - [x] [frontend] JSO-205 Build switch: `lib/demo-build.ts` with unit tests for every detection case, async `next.config.ts` (`env`, demo `rewrites()` per the design), `apps/portal/turbo.json`, `yaml` devDependency and lockfile; helper imported statically from `next.config.ts`, with `yaml` loaded lazily inside it; confirm with `turbo run build --dry=json` that the hash changes with `VERCEL` and the seed file
@@ -233,7 +235,7 @@ read this file. Update `pnpm-lock.yaml` with it, or the quickstart's frozen inst
 - [x] [frontend] JSO-208 `components/demo-reference.tsx` with the exact Scalar configuration in the design (AC 2, 5), reusing the dynamic import and error boundary from `reference.tsx`
 - [x] [frontend] JSO-209 Demo notice in the root layout and demo header in both navs (AC 3, 4), at desktop and 375px
 - [x] [frontend] JSO-210 `app/quickstart-required/page.tsx`, 404 unless demo (AC 6), and the README demo-mode section
-- [ ] [qa] JSO-211 `deploy/e2e-demo/demo.test.ts` for AC 1 to 8 against the demo build: catalog card; reference title, version and all five operations read from the seed file at test time; notice, command and link `href` on every page at desktop and 375px; header including the mobile menu; no Test Request, Send, visible input or `client.scalar.com` link; each gated route; `/apis/nope`; a network listener failing on any `/api/*`, `localhost` or `scalar.com` request and on console errors; `/api/v1/health` is 404
+- [x] [qa] JSO-211 `deploy/e2e-demo/demo.test.ts` for AC 1 to 8 against the demo build: catalog card; reference title, version and all five operations read from the seed file at test time; notice, command and link `href` on every page at desktop and 375px; header including the mobile menu; no Test Request, Send, visible input or `client.scalar.com` link; each gated route; `/apis/nope`; a network listener failing on any `/api/*`, `localhost` or `scalar.com` request and on console errors; `/api/v1/health` is 404
 - [ ] [qa] JSO-212 `deploy/e2e/demo-off.test.ts` for AC 9: no notice on the quickstart and `/quickstart-required` is 404; run the full compose smoke, spec 001 journeys and the outage smoke; confirm cold start stays under five minutes
 - [ ] [qa] JSO-213 Vercel preview check: signed in to Vercel, confirm the preview is in demo mode with no project env vars set; record that the signed-out check of AC 3 waits for the repo to go public and the merge
 - [x] [frontend] Fix JSO-216: non-demo `/quickstart-required` returns a real 404 (`force-static`), in `b031ccc`; QA re-tests
@@ -273,11 +275,37 @@ No new design tokens.
 ## Test report  _(qa-tester)_
 | Criterion | Test file | Result |
 | --- | --- | --- |
+| 1 — seeded catalog, version, description and link; no loading state | `deploy/e2e-demo/demo.test.ts` | PASS at 1280px and 375px |
+| 2 — original seed title, version, paths, methods and summaries | `deploy/e2e-demo/demo.test.ts`; `apps/portal/lib/demo-build.test.ts` | PASS; reads the server seed at test time, no duplicate fixture |
+| 3 — notice, feature limitations, command and quickstart link on every route | `deploy/e2e-demo/demo.test.ts` | PASS locally at both widths on catalog, reference, missing API, guidance and all gated routes; signed-out destination accessibility BLOCKED pending public repo/merge (JSO-213) |
+| 4 — desktop/mobile navigation and content do not offer unavailable auth/keys | `deploy/e2e-demo/demo.test.ts` | PASS at both widths, including opening the mobile menu |
+| 5 — reference cannot send requests; local base URL labelled | `deploy/e2e-demo/demo.test.ts` | PASS; no Test Request/Send controls, visible inputs or Scalar client link; no forbidden requests |
+| 6 — direct live routes show styled quickstart guidance | `deploy/e2e-demo/demo.test.ts` | PASS; HTTP 200, command/link, no forms; also covers nested dashboard/admin paths |
+| 7 — unknown API shows not-found content, catalog link and title | `deploy/e2e-demo/demo.test.ts` | PASS; JSO-217 verified (streamed status is not an AC 7 assertion) |
+| 8 — no API/localhost/Scalar requests or load errors; health 404 | `deploy/e2e-demo/demo.test.ts`; `apps/portal/lib/demo-build.test.ts` | PASS; request and console listeners installed before navigation; build config has no proxy |
+| 9 — normal quickstart and spec 001 journeys; no demo notice; guidance 404 | `deploy/e2e/demo-off.test.ts`; `deploy/e2e/journeys.test.ts`; `deploy/quickstart-smoke.mjs`; `deploy/smoke.mjs` | FAIL startup budget (JSO-218); intermittent auth failures (JSO-219); first full browser run 8/10 passed; two later fresh-stack full runs passed 10/10 each; demo-off, JSO-216 and first-call smoke PASS |
+| 10 — server outage keeps the existing error page | `deploy/outage-smoke.mjs` | PASS against real Compose; Kong outage recovery and server-outage assertions pass |
+
+2026-11-04: `pnpm test:e2e:demo` passes all 26 tests against a real production demo build with no server. `pnpm lint`, `pnpm typecheck` and `pnpm test` pass; additionally `pnpm exec turbo run lint typecheck test --force` passes all 26 tasks uncached (86 tests: portal 51, server 30, Kong adapter 4, database 1), including real Testcontainers Postgres/Kong. New test files also pass direct ESLint and Prettier checks.
+
+Failure paths include demo stale-session requests, repeated invalid mutations, unknown API and nested gated routes. The existing full suite covers expired stored sessions, missing permission, duplicate signup/app requests, malformed OpenAPI, real gateway outage, retry/idempotence and reference-load recovery. First live full-suite run: **8 passed, 2 failed** (1.7m), both auth journeys remained on their forms rather than redirecting to `/dashboard` within the unchanged 5s assertion. A targeted rerun passed 2/2 (21.7s); three diagnostic repetitions on the warmed stack passed 6/6 (30.1s). Temporary diagnostics were removed without changing assertions/timeouts; one invalid diagnostic-hook run failed before the journeys and supplies no application evidence.
+
+After the outage smoke finished, QA ran the entire suite twice more, recreating only `portal-jso193-qa` and its database volume before **each** run, using the same cached images: fresh-stack run 1 **10/10 PASS (1.3m)**; fresh-stack run 2 **10/10 PASS (26.4s)**. No retries, increased timeouts or relaxed assertions were used. The first auth failures could not be reproduced or explained; no pre-demo `1e7837b` image was available for baseline comparison, so causation is not established. JSO-219 remains open and major because core signup/sign-in failed intermittently; later passes do not clear it.
+
+JSO-213 remains open and unticked: no PR or Vercel preview exists, and QA was instructed not to push or open a PR. Signed-out AC 3 verification waits for Elango's public-repository action and merge; local tests verify the exact link destination but cannot establish public accessibility.
+
+Quickstart timing on Docker Desktop aarch64, 3.825 GiB RAM: first attempt **FAIL**, `deploy/quickstart-smoke.mjs` timed out at 300.0s (`spawnSync docker ETIMEDOUT`) during server image export, before services started. Base/dependency layers were cached, but application builds and runtime packaging ran; the portal build took 175.1s and the server runtime `node_modules` copy 68.6s. The preceding uncached Turbo tests and demo build had finished, and no containers were running before this attempt. Backend's earlier same-code measurement was 220.3s (`portal-jso193-backend`).
+
+After finishing the interrupted image build, QA removed only its own stack/volume and reran the unchanged timed script once, with no other validation running: **PASS, 60.1s**, fully cached application build/image layers and a fresh database volume. These timings vary widely with cache state; the cached pass does not erase the first failure or establish fully cold startup. No shared caches/images were deleted. JSO-218 stays open and major, so the spec returns to `building`.
+
+Final disposition: JSO-211 Done; JSO-216 and JSO-217 verified Done; JSO-212 remains In Progress because AC 9 is not cleared; JSO-213 remains open awaiting a preview/public-access check. JSO-199 remains In Progress with those limitations. QA stopped and removed only its own Compose stack and volume after validation; no application code changed and no approval gate was passed.
 
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] JSO-216 Non-demo quickstart-required streamed HTTP 200 (fixed in `b031ccc`, awaiting QA)
-- [ ] JSO-217 Unknown demo API used the generic browser title (fixed in `b031ccc`, awaiting QA)
+- [ ] JSO-219 Intermittent quickstart signup/sign-in fail to redirect; cause not established (major)
+- [ ] JSO-218 Quickstart exceeds five-minute budget on 4 GB Docker QA host (major)
+- [x] JSO-216 Non-demo quickstart-required streamed HTTP 200 (fixed in `b031ccc`, real Compose HTTP/browser 404 verified; Done)
+- [x] JSO-217 Unknown demo API used the generic browser title (fixed in `b031ccc`, production Playwright regression verified; Done)
 
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |
