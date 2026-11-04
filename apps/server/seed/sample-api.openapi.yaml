@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: Apache-2.0
+openapi: 3.1.0
+info:
+  title: Sample HTTP API
+  version: 1.0.0
+  description: A small HTTP API for trying your portal API key.
+servers:
+  - url: http://localhost:8000/sample
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: apikey
+security:
+  - apiKey: []
+paths:
+  /get:
+    get:
+      operationId: echoGet
+      summary: Inspect a GET request
+      responses:
+        '200':
+          description: Request information
+  /post:
+    post:
+      operationId: echoPost
+      summary: Inspect a POST request
+      requestBody:
+        content:
+          application/json:
+            schema: {}
+      responses:
+        '200':
+          description: Request information
+  /status/{code}:
+    get:
+      operationId: getStatus
+      summary: Return an HTTP status
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 100
+            maximum: 599
+      responses:
+        default:
+          description: Requested status
+  /uuid:
+    get:
+      operationId: getUuid
+      summary: Generate a UUID
+      responses:
+        '200':
+          description: A random UUID
+  /headers:
+    get:
+      operationId: getHeaders
+      summary: Inspect request headers
+      responses:
+        '200':
+          description: Request headers

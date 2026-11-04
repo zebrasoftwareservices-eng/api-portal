@@ -8,6 +8,27 @@ APISIX, Envoy Gateway, Apigee and Azure API Management.
 > **Status:** pre-alpha. Spec [001 — Kong quickstart](docs/specs/001-kong-quickstart-slice.md)
 > is the first vertical slice.
 
+## Quickstart
+
+Install Docker with Compose, then run:
+
+```sh
+docker compose -f deploy/docker-compose.yml up --build
+```
+
+Open http://localhost:3000. The seeded Sample HTTP API uses Kong at
+http://localhost:8000/sample. Admin login: `admin@example.com` / `change-me-now`.
+These defaults are for local evaluation; production refuses default secrets.
+Create a developer account, create an app subscribed to the sample API, and save
+its key when shown. Send it as the `apikey` header in the reference console.
+Keys are shown once; only their last four characters are stored by the portal.
+Kong key-auth currently accepts any portal key on all key-auth services; subscriptions
+do not yet enforce per-API access (see ADR 0002).
+
+For local development use Node 22, `corepack enable`, `pnpm install`, and `pnpm dev`.
+Run `pnpm lint`, `pnpm typecheck`, and `pnpm test` before committing.
+Integration tests require a running Docker daemon.
+
 ## Goals
 - **Five-minute quickstart:** `docker compose up` gives a working portal against a real Kong.
 - **Any gateway:** one adapter interface per gateway, plus a JWT path any gateway can validate.

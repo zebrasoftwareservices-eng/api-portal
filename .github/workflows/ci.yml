@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm --filter @portal/sdk generate && git diff --exit-code -- packages/sdk/src/schema.d.ts
+      - run: pnpm test
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Quickstart within five minutes
+        run: node deploy/quickstart-smoke.mjs
+      - run: node deploy/smoke.mjs
+      - run: node deploy/outage-smoke.mjs
+      - run: pnpm test:e2e
+      - if: always()
+        run: docker compose -f deploy/docker-compose.yml logs
+      - if: always()
+        run: docker compose -f deploy/docker-compose.yml down -v

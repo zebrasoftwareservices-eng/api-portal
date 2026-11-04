@@ -1,0 +1,686 @@
+openapi: 3.1.0
+info:
+  title: API Developer Portal — control-plane API
+  version: 0.1.0
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+  description: |
+    Control-plane API for the portal server (`apps/server`). This file is the contract:
+    change it before the handlers, then regenerate `packages/sdk`.
+
+    - Base path: every operation is served under `/api` (the portal's Next.js app rewrites
+      `/api/*` to the server so browser calls are same-origin and use the session cookie).
+    - Authentication: Better Auth owns `/api/auth/*` (email + password sign-up, sign-in and
+      sign-out; session cookie). Those routes are not described here. Operations marked
+      `sessionCookie` need a signed-in user; `/v1/admin/*` also needs `role = admin`.
+    - Errors are RFC 9457 `application/problem+json` with a relative `type` URI such as
+      `/problems/gateway-unavailable`.
+    - IDs are UUIDv7. Timestamps are UTC ISO 8601 (`date-time`).
+    - Secrets are never returned, except a new API key, exactly once, in the response that
+      creates it.
+servers:
+  - url: /api
+tags:
+  - name: system
+    description: Health
+  - name: catalog
+    description: Public API catalog and published OpenAPI documents
+  - name: me
+    description: The signed-in user
+  - name: apps
+    description: A developer's apps and their API keys
+  - name: admin
+    description: Admin-only operations
+  - name: try-it
+    description: Proxy used by the try-it console (ADR 0003)
+
+paths:
+  /v1/health:
+    get:
+      tags: [system]
+      operationId: getHealth
+      summary: Server and gateway health
+      security: []
+      responses:
+        '200':
+          description: Server is up. `gateway.reachable` reports Kong's Admin API.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Health' }
+
+  /v1/apis:
+    get:
+      tags: [catalog]
+      operationId: listApis
+      summary: List published APIs (public catalog)
+      security: []
+      responses:
+        '200':
+          description: Published APIs, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ApiSummary' }
+
+  /v1/apis/{slug}:
+    get:
+      tags: [catalog]
+      operationId: getApi
+      summary: Get one published API
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: The API
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/apis/{slug}/openapi.json:
+    get:
+      tags: [catalog]
+      operationId: getApiDocument
+      summary: Published OpenAPI document, ready for the API reference
+      description: |
+        The stored, validated document, with two changes made when it is served:
+        `servers` is replaced by a single entry with the API's public gateway base URL, and
+        if the document has no `apiKey` security scheme, a `portalApiKey` scheme
+        (`in: header`, `name: apikey`, Kong's default) is added and applied at the top level.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: OpenAPI 3.x document as JSON
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/me:
+    get:
+      tags: [me]
+      operationId: getMe
+      summary: The signed-in user
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/apps:
+    get:
+      tags: [apps]
+      operationId: listApps
+      summary: List the signed-in developer's apps
+      responses:
+        '200':
+          description: Apps, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/App' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [apps]
+      operationId: createApp
+      summary: Create an app, subscribe it to APIs and issue its first API key
+      description: |
+        Atomic from the developer's point of view (spec 001 AC 6 and 8). The server
+        upserts the Kong consumer and key-auth credential first, then writes Postgres in one
+        transaction. On any failure it deletes whatever it created in Kong and stores
+        nothing, so a retry creates exactly one consumer. The returned `credential.key` is
+        never shown again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAppRequest' }
+      responses:
+        '201':
+          description: App created, with its first key
+          headers:
+            Location:
+              schema: { type: string }
+              description: /api/v1/apps/{appId}
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateAppResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: One of `apiIds` is not a published API
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: The developer already has an app with this name (`/problems/app-name-taken`)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '502': { $ref: '#/components/responses/GatewayRejected' }
+        '503': { $ref: '#/components/responses/GatewayUnavailable' }
+
+  /v1/apps/{appId}:
+    get:
+      tags: [apps]
+      operationId: getApp
+      summary: Get one of the signed-in developer's apps
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+      responses:
+        '200':
+          description: The app
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/App' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/apps/{appId}/credentials:
+    post:
+      tags: [apps]
+      operationId: createCredential
+      summary: Issue another API key for an app
+      description: The returned `key` is shown once and never stored by the portal.
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+      responses:
+        '201':
+          description: Key issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssuedCredential' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The app already has 5 active keys (`/problems/credential-limit`)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '502': { $ref: '#/components/responses/GatewayRejected' }
+        '503': { $ref: '#/components/responses/GatewayUnavailable' }
+
+  /v1/apps/{appId}/credentials/{credentialId}:
+    delete:
+      tags: [apps]
+      operationId: revokeCredential
+      summary: Revoke an API key
+      description: |
+        Deletes the key-auth credential in Kong, then marks the credential `revoked`.
+        Idempotent: revoking an already revoked key returns 204. If Kong is unreachable
+        the key stays `active` and the call returns 503, so the UI never shows a key as
+        revoked while Kong still accepts it.
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/CredentialId'
+      responses:
+        '204': { description: Revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/GatewayRejected' }
+        '503': { $ref: '#/components/responses/GatewayUnavailable' }
+
+  /v1/admin/gateway/services:
+    get:
+      tags: [admin]
+      operationId: listGatewayServices
+      summary: List Kong services that an imported spec can be linked to
+      responses:
+        '200':
+          description: Services with their routes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/GatewayService' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '502': { $ref: '#/components/responses/GatewayRejected' }
+        '503': { $ref: '#/components/responses/GatewayUnavailable' }
+
+  /v1/admin/apis:
+    post:
+      tags: [admin]
+      operationId: importApi
+      summary: Import an OpenAPI 3.x document, link it to a Kong service and publish it
+      description: |
+        Validates the document (OpenAPI 3.0 or 3.1 only; Swagger 2.0 is rejected) and
+        bundles external `$ref`s. On success the API is published to the public catalog.
+        On a validation failure nothing is stored, and the response `detail` names the
+        first error (spec 001 AC 4).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportApiRequest' }
+      responses:
+        '201':
+          description: Imported and published
+          headers:
+            Location:
+              schema: { type: string }
+              description: /api/v1/apis/{slug}
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: Slug already used (`/problems/api-slug-taken`)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '413':
+          description: Document larger than 5 MiB (`/problems/document-too-large`)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: |
+            The document cannot be published. `type` is one of
+            `/problems/invalid-openapi` (parse or schema error; `errors[0]` is the first one),
+            `/problems/unsupported-openapi-version` (not 3.0.x or 3.1.x),
+            `/problems/spec-url-unreachable` (fetching `spec.url` failed or timed out after 10 s),
+            `/problems/gateway-service-not-found`,
+            `/problems/gateway-service-has-no-route` (no route with a path, and no `routePath` given).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '502': { $ref: '#/components/responses/GatewayRejected' }
+        '503': { $ref: '#/components/responses/GatewayUnavailable' }
+
+  /v1/try-it:
+    parameters:
+      - name: scalar_url
+        in: query
+        required: true
+        description: Absolute target URL. Must start with a published API's `gatewayBaseUrl`.
+        schema: { type: string, format: uri }
+    get:
+      tags: [try-it]
+      operationId: tryItGet
+      summary: Forward a try-it request to the gateway
+      description: |
+        Scalar's proxy protocol (ADR 0003). Forwards the method, body and allowed headers to
+        the gateway (public base URL rewritten to the internal one) and passes the gateway's
+        status, headers and body back unchanged; for example, Kong's 401 is returned as a 401.
+        No session needed. Rate-limited to 60 requests per minute per IP. Strips cookies,
+        doesn't follow redirects, caps bodies at 1 MiB, 10 s timeout.
+        POST, PUT, PATCH and DELETE behave the same way.
+      security: []
+      responses:
+        '400': { $ref: '#/components/responses/TryItNotAllowed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '504': { $ref: '#/components/responses/TryItTimeout' }
+        default:
+          description: The gateway's response, passed through unchanged
+    post:
+      tags: [try-it]
+      operationId: tryItPost
+      summary: Forward a try-it request to the gateway (see GET)
+      security: []
+      requestBody:
+        required: false
+        content:
+          '*/*':
+            schema: {}
+      responses:
+        '400': { $ref: '#/components/responses/TryItNotAllowed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '504': { $ref: '#/components/responses/TryItTimeout' }
+        default:
+          description: The gateway's response, passed through unchanged
+    put:
+      tags: [try-it]
+      operationId: tryItPut
+      summary: Forward a try-it request to the gateway (see GET)
+      security: []
+      requestBody:
+        required: false
+        content:
+          '*/*':
+            schema: {}
+      responses:
+        '400': { $ref: '#/components/responses/TryItNotAllowed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '504': { $ref: '#/components/responses/TryItTimeout' }
+        default:
+          description: The gateway's response, passed through unchanged
+    patch:
+      tags: [try-it]
+      operationId: tryItPatch
+      summary: Forward a try-it request to the gateway (see GET)
+      security: []
+      requestBody:
+        required: false
+        content:
+          '*/*':
+            schema: {}
+      responses:
+        '400': { $ref: '#/components/responses/TryItNotAllowed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '504': { $ref: '#/components/responses/TryItTimeout' }
+        default:
+          description: The gateway's response, passed through unchanged
+    delete:
+      tags: [try-it]
+      operationId: tryItDelete
+      summary: Forward a try-it request to the gateway (see GET)
+      security: []
+      requestBody:
+        required: false
+        content:
+          '*/*':
+            schema: {}
+      responses:
+        '400': { $ref: '#/components/responses/TryItNotAllowed' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '504': { $ref: '#/components/responses/TryItTimeout' }
+        default:
+          description: The gateway's response, passed through unchanged
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: better-auth.session_token
+      description: Better Auth session cookie set by /api/auth/sign-in/email or /sign-up/email
+
+  parameters:
+    Slug:
+      name: slug
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Slug' }
+    AppId:
+      name: appId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CredentialId:
+      name: credentialId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    ValidationError:
+      description: Request body or parameters failed validation (`/problems/validation`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Unauthorized:
+      description: Not signed in (`/problems/unauthenticated`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Forbidden:
+      description: Signed in but not an admin (`/problems/forbidden`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Not found, or not owned by the caller (`/problems/not-found`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    GatewayUnavailable:
+      description: |
+        Kong's Admin API is unreachable, timed out (5 s) or returned 5xx
+        (`/problems/gateway-unavailable`). Nothing was changed; it is safe to retry.
+        Includes `Retry-After: 5`.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TryItNotAllowed:
+      description: Missing `scalar_url`, or it isn't under a published API's base URL (`/problems/try-it-target-not-allowed`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PayloadTooLarge:
+      description: Request body over the limit (`/problems/payload-too-large`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    RateLimited:
+      description: Rate limit exceeded (`/problems/rate-limited`)
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TryItTimeout:
+      description: Gateway did not answer within 10 s (`/problems/try-it-timeout`)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    GatewayRejected:
+      description: Kong rejected the request with a 4xx (`/problems/gateway-rejected`). Nothing was changed.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri-reference, examples: ['/problems/gateway-unavailable'] }
+        title: { type: string, examples: ['Gateway unavailable'] }
+        status: { type: integer }
+        detail: { type: string, examples: ["The API gateway didn't respond. Nothing was created. Try again in a moment."] }
+        instance: { type: string }
+        errors:
+          type: array
+          description: Field or document errors. For `/problems/invalid-openapi`, only the first error is returned.
+          items:
+            type: object
+            required: [message]
+            properties:
+              pointer: { type: string, description: 'JSON Pointer into the request body or the OpenAPI document, e.g. /paths/~1pets/get/responses' }
+              message: { type: string }
+
+    Slug:
+      type: string
+      pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+      minLength: 2
+      maxLength: 64
+
+    Health:
+      type: object
+      required: [status, version, gateway]
+      properties:
+        status: { type: string, enum: [ok] }
+        version: { type: string }
+        gateway:
+          type: object
+          required: [kind, reachable]
+          properties:
+            kind: { type: string, enum: [kong] }
+            reachable: { type: boolean }
+            version: { type: string }
+
+    User:
+      type: object
+      required: [id, email, name, role]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        name: { type: string }
+        role: { type: string, enum: [developer, admin] }
+
+    ApiSummary:
+      type: object
+      required: [id, slug, title, version, gatewayBaseUrl, publishedAt]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { $ref: '#/components/schemas/Slug' }
+        title: { type: string }
+        version: { type: string, description: OpenAPI info.version }
+        description: { type: [string, 'null'], description: OpenAPI info.description (Markdown) }
+        gatewayBaseUrl: { type: string, format: uri, examples: ['http://localhost:8000/sample'] }
+        publishedAt: { type: string, format: date-time }
+
+    ApiDetail:
+      allOf:
+        - $ref: '#/components/schemas/ApiSummary'
+        - type: object
+          required: [documentUrl, gatewayService]
+          properties:
+            documentUrl: { type: string, examples: ['/api/v1/apis/sample/openapi.json'] }
+            gatewayService:
+              type: object
+              required: [id, name]
+              properties:
+                id: { type: string }
+                name: { type: string }
+
+    ImportApiRequest:
+      type: object
+      required: [spec, gatewayServiceId]
+      additionalProperties: false
+      properties:
+        spec:
+          description: Exactly one of `url` or `content`
+          oneOf:
+            - type: object
+              required: [url]
+              additionalProperties: false
+              properties:
+                url: { type: string, format: uri, pattern: '^https?://' }
+            - type: object
+              required: [content]
+              additionalProperties: false
+              properties:
+                content: { type: string, maxLength: 5242880, description: OpenAPI document as YAML or JSON text (5 MiB max) }
+        gatewayServiceId:
+          type: string
+          description: Kong service ID or name, from GET /v1/admin/gateway/services
+        slug:
+          $ref: '#/components/schemas/Slug'
+          description: Defaults to a slug of info.title
+        routePath:
+          type: string
+          pattern: '^/'
+          description: Public path prefix on the gateway. Defaults to the first path of the service's first route.
+
+    GatewayService:
+      type: object
+      required: [id, name, routes, keyAuth]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        routes:
+          type: array
+          items:
+            type: object
+            required: [id, paths]
+            properties:
+              id: { type: string }
+              name: { type: [string, 'null'] }
+              paths: { type: array, items: { type: string } }
+        keyAuth: { type: boolean, description: True if the key-auth plugin is enabled on the service or one of its routes }
+        linkedApiSlug: { type: [string, 'null'], description: Slug of the published API already linked to this service }
+
+    CreateAppRequest:
+      type: object
+      required: [name, apiIds]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, maxLength: 500 }
+        apiIds:
+          type: array
+          minItems: 1
+          maxItems: 10
+          uniqueItems: true
+          items: { type: string, format: uuid }
+
+    App:
+      type: object
+      required: [id, name, subscriptions, credentials, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        subscriptions:
+          type: array
+          items:
+            type: object
+            required: [apiId, slug, title]
+            properties:
+              apiId: { type: string, format: uuid }
+              slug: { $ref: '#/components/schemas/Slug' }
+              title: { type: string }
+        credentials:
+          type: array
+          description: Active and revoked keys, newest first. Never includes the key value.
+          items: { $ref: '#/components/schemas/Credential' }
+        createdAt: { type: string, format: date-time }
+
+    Credential:
+      type: object
+      required: [id, kind, keyHint, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [api-key] }
+        keyHint: { type: string, description: 'Last 4 characters of the key, shown as …9fQa', examples: ['9fQa'] }
+        status: { type: string, enum: [active, revoked] }
+        createdAt: { type: string, format: date-time }
+        revokedAt: { type: [string, 'null'], format: date-time }
+
+    IssuedCredential:
+      allOf:
+        - $ref: '#/components/schemas/Credential'
+        - type: object
+          required: [key, headerName]
+          properties:
+            key:
+              type: string
+              description: The full API key, `pk_` + 43 base64url characters. Returned only here, once.
+              examples: ['pk_3q2-7wErT...']
+            headerName: { type: string, description: Header to send it in, examples: ['apikey'] }
+
+    CreateAppResponse:
+      type: object
+      required: [app, credential]
+      properties:
+        app: { $ref: '#/components/schemas/App' }
+        credential: { $ref: '#/components/schemas/IssuedCredential' }
+
+security:
+  - sessionCookie: []

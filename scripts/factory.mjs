@@ -443,7 +443,7 @@ function workerSpec(role, spec, job, stageKey) {
     `Instructions: follow factory/roles/${role}.md (skip its YAML header) and AGENTS.md.`,
     `Target: ${spec ? spec.rel : 'docs/specs/'}${job.target ? ` — ${job.target}` : ''}.`,
     `Change: ${job.change}`,
-    `Constraints: work only in this worktree; never create, switch, merge or push branches; never pass Elango's approval gates.${job.constraints ? ` ${job.constraints}` : ''}`,
+    `Constraints: work only in this worktree; never create or switch branches, force-push, push to main or merge; never pass Elango's approval gates.${job.constraints ? ` ${job.constraints}` : ''}`,
     `Ownership: you may edit ${OWNERSHIP[role]}`,
     `Observable acceptance: ${job.acceptance}`,
   ];
@@ -561,7 +561,7 @@ function plan(spec, intake) {
     case 'approved': {
       out.stage = 'merge';
       const ref = spec.linear ? ` --title "${spec.title} (${spec.linear})" --body "Fixes ${spec.linear}. Spec: ${spec.rel}"` : ' --fill';
-      out.gate = { kind: 'merge', message: `Elango: push the branch, open the PR (gh pr create --base main${ref}), merge it, then run \`node scripts/factory.mjs set-status ${spec.id} done\`.` };
+      out.gate = { kind: 'merge', message: `Coordinator: push the branch and open the PR (gh pr create --base main${ref}). Elango: review and merge it, then run \`node scripts/factory.mjs set-status ${spec.id} done\`.` };
       break;
     }
     case 'done':
