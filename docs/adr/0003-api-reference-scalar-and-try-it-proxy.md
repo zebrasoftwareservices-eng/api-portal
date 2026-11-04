@@ -36,6 +36,11 @@ The browser-direct option was rejected because it would need the CORS plugin on 
 service the platform engineer links. That means the portal would change gateway config it
 doesn't own, and AWS and other gateways would each need their own CORS setup.
 
+**Keep Scalar's hosted services off.** A self-hosted portal contacts only its own origin unless the
+operator opts in, so the Scalar configuration disables the AI agent (`agent: { disabled: true }`)
+and its hosted fonts (`withDefaultFonts: false`). Spec 001's review added this after UAT found
+calls to `proxy.scalar.com` on local hostnames (JSO-171, JSO-186).
+
 ## Consequences
 - Try-it traffic goes through the portal server. This is fine for a docs console. The rate limit
   and the 1 MiB cap stop it being used as a general proxy.

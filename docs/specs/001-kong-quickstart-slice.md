@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Kong quickstart — first vertical slice
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-02
 linear: JSO-117
@@ -122,6 +122,13 @@ New runtime dependencies, one line each:
 Each app service has both `image:` and `build:`. Once CI publishes images to GHCR, `up` pulls
 them; until then it builds them. The server image runs migrations at start under a Postgres
 advisory lock, so there's no separate migration container.
+
+The `portal` container runs a small ingress (`apps/portal/ingress`, JSO-169) on port `3000`,
+in front of Next.js on `127.0.0.1:NEXT_INTERNAL_PORT` (default `PORT + 1`). The ingress replaces
+all caller-supplied forwarding headers with the socket peer address. The server trusts only the
+address that `PORTAL_PROXY_HOST` resolves to (`portal`, set in the compose file; default
+`localhost`), and only one hop, so try-it budgets are per client.
+A reverse proxy in front of the portal counts as one client (follow-up JSO-187).
 
 Server environment (all in `deploy/.env.example`; compose ships dev defaults marked INSECURE):
 `DATABASE_URL`, `BETTER_AUTH_SECRET`, `PORTAL_ENCRYPTION_KEY` (32 bytes base64; AES-256-GCM
@@ -346,6 +353,8 @@ non-admin opening `/admin` gets a 404 page. All data calls go through `packages/
 - [x] [frontend] JSO-170 Fix JSO-169: sanitize forwarded client addresses at the public portal ingress and make the forged-XFF regression pass
 - [x] [backend] Fix JSO-167: try-it rate limit is keyed on the portal container's IP, so it is one global 60/min bucket; trust only the portal hop for `X-Forwarded-For`, publish port 4000 on `127.0.0.1` only, and test per-client buckets
 - [x] [backend] Fix JSO-168: log the error object for unexpected 500s, pg-boss errors and seed failures (only call it "gateway unavailable" for `GatewayUnavailableError`), with a test that the log has the message and no `pk_`
+- [ ] [backend] Fix JSO-185: log `gateway-reconcile` and `seed-sample` handler failures with `{ err, queue }` and rethrow, because pg-boss doesn't emit `error` for them; test the log entry, no `pk_`, the failed job state and the `seed-sample` retries
+- [ ] [frontend] Fix JSO-186: set `agent: { disabled: true }` (and `withDefaultFonts: false`) in the Scalar configuration, and add a Playwright test that `/apis/sample` plus a try-it request on `localhost` only contact the portal origin
 
 ## UX  _(ui-designer)_
 Full design: [docs/design/001-kong-quickstart-slice.md](../design/001-kong-quickstart-slice.md).
@@ -572,6 +581,59 @@ Notes:
   Restart it with `docker compose -p portal-qa-20261102 -f deploy/docker-compose.yml start`.
 
 ## Review  _(tech-lead)_
+
+**Round 2: 2026-11-04**, re-review of `e77ffac..a6f2b81`, focused on the round 1 fixes and the
+ingress fix. `pnpm lint` and `pnpm typecheck` pass. An uncached test run passes all 57 tests
+(27 portal, 25 server, 4 Kong adapter, 1 db). I didn't re-run compose or Playwright. QA and UAT ran
+them on `496b6dc`, and since then the only change outside `docs/` is one e2e test file. I didn't
+review `deploy/.env.example` this round, because my session wasn't permitted to read it. CI hasn't
+run remotely yet (it needs Elango's push).
+
+**Verdict: changes requested, 2 blocking.** Both are small. All nine acceptance criteria still pass
+and the contract is unchanged.
+
+| Earlier item | Result |
+| --- | --- |
+| JSO-167 per-client rate limit | **Closed.** One trusted hop, fails closed if the portal address can't be resolved, and port 4000 is bound to loopback. |
+| JSO-168 error logging | **Closed, with one gap moved to JSO-185.** 500s, pg-boss `error` events and boot-time seed failures now log the error. Job handler failures still don't. |
+| JSO-169 / JSO-170 ingress | **Accepted.** It strips forged forwarding headers, including ones listed in `Connection`, and Next.js stays on loopback. Multi-value response headers, streaming and failure handling read correctly. |
+| JSO-171 third-party calls | **Blocking, as JSO-186.** Decision and reasons below. |
+
+### Blocking
+1. **JSO-185: reconcile and seed job failures still aren't logged.** `apps/server/src/startup.ts:109-114`.
+   `boss.on('error')` at `startup.ts:99` doesn't receive handler failures: pg-boss 10.4.2 catches
+   them and calls `fail()` with no emit (`src/manager.js:216-220`). I confirmed this against real
+   pg-boss and Postgres: a throwing handler left the job `failed` with zero `error` events.
+   `apps/server/src/startup.test.ts` misses it because it fires a mocked event. Log `{ err, queue }`
+   inside both handlers and rethrow, so job state and retries still work.
+2. **JSO-186: Scalar's AI agent contacts Scalar on every quickstart reference load.**
+   `apps/portal/components/reference.tsx:52-59`. This is the root cause of JSO-171 and JSO-164. Set
+   `agent: { disabled: true }` and add a Playwright test that the page only contacts its own origin.
+   I confirmed the option by reading Scalar's code, not by running the change.
+
+**Why JSO-171 blocks.** Spec 001 puts AI features out of scope, yet every `docker compose up`
+evaluator gets the AI box and unannounced calls to a third party, in a product whose pitch is
+self-hosting. The reach is narrower than the bug says: Scalar only enables the agent on local
+hostnames (`@scalar/api-reference` `components/ApiReference.vue2.js:398-407`) or when a key is set,
+so a real domain shouldn't make these calls, and the calls UAT logged carry no API key or document.
+It would be a follow-up on those facts alone, but the fix is one line and this round already goes
+back to building. No product scope changes. Elango can overrule this at the merge gate.
+
+### Suggestions (non-blocking; tracked in JSO-188 and JSO-187)
+- All round 1 suggestions are still open and tracked in JSO-188. The `startup.ts` admin bootstrap
+  lines are now `72-82`.
+- `apps/server/src/apps.ts:185, 236`: compensation failures log without the error. Add `err`, so
+  a repeated failure can be diagnosed.
+- `apps/portal/components/reference.tsx:52-59`: `showDeveloperTools: 'never'` removes the toolbar
+  in JSO-172, which only shows on local hostnames by default. It offers Share and Deploy to Scalar, so
+  doing it alongside JSO-186 makes sense.
+- `apps/portal/ingress/start.ts:39`: `pnpm dev` binds to `HOSTNAME` when it's exported, as in dev
+  containers. It previously bound to `0.0.0.0`.
+- `apps/portal/ingress/proxy.ts:24-27`: behind a TLS reverse proxy, all visitors share one try-it
+  budget and `x-forwarded-proto` stays `http`. This is documented in the ingress README but not the
+  root README. Follow-up JSO-187.
+
+The other minor UAT bugs (JSO-161–JSO-163, JSO-166, JSO-172–JSO-184) don't block this slice.
 
 **Round 1: 2026-11-02**, `git diff main...HEAD` (18 commits up to `e77ffac`). `pnpm lint`,
 `pnpm typecheck` and `pnpm test` pass (49 tests: 24 portal, 20 server, 4 Kong adapter, 1 db).
