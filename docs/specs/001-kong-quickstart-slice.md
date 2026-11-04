@@ -354,7 +354,7 @@ non-admin opening `/admin` gets a 404 page. All data calls go through `packages/
 - [x] [backend] Fix JSO-167: try-it rate limit is keyed on the portal container's IP, so it is one global 60/min bucket; trust only the portal hop for `X-Forwarded-For`, publish port 4000 on `127.0.0.1` only, and test per-client buckets
 - [x] [backend] Fix JSO-168: log the error object for unexpected 500s, pg-boss errors and seed failures (only call it "gateway unavailable" for `GatewayUnavailableError`), with a test that the log has the message and no `pk_`
 - [x] [backend] Fix JSO-185: log `gateway-reconcile` and `seed-sample` handler failures with `{ err, queue }` and rethrow, because pg-boss doesn't emit `error` for them; test the log entry, no `pk_`, the failed job state and the `seed-sample` retries
-- [ ] [frontend] Fix JSO-186: set `agent: { disabled: true }` (and `withDefaultFonts: false`) in the Scalar configuration, and add a Playwright test that `/apis/sample` plus a try-it request on `localhost` only contact the portal origin
+- [x] [frontend] Fix JSO-186: set `agent: { disabled: true }` (and `withDefaultFonts: false`) in the Scalar configuration, and add a Playwright test that `/apis/sample` plus a try-it request on `localhost` only contact the portal origin
 
 ## UX  _(ui-designer)_
 Full design: [docs/design/001-kong-quickstart-slice.md](../design/001-kong-quickstart-slice.md).
@@ -392,6 +392,8 @@ with shadcn names, mapped onto Scalar's variables).
   proxy problems, because Scalar shows them as-is (design §6).
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend review fix (2026-11-04): `b6cf61a` fixes JSO-186 by disabling Scalar's optional AI agent and default hosted fonts. The Playwright regression captures browser requests before `/apis/sample` navigation on `localhost`, verifies the AI box is absent, sends a real try-it request returning Kong's 401, and asserts all HTTP(S) requests stay on the portal origin. Workspace `pnpm lint`, `pnpm typecheck` and `pnpm test` pass (27 portal tests; other package results include shared backend changes and cached checks), and explicit e2e ESLint passes. All seven Compose-backed Playwright tests pass in 27.2 s, including the authorized 200/key/revoke journey and forged-XFF regression; production images build and the fresh-volume `portal-jso186` stack remains running for backend/QA reuse. QA should re-test related JSO-171 / JSO-164; JSO-186 is In Review for tech-lead verification, and spec status is unchanged.
 
 - Backend review fix (2026-11-04): `2caefb4` fixes JSO-185. Both pg-boss handlers now log `{ err, queue }` and rethrow; only `GatewayUnavailableError` is described as gateway unavailable. Startup tests verify both registered handlers and the unchanged production seed retry policy (20 retries, five-second delay, exponential backoff). Real pg-boss/Postgres tests verify error message/stack and queue logs, key redaction with no `pk_` in logs, terminal failed states and seed retry execution; the integration seed job uses one retry with a one-second delay to keep the test bounded. `pnpm lint`, `pnpm typecheck`, and `pnpm test` pass, including all 30 server tests (unchanged package results used Turbo cache). Compose was not run or changed while the frontend worker owned its stack. JSO-185 awaits tech-lead verification in In Review; spec status is unchanged.
 
