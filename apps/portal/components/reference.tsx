@@ -56,6 +56,8 @@ export function Reference({ documentUrl }: { documentUrl: string }) {
           hideDarkModeToggle: true,
           forceDarkModeState: 'light',
           persistAuth: false,
+          agent: { disabled: true },
+          withDefaultFonts: false,
         }}
       />
     </ReferenceBoundary>

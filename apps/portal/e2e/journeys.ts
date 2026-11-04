@@ -270,3 +270,40 @@ test('admin imports files and URLs and rejects invalid files without publication
     page.getByRole('link', { name: new RegExp(slug) }).first(),
   ).toBeVisible();
 });
+
+// Local hostnames enable Scalar's optional agent by default, so exercise the
+// quickstart origin and capture requests before navigation (including failures).
+test('JSO-186: reference and try-it only contact the portal origin on localhost', async ({
+  page,
+  baseURL,
+}) => {
+  const origin = new URL(baseURL ?? 'http://localhost:3000').origin;
+  expect(new URL(origin).hostname).toBe('localhost');
+  const externalRequests: string[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (['http:', 'https:'].includes(url.protocol) && url.origin !== origin)
+      externalRequests.push(request.url());
+  });
+  await page.goto('/apis/sample');
+  await page
+    .getByRole('button', { name: /Test Request/ })
+    .first()
+    .click();
+  await expect(page.getByText('Ask AI Agent', { exact: true })).toHaveCount(0);
+  const response = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === '/api/v1/try-it',
+  );
+  await page
+    .getByRole('button', {
+      name: 'Send get request to http://localhost:8000/sample/get',
+      exact: true,
+    })
+    .click();
+  expect((await response).status()).toBe(401);
+  await expect(
+    page.getByText('No API key found in request', { exact: false }).last(),
+  ).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  expect(externalRequests).toEqual([]);
+});
