@@ -55,8 +55,8 @@ scripts/factory.mjs  Factory runner (status, plan, prompts, start)
 ## Git and Orca
 - Work happens in Orca. Each spec gets its own Orca worktree, linked to its Linear feature
   issue, on branch `feat/<linear-key>-<spec-id>-<slug>` (for example `feat/jso-117-001-kong-quickstart-slice`).
-- Agents commit inside their worktree but never create, switch, merge or push branches.
-  Elango opens the PR, merges, and pushes.
+- Agents commit inside their worktree and may push their own feature branch and open its PR,
+  but never create or switch branches, force-push, push to `main` or merge. Only Elango merges.
 - Every commit message ends with `Refs <feature key>`; the PR description says `Fixes <feature key>`.
 
 ## Linear (SDLC tracking)

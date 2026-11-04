@@ -11,10 +11,17 @@
       "Bash(git log:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "Bash(git push -u origin feat/:*)",
+      "Bash(git push origin feat/:*)",
+      "Bash(gh pr create:*)"
     ],
     "deny": [
-      "Bash(git push:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(git push origin HEAD\\:main:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force:*)",
       "Read(./.env)",
       "Read(./.env.*)"
     ]

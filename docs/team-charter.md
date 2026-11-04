@@ -46,6 +46,7 @@ Each feature is one spec file and one Orca worktree (`feat/<linear-key>-<id>-<sl
 - Small specs: one spec, one pull request.
 - Unknowns are written as open questions, never guessed.
 - Decisions that last get an ADR.
-- Agents commit in their worktree but never create, switch, merge or push branches.
+- Agents commit inside their worktree and may push their own feature branch and open its PR,
+  but never create or switch branches, force-push, push to `main` or merge. Only Elango merges.
 - Every commit ends with `Refs <feature key>`. Only Elango moves the Requirements and Release issues.
 - Open source in public: write specs, ADRs and commits as if contributors will read them.
