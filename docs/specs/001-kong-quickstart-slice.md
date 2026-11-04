@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Kong quickstart — first vertical slice
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-02
 linear: JSO-117
@@ -635,6 +635,60 @@ Notes:
   Restart it with `docker compose -p portal-qa-20261102 -f deploy/docker-compose.yml start`.
 
 ## Review  _(tech-lead)_
+
+**Round 3: 2026-11-04**, re-review of `3d21ca3..fe61067`, focused on the build loop 5 fixes and the
+new UAT bugs. `pnpm lint` and `pnpm typecheck` pass. An uncached test run passes all 62 tests
+(27 portal, 30 server, 4 Kong adapter, 1 db). I didn't re-run compose or Playwright. QA ran them on
+images built from `b6cf61a` (8 Playwright tests, compose healthy), and the only later change outside
+`docs/` is one e2e test.
+
+**Verdict: approved, nothing blocking.** All nine acceptance criteria pass and have tests. The
+contract and data model are unchanged since round 2.
+
+| Earlier item | Result |
+| --- | --- |
+| JSO-185 job failure logging | **Closed.** `apps/server/src/background-job.ts:11-20` logs `{ err, queue }` and rethrows, and `startup.ts:110-121` wraps both handlers. Tests run against real pg-boss and Postgres, and cover the log entry, key redaction, failed state and retries. |
+| JSO-186 Scalar agent | **Closed.** `apps/portal/components/reference.tsx:59-60` sets `agent: { disabled: true }` and `withDefaultFonts: false`. The Playwright test captures requests from before navigation on `localhost`. UAT logged 736 requests, all to the portal. |
+
+### Blocking
+None.
+
+### UAT bugs from round 4
+None of these must ship fixed, so all four stay in Backlog as minor. They only appear when the
+portal's own server is down, or have a working way round. No acceptance criterion depends on them.
+
+- **JSO-189: suggestion, and the first one to fix.** `apps/portal/app/error.tsx:4,10` calls `reset`,
+  which re-renders without fetching again, so a failed server render can't recover. That's why UAT
+  saw no request. Next.js 16.4 passes a `retry` prop that does fetch again, so use it instead of
+  `reset` and add a test for recovery. It doesn't block because the **Go to APIs** link beside the
+  button and a reload both recover. Compose also starts the portal only after the server is healthy,
+  so a normal first run doesn't reach this page. AC 8's outage path is a separate one and works.
+- **JSO-190: suggestion.** `apps/portal/middleware.ts:31-34` returns plain text when the session
+  check fails. Render the normal error page instead.
+- **JSO-191: suggestion.** `apps/portal/lib/server.ts:16-18` treats "couldn't check" the same as
+  "signed out". The header could show neutral actions when the check fails.
+- **JSO-192: suggestion.** The key and both Copy buttons are in view at 1280×800, and the dialog
+  scrolls (`packages/ui/src/styles.css:365-366`). Only **I've saved it** is below the fold. Keep the
+  dialog's actions visible, or make the key field shorter.
+
+### Suggestions (non-blocking; tracked in JSO-188 and JSO-187)
+- `apps/portal/components/reference.tsx:53-62`: `showDeveloperTools: 'never'` is still worth adding
+  (JSO-172). On local hostnames the toolbar's Share menu offers to upload the document to Scalar. It
+  needs a click and the document is already public, so it doesn't block.
+- All round 1 and round 2 suggestions are still open.
+
+### For Elango at the merge gate
+These are limits of this review, not findings:
+- **CI has never run remotely.** The Definition of Done needs it green, and that starts with your PR.
+- **A cold quickstart isn't independently proven under five minutes.** QA measured 226.6 s with
+  cached base and dependency layers. The frontend build notes record 206.9 s after a Docker reset,
+  with downloads and builds. That leaves less margin than I'd like on the one rule. The CI
+  `compose-smoke` job fails at 300 s (`deploy/quickstart-smoke.mjs:37`) and will be the first
+  independent run, so check its time.
+- **I haven't reviewed `deploy/.env.example`.** My session's permissions denied it again, as in round
+  2. I reviewed the same settings in `deploy/docker-compose.yml`. Please check that the file lists
+  every server variable and holds no real secrets.
+- **Nothing has been tested on a real hostname.** The Vercel preview will be the first run on one.
 
 **Round 2: 2026-11-04**, re-review of `e77ffac..a6f2b81`, focused on the round 1 fixes and the
 ingress fix. `pnpm lint` and `pnpm typecheck` pass. An uncached test run passes all 57 tests
