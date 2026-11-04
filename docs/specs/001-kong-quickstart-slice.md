@@ -1,7 +1,7 @@
 ---
 id: 001
 title: Kong quickstart — first vertical slice
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-02
 linear: JSO-117
@@ -474,7 +474,61 @@ One new minor bug, JSO-166.
 Out-of-scope follow-up (Backlog, no parent): JSO-165, hide API keys from upstreams (Kong
 key-auth `hide_credentials`).
 
+User testing round 3 (JSO-126, 2026-11-04): no Bug-labelled issue was In Review, so there was
+nothing to re-test or close. JSO-161–JSO-164 are still present. JSO-166 couldn't be checked because
+the local and UTC dates matched during this run. New bugs, all minor:
+- [ ] JSO-171 Reference page calls proxy.scalar.com on every load (minor; tech lead to decide if it must be fixed before release)
+- [ ] JSO-172 Scalar's Developer Tools, Configure, Share and Deploy toolbar shows on the API reference (minor)
+- [ ] JSO-173 API reference header strip doesn't match the design (minor)
+- [ ] JSO-174 Try-it Value field shows a placeholder that looks like a real key (minor)
+- [ ] JSO-175 Portal hint is wrong for APIs that declare security per operation (minor)
+- [ ] JSO-176 Error alerts use raw problem codes as titles, such as "api slug taken" (minor)
+- [ ] JSO-177 Import form keeps showing the previous result after a new failed submit (minor)
+- [ ] JSO-178 Kong-down banner on Admin stays after Kong recovers and the list is refreshed (minor)
+- [ ] JSO-179 Wrong password moves focus to the alert, not the password field (minor)
+- [ ] JSO-180 No "Your session has ended" toast when a session ends mid-use (minor)
+- [ ] JSO-181 Mobile dashboard cards show "None" with no label (minor)
+- [ ] JSO-182 After the key dialog, Tab moves away from the "Try your key" button (minor)
+- [ ] JSO-183 Some browser tab titles don't follow the design pattern (minor)
+- [ ] JSO-184 Malformed YAML error doesn't say where the problem is (minor)
+
 ## User testing  _(user-tester)_
+
+**Round 3: 2026-11-04**, against `24617af` (images built from `496b6dc`; later commits change only
+tests and docs). Tested in Orca's built-in browser at 865 px and 1280 px wide, at 390×844 mobile and
+by keyboard, on a fresh-volume stack. Screenshots: `docs/uat/001/r3-*.png`. Text evidence:
+`docs/uat/001/r3-notes.md`.
+
+| User story / AC | Result | Evidence |
+| --- | --- | --- |
+| Engineer: start portal + Kong with one command (AC 1) | Pass | `r3-01-catalog-fresh.png`: healthy, with the home page returning 200, in **20 s** on a fresh database. Images were already built, so this isn't a cold-build time. |
+| Sample API seeded and published (AC 2) | Pass | `r3-01`, `r3-02-reference.png`: exactly one API, `sample`. |
+| Engineer: import OpenAPI and link it to a Kong service (AC 3) | Pass | `r3-31-import-success.png`, `r3-34-catalog-after-import.png`, `r3-35-imported-reference.png`: file upload to a new Kong service, plus import by URL. Both reach the public catalog, and try-it works through Kong (`r3-36`). Minor: JSO-175, JSO-176, JSO-177. |
+| Invalid OpenAPI is rejected, nothing published (AC 4) | Pass | `r3-28-import-no-info.png`, `-bad-yaml`, `-swagger2`, `-bad-schema`, `-notes`: each names the error and says "Nothing was published"; the catalog stayed unchanged. Minor: JSO-184. |
+| Developer: sign up, reach dashboard (AC 5) | Pass | `r3-04`–`r3-07`: empty, invalid and duplicate-email errors match the design. Real sign-up kept `next` and landed on create app with the API preselected. Minor: JSO-179, JSO-180. |
+| Developer: create app, get key once with copy (AC 6) | Pass | `r3-08`–`r3-10`, `r3-13`, `r3-17`, `r3-18`: a double-click creates one app. The clipboard holds the exact key, Escape can't close the dialog, and the key is gone from the page after dismissal and after reload, and isn't in browser storage. Kong has one tagged consumer. The five-key limit and duplicate name messages work. |
+| Developer: try a request from the docs (AC 7) | Pass | `r3-03-tryit-no-key.png`: Kong's 401. `r3-11-tryit-with-key.png`: 200 with the key entered before opening the client. `r3-57`, `r3-58`: 401, then 200 after adding the key. Minor: JSO-171, JSO-172, JSO-173, JSO-174. |
+| Gateway unavailable on create app (AC 8) | Pass | `r3-38-gateway-unavailable.png`, `r3-41-retry-key-dialog.png`: with Kong stopped, the alert explains nothing was created, the countdown runs, and the form keeps its values, with no app created. After restart, **Try again** created the app, with one Kong consumer per app. Create key and revoke also fail safely (`r3-39`, `r3-40`). Minor: JSO-176, JSO-178. |
+| Revoked key returns 401 (AC 9) | Pass | `r3-19`–`r3-21`: the toast appears and the row changes to Revoked. Kong returns 401 directly and through try-it. |
+| Mobile (390×844) main journey | Pass | `r3-42`–`r3-53`: no horizontal scroll on any page. Sign-up, create app, key dialog, revoke and a try-it 401 all work with touch input on. Minor: JSO-181, JSO-163. The try-it 200 wasn't repeated at this size. |
+| Keyboard-only | Pass | `r3-56` and `r3-notes.md`: catalog to key by Tab and Enter, with focus trapped in the key dialog. Scalar's Test Request and Send also work from the keyboard, though I moved focus to them with the browser tool instead of tabbing through Scalar. Minor: JSO-161, JSO-182. |
+| Mistakes and states | Pass | Wrong password, empty forms, back button, refresh, unknown API and app, developer on `/admin` (404), signed-in visitor on sign-up, and `next=//evil…` all behave safely (`r3-15`, `r3-16`, `r3-23`). |
+| Health | Pass | No console errors. Failed requests were all intended: test 401s, 409s, 422s and 503s. No full key or password in the logs. JSO-171 is the one unexpected network finding. |
+
+Notes:
+- **Status: review.** All nine acceptance criteria pass in the browser, and no blocker or major bug
+  is open. This round adds 14 minor bugs (JSO-171–JSO-184).
+- **JSO-171 needs a tech-lead decision.** Every reference page load contacts `proxy.scalar.com`. It
+  doesn't stop the journey, so it's minor by the severity rules, but it matters for privacy and
+  air-gapped installs in a self-hosted product.
+- One try-it 401 after adding a key didn't recur in five retries, so I didn't file it (see
+  `r3-notes.md`). Not tested: JSO-166 (dates matched), real phones (emulation only), and a cold
+  image build this round.
+- Copy reads well. The first-call path is short, and the outage messages are clear. The friction a
+  new developer is most likely to hit is JSO-174.
+- Test data was all on the throwaway `portal-uat-r3` stack, whose volume is removed, so keys in
+  screenshots no longer exist. I also stopped the QA stack `portal` (containers and volume kept).
+  Restart it with `docker compose -f deploy/docker-compose.yml start`.
 
 **Round 2: 2026-11-02**, after backend fix `6bd89a4` (JSO-160). Tested in Orca's built-in browser
 (Chromium) at desktop size, at 390×844 mobile and by keyboard, against the QA stack
