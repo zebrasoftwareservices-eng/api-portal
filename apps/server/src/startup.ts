@@ -11,6 +11,7 @@ import { createAuth } from './auth.js';
 import { createApp } from './app.js';
 import { seedSample } from './seed.js';
 import { reconcile } from './reconcile.js';
+import { backgroundJob } from './background-job.js';
 export async function start(config: Config) {
   await migrate(config.DATABASE_URL);
   const { db, client } = connect(config.DATABASE_URL);
@@ -106,12 +107,18 @@ export async function start(config: Config) {
       name: 'seed-sample',
       policy: 'singleton',
     });
-    await boss.work('gateway-reconcile', async () => {
-      await reconcile(db, adapter, app.log);
-    });
-    await boss.work('seed-sample', async () => {
-      await seedSample(db, adapter, gateway.id, instance.instanceId);
-    });
+    await boss.work(
+      'gateway-reconcile',
+      backgroundJob('gateway-reconcile', app.log, () =>
+        reconcile(db, adapter, app.log),
+      ),
+    );
+    await boss.work(
+      'seed-sample',
+      backgroundJob('seed-sample', app.log, () =>
+        seedSample(db, adapter, gateway.id, instance.instanceId),
+      ),
+    );
     await boss.schedule(
       'gateway-reconcile',
       '*/5 * * * *',

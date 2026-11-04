@@ -37,7 +37,7 @@ const mocks = vi.hoisted(() => {
     schedule: vi.fn(),
     send: vi.fn(),
   };
-  return { db, log, app, boss, handlers, seed: vi.fn() };
+  return { db, log, app, boss, handlers, seed: vi.fn(), reconcile: vi.fn() };
 });
 vi.mock('@portal/db', async (original) => ({
   ...(await original<typeof import('@portal/db')>()),
@@ -54,6 +54,7 @@ vi.mock('pg-boss', () => ({
 vi.mock('./auth.js', () => ({ createAuth: () => ({}) }));
 vi.mock('./app.js', () => ({ createApp: async () => ({ app: mocks.app }) }));
 vi.mock('./seed.js', () => ({ seedSample: mocks.seed }));
+vi.mock('./reconcile.js', () => ({ reconcile: mocks.reconcile }));
 import { start } from './startup.js';
 
 beforeEach(() => {
@@ -61,6 +62,23 @@ beforeEach(() => {
   mocks.handlers.clear();
 });
 describe('startup error diagnostics', () => {
+  it.each(['gateway-reconcile', 'seed-sample'])(
+    'logs and rethrows failures in the registered %s handler',
+    async (queue) => {
+      await start(loadConfig());
+      const err = new Error('Job query failed');
+      const run = queue === 'seed-sample' ? mocks.seed : mocks.reconcile;
+      run.mockRejectedValueOnce(err);
+      const handler = mocks.boss.work.mock.calls.find(
+        ([name]) => name === queue,
+      )![1];
+      await expect(handler()).rejects.toBe(err);
+      expect(mocks.log.error).toHaveBeenCalledWith(
+        { err, queue },
+        'Background job failed: unexpected failure',
+      );
+    },
+  );
   it('logs seed gateway errors and pg-boss errors with their error objects', async () => {
     const err = new GatewayUnavailableError();
     mocks.seed.mockRejectedValueOnce(err);
@@ -72,7 +90,12 @@ describe('startup error diagnostics', () => {
     expect(mocks.boss.send).toHaveBeenCalledWith(
       'seed-sample',
       {},
-      expect.objectContaining({ retryLimit: 20 }),
+      {
+        singletonKey: 'seed-sample',
+        retryLimit: 20,
+        retryDelay: 5,
+        retryBackoff: true,
+      },
     );
     const jobError = new Error('Reconciliation query failed');
     mocks.handlers.get('error')!(jobError);
