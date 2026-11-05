@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -225,6 +225,7 @@ read this file. Update `pnpm-lock.yaml` with it, or the quickstart's frozen inst
 | The seed's description says "for trying your portal API key", and AC 1 requires that description. | Left as it is, because editing the seed would change the quickstart. UX can decide if the notice needs to address it. |
 
 ### Tasks
+- [ ] [frontend] Fix JSO-220: Node.js (undici) sample for `POST /post` shows "Error generating snippet" and logs console errors on load once selected.
 - [x] [frontend] Fix JSO-219: isolate intermittent quickstart signup/sign-in submissions that remain on the form, fix the cause and add deterministic regression coverage.
 - [x] [backend] Fix JSO-218: investigate the 300-second quickstart timeout during server image packaging on the 4 GB QA host and verify startup within five minutes.
 - [x] [backend] JSO-203 CI wiring for the demo suite (no server changes): add `deploy/playwright.demo.config.ts` (`testDir: ./e2e-demo`, a `webServer` that builds the portal with `PORTAL_DEMO_MODE=on`, with no `SERVER_URL`, and starts it on its own port with `reuseExistingServer: false`), a root `test:e2e:demo` script, and a `demo-smoke` CI job that needs no Docker
@@ -309,14 +310,46 @@ Historical failures from 2026-11-04 remain relevant: the original quickstart exc
 Disposition: JSO-218 and JSO-219 verified **Done**; JSO-212 **Done** and ticked; JSO-216/217 remain verified Done. No blocker or major bug remains open, so status is **uat** under the factory rule. **JSO-213 stays blocked and unticked**: QA did not push or open a PR, no preview exists, and signed-out AC 3 waits for Elango to make the repo public and merge. JSO-199 remains **In Progress** solely for that outstanding preview/public-access acceptance, with the local QA work complete. Only `portal-jso193-qa` containers/network/database volume were removed after validation; shared caches/images and other projects were untouched. Application code and approval gates were unchanged.
 
 ### Bugs
+- [ ] JSO-220 Node.js (undici) sample for `POST /post` shows "Error generating snippet" and logs console errors on load once selected (major)
+- [ ] JSO-221 API page version badge stretches across the full page width (minor)
+- [ ] JSO-222 Catalog browser tab title is "APIs" without "· Developer Portal" (minor)
+- [ ] JSO-223 Real portal's 404 at `/quickstart-required` has the tab title "Quickstart required" (minor)
+- [ ] JSO-224 API page has two h1 headings (minor)
 - [x] JSO-219 Intermittent quickstart signup/sign-in fail to redirect (major; fixed in `671cbe6`, three fresh-stack full runs and deterministic hydration regressions pass; original causation unproven; Done)
 - [x] JSO-218 Quickstart exceeds five-minute budget on 4 GB Docker QA host (major; fixed in `13d89d5`, both app images rebuilt plus startup/home in 131.65s with cached base/service images; pristine cold start unmeasured; Done)
 - [x] JSO-216 Non-demo quickstart-required streamed HTTP 200 (fixed in `b031ccc`, real Compose HTTP/browser 404 verified; Done)
 - [x] JSO-217 Unknown demo API used generic browser title (fixed in `b031ccc`, production Playwright regression verified; Done)
 
 ## User testing  _(user-tester)_
+Tested 2026-11-05 at `7d49a03` in Orca's built-in browser. Criteria 1–8 ran against a local production demo build (`PORTAL_DEMO_MODE=on`, no `SERVER_URL`), and criteria 9–10 against the Compose quickstart. No Vercel deployment was tested. Evidence is in `docs/uat/002/`.
+
 | User story | Result | Screenshot |
 | --- | --- | --- |
+| Platform engineer browses a real catalog and API reference | **Fail**: the catalog and all five operations are correct, but the Node.js sample for `POST /post` shows an error (JSO-220) | `01-catalog-desktop.png`, `02-reference-desktop.png`, `05-bug-node-snippet-error.png` |
+| Platform engineer is told what needs the quickstart and how to run it | Pass locally; the GitHub link is known-blocked until the repo is public | `01-catalog-desktop.png`, `22-copy-state.png`, `23-quickstart-link-private-repo-404.png` |
+| Developer following a link is told what the demo can't do | Pass | `02-reference-desktop.png`, `09-gated-sign-in.png`, `10-gated-dashboard-apps-new.png`, `11-gated-admin-apis.png`, `12-not-found-api.png`, `15-mobile-menu.png` |
+| Self-hosting admin never sees demo content | Pass, with minor JSO-223 | `24-quickstart-catalog-no-notice.png`, `25-quickstart-required-404.png`, `35-quickstart-server-down-error.png` |
+
+| Criterion | Browser result |
+| --- | --- |
+| 1 Catalog | Pass at desktop and 375px |
+| 2 Reference matches the seed | Pass: title, version and five operations |
+| 3 Notice on every page | Pass for notice and command on every page and width tested, and Copy put the exact command on the clipboard. **Known-blocked:** the link returns GitHub's 404 until Elango makes the repo public before merge; not filed as a bug (`23-…png`) |
+| 4 No unavailable auth or key controls | Pass, including the mobile menu |
+| 5 Can't send a request | Pass: no visible Send, Test Request or input, and Tab never reaches one. Scalar's client stays in the DOM with zero size. No request reached `/api/v1/try-it` or `localhost:8000`, including after pressing ⌘↵ |
+| 6 Gated routes | Pass on all five, plus nested `/dashboard/apps/abc` and `/admin/foo/bar` |
+| 7 Unknown API | Pass; **Go to APIs** returns to the catalog |
+| 8 No forbidden requests or console errors | **Fail for a returning visitor** (JSO-220). A first visit passes: 0 console errors and no forbidden requests on `/` or `/apis/sample`. `/api/v1/health` returns 404 |
+| 9 Quickstart with demo off | Pass: no notice, `/quickstart-required` is 404. Walked sign-up, key (200 through real Kong, 401 without), try-it (200 with a UUID) and admin import. `up -d --wait --build` took 85s **with cached layers, so this is not a cold-start measurement** |
+| 10 Server unreachable | Pass: the existing error page, with no sample catalog or notice |
+
+**Notes**
+- **Why JSO-220 is major:** reading isn't blocked, because every other client works. It is rated major because the failure is on screen on the page visitors use to judge the project, in the default client of a main tab, and it fails AC 8's load check once the choice is remembered. It also happens on the quickstart, so it isn't caused by demo mode.
+- **Worked well:** wrong-password and empty-form messages, the back button, keyboard order (the skip link, header, notice and card all match the design), focus returning to the menu button after Escape, and no page-level sideways scrolling at 375px.
+- **Not reproduced:** one tap on the mobile menu right after load did nothing, then worked 5 of 5 times on retest, so it isn't filed.
+- **Test tool artifacts, not bugs:** `orca viewport --scale 3` doubled the image, `full-screenshot` repeated the sticky header, and a screenshot taken straight after a scripted scroll came out white. Real scrolling and sidebar jumps painted normally. Mobile evidence uses `--scale 1`.
+- **Not covered:** mobile used 375px (the width in the criteria), not the role file's 390px. Mobile and keyboard journeys ran on the demo build only, not the quickstart. No expired-session test on the quickstart, and the demo has no sessions. JSO-213 (Vercel preview and signed-out link) waits for the PR.
+- The reference's Developer Tools, Share and Deploy toolbar on the localhost quickstart is the known JSO-172 behaviour, so it isn't filed. The temporary API key was kept out of the screenshots, and the test stack and its database were removed afterward.
 
 ## Review  _(tech-lead)_
 
