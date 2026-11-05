@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -449,6 +449,34 @@ The open minor bugs JSO-221 to JSO-225 don't block either. JSO-221 (stretched ve
 1. **Push the branch and get CI green.** The branch isn't on GitHub, so no CI job has ever run on it, including the new `demo-smoke`. `compose-smoke` will also give the first cold-start measurement on a clean runner. QA's slowest local run was 281.81s against the 300s limit, with base images cached.
 2. **Run JSO-213 on the PR's Vercel preview.** Nothing has run on Vercel itself yet, and this feature exists only for that platform.
 3. **Elango makes the repo public**, per the decision above. Until then the quickstart link in AC 3 returns 404 for visitors.
+
+### Delta review (2026-11-05, `fd05065..f34dfd8`)
+**Result: no blocking findings, status `approved`.** This covers only what changed since the review above: the badge CSS and its tests (`cf7d174`, `b2c99d8`), the product-brief link removal Elango approved (`24005c0`) and the UAT notes (`f34dfd8`).
+
+**Checks run**
+
+| Check | Result |
+| --- | --- |
+| `pnpm lint`, `pnpm typecheck`, `pnpm test` | Pass, all from Turbo cache at this commit's inputs |
+| `pnpm exec turbo run test --force --filter=@portal/portal` | Pass, uncached |
+| `gh pr checks 3` at `f34dfd8` | `check`, `demo-smoke`, `compose-smoke` and Vercel all pass, on both CI runs |
+| Chromium probe of the local production demo build, 1280px and 375px | See the findings below |
+
+The demo e2e and Compose suites weren't run locally for this review; CI ran them at this commit.
+
+**Findings**
+- **`.badge` CSS, `packages/ui/src/styles.css:315`: correct.** The portal's API page badge goes from 1136px (1280px viewport) or 343px (375px viewport) to 48.63px with the line. The rule also matches Scalar's own badges, but those measured the same with and without it (48.88px and 72.05px). `create-app.tsx:234` is the one use neither test nor UAT covers. It sits in a row where `fit-content` should change nothing, which comes from reading the code, not from a browser check.
+- **Product brief, `docs/product-brief.md`: clean.** Nothing else in the repo refers to the removed link. It stays in git history, which matters when Elango checks the history before making the repo public.
+- **UAT notes, `docs/uat/002/badge-retest-notes.md:17`: small wording slip.** They say the width includes a border, but `.badge` has none. The measurements are unaffected, so this isn't filed.
+
+**Blocking**
+
+None.
+
+**Suggestions** (doesn't block merge)
+- `suggestion` JSO-231, `apps/portal/e2e/reference-snippets.test.ts:8`: the `main .badge` locator matches one element right after `goto` but two once Scalar has rendered, which is a strict mode violation. Confirmed at both widths after a 3s wait. The test passes today only because it runs before Scalar paints, so a change in Scalar or chunk loading could make it fail. The 80/80 and 90/90 pass counts in the issue come from the earlier interrupted attempt and weren't repeated.
+
+**Before merge, updated.** Item 1 above is done: the branch is on GitHub as PR #3 and CI is green at `f34dfd8`. Items 2 and 3 stay open: the JSO-213 Vercel preview check, and Elango making the repo public. Neither is a code finding.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
