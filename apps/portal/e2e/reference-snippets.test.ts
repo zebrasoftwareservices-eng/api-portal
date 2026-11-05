@@ -23,6 +23,41 @@ for (const width of [1280, 375]) {
   });
 }
 
+// Shared badge CSS also applies inside the catalog card's flex row.
+for (const width of [1280, 375]) {
+  test(`Catalog version badge stays compact and inside its card at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/');
+    const card = page.locator('a.api-card[href="/apis/sample"]');
+    const badge = card.locator('.badge');
+    await expect(badge).toHaveText('v1.0.0');
+    await expect(badge).toBeVisible();
+    const dimensions = await badge.evaluate((element) => {
+      const text = document.createRange();
+      text.selectNodeContents(element);
+      const style = getComputedStyle(element);
+      const bounds = element.getBoundingClientRect();
+      const card = element.closest('.api-card')!.getBoundingClientRect();
+      return {
+        actual: bounds.width,
+        expected:
+          text.getBoundingClientRect().width +
+          parseFloat(style.paddingLeft) +
+          parseFloat(style.paddingRight),
+        inside:
+          bounds.left >= card.left &&
+          bounds.right <= card.right &&
+          bounds.top >= card.top &&
+          bounds.bottom <= card.bottom,
+      };
+    });
+    expect(Math.abs(dimensions.actual - dimensions.expected)).toBeLessThan(2);
+    expect(dimensions.inside).toBe(true);
+  });
+}
+
 test('Node.js POST samples survive selection and a returning visit without errors', async ({
   page,
 }) => {

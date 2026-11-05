@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -328,9 +328,21 @@ Disposition: JSO-218 and JSO-219 verified **Done**; JSO-212 **Done** and ticked;
 
 Disposition for this cycle: **JSO-220 verified Done** in demo and live builds; its checklist item is ticked below. The four existing minor bugs JSO-221–224 remain open; no new bug or flaky failure was observed. Every criterion remains mapped above, and no blocker or major remains, so status is **uat**. JSO-213 remains an explicit deferred deployment/public-access check, and AC 3's signed-out destination access is still unverified pending Elango's repository visibility action and a preview; this report does not claim all acceptance criteria are fully passed. The current local QA dispatch is complete (JSO-199 Done); the earlier report's In Progress disposition is historical. Removed only this run's `portal-jso193-qa` containers/network/database volume; left shared images/caches and the pre-existing untracked portal AGENTS file untouched. No application code or approval gates changed.
 
+
+2026-11-05 JSO-221 focused QA re-check at `cf7d174` (scope agreed by Elango through the coordinator):
+
+- `pnpm exec playwright test --config apps/portal/playwright.reference.config.ts`: **5/5 PASS** against the production demo with no `SERVER_URL`. The existing version-badge regressions pass at 1280px and 375px, as does the Node.js returning-visitor regression. Added catalog regressions in `apps/portal/e2e/reference-snippets.test.ts` assert the shared-CSS badge still hugs its text and remains inside its card at both widths.
+- `pnpm lint`, `pnpm typecheck`: PASS; `pnpm exec turbo run test --force`: **12/12 tasks, zero cached, 94 tests PASS**, including real Postgres/Kong integration coverage. Direct ESLint, Prettier and diff checks pass for the added test.
+- `pnpm exec playwright test --config deploy/playwright.config.ts --grep 'version badge|Node.js POST samples'`: **5/5 PASS (8.3s)** against a freshly rebuilt, healthy real Compose stack (`portal-jso221-qa`). Both API badges and catalog badges pass at 1280px and 375px; inspected live catalog screenshots at both widths confirm compact, readable badges.
+- `gh pr checks 3`: **all required checks PASS** at `cf7d174813d75f026566d775a8ae3285075f3c53`, for both push and PR runs. [PR CI run 42006422544](https://github.com/zebrasoftwareservices-eng/api-portal/actions/runs/42006422544) records **29/29 demo tests**, **15/15 live tests**, workspace lint/typecheck/test and SDK freshness, first-call and outage smokes. Its unchanged quickstart timer reports **173.0s** for Compose build/start plus seeded home on the GitHub runner; job duration includes setup and the other checks. These CI results cover the wider run and precede this cycle's two added catalog tests, which passed locally on both builds.
+
+Disposition: **JSO-221 verified Done** and ticked below; no new bug or flaky failure observed. Remaining JSO-222–225 are minor, so status returns to **uat** and JSO-199 is Done for this scoped re-check. Removed only this run's Compose containers/network/database volume; no application code, shared images/caches, generated-file commits, pushes or approval gates changed.
+
+The acceptance-to-test mapping and failure-path coverage above remain applicable. Per the agreed scope, this cycle does not repeat the full local browser suite, three-run validation, outage smokes or quickstart timing; the earlier local results remain historical evidence. Deployment/public-access AC 3 verification remains tracked separately by JSO-213.
+
 ### Bugs
 - [x] JSO-220 Node.js (undici) POST snippet and returning-visitor load errors (major; fixed in `8cf603d`, production demo and real Compose selection/persistence/reload verified by QA and re-tested in the browser; Done)
-- [ ] JSO-221 API page version badge stretches across the full page width (minor)
+- [x] JSO-221 API page version badge stretches across the full page width (minor; fixed in `cf7d174`, QA badge/catalog regressions pass on production demo and real Compose at 1280px/375px; Done)
 - [ ] JSO-222 Catalog browser tab title is "APIs" without "· Developer Portal" (minor)
 - [ ] JSO-223 Real portal's 404 at `/quickstart-required` has the tab title "Quickstart required" (minor)
 - [ ] JSO-224 API page has two h1 headings (minor)
