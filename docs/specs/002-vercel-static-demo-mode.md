@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -353,6 +353,19 @@ The acceptance-to-test mapping and failure-path coverage above remain applicable
 - [x] JSO-217 Unknown demo API used generic browser title (fixed in `b031ccc`, production Playwright regression verified; Done)
 
 ## User testing  _(user-tester)_
+**Latest round: limited to the version badge, not a full UAT** (2026-11-05 at `24005c0`, scope agreed by Elango through the coordinator). The only application change since the last full round is the one CSS line in `cf7d174`, confirmed with `git diff 521abd0..HEAD`. User stories and acceptance criteria were not re-walked, and `.badge` uses outside these two pages weren't checked.
+
+| Page | Width | Local production demo | Quickstart | Screenshots |
+| --- | --- | --- | --- | --- |
+| Catalog card | 1280px | Pass | Pass | `49`, `53` |
+| `/apis/sample` | 1280px | Pass | Pass | `50`, `54` |
+| Catalog card | 375px | Pass | Pass | `51`, `55` |
+| `/apis/sample` | 375px | Pass | Pass | `52`, `56` |
+
+The badge is 48.6px wide everywhere, exactly its text plus padding and border. No console errors, failed requests or new bugs turned up on these pages. The catalog card's base URL still runs into "View reference →", which is the known minor JSO-162. Details and the screenshot crop note are in `docs/uat/002/badge-retest-notes.md`.
+
+**Previous full round** (the results below still stand for everything except the badge):
+
 Re-tested 2026-11-05 at `4134640`, after the JSO-220 fix (`8cf603d`), in Orca's built-in browser. Criteria 1–8 ran against a local production demo build (`PORTAL_DEMO_MODE=on`, no `SERVER_URL`), and criteria 9–10 against the Compose quickstart. No Vercel deployment was tested. Evidence is in `docs/uat/002/`: `36`–`48` are from this round, and `01`–`35` from the first round at `7d49a03`.
 
 | User story | Result | Screenshot |
