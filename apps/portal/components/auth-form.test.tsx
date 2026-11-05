@@ -58,6 +58,45 @@ describe('account forms', () => {
     );
     expect(mocks.replace).not.toHaveBeenCalled();
   });
+  it.each(['sign-up', 'sign-in'] as const)(
+    'preserves %s values after a server failure and permits a clean retry',
+    async (mode) => {
+      const user = userEvent.setup();
+      const submitAuth = mode === 'sign-up' ? mocks.signup : mocks.signin;
+      submitAuth
+        .mockRejectedValueOnce(new TypeError('Network unavailable'))
+        .mockResolvedValueOnce({ data: { user: { id: 'user' } } });
+      render(<AuthForm mode={mode} />);
+      if (mode === 'sign-up')
+        await user.type(screen.getByLabelText('Name'), 'Ana');
+      await user.type(screen.getByLabelText('Email'), 'ana@example.com');
+      await user.type(screen.getByLabelText('Password'), 'password123');
+      const submit = screen.getByRole('button', {
+        name: mode === 'sign-up' ? 'Create account' : 'Sign in',
+      });
+      await user.click(submit);
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        "Can't reach the portal server. Check your connection and try again.",
+      );
+      expect(mocks.replace).not.toHaveBeenCalled();
+      expect(screen.getByLabelText('Email')).toHaveValue('ana@example.com');
+      expect(screen.getByLabelText('Password')).toHaveValue('password123');
+      if (mode === 'sign-up')
+        expect(screen.getByLabelText('Name')).toHaveValue('Ana');
+      expect(submit).toBeEnabled();
+      await user.click(submit);
+      await waitFor(() =>
+        expect(mocks.replace).toHaveBeenCalledWith('/dashboard'),
+      );
+      expect(submitAuth).toHaveBeenCalledTimes(2);
+      expect(submitAuth).toHaveBeenLastCalledWith({
+        ...(mode === 'sign-up' ? { name: 'Ana' } : {}),
+        email: 'ana@example.com',
+        password: 'password123',
+      });
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    },
+  );
   it('does not redirect off origin after signing in', async () => {
     const user = userEvent.setup();
     mocks.signin.mockResolvedValue({ data: { user: { id: 'user' } } });
