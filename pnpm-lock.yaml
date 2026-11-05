@@ -93,6 +93,9 @@ importers:
       tailwindcss:
         specifier: ^3.4.18
         version: 3.4.19(tsx@4.23.15)(yaml@2.9.1)
+      yaml:
+        specifier: ^2.9.1
+        version: 2.9.1
 
   apps/server:
     dependencies:

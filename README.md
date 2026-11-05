@@ -10,7 +10,12 @@ APISIX, Envoy Gateway, Apigee and Azure API Management.
 
 ## Quickstart
 
-Install Docker with Compose, then run:
+Install Docker with Compose, clone the repository, then run:
+
+```sh
+git clone https://github.com/zebrasoftwareservices-eng/api-portal.git
+cd api-portal
+```
 
 ```sh
 docker compose -f deploy/docker-compose.yml up --build
@@ -28,6 +33,15 @@ do not yet enforce per-API access (see ADR 0002).
 For local development use Node 22, `corepack enable`, `pnpm install`, and `pnpm dev`.
 Run `pnpm lint`, `pnpm typecheck`, and `pnpm test` before committing.
 Integration tests require a running Docker daemon.
+
+## Hosted demo
+
+The Vercel deployment shows the seeded sample API catalog and a read-only reference.
+Sign-up, API keys, try-it and admin need the local quickstart above.
+Demo mode is baked in at build time: `PORTAL_DEMO_MODE=on`, or `VERCEL=1`
+with no `SERVER_URL`, enables it. Set `SERVER_URL` when deploying a real portal
+on Vercel to keep live features enabled. Ordinary local and Compose builds stay live,
+even when the server is unreachable. Changing mode or the seed requires a rebuild.
 
 ## Goals
 - **Five-minute quickstart:** `docker compose up` gives a working portal against a real Kong.

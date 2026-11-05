@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { NextResponse, type NextRequest } from 'next/server';
 import { createAuthClient } from 'better-auth/client';
+import { isDemo } from './lib/demo';
 export async function middleware(request: NextRequest) {
+  if (isDemo()) return NextResponse.next();
   const auth = createAuthClient({
     baseURL: process.env.SERVER_URL || 'http://localhost:4000',
   });

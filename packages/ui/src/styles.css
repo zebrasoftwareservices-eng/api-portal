@@ -312,6 +312,7 @@ legend {
 }
 .badge {
   display: inline-flex;
+  width: fit-content;
   gap: 6px;
   padding: 2px 8px;
   font-size: var(--portal-text-xs);
@@ -470,5 +471,44 @@ caption {
   *::after {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+.demo-notice {
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-size: var(--portal-text-sm);
+  border-bottom: 1px solid var(--border);
+}
+.demo-notice-inner {
+  max-width: var(--portal-page-max-width);
+  padding: 12px var(--portal-page-gutter);
+  margin: auto;
+}
+.demo-notice strong {
+  font-weight: 600;
+}
+.demo-notice a,
+.demo-notice button {
+  scroll-margin-top: calc(var(--portal-header-height) + 16px);
+}
+.demo-notice a {
+  min-height: 24px;
+}
+.quickstart-command {
+  min-width: 0;
+}
+.quickstart-command .code-value {
+  color: var(--foreground);
+}
+@media (min-width: 768px) {
+  .quickstart-command .code-value {
+    width: fit-content;
+    max-width: 100%;
+  }
+}
+@media (max-width: 767px) {
+  .quickstart-required .actions .button {
+    min-height: 44px;
   }
 }

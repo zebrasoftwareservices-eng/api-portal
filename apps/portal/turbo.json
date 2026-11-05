@@ -1,0 +1,12 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "env": ["VERCEL", "SERVER_URL", "PORTAL_DEMO_MODE"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/apps/server/seed/sample-api.openapi.yaml"
+      ]
+    }
+  }
+}

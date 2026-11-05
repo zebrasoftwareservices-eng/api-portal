@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from '@playwright/test';
+import './reference-snippets.test';
 
 test('developer signs up, copies a one-time key, calls Kong and revokes it', async ({
   page,
@@ -330,7 +331,9 @@ test('reference document failure shows a retry and recovers without reloading th
     hasText: "The API reference didn't load.",
   });
   await expect(alert).toBeVisible();
-  await expect(page.getByRole('button', { name: /Test Request/ })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /Test Request/ })).toHaveCount(
+    0,
+  );
   unavailable = false;
   const recovered = page.waitForResponse(
     (response) =>
@@ -345,3 +348,61 @@ test('reference document failure shows a retry and recovers without reloading th
   ).toBeVisible();
   await expect(page).toHaveURL(/\/apis\/sample$/);
 });
+
+// JSO-219: the first paint can precede hydration on a cold or slow connection.
+for (const mode of ['sign-up', 'sign-in'] as const) {
+  test(`JSO-219: ${mode} waits for hydration before accepting input or submission`, async ({
+    page,
+  }) => {
+    let release!: () => void;
+    const scriptsReady = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/_next/static/**/*.js*', async (route) => {
+      await scriptsReady;
+      await route.continue();
+    });
+    const authPosts: string[] = [];
+    page.on('request', (request) => {
+      if (
+        request.method() === 'POST' &&
+        new URL(request.url()).pathname.startsWith('/api/auth/')
+      )
+        authPosts.push(new URL(request.url()).pathname);
+    });
+    try {
+      await page.goto(`/${mode}`, { waitUntil: 'commit' });
+      await expect(page.getByLabel('Email', { exact: true })).toBeDisabled();
+      await expect(page.getByLabel('Password', { exact: true })).toBeDisabled();
+      const submit = page.getByRole('button', {
+        name: mode === 'sign-up' ? 'Create account' : 'Sign in',
+        exact: true,
+      });
+      await expect(submit).toBeDisabled();
+      expect(authPosts).toEqual([]);
+      expect(new URL(page.url()).search).toBe('');
+      release();
+      await expect(submit).toBeEnabled();
+      if (mode === 'sign-up')
+        await page
+          .getByLabel('Name', { exact: true })
+          .fill('Hydration regression');
+      await page
+        .getByLabel('Email', { exact: true })
+        .fill(
+          mode === 'sign-up'
+            ? `qa-${crypto.randomUUID()}@example.com`
+            : 'admin@example.com',
+        );
+      await page
+        .getByLabel('Password', { exact: true })
+        .fill(mode === 'sign-up' ? 'QA-password-123' : 'change-me-now');
+      await submit.click();
+      await expect(page).toHaveURL(/\/dashboard$/);
+      expect(authPosts).toEqual([`/api/auth/${mode}/email`]);
+    } finally {
+      release();
+      await page.unrouteAll({ behavior: 'wait' });
+    }
+  });
+}
