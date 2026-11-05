@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -225,8 +225,8 @@ read this file. Update `pnpm-lock.yaml` with it, or the quickstart's frozen inst
 | The seed's description says "for trying your portal API key", and AC 1 requires that description. | Left as it is, because editing the seed would change the quickstart. UX can decide if the notice needs to address it. |
 
 ### Tasks
-- [ ] [frontend] Fix JSO-219: isolate intermittent quickstart signup/sign-in submissions that remain on the form, fix the cause and add deterministic regression coverage.
-- [ ] [backend] Fix JSO-218: investigate the 300-second quickstart timeout during server image packaging on the 4 GB QA host and verify startup within five minutes.
+- [x] [frontend] Fix JSO-219: isolate intermittent quickstart signup/sign-in submissions that remain on the form, fix the cause and add deterministic regression coverage.
+- [x] [backend] Fix JSO-218: investigate the 300-second quickstart timeout during server image packaging on the 4 GB QA host and verify startup within five minutes.
 - [x] [backend] JSO-203 CI wiring for the demo suite (no server changes): add `deploy/playwright.demo.config.ts` (`testDir: ./e2e-demo`, a `webServer` that builds the portal with `PORTAL_DEMO_MODE=on`, with no `SERVER_URL`, and starts it on its own port with `reuseExistingServer: false`), a root `test:e2e:demo` script, and a `demo-smoke` CI job that needs no Docker
 - [x] [backend] JSO-204 Extend `deploy/outage-smoke.mjs` for AC 10: with the server stopped, the portal's `/` shows the existing error page and contains neither the sample catalog nor the demo notice
 - [x] [frontend] JSO-205 Build switch: `lib/demo-build.ts` with unit tests for every detection case, async `next.config.ts` (`env`, demo `rewrites()` per the design), `apps/portal/turbo.json`, `yaml` devDependency and lockfile; helper imported statically from `next.config.ts`, with `yaml` loaded lazily inside it; confirm with `turbo run build --dry=json` that the hash changes with `VERCEL` and the seed file
@@ -263,6 +263,10 @@ No new design tokens.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
+- Frontend fix JSO-219 (`671cbe6`): reproduced the auth failure mode by holding JavaScript before hydration: the enabled SSR form accepted credentials and submitted a native GET, remained on `/sign-up`, and sent zero auth POSTs; the hydrated control sent one POST and reached `/dashboard`. The password field's native name also put its value into the query string in this reproduction. This establishes a concrete readiness defect, although the original QA failures did not capture enough request evidence to prove they had the same cause.
+- Auth fields and submit controls now remain disabled in an HTML fieldset until the client effect runs after hydration; existing validation, auth calls and navigation are unchanged. Added SSR/hydration component coverage for both modes and two committed Playwright cases that hold script delivery, assert disabled controls before release, then submit and require one auth POST and the existing `/dashboard` redirect assertion. Both browser cases pass against a local Next dev server with a stub auth service (2/2, 4.0s); real Compose and the unchanged full journeys await QA. No retries, longer timeouts or relaxed assertions were added.
+- Validation: `pnpm lint`, `pnpm typecheck`, `pnpm test` pass (portal 53 tests, server 30; unchanged package results may use Turbo cache), and direct ESLint of the browser journeys plus Prettier checks pass. An initial browser attempt failed because the dev server had not started; both cases passed after startup. JSO-219 is In Review for QA; its Bugs item stays unticked. The spec status is unchanged, and this spec edit is intentionally uncommitted for the coordinator.
+
 - Frontend (JSO-205–210, commit `b031ccc`): added the build-time switch, original-seed inlining, server-free catalog/reference, route gates, notice/mobile navigation and quickstart guidance; README includes cloning and mode detection. Added 24 tests (51 portal tests total); `pnpm lint`, `pnpm typecheck` and `pnpm test` pass (unchanged package checks may use Turbo cache), as do real demo-on and demo-off Turbopack builds.
 - Verified Turbo cache invalidation with `turbo run build --dry=json`: default `9f90a9644a476a4b` → `VERCEL=1` `13f1db37cb29341c`; seed-only edit in an isolated copy → `8e381c91194964ed`. The shared server seed was never modified.
 - Production Chromium smoke at 1280px and 375px passes: all five operations, no send controls/visible inputs/client link, no `/api/*`, localhost or Scalar network calls on catalog/reference, no load console errors, no horizontal overflow, mobile quickstart navigation, all gated routes and direct health HTTP 404. Repeatable local smoke: `/tmp/jso193-frontend-demo-smoke.mjs`; QA still owns the committed acceptance e2e suite.
@@ -271,6 +275,9 @@ No new design tokens.
 
 - Backend (JSO-203, commit `4d2ec03`): added the Docker-free demo CI job and root Playwright script; the demo config builds with `PORTAL_DEMO_MODE=on` and no `SERVER_URL`, then serves on 3100/3101 without reusing a server. Fixed config loading for the CommonJS root. Lint, tests and formatting pass; `test:e2e:demo --list` loads the config but reports no tests until QA adds JSO-211. After frontend commit `b031ccc`, re-ran `pnpm lint`, `pnpm typecheck` and `pnpm test`: all pass.
 - Backend (JSO-204, commit `91df2ba`): the outage smoke now opens a fresh Chromium page with the control-plane server stopped, checks the existing error page, and rejects sample content and the demo notice; it restarts the server in `finally`. Verified against real Compose project `portal-jso193-backend`: quickstart built, started and rendered the seeded home page in 220.3s; outage smoke exited 0 with both Kong recovery and server-outage assertions passing. Removed the stack and its disposable volume afterward.
+
+- Backend (Fix JSO-218, commit `13d89d5`): separated a frozen, offline, filtered production install from the build toolchain; runtime retains the server, workspace imports, migrations and original seed but excludes Scalar UI, Testcontainers and the auth CLI. The image shrank from 1,435,690,936 to 890,463,272 bytes (38%); `node_modules` from 952.9 to 509.9 MiB. Better Auth's existing locked optional peers still include Next; no lockfile or dependency versions changed. Added `node deploy/server-image-smoke.mjs`, which passes on the updated image and rejects the original image; real first-call smoke passes signup, key creation, Kong auth, try-it, one-time key and revocation. `pnpm lint`, `pnpm typecheck`, `pnpm test`, plus direct ESLint/Prettier on the new smoke pass.
+- JSO-218 performance: the oversized runtime packaging predates demo mode (`6b007a4` introduced the unchanged original Dockerfile). On the same 4 GB Docker host with no running services, successive server-only `docker build --no-cache` measurements with cached Node base images and freshly downloaded dependency stores were **100.59s original → 77.58s updated**; image export/unpack **32.6s → 16.7s**. An earlier original run including Node base pulls took 94.78s, demonstrating host/network variance rather than an exact speed guarantee. Rebuilding **both** application images with `docker compose build --no-cache`, then running the unchanged quickstart against a new project/database, completed in **149.84s total**; its own `up --build`/home check took **39.9s**. That measurement used cached Node base images, redownloaded dependencies and pulled service images as needed; it is not a pristine-machine cold-start claim and no shared image/cache was deleted. Removed only `portal-jso218-backend` containers/network/database volume; bug remains for QA in In Review, spec status unchanged.
 
 ## Test report  _(qa-tester)_
 | Criterion | Test file | Result |
