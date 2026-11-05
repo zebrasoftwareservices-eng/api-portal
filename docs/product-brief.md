@@ -39,7 +39,3 @@ later, for visibility.
 TypeScript monorepo (pnpm + Turborepo) · Next.js + Tailwind + shadcn/ui · Fastify (OpenAPI-first) ·
 PostgreSQL + Drizzle · pg-boss · Better Auth · Kong Admin API, AWS SDK v3 · Vitest, Playwright,
 Testcontainers · Docker, Helm, GitHub Actions. License Apache 2.0 with DCO sign-off.
-
-## Background research
-Full market and implementation plan: https://claude.ai/artifact/JKEX5gU2kk8pmJ2FLACVvN
-(its pricing, AGPL and paid-marketplace sections are superseded by this brief: the project is free and Apache 2.0).
