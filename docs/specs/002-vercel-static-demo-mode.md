@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -158,6 +158,7 @@ routes with rewrites, and drops the `/api/*` proxy. A non-demo build behaves exa
 | `apps/portal/components/header.tsx` | In demo mode, no sign-in or sign-up links in either nav; a quickstart link if the UX calls for one. |
 | `apps/portal/app/quickstart-required/page.tsx` (new) | The page for AC 6. Calls `notFound()` unless `isDemo()`, so it doesn't exist on a real portal. |
 | `README.md` | Short section on demo mode and the rule above. |
+| `apps/portal/lib/reference-document.ts` (added by JSO-220) | Display-only `{}` example for unconstrained JSON bodies, used by both references. The live reference now passes its loaded document as `content`. |
 
 Copy and layout come from the UX section; only the behaviour is fixed here.
 
@@ -175,11 +176,11 @@ is attempted. Checked in the scratch app.
 
 ```ts
 {
-  content: sampleDocument,   // replaces url: no document request
+  content: referenceDocument(sampleDocument),   // replaces url: no document request; JSO-220 display example
   // proxyUrl removed
   hideTestRequestButton: true,
   hideClientButton: true,    // otherwise the sidebar links to client.scalar.com, a second way to send
-  showToolbar: 'never',      // otherwise Share and Deploy show on localhost (JSO-172)
+  showDeveloperTools: 'never', // the installed types' name for showToolbar; otherwise Share and Deploy show on localhost (JSO-172)
   telemetry: false,
   customCss: '.scalar-reference-intro-auth, .scalar-reference-intro-server { display: none !important; }',
 }
@@ -379,6 +380,47 @@ Re-tested 2026-11-05 at `4134640`, after the JSO-220 fix (`8cf603d`), in Orca's 
 - The reference's Developer Tools, Share and Deploy toolbar on the localhost quickstart is the known JSO-172 behaviour, so it isn't filed. The temporary API keys were kept out of the screenshots, and this run's test stack and database were removed afterward.
 
 ## Review  _(tech-lead)_
+Reviewed `521abd0` on 2026-11-05 against `origin/main` (`65a203b`). **Result: no blocking findings, status `approved`.** Three things must still happen before merge; see **Before merge**.
+
+The local `main` has diverged and doesn't contain spec 001, so `git diff main...HEAD` shows 404 files. The real change is 46 files. Local `main` also holds `b93205b`, which isn't on `origin/main`, so Elango should sort that out before updating it.
+
+**Checks run**
+
+| Check | Result |
+| --- | --- |
+| `pnpm lint`, `pnpm typecheck`, `pnpm test` | Pass |
+| `pnpm exec turbo run test --force` | Pass: 12 of 12 tasks, none cached, because `pnpm test` itself was all cache hits |
+| Real `VERCEL=1` build through Turbo, with no `PORTAL_DEMO_MODE` or `SERVER_URL` | Demo on: gated rewrites present, no `/api/*` rewrite, notice prerendered, no seed text in the client chunks. Every test suite forces `PORTAL_DEMO_MODE=on`, so this was the only run of the Vercel detection path through a full build |
+| HTTP and Chromium probes of that build (1280px, 375px) | Gated routes 200; `/api`, `/api/v1/health` and `/api/auth/session` 404; server and auth cards `display: none`; the only visible `localhost:8000` text outside the Scalar samples is the labelled base URL; no external requests |
+
+**Not re-run by this review:** `pnpm test:e2e:demo`, the Compose quickstart and the e2e journeys. QA passed them at `4134640`, and only docs have changed since. Their results are in the Test report.
+
+**Against the checklist**
+- **Acceptance criteria:** all 10 are implemented and tested, except that AC 3's signed-out link can't pass until the repo is public, and AC 9's cold start hasn't been measured on a clean machine.
+- **Design and contract:** the code matches the design. `apps/server/openapi.yaml` and `packages/sdk` are unchanged. This review updated the Technical design for `showDeveloperTools` and `reference-document.ts`.
+- **Errors, secrets, inputs, gateway:** no new endpoints, secrets or gateway calls.
+- **Quickstart:** `SERVER_URL` is set in the portal Dockerfile, so its build stays non-demo. `next.config.ts` opens the seed and loads `yaml` only in demo mode.
+- **Changes on the live path:** the ADR describes non-demo paths as unchanged, but the bug fixes changed four: `apps/server/Dockerfile` (JSO-218), `auth-form.tsx` (JSO-219), `reference.tsx` (JSO-220) and the `header.tsx` import. The first three each fixed a major bug and the Compose journeys cover them. The PR description should name all four.
+
+**Blocking**
+
+None.
+
+**Suggestions** (each is a Backlog follow-up; none blocks merge)
+
+- `suggestion` JSO-226, `deploy/e2e-demo/demo.test.ts:169`: no e2e asserts the hidden server and auth cards, though the design says the e2e must. They're hidden today, but a Scalar class rename would bring back an unlabelled base URL with no failing test.
+- `suggestion` JSO-227, `apps/portal/components/header.tsx:43`: the dynamic import sits outside any error handling, so a chunk load failure makes sign-out fail silently on the live portal. The import isn't needed, because `lib/client` makes no request on load (`reference.tsx:7` imports it statically on the demo API page).
+- `suggestion` JSO-228, `apps/portal/app/apis/[slug]/page.tsx:32`: `/apis/nope` shows the right page but answers HTTP 200, because `loading.tsx` starts the stream first. AC 7 passes; it's a soft 404 on a public site.
+- `suggestion` JSO-229, `.github/workflows/ci.yml:56`, `apps/portal/playwright.reference.config.ts`, `AGENTS.md:44`: `server-image-smoke.mjs` isn't in CI, the reference config duplicates the demo config, and `pnpm test:e2e:demo` isn't documented.
+- `suggestion` JSO-230, `apps/portal/AGENTS.md`, `apps/portal/next-env.d.ts:3`: Next's generated files dirty the worktree after a dev run or a build.
+- `apps/portal/app/quickstart-required/page.tsx:6`: a side effect of `force-static`, added as a comment on JSO-223 rather than a new issue.
+
+The open minor bugs JSO-221 to JSO-225 don't block either. JSO-221 (stretched version badge) is on the demo's main page, so it's the one most worth fixing before going public.
+
+**Before merge** (not code findings, so they don't send the spec back to `building`)
+1. **Push the branch and get CI green.** The branch isn't on GitHub, so no CI job has ever run on it, including the new `demo-smoke`. `compose-smoke` will also give the first cold-start measurement on a clean runner. QA's slowest local run was 281.81s against the 300s limit, with base images cached.
+2. **Run JSO-213 on the PR's Vercel preview.** Nothing has run on Vercel itself yet, and this feature exists only for that platform.
+3. **Elango makes the repo public**, per the decision above. Until then the quickstart link in AC 3 returns 404 for visitors.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
