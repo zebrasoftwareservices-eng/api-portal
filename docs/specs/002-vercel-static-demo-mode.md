@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -294,8 +294,8 @@ No new design tokens.
 | 5 — reference cannot send requests; local base URL labelled | `deploy/e2e-demo/demo.test.ts` | PASS; no Test Request/Send controls, visible inputs, Scalar client link or forbidden requests |
 | 6 — direct live routes show styled quickstart guidance | `deploy/e2e-demo/demo.test.ts` | PASS; HTTP 200, command/link, no forms, including nested dashboard/admin paths |
 | 7 — unknown API shows not-found content, catalog link and title | `deploy/e2e-demo/demo.test.ts` | PASS; JSO-217 verified (streamed HTTP status is not an AC 7 assertion) |
-| 8 — no API/localhost/Scalar requests or load errors; health 404 | `deploy/e2e-demo/demo.test.ts`; `apps/portal/lib/demo-build.test.ts` | PASS; listeners precede navigation; no demo API proxy |
-| 9 — normal quickstart and spec 001 journeys; no notice; guidance 404; startup budget | `deploy/e2e/demo-off.test.ts`; `apps/portal/e2e/journeys.ts`; `deploy/quickstart-smoke.mjs`; `deploy/smoke.mjs`; `deploy/server-image-smoke.mjs` | PASS on recorded host/cache conditions: both app images rebuilt plus startup/home in 131.65s; three full fresh-stack runs 12/12 each; pristine-machine cold start remains unmeasured |
+| 8 — no API/localhost/Scalar requests or load errors; health 404 | `deploy/e2e-demo/demo.test.ts`; `apps/portal/e2e/reference-snippets.test.ts`; `apps/portal/lib/demo-build.test.ts` | PASS including persisted Node.js client/reload at both widths; listeners precede navigation; no demo API proxy |
+| 9 — normal quickstart and spec 001 journeys; no notice; guidance 404; startup budget | `deploy/e2e/demo-off.test.ts`; `apps/portal/e2e/journeys.ts`; `deploy/quickstart-smoke.mjs`; `deploy/smoke.mjs`; `deploy/server-image-smoke.mjs` | PASS on recorded host/cache conditions: current both-image no-cache rebuild plus startup/home in 281.81s; current full suite 13/13; prior three fresh-stack runs 12/12 each; pristine-machine cold start remains unmeasured |
 | 10 — server outage keeps existing error page | `deploy/outage-smoke.mjs` | PASS against real Compose; both Kong recovery and server-outage checks pass |
 
 2026-11-05 post-fix re-test at `7d49a03` (includes server fix `13d89d5` and frontend fix `671cbe6`), with QA-only auth failure-path tests added afterward:
@@ -313,8 +313,19 @@ Historical failures from 2026-11-04 remain relevant: the original quickstart exc
 
 Disposition: JSO-218 and JSO-219 verified **Done**; JSO-212 **Done** and ticked; JSO-216/217 remain verified Done. No blocker or major bug remains open, so status is **uat** under the factory rule. **JSO-213 stays blocked and unticked**: QA did not push or open a PR, no preview exists, and signed-out AC 3 waits for Elango to make the repo public and merge. JSO-199 remains **In Progress** solely for that outstanding preview/public-access acceptance, with the local QA work complete. Only `portal-jso193-qa` containers/network/database volume were removed after validation; shared caches/images and other projects were untouched. Application code and approval gates were unchanged.
 
+2026-11-05 JSO-220 QA cycle at `ea2e2c4` (application fix `8cf603d`), with QA-only demo regressions added afterward:
+
+- `pnpm lint`, `pnpm typecheck`, `pnpm test`: PASS. Also ran `pnpm exec turbo run test --force`: all 12 tasks passed with zero cached tasks, including 94 tests (portal 59, server 30, Kong adapter 4, database 1) and real Postgres/Kong Testcontainers. Direct ESLint, Prettier and `git diff --check` pass for the changed test.
+- `pnpm test:e2e:demo`: **27/27 PASS (21.1s)** against a production demo build with no `SERVER_URL`. The demo acceptance command now imports the shared JSO-220 browser regression, so CI covers Node.js selection, persisted `node/undici`, reload, rendered POST body and console errors. AC 8 additionally checks forbidden requests and console errors after persisted selection/reload at both 1280px and 375px.
+- Expanded failure-path coverage repeats invalid POSTs to app creation, sign-in, sign-up and try-it with an expired session cookie; all return 404 in demo mode. Existing live coverage retains invalid inputs, missing permission, expired sessions, duplicate requests, auth failure/retry, failed reference load/retry and real gateway failure/recovery.
+- Current Compose quickstart: both app images rebuilt with `--no-cache` in **127.59s**, followed by the unchanged `deploy/quickstart-smoke.mjs` in **153.8s**; combined monotonic time **281.81s**. The latter rebuilt additional layers after the generated `next-env.d.ts` formatting was restored, then initialized a fresh project/database and rendered the seeded home. Docker Desktop aarch64, 8 CPUs, 3.825 GiB RAM; Node base/service images cached, no shared caches/images removed. The final demo suite and workspace checks overlapped the initial rebuild, so this is a measured pass under these conditions rather than an isolated performance benchmark or pristine-machine cold-start claim.
+- Complete unmodified `COMPOSE_PROJECT_NAME=portal-jso193-qa pnpm test:e2e`: **13/13 PASS (31.6s)** against the fresh stack, including both delayed-hydration auth cases, account/key/try-it/admin import, Node.js persistence/reload, reference retry, gateway outage/idempotence, seed convergence and ingress security. No retries, timeout increases or relaxed assertions.
+- `node deploy/server-image-smoke.mjs`, `node deploy/smoke.mjs` and `COMPOSE_PROJECT_NAME=portal-jso193-qa node deploy/outage-smoke.mjs`: PASS. Real Kong accepts the created key and rejects missing/revoked keys; try-it succeeds; Kong outage compensates and retries without duplicates; server outage shows the existing error page with no demo fallback (AC 10).
+
+Disposition for this cycle: **JSO-220 verified Done** in demo and live builds; its checklist item is ticked below. The four existing minor bugs JSO-221–224 remain open; no new bug or flaky failure was observed. Every criterion remains mapped above, and no blocker or major remains, so status is **uat**. JSO-213 remains an explicit deferred deployment/public-access check, and AC 3's signed-out destination access is still unverified pending Elango's repository visibility action and a preview; this report does not claim all acceptance criteria are fully passed. The current local QA dispatch is complete (JSO-199 Done); the earlier report's In Progress disposition is historical. Removed only this run's `portal-jso193-qa` containers/network/database volume; left shared images/caches and the pre-existing untracked portal AGENTS file untouched. No application code or approval gates changed.
+
 ### Bugs
-- [ ] JSO-220 Node.js (undici) sample for `POST /post` shows "Error generating snippet" and logs console errors on load once selected (major)
+- [x] JSO-220 Node.js (undici) POST snippet and returning-visitor load errors (major; fixed in `8cf603d`, production demo and real Compose selection/persistence/reload verified; Done)
 - [ ] JSO-221 API page version badge stretches across the full page width (minor)
 - [ ] JSO-222 Catalog browser tab title is "APIs" without "· Developer Portal" (minor)
 - [ ] JSO-223 Real portal's 404 at `/quickstart-required` has the tab title "Quickstart required" (minor)

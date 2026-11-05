@@ -3,6 +3,8 @@ import { expect, test } from '@playwright/test';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+// Exercise the returning-visitor regression in both the demo and live suites.
+import '../../apps/portal/e2e/reference-snippets.test';
 
 // Resolve the portal's parser without adding a second dependency or seed copy.
 const { parse } = createRequire(
@@ -169,6 +171,26 @@ for (const width of [1280, 375]) {
         0,
       );
       await page.waitForLoadState('networkidle');
+      // A persisted client choice must remain server-free on the next visit.
+      await page
+        .getByRole('tab', { name: 'Node.js', exact: true })
+        .first()
+        .click();
+      await expect
+        .poll(() =>
+          page.evaluate(() =>
+            localStorage.getItem('scalar-reference-selected-client-v2'),
+          ),
+        )
+        .toBe('node/undici');
+      await page.reload();
+      await expect(
+        page.getByRole('group', {
+          name: 'Request Example for post/post',
+          exact: true,
+        }),
+      ).toContainText('JSON.stringify({})');
+      await page.waitForLoadState('networkidle');
       expect(forbidden).toEqual([]);
       expect(errors).toEqual([]);
     });
@@ -205,12 +227,20 @@ test('demo API endpoints return 404 even for stale sessions and mutation request
     ).toBe(404);
   }
   for (let attempt = 0; attempt < 2; attempt++) {
-    expect(
-      (
-        await request.post('/api/v1/apps', {
-          data: { name: '', apiIds: ['invalid'] },
-        })
-      ).status(),
-    ).toBe(404);
+    for (const path of [
+      '/api/v1/apps',
+      '/api/auth/sign-in/email',
+      '/api/auth/sign-up/email',
+      '/api/v1/try-it',
+    ]) {
+      expect(
+        (
+          await request.post(path, {
+            headers: { cookie: 'better-auth.session_token=expired' },
+            data: { name: '', apiIds: ['invalid'] },
+          })
+        ).status(),
+      ).toBe(404);
+    }
   }
 });
