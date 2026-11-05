@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -325,46 +325,58 @@ Disposition: JSO-218 and JSO-219 verified **Done**; JSO-212 **Done** and ticked;
 Disposition for this cycle: **JSO-220 verified Done** in demo and live builds; its checklist item is ticked below. The four existing minor bugs JSO-221–224 remain open; no new bug or flaky failure was observed. Every criterion remains mapped above, and no blocker or major remains, so status is **uat**. JSO-213 remains an explicit deferred deployment/public-access check, and AC 3's signed-out destination access is still unverified pending Elango's repository visibility action and a preview; this report does not claim all acceptance criteria are fully passed. The current local QA dispatch is complete (JSO-199 Done); the earlier report's In Progress disposition is historical. Removed only this run's `portal-jso193-qa` containers/network/database volume; left shared images/caches and the pre-existing untracked portal AGENTS file untouched. No application code or approval gates changed.
 
 ### Bugs
-- [x] JSO-220 Node.js (undici) POST snippet and returning-visitor load errors (major; fixed in `8cf603d`, production demo and real Compose selection/persistence/reload verified; Done)
+- [x] JSO-220 Node.js (undici) POST snippet and returning-visitor load errors (major; fixed in `8cf603d`, production demo and real Compose selection/persistence/reload verified by QA and re-tested in the browser; Done)
 - [ ] JSO-221 API page version badge stretches across the full page width (minor)
 - [ ] JSO-222 Catalog browser tab title is "APIs" without "· Developer Portal" (minor)
 - [ ] JSO-223 Real portal's 404 at `/quickstart-required` has the tab title "Quickstart required" (minor)
 - [ ] JSO-224 API page has two h1 headings (minor)
+- [ ] JSO-225 Quickstart API reference lists operations in a different order from the OpenAPI document (minor)
 - [x] JSO-219 Intermittent quickstart signup/sign-in fail to redirect (major; fixed in `671cbe6`, three fresh-stack full runs and deterministic hydration regressions pass; original causation unproven; Done)
 - [x] JSO-218 Quickstart exceeds five-minute budget on 4 GB Docker QA host (major; fixed in `13d89d5`, both app images rebuilt plus startup/home in 131.65s with cached base/service images; pristine cold start unmeasured; Done)
 - [x] JSO-216 Non-demo quickstart-required streamed HTTP 200 (fixed in `b031ccc`, real Compose HTTP/browser 404 verified; Done)
 - [x] JSO-217 Unknown demo API used generic browser title (fixed in `b031ccc`, production Playwright regression verified; Done)
 
 ## User testing  _(user-tester)_
-Tested 2026-11-05 at `7d49a03` in Orca's built-in browser. Criteria 1–8 ran against a local production demo build (`PORTAL_DEMO_MODE=on`, no `SERVER_URL`), and criteria 9–10 against the Compose quickstart. No Vercel deployment was tested. Evidence is in `docs/uat/002/`.
+Re-tested 2026-11-05 at `4134640`, after the JSO-220 fix (`8cf603d`), in Orca's built-in browser. Criteria 1–8 ran against a local production demo build (`PORTAL_DEMO_MODE=on`, no `SERVER_URL`), and criteria 9–10 against the Compose quickstart. No Vercel deployment was tested. Evidence is in `docs/uat/002/`: `36`–`48` are from this round, and `01`–`35` from the first round at `7d49a03`.
 
 | User story | Result | Screenshot |
 | --- | --- | --- |
-| Platform engineer browses a real catalog and API reference | **Fail**: the catalog and all five operations are correct, but the Node.js sample for `POST /post` shows an error (JSO-220) | `01-catalog-desktop.png`, `02-reference-desktop.png`, `05-bug-node-snippet-error.png` |
-| Platform engineer is told what needs the quickstart and how to run it | Pass locally; the GitHub link is known-blocked until the repo is public | `01-catalog-desktop.png`, `22-copy-state.png`, `23-quickstart-link-private-repo-404.png` |
-| Developer following a link is told what the demo can't do | Pass | `02-reference-desktop.png`, `09-gated-sign-in.png`, `10-gated-dashboard-apps-new.png`, `11-gated-admin-apis.png`, `12-not-found-api.png`, `15-mobile-menu.png` |
-| Self-hosting admin never sees demo content | Pass, with minor JSO-223 | `24-quickstart-catalog-no-notice.png`, `25-quickstart-required-404.png`, `35-quickstart-server-down-error.png` |
+| Platform engineer browses a real catalog and API reference | Pass. The earlier failure (JSO-220) is fixed | `01-catalog-desktop.png`, `36-retest-demo-node-undici-post-after-reload.png`, `39-retest-mobile-reference-undici.png` |
+| Platform engineer is told what needs the quickstart and how to run it | Pass locally; the GitHub link is known-blocked until the repo is public | `37-retest-gated-sign-in.png`, `23-quickstart-link-private-repo-404.png` |
+| Developer following a link is told what the demo can't do | Pass | `37-retest-gated-sign-in.png`, `38-retest-not-found.png`, `40-retest-mobile-menu.png` |
+| Self-hosting admin never sees demo content | Pass, with minor JSO-223 and JSO-225 | `41-retest-quickstart-catalog.png`, `45-retest-quickstart-try-it-post-200.png`, `47-retest-quickstart-admin-import.png`, `48-retest-quickstart-server-down-error.png` |
 
 | Criterion | Browser result |
 | --- | --- |
 | 1 Catalog | Pass at desktop and 375px |
-| 2 Reference matches the seed | Pass: title, version and five operations |
-| 3 Notice on every page | Pass for notice and command on every page and width tested, and Copy put the exact command on the clipboard. **Known-blocked:** the link returns GitHub's 404 until Elango makes the repo public before merge; not filed as a bug (`23-…png`) |
+| 2 Reference matches the seed | Pass: title, version and five operations, in the seed's order |
+| 3 Notice on every page | Pass for the notice and command on all 11 routes at desktop and 4 routes at 375px. The link's `href` is correct. **Known-blocked:** the link returns GitHub's 404 until Elango makes the repo public before merge (JSO-213) |
 | 4 No unavailable auth or key controls | Pass, including the mobile menu |
-| 5 Can't send a request | Pass: no visible Send, Test Request or input, and Tab never reaches one. Scalar's client stays in the DOM with zero size. No request reached `/api/v1/try-it` or `localhost:8000`, including after pressing ⌘↵ |
+| 5 Can't send a request | Pass: no visible Send, Test Request or input, and no request to `/api/v1/try-it` or `localhost:8000`. A direct POST to `/api/v1/try-it` returns 404 |
 | 6 Gated routes | Pass on all five, plus nested `/dashboard/apps/abc` and `/admin/foo/bar` |
 | 7 Unknown API | Pass; **Go to APIs** returns to the catalog |
-| 8 No forbidden requests or console errors | **Fail for a returning visitor** (JSO-220). A first visit passes: 0 console errors and no forbidden requests on `/` or `/apis/sample`. `/api/v1/health` returns 404 |
-| 9 Quickstart with demo off | Pass: no notice, `/quickstart-required` is 404. Walked sign-up, key (200 through real Kong, 401 without), try-it (200 with a UUID) and admin import. `up -d --wait --build` took 85s **with cached layers, so this is not a cold-start measurement** |
+| 8 No forbidden requests or console errors | **Pass, including a returning visitor** with Node.js undici remembered, at desktop and 375px. `/api/v1/health` and `/api/v1/apis` return 404 |
+| 9 Quickstart with demo off | Pass: no notice, `/quickstart-required` is 404. Walked sign-up, key (200 through real Kong, 401 without), try-it and admin import (an invalid file publishes nothing, a valid one publishes). `up -d --wait --build` took 30s **with cached layers, so this is not a cold-start measurement** |
 | 10 Server unreachable | Pass: the existing error page, with no sample catalog or notice |
 
+**JSO-220 re-test** (stays Done)
+
+| Check | Demo | Quickstart |
+| --- | --- | --- |
+| Shell curl sample for `POST /post` | `--data '{}'`, no null body | Same |
+| Node.js undici sample | `body: JSON.stringify({})`, no snippet error | Same |
+| Reload as a returning visitor | `node/undici` remembered, sample correct, 0 console errors | Same |
+| 375px as a returning visitor | Correct | Correct |
+| Try-it `POST /post` with a real key | Not available, by design | 200 through Kong; `{}` echoed back |
+
 **Notes**
-- **Why JSO-220 is major:** reading isn't blocked, because every other client works. It is rated major because the failure is on screen on the page visitors use to judge the project, in the default client of a main tab, and it fails AC 8's load check once the choice is remembered. It also happens on the quickstart, so it isn't caused by demo mode.
-- **Worked well:** wrong-password and empty-form messages, the back button, keyboard order (the skip link, header, notice and card all match the design), focus returning to the menu button after Escape, and no page-level sideways scrolling at 375px.
-- **Not reproduced:** one tap on the mobile menu right after load did nothing, then worked 5 of 5 times on retest, so it isn't filed.
-- **Test tool artifacts, not bugs:** `orca viewport --scale 3` doubled the image, `full-screenshot` repeated the sticky header, and a screenshot taken straight after a scripted scroll came out white. Real scrolling and sidebar jumps painted normally. Mobile evidence uses `--scale 1`.
-- **Not covered:** mobile used 375px (the width in the criteria), not the role file's 390px. Mobile and keyboard journeys ran on the demo build only, not the quickstart. No expired-session test on the quickstart, and the demo has no sessions. JSO-213 (Vercel preview and signed-out link) waits for the PR.
-- The reference's Developer Tools, Share and Deploy toolbar on the localhost quickstart is the known JSO-172 behaviour, so it isn't filed. The temporary API key was kept out of the screenshots, and the test stack and its database were removed afterward.
+- **Other clients:** on the demo build, all 39 clients in the picker showed no snippet error and logged no console errors. They were checked with a pattern match on the rendered text, and only the samples it flagged were read in full. Those were valid, but with two quirks in how the samples treat an empty body: clj-http leaves the body out, and PHP cURL and Guzzle encode it as `[]`. Neither is filed, because nothing errors and the sample API accepts any body. On the quickstart, only curl and undici were checked.
+- **New this round:** JSO-225 (minor). The quickstart reference lists `/status/{code}` last, not in the seed's order. It was already visible in first-round screenshot `26`, so the fix didn't cause it, and the demo isn't affected.
+- **Worked well:** the wrong-password message, the empty-form validation, keyboard order and Enter on the catalog card, focus returning to the menu button after Escape, and no sideways page scrolling at 375px.
+- **Standalone Chromium evidence:** `36` and `43` were taken with Playwright's Chromium against the same two builds, because Orca's capture couldn't show that part of the page. The text readings in the table above are from Orca's browser, and the Chromium run independently confirmed undici after reload, with no snippet or console errors.
+- **Test tool artifacts, not bugs:** Orca's `screenshot` often comes out white once the page is scrolled well down, whichever client is selected, while the DOM has the right content there. Chromium painted the same offsets normally. Forcing a tall `orca viewport` gave a tiled or blank image. The first round's note that sidebar jumps paint normally doesn't always hold.
+- **Not covered this round:** ⌘↵ on the demo and the clipboard contents after Copy were checked in the first round and not repeated; this round confirmed only the "Copied" state. Expired sessions weren't tested. The mobile quickstart check covered the reference only. Mobile used 375px (the width in the criteria), not the role file's 390px. JSO-213 (Vercel preview and signed-out link) waits for the PR.
+- The reference's Developer Tools, Share and Deploy toolbar on the localhost quickstart is the known JSO-172 behaviour, so it isn't filed. The temporary API keys were kept out of the screenshots, and this run's test stack and database were removed afterward.
 
 ## Review  _(tech-lead)_
 
