@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from '@playwright/test';
+import './reference-snippets.test';
 
 test('developer signs up, copies a one-time key, calls Kong and revokes it', async ({
   page,

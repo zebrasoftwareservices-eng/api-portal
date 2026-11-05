@@ -6,6 +6,7 @@ import { Button } from '@portal/ui';
 import '@scalar/api-reference-react/style.css';
 import { api } from '../lib/client';
 import { useResource } from './use-resource';
+import { referenceDocument } from '../lib/reference-document';
 export const Scalar = dynamic(
   () => import('@scalar/api-reference-react').then((m) => m.ApiReferenceReact),
   { ssr: false, loading: () => <p role="status">Loading API reference…</p> },
@@ -50,7 +51,7 @@ export function Reference({ documentUrl }: { documentUrl: string }) {
     <ReferenceBoundary key={attempt} retry={() => setAttempt((n) => n + 1)}>
       <Scalar
         configuration={{
-          url: documentUrl,
+          content: referenceDocument(document.data ?? {}),
           proxyUrl: '/api/v1/try-it',
           theme: 'none',
           hideDarkModeToggle: true,
