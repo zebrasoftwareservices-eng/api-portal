@@ -1,7 +1,7 @@
 ---
 id: 002
 title: Static demo mode for the Vercel deployment
-status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-04
 linear: JSO-193
@@ -226,6 +226,7 @@ read this file. Update `pnpm-lock.yaml` with it, or the quickstart's frozen inst
 | The seed's description says "for trying your portal API key", and AC 1 requires that description. | Left as it is, because editing the seed would change the quickstart. UX can decide if the notice needs to address it. |
 
 ### Tasks
+- [x] [frontend] Fix JSO-221: API page version badge stretches across the full page width; it should hug its text as in design section 3.2 and on the catalog card, in both demo and live builds, at desktop and 375px. Elango asked for this in PR #3 on 2026-11-05.
 - [x] [frontend] Fix JSO-220: Node.js (undici) sample for `POST /post` shows "Error generating snippet" and logs console errors on load once selected.
 - [x] [frontend] Fix JSO-219: isolate intermittent quickstart signup/sign-in submissions that remain on the form, fix the cause and add deterministic regression coverage.
 - [x] [backend] Fix JSO-218: investigate the 300-second quickstart timeout during server image packaging on the 4 GB QA host and verify startup within five minutes.
@@ -264,6 +265,8 @@ No new design tokens.
 - **README:** the design asks JSO-210 to add a clone step to the Quickstart section.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend (Fix JSO-221): badges now use `width: fit-content`, preventing the API page's grid from stretching the version badge while retaining its existing typography, padding and theme tokens. Added shared Playwright regressions at 1280px and 375px that compare the rendered badge width to its text plus padding; both failed before the fix and pass afterward in the production demo (3/3 reference tests) and real Compose portal (2/2 badge tests). These regressions run through the existing demo and live acceptance suites. `pnpm lint`, `pnpm typecheck`, `pnpm test`, direct test-file ESLint, Prettier and `git diff --check` pass; unchanged package results may use Turbo cache. JSO-221 awaits QA in In Review, so its Bugs entry stays unticked; JSO-222–225 and review suggestions are unchanged. The coordinator's existing status edit and task line are included; this worker did not change the spec status.
 
 - Frontend (Fix JSO-220, commit `8cf603d`): isolated Scalar's undici failure to its object formatter receiving the generated JSON `null` for the seed's unconstrained `schema: {}`. A shared presentation helper adds a valid `{}` example only to unconstrained JSON request bodies without authored examples; the seed file, original document, schemas and explicit examples stay unchanged. Demo reference uses the helper, and the live reference now passes its already SDK-loaded document to Scalar instead of fetching it a second time.
 - Added three document regression tests, a live-reference component test and a real Scalar browser regression that selects Node.js, verifies the POST sample, waits for persisted selection and reloads with no snippet or console errors. Run the demo regression with `pnpm exec playwright test --config apps/portal/playwright.reference.config.ts`; it is also imported by the existing Compose journeys. Initial test attempts needed an ESM config path correction, the actual tab/group locators and a polling assertion for Scalar's debounced persistence; the final regression passes without retries or longer timeouts.

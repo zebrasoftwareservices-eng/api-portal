@@ -312,6 +312,7 @@ legend {
 }
 .badge {
   display: inline-flex;
+  width: fit-content;
   gap: 6px;
   padding: 2px 8px;
   font-size: var(--portal-text-xs);

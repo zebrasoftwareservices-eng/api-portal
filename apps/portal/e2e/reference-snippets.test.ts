@@ -1,6 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from '@playwright/test';
 
+for (const width of [1280, 375]) {
+  test(`API version badge hugs its text at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto('/apis/sample');
+    const badge = page.locator('main .badge').filter({ hasText: /^v1\.0\.0$/ });
+    await expect(badge).toBeVisible();
+    const dimensions = await badge.evaluate((element) => {
+      const text = document.createRange();
+      text.selectNodeContents(element);
+      const style = getComputedStyle(element);
+      return {
+        actual: element.getBoundingClientRect().width,
+        expected:
+          text.getBoundingClientRect().width +
+          parseFloat(style.paddingLeft) +
+          parseFloat(style.paddingRight),
+      };
+    });
+    expect(Math.abs(dimensions.actual - dimensions.expected)).toBeLessThan(2);
+  });
+}
+
 test('Node.js POST samples survive selection and a returning visit without errors', async ({
   page,
 }) => {
