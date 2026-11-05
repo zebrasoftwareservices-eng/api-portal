@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Card, Input } from '@portal/ui';
 import { auth } from '../lib/client';
@@ -22,6 +22,10 @@ export function AuthForm({
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
   const [pending, setPending] = useState(false);
+  const [ready, setReady] = useState(false);
+  // The server-rendered form must not accept a native submission before
+  // React attaches onSubmit (or lose values entered before hydration).
+  useEffect(() => setReady(true), []);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failure, setFailure] = useState('');
   const [duplicate, setDuplicate] = useState(false);
@@ -126,82 +130,84 @@ export function AuthForm({
           }
         }}
       >
-        {signup && (
-          <Field label="Name" error={errors.name}>
+        <fieldset disabled={!ready} className="stack">
+          {signup && (
+            <Field label="Name" error={errors.name}>
+              {(props) => (
+                <Input
+                  {...props}
+                  autoComplete="name"
+                  required
+                  readOnly={pending}
+                  value={name}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    if (errors.name) setErrors(validate(e.target.value));
+                  }}
+                />
+              )}
+            </Field>
+          )}
+          <Field label="Email" error={errors.email}>
             {(props) => (
               <Input
                 {...props}
-                autoComplete="name"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
                 required
                 readOnly={pending}
-                value={name}
+                value={email}
                 onChange={(e) => {
-                  setName(e.target.value);
-                  if (errors.name) setErrors(validate(e.target.value));
+                  setEmail(e.target.value);
+                  if (errors.email) setErrors(validate(name, e.target.value));
                 }}
               />
             )}
           </Field>
-        )}
-        <Field label="Email" error={errors.email}>
-          {(props) => (
-            <Input
-              {...props}
-              type="email"
-              inputMode="email"
-              autoComplete="email"
-              required
-              readOnly={pending}
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                if (errors.email) setErrors(validate(name, e.target.value));
-              }}
-            />
-          )}
-        </Field>
-        {duplicate && <a href={link}>Sign in instead</a>}
-        <Field
-          label="Password"
-          error={errors.password}
-          hint={signup ? 'At least 8 characters.' : undefined}
-        >
-          {(props) => (
-            <div className="row">
-              <Input
-                {...props}
-                name="password"
-                type={show ? 'text' : 'password'}
-                autoComplete={signup ? 'new-password' : 'current-password'}
-                required
-                readOnly={pending}
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (errors.password)
-                    setErrors(validate(name, email, e.target.value));
-                }}
-              />
-              <Button
-                variant="ghost"
-                type="button"
-                aria-pressed={show}
-                onClick={() => setShow(!show)}
-              >
-                {show ? 'Hide' : 'Show'}
-              </Button>
-            </div>
-          )}
-        </Field>
-        <Button type="submit" disabled={pending} aria-busy={pending}>
-          {pending
-            ? signup
-              ? 'Creating account…'
-              : 'Signing in…'
-            : signup
-              ? 'Create account'
-              : 'Sign in'}
-        </Button>
+          {duplicate && <a href={link}>Sign in instead</a>}
+          <Field
+            label="Password"
+            error={errors.password}
+            hint={signup ? 'At least 8 characters.' : undefined}
+          >
+            {(props) => (
+              <div className="row">
+                <Input
+                  {...props}
+                  name="password"
+                  type={show ? 'text' : 'password'}
+                  autoComplete={signup ? 'new-password' : 'current-password'}
+                  required
+                  readOnly={pending}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (errors.password)
+                      setErrors(validate(name, email, e.target.value));
+                  }}
+                />
+                <Button
+                  variant="ghost"
+                  type="button"
+                  aria-pressed={show}
+                  onClick={() => setShow(!show)}
+                >
+                  {show ? 'Hide' : 'Show'}
+                </Button>
+              </div>
+            )}
+          </Field>
+          <Button type="submit" disabled={pending} aria-busy={pending}>
+            {pending
+              ? signup
+                ? 'Creating account…'
+                : 'Signing in…'
+              : signup
+                ? 'Create account'
+                : 'Sign in'}
+          </Button>
+        </fieldset>
       </form>
       <p>
         {signup ? 'Already have an account?' : 'New here?'}{' '}

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { renderToString } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthForm } from './auth-form';
 const mocks = vi.hoisted(() => ({
@@ -17,6 +18,22 @@ vi.mock('next/navigation', () => ({
 }));
 describe('account forms', () => {
   beforeEach(() => vi.resetAllMocks());
+  it.each(['sign-up', 'sign-in'] as const)(
+    'keeps %s inert until hydration attaches its submit handler',
+    (mode) => {
+      const container = document.createElement('div');
+      container.innerHTML = renderToString(<AuthForm mode={mode} />);
+      document.body.append(container);
+      const fieldset = container.querySelector('fieldset')!;
+      expect(fieldset).toBeDisabled();
+      for (const input of container.querySelectorAll('input'))
+        expect(input).toBeDisabled();
+      expect(container.querySelector('button[type=submit]')).toBeDisabled();
+      render(<AuthForm mode={mode} />, { container, hydrate: true });
+      expect(fieldset).not.toBeDisabled();
+      expect(container.querySelector('button[type=submit]')).toBeEnabled();
+    },
+  );
   it('validates without calling auth and keeps the continuation for existing accounts', async () => {
     const user = userEvent.setup();
     render(<AuthForm mode="sign-up" next="/dashboard/apps/new?api=sample" />);
