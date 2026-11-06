@@ -1,7 +1,7 @@
 ---
 id: 004
 title: Per-API access control on Kong
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-06
 linear: JSO-233
@@ -376,45 +376,48 @@ go slightly beyond it. They're tracked in JSO-276:
 
 ## Test report  _(qa-tester)_
 
-QA run: 2026-11-06. Real Kong 3.9 and Postgres 17 run in Testcontainers; browser and startup/outage journeys run against the built Docker Compose quickstart. Tests change no application code.
+QA rerun after frontend fixes: 2026-11-06 (commit `90a3b87`). Real Kong 3.9 and Postgres 17 run in Testcontainers; browser and startup/outage journeys run against the built Docker Compose quickstart. Tests change no application code.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
 | AC 1 — subscribed A succeeds, unsubscribed B is refused | `packages/adapter-kong/src/conformance.test.ts`, “AC 1/3/4” | PASS: 200 on A, 403 on B; missing, unknown and revoked keys return 401. |
-| AC 2 — try-it shows the 403, exact title and next step; upstream 403 stays unchanged | `apps/portal/e2e/journeys.ts`, “AC 2”; `apps/server/src/app.test.ts`, “rewrites only gateway ACL 403s” | PASS against real Kong in Scalar, including visible response title and next-step problem body. The browser fixture waits for publication visibility because of JSO-277. |
+| AC 2 — try-it shows the 403, exact title and next step; upstream 403 stays unchanged | `apps/portal/e2e/journeys.ts`, “AC 2”; `apps/server/src/app.test.ts`, “rewrites only gateway ACL 403s” | PASS against real Kong in Scalar, including visible response title and next-step problem body; actual body scroller exceeds 400px at 1280/1920 and 280px at 375, with a visible Body region. The browser fixture waits for publication visibility because of JSO-277. |
 | AC 3 — unmanaged key-auth refuses portal keys, operator keys and public traffic preserved | `packages/adapter-kong/src/conformance.test.ts`, “AC 1/3/4”, “AC 3: route-only”, “AC 3/4: global” | PASS: service, route-only and global key-auth; public sibling remains open; operator consumer succeeds on unmanaged service. |
 | AC 4 — header and query key hidden; consumer identity retained | `packages/adapter-kong/src/conformance.test.ts`, “AC 1/3/4”, “AC 3/4: global” | PASS: echo contains neither key; `X-Consumer-Custom-Id` matches app; global key-auth unchanged outside managed services. |
-| AC 5 — legacy keys upgrade without interruption and restart converges | `packages/adapter-kong/src/conformance.test.ts`, “AC 5/7”; `apps/portal/e2e/gateway.ts`, “sample seed converges”; `apps/server/src/app.test.ts`, reconcile policy assertion | PASS: v0.1 tagged consumer/key with no groups, continuous subscribed traffic all 200 during policy upgrade, B becomes 403, fresh adapter makes no repairs and object snapshots match ignoring `updated_at`; real server restart preserves seed IDs. Single-node Kong only, as designed. |
+| AC 5 — legacy keys upgrade without interruption and restart converges | `packages/adapter-kong/src/conformance.test.ts`, “AC 5/7”; `apps/portal/e2e/gateway.ts`, “sample seed converges” and “JSO-282”; `apps/server/src/app.test.ts`, reconcile policy assertion | **FAIL on minor seed timestamp deviation JSO-282; access and reconcile tests PASS:** v0.1 tagged consumer/key with no groups, continuous subscribed traffic all 200 during policy upgrade, B becomes 403, fresh adapter makes no repairs and object snapshots match ignoring `updated_at`; real server restart preserves seed IDs. **Minor deviation JSO-282:** the seed identity check passes, but the explicit expected-failure browser regression checks `created_at` across a real restart, so the literal no-object-change requirement is not fully met. Single-node Kong only, as designed. |
 | AC 6 — boot with Kong down, no persisted access/key changes, next run repairs | `apps/portal/e2e/gateway.ts`, “AC 6”; `apps/server/src/app.test.ts`, “AC 6”; `apps/server/src/startup.test.ts`, “AC 6” | PASS: real server starts while Kong is stopped, logs unavailability without key/password; persisted app/key/subscription detail is unchanged; same reconcile job body after recovery restores the removed membership and key returns 200. Real-Postgres test also compares subscription and credential rows. |
 | AC 7 — all four drift cases repaired in one run; operator memberships preserved | `packages/adapter-kong/src/conformance.test.ts`, “AC 5/7”; `packages/adapter-kong/src/access.test.ts` | PASS: missing subscribed group, extra unsubscribed group, deleted ACL and disabled hiding repaired together; operator's untagged group and `portal-svc-*` membership unchanged; next run reports no repairs. |
 | AC 8 — failed or timed-out grant compensates; clean retry without duplicates | `apps/server/src/app.test.ts`, “compensates failed grants”; `packages/adapter-kong/src/kong.test.ts`, grant transport cases; `packages/adapter-kong/src/conformance.test.ts`, “AC 8”; `apps/portal/e2e/gateway.ts`, outage retry | PASS: 503/problem with no key or app row, issueCredential not called after grant rejection; retry leaves one consumer/credential; real partial-grant compensation cascades memberships and retry has one membership per group; timeout/connection failures expose no transport secret. |
 | AC 9 — publish denies existing keys, subscribe grants; foreign ACL and duplicate link refused | `packages/adapter-kong/src/conformance.test.ts`, “AC 9” cases; `apps/server/src/app.test.ts`, import conflict and simultaneous import cases; `apps/portal/e2e/journeys.ts`, admin imports | PASS: real gateway 403 then 200 after grant; service/route/global foreign ACL snapshots unchanged; server returns 422 problem naming service with no published row; concurrent duplicate links yield one 201 and one 422. Admin fixtures use separate services. |
 | AC 10 — tagged idempotent grant/revoke conformance and unreachable gateway | `packages/adapter-kong/src/conformance.test.ts` invoking `packages/adapter-sdk/src/conformance.ts` | PASS: repeated grant keeps one membership and same ID, missing revoke succeeds, unavailable grant/revoke throws `GatewayUnavailableError`, created consumers/keys/memberships/plugins carry ownership tags. |
 
-Validation:
+Validation (this rerun supersedes the earlier focus-failure results):
 
-- `pnpm lint` and `pnpm typecheck`: PASS after QA changes.
-- `pnpm test --force` and `pnpm test --force --concurrency=1`: FAIL on the existing admin-refusal focus assertion (JSO-278), including a package-serial run. The isolated admin-import file passes all 9 tests. No application fix or assertion relaxation was made.
-- `pnpm test --force --concurrency=1 -- --maxWorkers=1`: **PASS, 135 tests** (68 portal, 29 Kong adapter, 37 server, 1 database), including the one explicitly expected-failure regression for JSO-277; all 12 workspace tasks executed without cache. Serializing Vitest files avoids the JSO-278 focus flake.
-- `pnpm test:e2e`: **19/19 PASS**, including the real Scalar refusal and real outage-at-startup/recovery journeys.
-- `node deploy/quickstart-smoke.mjs`: **PASS, 146.3 seconds** including image builds, Compose startup and seeded home page, under five minutes.
-- `node deploy/smoke.mjs` and `node deploy/outage-smoke.mjs`: PASS (first call, one-time key, revoke, Kong retry and server error-page recovery).
+- `pnpm lint` and `pnpm typecheck`: **PASS**. Server lint/typecheck also pass after the test-only change.
+- `pnpm test --force`: **PASS, 136 tests** (69 portal, 29 Kong adapter, 37 server, 1 database), with normal package and Vitest file concurrency; all 12 workspace tasks executed without cache. The count includes the explicitly expected-failure regression for JSO-277, which remains unfixed.
+- Strengthened `apps/server/src/app.test.ts`'s real stored-session expiry case: an expired developer cannot create an app, consumer, access grant or credential; response is a 401 problem with no key, and stored apps are unchanged. The subsequent complete server rerun passes **37/37 tests**. Existing failure paths cover malformed input, permission boundaries, duplicates, timeout/connection failure and compensation.
+- `pnpm test:e2e`: **21 ordinary passes plus 1 expected failure (JSO-282)** in the final 22-case run against the rebuilt Compose portal; command exits 0. This includes real Scalar 403 body width, repeated refusal focus, gateway outage, and outage-at-startup/reconcile recovery. The first browser run passed all 21 existing cases before adding the seed timestamp regression.
+- `node deploy/quickstart-smoke.mjs`: **PASS, 171.6 seconds** including image builds, Compose startup and seeded home page, under five minutes.
+- `node deploy/smoke.mjs`: **PASS** (seed, sign-up, app/key creation, real Kong auth, try-it, one-time key and revoke).
+- `node deploy/outage-smoke.mjs`: **PASS** (503 with no partial app, one-consumer/key retry, and server error-page recovery).
+- Run logs: `/tmp/004-qa2-{lint,typecheck,test,server-final,server-lint,server-types,e2e,e2e-final,quickstart,smoke,outage}.log` (local evidence, not committed artifacts).
 
-Known failure and flakiness:
+Known limitations and flakiness:
 
-- JSO-277 has a deterministic `it.fails` regression in `apps/server/src/app.test.ts`: a warm try-it catalog cache rejects a newly published target until its 30-second expiry. This is an expected-failure test, **not a fixed bug**. AC 2 separately proves the browser response after the target is visible.
-- JSO-278: admin-refusal service-field focus failed in three suite runs (including package-serial); the isolated file passes; error copy and `aria-invalid` were present while focus remained on submit. The existing assertion remains intact. One sandboxed standalone portal run also had ingress `listen EPERM` errors; those were environment restrictions, not product defects, and the full suite uses escalated local socket/Docker access.
+- JSO-277 retains a deterministic `it.fails` regression in `apps/server/src/app.test.ts`: a warm try-it catalog cache rejects a newly published target until its 30-second expiry. This is an expected-failure test, **not a fixed bug**. AC 2 separately proves the browser response after the target is visible.
+- JSO-278's earlier load-dependent focus failure did **not** recur with normal file concurrency while Compose built. The original focus assertions remain intact; the delayed-response component regression blocks animation frames and checks alert-then-field focus. Both browser refusal cases repeat twice at 1280px and 375px and confirm focus after two additional paints.
+- JSO-281 (operation-level security authentication hint) and JSO-282 (seed `created_at` reset) remain minor Backlog findings. This rerun does not claim they are fixed; AC 5's timestamp limitation is explicit above. The new JSO-282 browser regression verifies restart recovery and stable IDs before marking only its timestamp-equality assertion as an expected failure, so setup or identity failures remain unexpected failures.
 - Kong route/plugin propagation is asynchronous. Tests poll observable responses for up to 15 seconds; the upgrade test first warms the legacy route across workers before starting its uninterrupted traffic loop. The application's existing six-second membership settle delay remains real.
 
-Disposition: **uat**. All ten criteria have automated coverage; the two open findings are minor, with no blocker or major bug open. JSO-268–JSO-274 are Done in Linear; QA task checkboxes outside this report are left for the coordinator to reconcile within its ownership.
+Disposition: **uat**. All ten criteria have automated coverage, with the minor AC 5 timestamp deviation recorded; no blocker or major bug remains open. The existing QA tasks JSO-268–JSO-274 were already Done and remain Done.
 
-Bug retest audit: queried all direct Bug children of JSO-233 without a result limit; none existed at pickup, so there were no In Review bugs to close or reopen. JSO-165 is a related Backlog follow-up rather than an In Review bug; AC 4 now verifies its hiding behavior.
+Bug retest audit: listed all direct Bug children of JSO-233 without a result limit (six issues, no truncation). All three In Review bugs were independently verified, commented and moved to **Done**: JSO-278 (normal-concurrency and deterministic delayed-focus regressions), JSO-279 (real browser response widths at 1280/1920/375), JSO-280 (both real refusals, repeated desktop/mobile focus checks). JSO-277, JSO-281 and JSO-282 remain minor Backlog issues; no new bug was found.
 
 ### Bugs
 - [ ] JSO-277 Newly published APIs are rejected by try-it until its 30-second catalog cache expires (minor)
-- [ ] JSO-278 Admin service-refusal focus assertion intermittently fails under test load (minor)
-- [ ] JSO-279 Try-it response body is about 116px wide on desktop, so the 403 message can't be read (major)
-- [ ] JSO-280 After an import refusal, focus stays on the alert instead of the Kong service field (minor)
+- [x] JSO-278 Admin service-refusal focus assertion intermittently fails under test load (minor)
+- [x] JSO-279 Try-it response body is about 116px wide on desktop, so the 403 message can't be read (major)
+- [x] JSO-280 After an import refusal, focus stays on the alert instead of the Kong service field (minor)
 - [ ] JSO-281 API reference info line points to an apikey field that isn't there when security is set per operation (minor)
 - [ ] JSO-282 Restarting the server resets `created_at` on the sample's Kong objects (minor)
 - [x] [frontend] Fix JSO-279: make the try-it response body readable at desktop widths, and assert it in the AC 2 browser test

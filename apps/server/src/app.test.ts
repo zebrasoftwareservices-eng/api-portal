@@ -268,6 +268,32 @@ describe('contract endpoints', () => {
     });
     expect(result.statusCode).toBe(401);
     expect(result.json().type).toBe('/problems/unauthenticated');
+    const consumersBefore = vi.mocked(adapter.ensureConsumer).mock.calls.length;
+    const grantsBefore = vi.mocked(adapter.grantAccess).mock.calls.length;
+    const keysBefore = vi.mocked(adapter.issueCredential).mock.calls.length;
+    const appsBefore = await connection.db.select().from(apps);
+    const create = await server.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      headers: { cookie: expiredCookie },
+      payload: { name: 'expired-session-access', apiIds: [apiId] },
+    });
+    expect(create.statusCode).toBe(401);
+    expect(create.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(create.json().type).toBe('/problems/unauthenticated');
+    expect(create.body).not.toContain('pk_');
+    expect(vi.mocked(adapter.ensureConsumer).mock.calls).toHaveLength(
+      consumersBefore,
+    );
+    expect(vi.mocked(adapter.grantAccess).mock.calls).toHaveLength(
+      grantsBefore,
+    );
+    expect(vi.mocked(adapter.issueCredential).mock.calls).toHaveLength(
+      keysBefore,
+    );
+    expect(await connection.db.select().from(apps)).toEqual(appsBefore);
   });
   it('compensates a credential failure and permits a clean retry', async () => {
     vi.mocked(adapter.issueCredential).mockRejectedValueOnce(
