@@ -415,6 +415,7 @@ Bug retest audit: queried all direct Bug children of JSO-233 without a result li
 - [ ] JSO-281 API reference info line points to an apikey field that isn't there when security is set per operation (minor)
 - [ ] JSO-282 Restarting the server resets `created_at` on the sample's Kong objects (minor)
 - [ ] [frontend] Fix JSO-279: make the try-it response body readable at desktop widths, and assert it in the AC 2 browser test
+- [ ] [frontend] Fix JSO-280 and JSO-278: after an import refusal, focus reliably moves to the Kong service field in a real browser and under test load, keeping the existing focus assertion unrelaxed
 
 ## User testing  _(user-tester)_
 Run on 2026-11-06 in Orca's built-in browser against clean Docker Compose installs of this branch, with Kong 3.9.4. Access results come from real calls through Kong; Admin API calls set up operator fixtures and drift. Screenshots are in `docs/uat/004/`.
