@@ -330,13 +330,13 @@ it waited longer; that's why the first risk below is there.
 - [x] [frontend] JSO-266 Admin import: map `gateway-service-has-acl` and `gateway-service-already-linked` to `gatewayServiceId` field errors, using the UX copy.
 - [x] [frontend] JSO-267 Admin import: replace the key-auth-off warning with copy saying the API is public, show `warnings` from the import response, and reword the already-linked note to say the import will be refused.
 - [x] [frontend] JSO-276 Copy additions approved by Elango: API reference info line, Create-app hint and Kong service hint, matching §4.4 of the UX design with the accessibility wiring in §5.
-- [ ] [qa] JSO-268 AC 1, 3, 4: access-rule suite on real Kong and Postgres in Testcontainers, covering all five access-rule rows, plus route-only and global key-auth variants.
-- [ ] [qa] JSO-269 AC 2: Playwright, try-it with an unsubscribed key shows the 403 and the UX message; an upstream 403 stays unchanged.
-- [ ] [qa] JSO-270 AC 5, 6: upgrade from a v0.1 state with a call loop that fails on any refused subscribed key; restart compare ignoring `updated_at`; Kong down at boot, then converging on the next run with no secret in logs.
-- [ ] [qa] JSO-271 AC 7: all four drift cases repaired in one run, with untagged groups on non-portal consumers and their membership of `portal-svc-*` left alone.
-- [ ] [qa] JSO-272 AC 8: Kong failing or timing out during the grant gives the gateway error, no key, no app row, and a retry with one consumer and no duplicate groups.
-- [ ] [qa] JSO-273 AC 9, 10: publish and subscribe flow; foreign ACL refused at service, route and global scope with plugins unchanged; second link refused; conformance suite passes against Kong.
-- [ ] [qa] JSO-274 Update `apps/portal/e2e/journeys.ts` to publish to separate Kong services, and run the `docker compose` quickstart and smoke scripts with hiding on.
+- [x] [qa] JSO-268 AC 1, 3, 4: access-rule suite on real Kong and Postgres in Testcontainers, covering all five access-rule rows, plus route-only and global key-auth variants.
+- [x] [qa] JSO-269 AC 2: Playwright, try-it with an unsubscribed key shows the 403 and the UX message; an upstream 403 stays unchanged.
+- [x] [qa] JSO-270 AC 5, 6: upgrade from a v0.1 state with a call loop that fails on any refused subscribed key; restart compare ignoring `updated_at`; Kong down at boot, then converging on the next run with no secret in logs.
+- [x] [qa] JSO-271 AC 7: all four drift cases repaired in one run, with untagged groups on non-portal consumers and their membership of `portal-svc-*` left alone.
+- [x] [qa] JSO-272 AC 8: Kong failing or timing out during the grant gives the gateway error, no key, no app row, and a retry with one consumer and no duplicate groups.
+- [x] [qa] JSO-273 AC 9, 10: publish and subscribe flow; foreign ACL refused at service, route and global scope with plugins unchanged; second link refused; conformance suite passes against Kong.
+- [x] [qa] JSO-274 Update `apps/portal/e2e/journeys.ts` to publish to separate Kong services, and run the `docker compose` quickstart and smoke scripts with hiding on.
 
 ## UX  _(ui-designer)_
 Full design: [docs/design/004-per-api-access-control.md](../design/004-per-api-access-control.md).
