@@ -371,6 +371,9 @@ go slightly beyond it. They're tracked in JSO-276:
 - Frontend (JSO-266, JSO-267, JSO-276): admin import maps both new refusals to the Kong service field, retains values and focus, and clears stale refusals when the service changes. Public and linked-service warnings use the UX copy; successful imports keep all server warning messages in response order after the form resets and associate them with the focused success alert. Existing alert styles now wrap long names.
 - Added the approved API reference info line, API-choice hint and key-auth service effects hint with accessible descriptions. Component coverage checks refusal focus and recovery, warning persistence and future warning codes, conditional service notes, and the API-choice hint during loading, validation and empty states. Validation: workspace lint and typecheck pass, and the full portal suite passes 68 tests. The full workspace suite currently fails only in backend app tests while the adapter fake and repeated imports are being updated; QA should verify the live Scalar 403 body at desktop and mobile sizes, supplied by the proxy.
 
+- Frontend UAT fixes (JSO-279, JSO-280, JSO-278, 2026-11-06; commit `90a3b87`): renamed the portal catalog/loading layout class to `portal-grid`, removing the desktop column rules that leaked into Scalar's response grids. AC 2 now measures the response body scroller at 1280px, 1920px and 375px (minimum widths 400px desktop / 280px mobile), in addition to checking the real refusal and upstream pass-through.
+- Import validation now focuses invalid fields from a post-commit effect after the fieldset is enabled; the alert is focused first, then the Kong service select. Existing focus assertions remain intact. A delayed-response component regression blocks animation frames and asserts that focus order; real-browser regressions repeat both refusals twice at 1280px and 375px and check focus after two further paints. Validation: `pnpm lint`, `pnpm typecheck`, `pnpm test` (136 tests, including 69 portal), and `pnpm test:e2e` (21/21) pass with default test concurrency. Compose builds and starts healthy. QA/UAT should independently retest the three bugs; their Bugs checkboxes stay open pending verification.
+
 ## Test report  _(qa-tester)_
 
 QA run: 2026-11-06. Real Kong 3.9 and Postgres 17 run in Testcontainers; browser and startup/outage journeys run against the built Docker Compose quickstart. Tests change no application code.
@@ -414,8 +417,8 @@ Bug retest audit: queried all direct Bug children of JSO-233 without a result li
 - [ ] JSO-280 After an import refusal, focus stays on the alert instead of the Kong service field (minor)
 - [ ] JSO-281 API reference info line points to an apikey field that isn't there when security is set per operation (minor)
 - [ ] JSO-282 Restarting the server resets `created_at` on the sample's Kong objects (minor)
-- [ ] [frontend] Fix JSO-279: make the try-it response body readable at desktop widths, and assert it in the AC 2 browser test
-- [ ] [frontend] Fix JSO-280 and JSO-278: after an import refusal, focus reliably moves to the Kong service field in a real browser and under test load, keeping the existing focus assertion unrelaxed
+- [x] [frontend] Fix JSO-279: make the try-it response body readable at desktop widths, and assert it in the AC 2 browser test
+- [x] [frontend] Fix JSO-280 and JSO-278: after an import refusal, focus reliably moves to the Kong service field in a real browser and under test load, keeping the existing focus assertion unrelaxed
 
 ## User testing  _(user-tester)_
 Run on 2026-11-06 in Orca's built-in browser against clean Docker Compose installs of this branch, with Kong 3.9.4. Access results come from real calls through Kong; Admin API calls set up operator fixtures and drift. Screenshots are in `docs/uat/004/`.
