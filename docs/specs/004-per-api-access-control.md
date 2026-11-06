@@ -108,7 +108,7 @@ QA runs these against a real Kong in Testcontainers.
 - **Admin screens for viewing or editing groups.** Postgres and reconcile own them.
 - **Route-level or per-operation access within one API.** Access is per API.
 - **The AWS adapter** (spec 017). It implements the same calls then.
-- **New designed screens.** UI work here is error copy only.
+- **New designed screens.** UI work here is error copy only, plus the three hints Elango approved in JSO-276.
 - **Auditing or alerting on access changes** (spec 015). Reconcile logs what it repairs.
 
 ## Open questions
@@ -329,6 +329,7 @@ it waited longer; that's why the first risk below is there.
 - [ ] [backend] JSO-265 Docs: add upgrade notes (keys lose unsubscribed APIs, internal callers locked out and how to add them to `portal-svc-<serviceId>`, `hide_credentials`, foreign ACL warnings, one API per service, multi-node assumption, removing plugins by tag) and update `docs/engineering-conventions.md`.
 - [ ] [frontend] JSO-266 Admin import: map `gateway-service-has-acl` and `gateway-service-already-linked` to `gatewayServiceId` field errors, using the UX copy.
 - [ ] [frontend] JSO-267 Admin import: replace the key-auth-off warning with copy saying the API is public, show `warnings` from the import response, and reword the already-linked note to say the import will be refused.
+- [ ] [frontend] JSO-276 Copy additions approved by Elango: API reference info line, Create-app hint and Kong service hint, matching §4.4 of the UX design with the accessibility wiring in §5.
 - [ ] [qa] JSO-268 AC 1, 3, 4: access-rule suite on real Kong and Postgres in Testcontainers, covering all five access-rule rows, plus route-only and global key-auth variants.
 - [ ] [qa] JSO-269 AC 2: Playwright, try-it with an unsubscribed key shows the 403 and the UX message; an upstream 403 stays unchanged.
 - [ ] [qa] JSO-270 AC 5, 6: upgrade from a v0.1 state with a call loop that fails on any refused subscribed key; restart compare ignoring `updated_at`; Kong down at boot, then converging on the next run with no secret in logs.
@@ -353,8 +354,8 @@ There are no new screens, components or tokens. The design changes copy and stat
   with no key-auth makes the API public, post-publish warnings from `warnings[]`, and a note that a
   linked service's import will be refused.
 
-**For Elango or the tech lead:** the spec scopes UI work to error copy, and these three additions go
-slightly beyond it. They're tracked in JSO-276:
+**Approved by Elango on 2026-11-06:** the spec scopes UI work to error copy, and these three additions
+go slightly beyond it. They're tracked in JSO-276:
 - the API reference info line
 - the Create-app hint
 - a Kong service hint warning that publishing locks out other Kong consumers and hides keys from the
