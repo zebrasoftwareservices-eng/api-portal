@@ -13,6 +13,7 @@ import {
   credentials,
   user,
   instanceSettings,
+  subscriptions,
   session,
 } from '@portal/db';
 import { eq } from 'drizzle-orm';
@@ -342,6 +343,24 @@ describe('contract endpoints', () => {
     expect(vi.mocked(adapter.issueCredential).mock.calls).toHaveLength(
       issueCalls,
     );
+    expect(result.json()).toMatchObject({
+      type: '/problems/gateway-unavailable',
+      status: 503,
+    });
+    const retry = await server.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      headers: { cookie },
+      payload: { name: 'grant-failure', apiIds: [apiId] },
+    });
+    expect(retry.statusCode, retry.body).toBe(201);
+    expect(owned.size).toBe(beforeConsumers + 1);
+    const retryApp = retry.json().app.id;
+    expect(owned.get(retryApp)?.credentials).toHaveLength(1);
+    expect(vi.mocked(adapter.grantAccess)).toHaveBeenLastCalledWith(
+      { id: retryApp },
+      { id: 'service' },
+    );
   });
   it('serializes concurrent key creation to five keys and preserves active status on revoke failure', async () => {
     const [app] = await connection.db.select().from(apps);
@@ -616,6 +635,84 @@ info: {}`,
       expect.stringContaining('drift'),
     );
   });
+  it('AC 6: unavailable gateway reconciliation leaves persisted keys/subscriptions unchanged and the next run converges', async () => {
+    const before = {
+      apps: await connection.db.select().from(apps),
+      keys: await connection.db.select().from(credentials),
+      subscriptions: await connection.db.select().from(subscriptions),
+    };
+    const warn = vi.fn();
+    const list = vi
+      .spyOn(adapter, 'listOwnedConsumers')
+      .mockRejectedValueOnce(new GatewayUnavailableError());
+    await expect(
+      reconcile(connection.db, adapter, { warn }),
+    ).rejects.toBeInstanceOf(GatewayUnavailableError);
+    expect(await connection.db.select().from(apps)).toEqual(before.apps);
+    expect(await connection.db.select().from(credentials)).toEqual(before.keys);
+    expect(await connection.db.select().from(subscriptions)).toEqual(
+      before.subscriptions,
+    );
+    list.mockRestore();
+    await reconcile(connection.db, adapter, { warn });
+    expect(adapter.applyAccessPolicy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        apps: expect.arrayContaining(
+          before.apps.map((app) => ({
+            app: { id: app.id },
+            services: [{ id: 'service' }],
+          })),
+        ),
+      }),
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('pk_');
+  });
+  it.fails(
+    'JSO-277: immediately accepts a newly published API after the proxy catalog cache is warm',
+    async () => {
+      const config = loadConfig({ DATABASE_URL: container.getConnectionUri() });
+      const { app: fresh } = await createApp({
+        db: connection.db,
+        config,
+        adapter,
+        gatewayId,
+        proxyFetch: async () =>
+          new Response(
+            JSON.stringify({ message: 'You cannot consume this service' }),
+            { status: 403 },
+          ),
+      });
+      const id = uuidv7(),
+        slug = `cache-${id}`;
+      try {
+        await fresh.inject(
+          '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get',
+        );
+        await connection.db.insert(apis).values({
+          id,
+          slug,
+          title: 'Newly published',
+          version: '1',
+          gatewayId,
+          gatewayServiceId: id,
+          gatewayServiceName: slug,
+          routePath: `/${slug}`,
+          document: {
+            openapi: '3.1.0',
+            info: { title: slug, version: '1' },
+            paths: {},
+          },
+        });
+        const result = await fresh.inject(
+          `/api/v1/try-it?scalar_url=http://localhost:8000/${slug}/get`,
+        );
+        expect(result.statusCode, result.body).toBe(403);
+      } finally {
+        await fresh.close();
+        await connection.db.delete(apis).where(eq(apis.id, id));
+      }
+    },
+  );
   it('enforces proxy response/request caps, timeout problems and rate limits', async () => {
     const url = '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get';
     proxyFetch.mockResolvedValueOnce(new Response('x'.repeat(1024 * 1024 + 1)));

@@ -26,6 +26,25 @@ describe('Kong transport', () => {
       }).ensureConsumer({ id: 'app' }),
     ).rejects.toBeInstanceOf(GatewayUnavailableError);
   });
+  it.each(['connection reset', 'timeout'])(
+    'maps a grant %s to a secret-free gateway-unavailable error',
+    async (failure) => {
+      const transport = vi
+        .fn()
+        .mockRejectedValue(
+          failure === 'timeout'
+            ? new DOMException('sensitive-admin-token', 'TimeoutError')
+            : new Error('sensitive-admin-token'),
+        );
+      const adapter = new KongAdapter({ ...config, fetch: transport });
+      const error = await adapter
+        .grantAccess({ id: 'app' }, { id: 'service' })
+        .catch((error) => error);
+      expect(error).toBeInstanceOf(GatewayUnavailableError);
+      expect(JSON.stringify(error)).not.toContain('sensitive-admin-token');
+      expect(transport.mock.calls[0]?.[1].signal).toBeInstanceOf(AbortSignal);
+    },
+  );
   it('follows pagination and sends optional token', async () => {
     const request = vi
       .fn()

@@ -104,6 +104,27 @@ describe('startup error diagnostics', () => {
       'Background job failed',
     );
   });
+  it('AC 6: boots during a Kong outage and its scheduled reconcile warns without secrets then recovers', async () => {
+    const unavailable = new GatewayUnavailableError();
+    mocks.seed.mockRejectedValueOnce(unavailable);
+    await start(
+      loadConfig({
+        KONG_ADMIN_URL: 'http://127.0.0.1:1',
+        KONG_ADMIN_TOKEN: 'qa-admin-secret',
+      }),
+    );
+    expect(mocks.app.listen).toHaveBeenCalled();
+    const handler = mocks.boss.work.mock.calls.find(
+      ([name]) => name === 'gateway-reconcile',
+    )![1];
+    mocks.reconcile.mockRejectedValueOnce(unavailable);
+    await expect(handler()).rejects.toBe(unavailable);
+    expect(mocks.log.warn).toHaveBeenCalled();
+    expect(JSON.stringify(mocks.log.warn.mock.calls)).not.toContain(
+      'qa-admin-secret',
+    );
+    await expect(handler()).resolves.toBeUndefined();
+  });
   it('identifies unexpected seed failures without blaming gateway availability', async () => {
     const err = new Error('Seed file is malformed');
     mocks.seed.mockRejectedValueOnce(err);

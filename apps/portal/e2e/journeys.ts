@@ -152,6 +152,171 @@ test('developer signs up, copies a one-time key, calls Kong and revokes it', asy
   ).toBeVisible();
 });
 
+test('AC 2: Scalar shows a real access refusal and preserves an upstream 403', async ({
+  page,
+  context,
+  playwright,
+  baseURL,
+}) => {
+  test.setTimeout(60000);
+  const admin = await playwright.request.newContext({ baseURL });
+  const id = crypto.randomUUID(),
+    path = `qa-access-${id}`;
+  try {
+    expect(
+      (
+        await admin.post('/api/auth/sign-in/email', {
+          data: { email: 'admin@example.com', password: 'change-me-now' },
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (
+        await admin.put(`http://localhost:8001/services/${id}`, {
+          data: { name: path, url: 'http://httpbin:8080' },
+        })
+      ).ok(),
+    ).toBe(true);
+    expect(
+      (
+        await admin.post(`http://localhost:8001/services/${id}/routes`, {
+          data: { paths: [`/${path}`] },
+        })
+      ).ok(),
+    ).toBe(true);
+    expect(
+      (
+        await admin.post(`http://localhost:8001/services/${id}/plugins`, {
+          data: { name: 'key-auth', config: { hide_credentials: false } },
+        })
+      ).ok(),
+    ).toBe(true);
+    const imported = await admin.post('/api/v1/admin/apis', {
+      data: {
+        slug: path,
+        gatewayServiceId: id,
+        spec: {
+          content: JSON.stringify({
+            openapi: '3.1.0',
+            info: { title: path, version: '1' },
+            paths: {
+              '/get': {
+                get: { responses: { '200': { description: 'Echo' } } },
+              },
+            },
+          }),
+        },
+      },
+    });
+    expect(imported.status(), await imported.text()).toBe(201);
+    expect(
+      (
+        await context.request.post('/api/auth/sign-up/email', {
+          data: {
+            name: 'Access QA',
+            email: `${path}@example.com`,
+            password: 'QA-password-123',
+          },
+        })
+      ).status(),
+    ).toBe(200);
+    const sample = (
+      await (await context.request.get('/api/v1/apis')).json()
+    ).items.find((a: { slug: string }) => a.slug === 'sample');
+    const created = await context.request.post('/api/v1/apps', {
+      data: { name: path, apiIds: [sample.id] },
+    });
+    expect(created.status()).toBe(201);
+    const { app, credential } = await created.json();
+    await expect
+      .poll(
+        async () =>
+          (
+            await context.request.get(`http://localhost:8000/${path}/get`, {
+              headers: { apikey: credential.key },
+            })
+          ).status(),
+        { timeout: 15000 },
+      )
+      .toBe(403);
+    // JSO-277: publication can precede proxy catalog-cache expiry by 30s.
+    await expect
+      .poll(
+        async () =>
+          (
+            await context.request.get(
+              '/api/v1/try-it?scalar_url=' +
+                encodeURIComponent(`http://localhost:8000/${path}/get`),
+              { headers: { apikey: credential.key } },
+            )
+          ).status(),
+        { timeout: 35000, intervals: [1000] },
+      )
+      .toBe(403);
+    await page.goto(`/apis/${path}`);
+    await page
+      .getByRole('button', { name: /Test Request/ })
+      .first()
+      .click();
+    await page
+      .getByPlaceholder('QUxMIFlPVVIgQkFTRSBBUkUgQkVMT05HIFRPIFVT')
+      .last()
+      .fill(credential.key);
+    const response = page.waitForResponse((r) =>
+      r.url().includes('/api/v1/try-it?'),
+    );
+    await page
+      .getByRole('button', {
+        name: `Send get request to http://localhost:8000/${path}/get`,
+        exact: true,
+      })
+      .click();
+    const refused = await response;
+    expect(refused.status()).toBe(403);
+    expect(await refused.json()).toMatchObject({
+      type: '/problems/api-access-denied',
+      title: "This key doesn't have access to this API",
+      detail: expect.stringContaining('create an app that includes this API'),
+    });
+    await expect(
+      page
+        .getByText("This key doesn't have access to this API", { exact: false })
+        .last(),
+    ).toBeVisible();
+    // Grant only for the upstream-pass-through assertion; the UI refusal above used an unsubscribed app.
+    expect(
+      (
+        await admin.post(
+          `http://localhost:8001/consumers/portal-app-${app.id}/acls`,
+          { data: { group: `portal-svc-${id}` } },
+        )
+      ).ok(),
+    ).toBe(true);
+    await expect
+      .poll(
+        async () =>
+          (
+            await context.request.get(
+              `http://localhost:8000/${path}/status/403`,
+              { headers: { apikey: credential.key } },
+            )
+          ).status(),
+        { timeout: 15000 },
+      )
+      .toBe(403);
+    const upstream = await context.request.get(
+      '/api/v1/try-it?scalar_url=' +
+        encodeURIComponent(`http://localhost:8000/${path}/status/403`),
+      { headers: { apikey: credential.key } },
+    );
+    expect(upstream.status()).toBe(403);
+    expect(upstream.headers()['x-kong-upstream-latency']).toBeDefined();
+    expect(await upstream.text()).not.toContain('/problems/api-access-denied');
+  } finally {
+    await admin.dispose();
+  }
+});
+
 test('admin imports files and URLs and rejects invalid files without publication', async ({
   page,
   context,
@@ -162,12 +327,31 @@ test('admin imports files and URLs and rejects invalid files without publication
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await page.goto('/admin/apis');
-  const services = await (
-    await context.request.get('/api/v1/admin/gateway/services')
-  ).json();
-  const sampleService = services.items.find(
-    (s: { name: string }) => s.name === 'portal-sample',
-  );
+  // Each published API needs a distinct Kong service (spec 004).
+  const freshServices = [];
+  for (let index = 0; index < 2; index++) {
+    const id = crypto.randomUUID();
+    expect(
+      (
+        await context.request.put(`http://localhost:8001/services/${id}`, {
+          data: { name: `qa-import-${id}`, url: 'http://httpbin:8080' },
+        })
+      ).ok(),
+    ).toBe(true);
+    expect(
+      (
+        await context.request.post(
+          `http://localhost:8001/services/${id}/routes`,
+          {
+            data: { paths: [`/qa-${id}`] },
+          },
+        )
+      ).ok(),
+    ).toBe(true);
+    freshServices.push(id);
+  }
+  await page.reload();
+  const sampleService = { id: freshServices[0]! };
   await page
     .getByLabel('Kong service', { exact: true })
     .selectOption(sampleService.id);
@@ -259,7 +443,7 @@ test('admin imports files and URLs and rejects invalid files without publication
     .fill('http://server:4000/api/v1/apis/sample/openapi.json');
   await page
     .getByLabel('Kong service', { exact: true })
-    .selectOption({ index: 1 });
+    .selectOption(freshServices[1]!);
   await page.getByText('More options', { exact: true }).click();
   await page.getByLabel('Slug', { exact: true }).fill(`${slug}-url`);
   await page.getByRole('button', { name: 'Import and publish' }).click();

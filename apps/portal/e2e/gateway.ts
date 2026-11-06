@@ -135,6 +135,118 @@ test('sample seed converges across server restarts against real Kong', async ({
   expect(logs).not.toContain('change-me-now');
 });
 
+test('AC 6: server boots while Kong is down and the next reconcile repairs access without changing keys or subscriptions', async ({
+  request,
+}) => {
+  test.setTimeout(120_000);
+  const compose = (...args: string[]) =>
+    execFileSync(
+      'docker',
+      ['compose', '-f', 'deploy/docker-compose.yml', ...args],
+      { encoding: 'utf8' },
+    );
+  const signup = await request.post('/api/auth/sign-up/email', {
+    data: {
+      name: 'Boot outage QA',
+      email: `qa-boot-${crypto.randomUUID()}@example.com`,
+      password: 'QA-password-123',
+    },
+  });
+  expect(signup.status()).toBe(200);
+  const sample = (await (await request.get('/api/v1/apis')).json()).items.find(
+    (a: { slug: string }) => a.slug === 'sample',
+  );
+  const created = await request.post('/api/v1/apps', {
+    data: { name: 'Boot outage', apiIds: [sample.id] },
+  });
+  expect(created.status()).toBe(201);
+  const { app, credential } = await created.json();
+  const before = await (await request.get(`/api/v1/apps/${app.id}`)).json();
+  const service = await (
+    await request.get('http://localhost:8001/services/portal-sample')
+  ).json();
+  expect(
+    (
+      await request.delete(
+        `http://localhost:8001/consumers/portal-app-${app.id}/acls/portal-svc-${service.id}`,
+      )
+    ).ok(),
+  ).toBe(true);
+  try {
+    compose('stop', 'kong');
+    compose('restart', 'server');
+    await expect
+      .poll(
+        async () => {
+          try {
+            return (await request.get('/api/v1/health')).status();
+          } catch {
+            return 0;
+          }
+        },
+        { timeout: 60000 },
+      )
+      .toBe(200);
+    expect(
+      (await (await request.get('/api/v1/health')).json()).gateway.reachable,
+    ).toBe(false);
+    expect(await (await request.get(`/api/v1/apps/${app.id}`)).json()).toEqual(
+      before,
+    );
+    const logs = compose('logs', '--no-color', '--since', '30s', 'server');
+    expect(logs).toContain('gateway unavailable');
+    expect(logs).not.toContain(credential.key);
+    expect(logs).not.toContain('QA-password-123');
+  } finally {
+    compose('up', '-d', '--wait', 'kong');
+  }
+  // Invoke the same job body as pg-boss rather than waiting five wall-clock minutes.
+  compose(
+    'exec',
+    '-T',
+    'server',
+    'node',
+    '--input-type=module',
+    '-e',
+    `
+    import { connect, instanceSettings } from './packages/db/dist/index.js';
+    import { KongAdapter } from './packages/adapter-kong/dist/index.js';
+    import { reconcile } from './apps/server/dist/reconcile.js';
+    const { db, client } = connect(process.env.DATABASE_URL);
+    try {
+      const [instance] = await db.select().from(instanceSettings);
+      await reconcile(db, new KongAdapter({ adminUrl: process.env.KONG_ADMIN_URL, instanceId: instance.instanceId, adminToken: process.env.KONG_ADMIN_TOKEN }), { warn() {} });
+    } finally { await client.end(); }
+  `,
+  );
+  await expect
+    .poll(
+      async () =>
+        (
+          await request.get('http://localhost:8000/sample/get', {
+            headers: { apikey: credential.key },
+          })
+        ).status(),
+      { timeout: 15000 },
+    )
+    .toBe(200);
+  expect(await (await request.get(`/api/v1/apps/${app.id}`)).json()).toEqual(
+    before,
+  );
+  const groups = (
+    await (
+      await request.get(
+        `http://localhost:8001/consumers/portal-app-${app.id}/acls`,
+      )
+    ).json()
+  ).data;
+  expect(
+    groups.filter(
+      (g: { group: string }) => g.group === `portal-svc-${service.id}`,
+    ),
+  ).toHaveLength(1);
+});
+
 test('JSO-169: public ingress cannot rotate a client rate-limit budget with forged XFF', async ({
   request,
 }) => {
@@ -181,8 +293,8 @@ test('JSO-169: public ingress cannot rotate a client rate-limit budget with forg
     },
   ];
   for (const headers of spoofedHeaders) {
-    expect(
-      (await request.get('/api/v1/try-it', { headers })).status(),
-    ).toBe(429);
+    expect((await request.get('/api/v1/try-it', { headers })).status()).toBe(
+      429,
+    );
   }
 });
