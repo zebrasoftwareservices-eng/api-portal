@@ -340,8 +340,8 @@ resets both fields. Corrected in review; see JSO-282 and the Review section.
 - [x] [qa] JSO-272 AC 8: Kong failing or timing out during the grant gives the gateway error, no key, no app row, and a retry with one consumer and no duplicate groups.
 - [x] [qa] JSO-273 AC 9, 10: publish and subscribe flow; foreign ACL refused at service, route and global scope with plugins unchanged; second link refused; conformance suite passes against Kong.
 - [x] [qa] JSO-274 Update `apps/portal/e2e/journeys.ts` to publish to separate Kong services, and run the `docker compose` quickstart and smoke scripts with hiding on.
-- [ ] [backend] Fix JSO-286: read ACLs in `applyAccessPolicy` with one paged `/acls` request grouped by consumer, and add a real-Kong case with at least 500 owned consumers plus a unit case asserting no per-consumer read.
-- [ ] [backend] Fix JSO-287: make `isAccessDenied` recognise Kong's refusal in every `Accept` format while upstream 403s still pass through, and add unit cases per format plus a server test with `Accept: application/xml`.
+- [x] [backend] Fix JSO-286: read ACLs in `applyAccessPolicy` with one paged `/acls` request grouped by consumer, and add a real-Kong case with at least 500 owned consumers plus a unit case asserting no per-consumer read.
+- [x] [backend] Fix JSO-287: make `isAccessDenied` recognise Kong's refusal in every `Accept` format while upstream 403s still pass through, and add unit cases per format plus a server test with `Accept: application/xml`.
 
 ## UX  _(ui-designer)_
 Full design: [docs/design/004-per-api-access-control.md](../design/004-per-api-access-control.md).
@@ -368,6 +368,9 @@ go slightly beyond it. They're tracked in JSO-276:
   publishing a new API after the upgrade might never read them.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Backend review fixes (JSO-286, JSO-287, 2026-11-06): reconcile now takes one paged `/acls` snapshot and groups memberships by owned consumer ID before any write, avoiding the per-consumer request burst and ignoring other consumers' memberships. Unit coverage asserts pagination, exact membership repair, foreign-consumer preservation and no per-consumer reads; the real-Kong regression reconciles 501 owned consumers with 1,002 memberships and no repairs (5.8 seconds including setup and cleanup).
+- ACL refusal detection now matches Kong's fixed message across JSON, plain text, XML and HTML while retaining the status and upstream-latency checks. Format-specific unit tests and real negotiated Kong responses pass; the server regression sends `Accept: application/xml`, checks the UX problem response and verifies XML upstream 403 pass-through. Validation: `pnpm lint`, `pnpm typecheck` and `pnpm test --force` pass (147 tests: 69 portal, 39 Kong adapter, 38 server, 1 database; includes the existing expected-failure JSO-277 regression). QA should rerun quickstart/e2e, and UAT should check AC 2 on an XML or plain-text operation; those browser checks were not rerun in this backend round. No API contract change was needed.
 
 - Backend (JSO-256–JSO-265, 2026-11-06): added the gateway-neutral access contract, tagged Kong memberships, stable scoped ACLs, managed credential hiding and global key-auth copies. Reconcile snapshots reads before writes, repairs exact owned-consumer memberships before plugins, waits six seconds when new memberships precede plugin creation/conversion, and logs findings without key values. Foreign ACLs are preserved; shared legacy services warn with API slugs.
 - App creation grants each distinct subscribed service before issuing credentials, using the existing compensation. Import serializes service links with advisory locks, refuses duplicate links and foreign ACLs, protects before publishing, and returns UX warning messages. The proxy rewrites Kong ACL 403s with the exact UX copy while preserving upstream refusals. Regenerated the SDK and added [upgrade notes](../upgrade-004-access-control.md); no schema migration is needed.

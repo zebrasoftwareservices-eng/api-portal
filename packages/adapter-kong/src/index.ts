@@ -447,11 +447,15 @@ export class KongAdapter implements GatewayAdapter {
     const { services, routes, plugins } = await this.topology();
     const consumers = await this.listOwnedConsumers();
     // Snapshot every membership before any write: a failed read cannot leave a partial upgrade.
-    const memberships = await Promise.all(
-      consumers.map((c) =>
-        this.pages(`/consumers/${encodeURIComponent(c.id)}/acls?size=1000`),
-      ),
-    );
+    const memberships = new Map<string, Entity[]>();
+    const ownedIds = new Set(consumers.map((c) => c.id));
+    for (const membership of await this.pages('/acls?size=1000')) {
+      const consumerId = membership.consumer?.id;
+      if (!consumerId || !ownedIds.has(consumerId)) continue;
+      const groups = memberships.get(consumerId) ?? [];
+      groups.push(membership);
+      memberships.set(consumerId, groups);
+    }
     const plans = services.map((s) => ({
       service: s,
       plan: this.planService(
@@ -481,14 +485,14 @@ export class KongAdapter implements GatewayAdapter {
       }
     };
     let added = false;
-    for (const [i, consumer] of consumers.entries()) {
+    for (const consumer of consumers) {
       const desiredApp = policy.apps.find((a) => a.app.id === consumer.appId);
       if (!desiredApp) continue;
       const desired = new Set([
         'portal-consumer',
         ...desiredApp.services.map((s) => `portal-svc-${s.id}`),
       ]);
-      const actual = memberships[i]!;
+      const actual = memberships.get(consumer.id) ?? [];
       for (const group of desired)
         if (!actual.some((m) => m.group === group)) {
           if (
@@ -594,14 +598,11 @@ export class KongAdapter implements GatewayAdapter {
       response.headers.has('x-kong-upstream-latency')
     )
       return false;
-    try {
-      return (
-        JSON.parse(new TextDecoder().decode(response.body)).message ===
-        'You cannot consume this service'
-      );
-    } catch {
-      return false;
-    }
+    // Kong negotiates JSON, plain text, XML or HTML from Accept. The fixed
+    // ACL message appears in every format; upstream responses were excluded above.
+    return new TextDecoder()
+      .decode(response.body)
+      .includes('You cannot consume this service');
   }
   async deleteConsumer(app: AppRef) {
     await this.request(

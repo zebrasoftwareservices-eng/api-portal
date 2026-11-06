@@ -11,6 +11,7 @@ interface Entity {
   name?: string;
   service?: { id: string };
   route?: { id: string };
+  consumer?: { id: string };
   config?: Record<string, unknown>;
   tags?: string[];
   group?: string;
@@ -43,7 +44,21 @@ function fixture(plugins: Entity[] = [], consumers: Entity[] = []) {
         else if (path === '/routes') data = routes;
         else if (path === '/plugins') data = plugins;
         else if (path === '/consumers') data = consumers;
-        else if (path.endsWith('/acls'))
+        else if (path === '/acls') {
+          const all = [...members].flatMap(([id, rows]) =>
+            rows.map((row) => ({ ...row, consumer: { id } })),
+          );
+          const offset = Number(
+            new URL(String(input)).searchParams.get('offset') ?? 0,
+          );
+          return Response.json({
+            data: all.slice(offset, offset + 2),
+            next:
+              offset + 2 < all.length
+                ? `/acls?size=2&offset=${offset + 2}`
+                : null,
+          });
+        } else if (path.endsWith('/acls'))
           data = members.get(path.split('/')[2]!) ?? [];
         return Response.json({ data });
       }
@@ -99,6 +114,7 @@ function fixture(plugins: Entity[] = [], consumers: Entity[] = []) {
       instanceId: 'test',
       fetch: fetcher as typeof fetch,
     }),
+    fetcher,
     plugins,
     services,
     routes,
@@ -255,6 +271,61 @@ describe('Kong access policy', () => {
     });
     expect(f.writes).toEqual([]);
   });
+  it('pages the shared ACL snapshot without per-consumer reads and ignores foreign consumers', async () => {
+    const f = fixture(
+      [],
+      [
+        {
+          id: 'one',
+          username: 'portal-app-app-one',
+          custom_id: 'app-one',
+          tags,
+        },
+        {
+          id: 'two',
+          username: 'portal-app-app-two',
+          custom_id: 'app-two',
+          tags,
+        },
+        { id: 'foreign', custom_id: 'operator', tags: ['operator'] },
+      ],
+    );
+    f.members.set('one', [
+      { id: 'one-base', group: 'portal-consumer' },
+      { id: 'one-extra', group: 'unexpected' },
+    ]);
+    f.members.set('foreign', [{ id: 'foreign-group', group: 'operator' }]);
+    f.members.set('two', [
+      { id: 'two-base', group: 'portal-consumer' },
+      { id: 'two-service', group: 'portal-svc-b' },
+    ]);
+    const report = await f.adapter.applyAccessPolicy({
+      services: [],
+      apps: [
+        { app: { id: 'app-one' }, services: [{ id: 'a' }] },
+        { app: { id: 'app-two' }, services: [{ id: 'b' }] },
+      ],
+    });
+    expect(report.repairs).toHaveLength(2);
+    expect(f.members.get('one')?.map((m) => m.group)).toEqual([
+      'portal-consumer',
+      'portal-svc-a',
+    ]);
+    expect(f.members.get('two')?.map((m) => m.group)).toEqual([
+      'portal-consumer',
+      'portal-svc-b',
+    ]);
+    expect(f.members.get('foreign')).toEqual([
+      { id: 'foreign-group', group: 'operator' },
+    ]);
+    const reads = f.fetcher.mock.calls
+      .filter(([, init]) => init?.method === 'GET')
+      .map(([url]) => new URL(String(url)));
+    expect(reads.filter((url) => url.pathname === '/acls')).toHaveLength(3);
+    expect(
+      reads.some((url) => /^\/consumers\/[^/]+\/acls$/.test(url.pathname)),
+    ).toBe(false);
+  });
   it('makes no writes if a late membership read fails', async () => {
     const f = fixture([auth()], [{ id: 'consumer', custom_id: 'app', tags }]);
     f.failRead('/acls');
@@ -322,6 +393,39 @@ describe('Kong access policy', () => {
       f.plugins.find((p) => p.name === 'acl' && p.service?.id === 'b'),
     ).toBeUndefined();
   });
+  it.each([
+    [undefined, '{"message":"You cannot consume this service"}'],
+    ['*/*', '{"message":"You cannot consume this service"}'],
+    ['application/json', '{"message":"You cannot consume this service"}'],
+    [
+      'application/json, text/plain, */*',
+      '{"message":"You cannot consume this service"}',
+    ],
+    ['text/plain', 'You cannot consume this service\n'],
+    ['text/plain, */*', 'You cannot consume this service\n'],
+    [
+      'application/xml',
+      '<error><message>You cannot consume this service</message></error>',
+    ],
+    [
+      'text/html',
+      '<html><body><h1>403 Forbidden</h1><p>You cannot consume this service</p></body></html>',
+    ],
+  ])(
+    'recognizes the ACL body negotiated for Accept %s, but passes upstream 403s through',
+    (accept, text) => {
+      const { adapter } = fixture();
+      const body = new TextEncoder().encode(text);
+      const headers = new Headers(
+        accept ? { 'content-type': accept.split(',')[0]! } : {},
+      );
+      expect(adapter.isAccessDenied({ status: 403, headers, body })).toBe(true);
+      headers.set('x-kong-upstream-latency', '0');
+      expect(adapter.isAccessDenied({ status: 403, headers, body })).toBe(
+        false,
+      );
+    },
+  );
   it('recognizes only Kong ACL refusals and preserves upstream refusals', () => {
     const { adapter } = fixture();
     const body = new TextEncoder().encode(

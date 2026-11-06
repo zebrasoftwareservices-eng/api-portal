@@ -134,6 +134,41 @@ it('protects real services, converts deny to allow without replacing its ID, and
   }
 });
 
+it('JSO-286: reconciles over 500 owned consumers from a paged ACL snapshot without repairs', async () => {
+  const scale = new KongAdapter({
+    adminUrl: `http://${kong.getHost()}:${kong.getMappedPort(8001)}`,
+    instanceId: randomUUID(),
+  });
+  const serviceId = randomUUID();
+  const apps = Array.from({ length: 501 }, () => ({
+    app: { id: randomUUID() },
+    services: [{ id: serviceId }],
+  }));
+  try {
+    // Bound setup concurrency as well: Kong shares Postgres's default 100 connections.
+    for (let offset = 0; offset < apps.length; offset += 5)
+      await Promise.all(
+        apps.slice(offset, offset + 5).map(async ({ app }) => {
+          await scale.ensureConsumer(app);
+          await scale.grantAccess(app, { id: serviceId });
+        }),
+      );
+    // 1002 memberships force the real /acls endpoint past its first 1000-row page.
+    expect(await scale.listOwnedConsumers()).toHaveLength(501);
+    expect(await scale.applyAccessPolicy({ services: [], apps })).toEqual({
+      repairs: [],
+      findings: [],
+    });
+  } finally {
+    for (let offset = 0; offset < apps.length; offset += 5)
+      await Promise.all(
+        apps
+          .slice(offset, offset + 5)
+          .map(({ app }) => scale.deleteConsumer(app)),
+      );
+  }
+}, 180000);
+
 // All propagation checks poll observable state; no fixed sleeps are used in tests.
 interface Plugin {
   id: string;
@@ -198,6 +233,24 @@ it('AC 1/3/4: enforces all access rows and strips header/query keys while preser
   await status(a.id, key.key, 200);
   await status(b.id, key.key, 403);
   await status(unmanaged.id, key.key, 403);
+  for (const accept of [
+    'application/json',
+    'text/plain',
+    'application/xml',
+    'text/html',
+  ]) {
+    const response = await fetch(`${proxy}/${b.id}/get`, {
+      headers: { apikey: key.key, accept },
+    });
+    expect(response.status).toBe(403);
+    expect(
+      adapter.isAccessDenied({
+        status: response.status,
+        headers: response.headers,
+        body: new Uint8Array(await response.arrayBuffer()),
+      }),
+    ).toBe(true);
+  }
   await status(publicApi.id, undefined, 200);
   await status(a.id, undefined, 401);
   await status(a.id, 'unknown-key', 401);

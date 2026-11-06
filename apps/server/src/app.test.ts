@@ -496,6 +496,53 @@ describe('contract endpoints', () => {
     );
     expect((await server.inject(url)).body).toBe(body);
   });
+  it('rewrites negotiated XML ACL refusals and preserves XML upstream 403s', async () => {
+    const url = '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get';
+    const body =
+      '<error><message>You cannot consume this service</message></error>';
+    proxyFetch.mockResolvedValueOnce(
+      new Response(body, {
+        status: 403,
+        headers: {
+          'content-type': 'application/xml',
+          'x-kong-request-id': 'xml-refusal',
+        },
+      }),
+    );
+    const refused = await server.inject({
+      url,
+      headers: { accept: 'application/xml', apikey: 'pk_unsubscribed' },
+    });
+    expect(proxyFetch.mock.calls.at(-1)?.[1].headers.get('accept')).toBe(
+      'application/xml',
+    );
+    expect(refused.statusCode).toBe(403);
+    expect(refused.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(refused.headers['x-kong-request-id']).toBe('xml-refusal');
+    expect(refused.json()).toMatchObject({
+      type: '/problems/api-access-denied',
+      title: "This key doesn't have access to this API",
+      detail: expect.stringContaining('Select Get an API key'),
+    });
+    proxyFetch.mockResolvedValueOnce(
+      new Response(body, {
+        status: 403,
+        headers: {
+          'content-type': 'application/xml',
+          'x-kong-upstream-latency': '0',
+        },
+      }),
+    );
+    const upstream = await server.inject({
+      url,
+      headers: { accept: 'application/xml' },
+    });
+    expect(upstream.statusCode).toBe(403);
+    expect(upstream.headers['content-type']).toContain('application/xml');
+    expect(upstream.body).toBe(body);
+  });
   it('imports for admins and leaves nothing published after validation failure', async () => {
     await connection.db
       .update(user)
