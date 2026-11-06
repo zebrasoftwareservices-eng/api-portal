@@ -130,6 +130,10 @@ export function registerApps(
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
         gatewayAttempted = true;
         const consumer = await adapter.ensureConsumer({ id: appId });
+        for (const serviceId of new Set(
+          selected.map((a) => a.gatewayServiceId),
+        ))
+          await adapter.grantAccess({ id: appId }, { id: serviceId });
         await adapter.issueCredential({ id: appId }, { id, key });
         const [app] = await tx
           .insert(apps)
@@ -144,15 +148,13 @@ export function registerApps(
         await tx
           .insert(subscriptions)
           .values(selected.map((a) => ({ id: uuidv7(), appId, apiId: a.id })));
-        await tx
-          .insert(gatewayConsumers)
-          .values({
-            id: uuidv7(),
-            appId,
-            gatewayId,
-            externalId: consumer.id,
-            username: consumer.username,
-          });
+        await tx.insert(gatewayConsumers).values({
+          id: uuidv7(),
+          appId,
+          gatewayId,
+          externalId: consumer.id,
+          username: consumer.username,
+        });
         const [credential] = await tx
           .insert(credentials)
           .values({

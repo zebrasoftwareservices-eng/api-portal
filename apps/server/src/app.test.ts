@@ -19,8 +19,10 @@ import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import {
   GatewayUnavailableError,
+  GatewayServiceConflictError,
   type GatewayAdapter,
 } from '@portal/adapter-sdk';
+import { KongAdapter } from '@portal/adapter-kong';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { reconcile } from './reconcile.js';
@@ -46,6 +48,7 @@ const adapter: GatewayAdapter = {
   kind: 'kong',
   capabilities: () => ({
     apiKeys: true,
+    accessControl: true,
     oauthClients: false,
     plans: false,
     usage: false,
@@ -59,8 +62,8 @@ const adapter: GatewayAdapter = {
       keyAuth: true,
     },
   ],
-  getService: async () => ({
-    id: 'service',
+  getService: async (id) => ({
+    id,
     name: 'pets',
     routes: [{ id: 'route', name: null, paths: ['/sample'] }],
     keyAuth: true,
@@ -87,6 +90,15 @@ const adapter: GatewayAdapter = {
     const c = owned.get(app.id);
     if (c) c.credentials = c.credentials.filter((k) => k.id !== id);
   }),
+  grantAccess: vi.fn(async () => {}),
+  revokeAccess: vi.fn(async () => {}),
+  protectService: vi.fn(async () => ({ keyAuth: true, findings: [] })),
+  applyAccessPolicy: vi.fn(async () => ({ repairs: [], findings: [] })),
+  isAccessDenied: (response) =>
+    new KongAdapter({
+      adminUrl: 'http://unused',
+      instanceId: 'test',
+    }).isAccessDenied(response),
   listOwnedConsumers: async () => [...owned.values()],
 };
 const proxyFetch = vi.fn().mockImplementation(
@@ -310,6 +322,27 @@ describe('contract endpoints', () => {
       ).body,
     ).not.toContain('pk_');
   });
+  it('compensates failed grants before key creation and leaves no app or consumer', async () => {
+    const beforeApps = await connection.db.select().from(apps);
+    const beforeConsumers = owned.size;
+    const issueCalls = vi.mocked(adapter.issueCredential).mock.calls.length;
+    vi.mocked(adapter.grantAccess).mockRejectedValueOnce(
+      new GatewayUnavailableError(),
+    );
+    const result = await server.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      headers: { cookie },
+      payload: { name: 'grant-failure', apiIds: [apiId] },
+    });
+    expect(result.statusCode).toBe(503);
+    expect(result.body).not.toContain('pk_');
+    expect(await connection.db.select().from(apps)).toEqual(beforeApps);
+    expect(owned.size).toBe(beforeConsumers);
+    expect(vi.mocked(adapter.issueCredential).mock.calls).toHaveLength(
+      issueCalls,
+    );
+  });
   it('serializes concurrent key creation to five keys and preserves active status on revoke failure', async () => {
     const [app] = await connection.db.select().from(apps);
     if (!app) throw new Error('No app');
@@ -388,6 +421,36 @@ describe('contract endpoints', () => {
     expect(logs.join('')).not.toContain('pk_');
     expect(logs.join('')).not.toContain('test-password-123');
   });
+  it('rewrites only gateway ACL 403s with the UX problem and preserves gateway headers', async () => {
+    const url = '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get';
+    const body = JSON.stringify({ message: 'You cannot consume this service' });
+    proxyFetch.mockResolvedValueOnce(
+      new Response(body, {
+        status: 403,
+        headers: { 'x-kong-request-id': 'test' },
+      }),
+    );
+    const refused = await server.inject(url);
+    expect(refused.statusCode).toBe(403);
+    expect(refused.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(refused.headers['x-kong-request-id']).toBe('test');
+    expect(refused.json()).toEqual({
+      type: '/problems/api-access-denied',
+      title: "This key doesn't have access to this API",
+      status: 403,
+      detail:
+        "This key's app doesn't have access to this API. Select Get an API key on this page, create an app that includes this API, and send the request with the new key. If this key's app should already have access, tell the portal admin.",
+    });
+    proxyFetch.mockResolvedValueOnce(
+      new Response(body, {
+        status: 403,
+        headers: { 'x-kong-upstream-latency': '1' },
+      }),
+    );
+    expect((await server.inject(url)).body).toBe(body);
+  });
   it('imports for admins and leaves nothing published after validation failure', async () => {
     await connection.db
       .update(user)
@@ -441,10 +504,88 @@ info: {}`,
       method: 'POST',
       url: '/api/v1/admin/apis',
       headers: { cookie },
-      payload: { spec: { content }, gatewayServiceId: 'service' },
+      payload: { spec: { content }, gatewayServiceId: 'import-service' },
     });
     expect(valid.statusCode, valid.body).toBe(201);
     expect(valid.json().slug).toBe('imported-api');
+    expect(valid.json().warnings).toEqual([]);
+  });
+  it('refuses duplicate service links before protection and maps foreign ACL conflicts', async () => {
+    const spec = {
+      content: JSON.stringify({
+        openapi: '3.1.0',
+        info: { title: 'Another API', version: '1' },
+        paths: {},
+      }),
+    };
+    const count = vi.mocked(adapter.protectService).mock.calls.length;
+    const linked = await server.inject({
+      method: 'POST',
+      url: '/api/v1/admin/apis',
+      headers: { cookie },
+      payload: { spec, gatewayServiceId: 'service' },
+    });
+    expect(linked.statusCode).toBe(422);
+    expect(linked.json()).toMatchObject({
+      type: '/problems/gateway-service-already-linked',
+      title: 'This service already has a published API',
+    });
+    expect(linked.json().detail).toContain('/apis/sample');
+    expect(vi.mocked(adapter.protectService).mock.calls).toHaveLength(count);
+    vi.mocked(adapter.protectService).mockRejectedValueOnce(
+      new GatewayServiceConflictError('operator-service'),
+    );
+    const conflict = await server.inject({
+      method: 'POST',
+      url: '/api/v1/admin/apis',
+      headers: { cookie },
+      payload: { spec, gatewayServiceId: 'foreign' },
+    });
+    expect(conflict.statusCode).toBe(422);
+    expect(conflict.json()).toMatchObject({
+      type: '/problems/gateway-service-has-acl',
+      title: 'Another ACL plugin applies to this service',
+    });
+    expect(conflict.json().detail).toContain('operator-service');
+    expect(
+      (await connection.db.select().from(apis)).some(
+        (a) => a.gatewayServiceId === 'foreign',
+      ),
+    ).toBe(false);
+  });
+  it('serializes simultaneous imports to one service and returns adapter warnings', async () => {
+    const spec = {
+      content: JSON.stringify({
+        openapi: '3.1.0',
+        info: { title: 'Concurrent API', version: '1' },
+        paths: {},
+      }),
+    };
+    vi.mocked(adapter.protectService).mockResolvedValueOnce({
+      keyAuth: false,
+      findings: [
+        {
+          code: 'api-public',
+          serviceId: 'concurrent',
+          serviceName: 'Concurrent',
+          message: 'This API is public.',
+        },
+      ],
+    });
+    const results = await Promise.all(
+      ['first', 'second'].map((slug) =>
+        server.inject({
+          method: 'POST',
+          url: '/api/v1/admin/apis',
+          headers: { cookie },
+          payload: { spec, slug, gatewayServiceId: 'concurrent' },
+        }),
+      ),
+    );
+    expect(results.map((r) => r.statusCode).sort()).toEqual([201, 422]);
+    expect(results.find((r) => r.statusCode === 201)?.json().warnings).toEqual([
+      { code: 'api-public', message: 'This API is public.' },
+    ]);
   });
   it('reconciles orphans and revoked keys and warns for missing active credentials', async () => {
     const orphan = uuidv7();
@@ -462,6 +603,14 @@ info: {}`,
     const warn = vi.fn();
     await reconcile(connection.db, adapter, { warn });
     expect(owned.has(orphan)).toBe(false);
+    expect(adapter.applyAccessPolicy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        services: expect.arrayContaining([{ id: 'service' }]),
+        apps: expect.arrayContaining([
+          { app: { id: key.appId }, services: [{ id: 'service' }] },
+        ]),
+      }),
+    );
     expect(warn).toHaveBeenCalledWith(
       expect.objectContaining({ credentialId: key.id }),
       expect.stringContaining('drift'),

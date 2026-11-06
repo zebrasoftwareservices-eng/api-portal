@@ -74,7 +74,15 @@ export function problemHandler(app: FastifyInstance) {
       .type('application/problem+json')
       .send({
         type: `/problems/${p.code}`,
-        title: p.code.replaceAll('-', ' '),
+        title:
+          (
+            {
+              'gateway-service-has-acl':
+                'Another ACL plugin applies to this service',
+              'gateway-service-already-linked':
+                'This service already has a published API',
+            } as Record<string, string>
+          )[p.code] ?? p.code.replaceAll('-', ' '),
         status: p.status,
         detail: p.message,
         instance: req.url.split('?')[0],

@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-import { apps, credentials, type Database } from '@portal/db';
+import {
+  apps,
+  credentials,
+  apis,
+  subscriptions,
+  type Database,
+} from '@portal/db';
 import type { GatewayAdapter } from '@portal/adapter-sdk';
 import type { FastifyBaseLogger } from 'fastify';
-import { sql } from 'drizzle-orm';
+import { sql, eq } from 'drizzle-orm';
 export async function reconcile(
   db: Database,
   adapter: GatewayAdapter,
@@ -40,5 +46,42 @@ export async function reconcile(
           { appId: row.appId, credentialId: row.id },
           'drift: active credential missing from gateway',
         );
+    const [apiRows, subRows] = await Promise.all([
+      tx.select({ id: apis.gatewayServiceId, slug: apis.slug }).from(apis),
+      tx
+        .select({
+          appId: subscriptions.appId,
+          serviceId: apis.gatewayServiceId,
+        })
+        .from(subscriptions)
+        .innerJoin(apis, eq(subscriptions.apiId, apis.id)),
+    ]);
+    const report = await adapter.applyAccessPolicy({
+      services: apiRows.map((a) => ({ id: a.id })),
+      apps: appRows.map((app) => ({
+        app,
+        services: [
+          ...new Set(
+            subRows.filter((s) => s.appId === app.id).map((s) => s.serviceId),
+          ),
+        ].map((id) => ({ id })),
+      })),
+    });
+    for (const repair of report.repairs)
+      log.warn(repair, 'drift: access policy repaired');
+    for (const finding of report.findings)
+      log.warn(
+        {
+          ...finding,
+          ...(finding.code === 'service-shared'
+            ? {
+                apiSlugs: apiRows
+                  .filter((a) => a.id === finding.serviceId)
+                  .map((a) => a.slug),
+              }
+            : {}),
+        },
+        'drift: access policy finding',
+      );
   });
 }

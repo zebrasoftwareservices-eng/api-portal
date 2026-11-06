@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
+import type { GatewayAdapter } from '@portal/adapter-sdk';
 import type { Database } from '@portal/db';
 import { publishedApis, baseUrl, type PublishedApi } from './catalog.js';
 import { readLimited } from './import.js';
@@ -58,6 +59,7 @@ export function resolveTarget(target: string, rows: PublishedApi[]) {
 export async function registerProxy(
   server: FastifyInstance,
   db: Database,
+  adapter: GatewayAdapter,
   fetcher: typeof fetch = fetch,
 ) {
   await server.register(async (app) => {
@@ -166,6 +168,20 @@ export async function registerProxy(
           for (const [name, value] of response.headers)
             if (!blocked.has(name) && !connectionNames.includes(name))
               reply.header(name, value);
+          if (
+            adapter.isAccessDenied({
+              status: response.status,
+              headers: response.headers,
+              body: data,
+            })
+          )
+            return reply.code(403).type('application/problem+json').send({
+              type: '/problems/api-access-denied',
+              title: "This key doesn't have access to this API",
+              status: 403,
+              detail:
+                "This key's app doesn't have access to this API. Select Get an API key on this page, create an app that includes this API, and send the request with the new key. If this key's app should already have access, tell the portal admin.",
+            });
           return reply.code(response.status).send(data);
         } catch (error) {
           if (error instanceof Problem) throw error;
