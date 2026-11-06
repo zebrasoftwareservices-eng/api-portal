@@ -1,7 +1,7 @@
 ---
 id: 004
 title: Per-API access control on Kong
-status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-06
 linear: JSO-233
@@ -165,12 +165,177 @@ settle in the technical design.
 <!-- Sections below are filled by later stages. -->
 
 ## Technical design  _(tech-lead)_
-Components · API contract · Data model · Adapter calls · Risks
+Decisions and their reasons are in [ADR 0005](../adr/0005-per-api-access-control-kong-acl.md).
+
+### Decisions on the open questions
+| Question | Decision |
+| --- | --- |
+| Option A, deny ACL on unmanaged services | **Confirmed on a live Kong 3.9.4** (see Verified on a live Kong). |
+| Key-auth global or on a route | The ACL goes where key-auth is. Global or service key-auth gets a service ACL. Route-only key-auth gets one ACL per such route, so open sibling routes stay open. A global plugin is never edited: a managed service gets a service-scoped copy with `hide_credentials` on. |
+| Two published APIs on one service | **Refuse new links** with `/problems/gateway-service-already-linked`. Existing pairs stay published and share one group, so a subscription to either grants both. Reconcile warns naming both. A unique index would fail the migration on those rows, so the check is in the handler. |
+| Already-linked service with its own ACL at upgrade | **Leave it alone and warn** naming the service, as suggested. Memberships are still granted and credentials still hidden. An `allow` list keeps refusing portal keys. A `deny` list keeps letting them through until the operator fixes it. |
+| `X-Consumer-Groups` | **Hidden.** Every portal ACL sets `hide_groups_header: true`. On unmanaged services this also keeps the upstream's headers unchanged. |
+
+**Three choices the spec didn't ask about; Elango may want to look at these:**
+- An operator-owned `deny` ACL on an unmanaged service leaves portal keys working there, which
+  breaks the third access rule. The portal warns but doesn't edit the plugin (ADR 0005, decision 4).
+- Reconcile removes *every* group not backed by a subscription from consumers the portal owns, not
+  only groups named `portal-*`. That follows "a subscription is the only thing that grants access",
+  but an operator's hand-added group on a portal consumer won't last.
+- Refusing a second API on a service means there's no way to publish a new version of an API until
+  spec 012. Today that's only possible by importing it under a new slug.
+
+### Components
+| Component | Change | Why |
+| --- | --- | --- |
+| `packages/adapter-sdk` | New calls, types, error, conformance cases | Gateway-neutral contract (AC 10) |
+| `packages/adapter-kong` | Implements them, with all group and plugin logic | Keeps Kong's vocabulary out of the server |
+| `apps/server/src/reconcile.ts` | Reads desired state from Postgres, applies it, logs repairs | AC 5, 6, 7 |
+| `apps/server/src/apps.ts` | Grants access before issuing the key | AC 1, 8 |
+| `apps/server/src/import.ts` | Refusals, then protects the service in the publish transaction | AC 9 |
+| `apps/server/src/seed.ts` | Protects the sample service, and sends `hide_credentials: true` | Its PUT runs on every boot and would otherwise turn hiding back off |
+| `apps/server/src/proxy.ts` | Rewrites Kong's ACL 403 | AC 2. Scalar has no response hook, so the message goes in the body it already shows |
+| `apps/portal/components/admin-apis.tsx` | Copy for the new errors and warnings | Error copy only, per scope |
+| `packages/sdk` | Regenerated | Contract changed |
+
+### API contract
+`apps/server/openapi.yaml` is updated. There are no new paths. Nothing changes on `/v1/apps`
+except its description, and its existing 502 and 503 now also cover a failed grant.
+
+| Operation | Change |
+| --- | --- |
+| `POST /v1/admin/apis` 201 | Body is now `ImportedApi`: `ApiDetail` plus `warnings: [{ code, message }]`. Codes are `api-public` (no key-auth) and `partial-key-auth` (key-auth on only some routes, so the others stay open). |
+| `POST /v1/admin/apis` 422 | New `type` `/problems/gateway-service-has-acl`, whose `detail` names the service (AC 9). |
+| `POST /v1/admin/apis` 422 | New `type` `/problems/gateway-service-already-linked`, whose `detail` names the linked API's slug. |
+| `/v1/try-it` (all methods) 403 | New `TryItAccessDenied`: `/problems/api-access-denied`, with `title` and `detail` from the UX design. Status stays 403 and gateway headers pass through. |
+
+Import checks run in this order, so existing errors keep their meaning: document validation, service
+exists, route exists, slug free, service not linked, no foreign ACL. Only then does it write to Kong.
+
+### Data model
+**No tables, columns or migrations.** Desired state is `subscriptions` joined to
+`apis.gateway_service_id`. Group names are derived from it. That also keeps criterion 6 simple:
+there's nothing to roll back if Kong is down during the upgrade.
+
+### Adapter calls
+Added to `GatewayAdapter`; `capabilities()` gains `accessControl: true`:
+
+```ts
+interface ServiceRef { id: string }
+interface AccessFinding { code: string; serviceId: string; serviceName: string; message: string }
+interface AccessRepair { action: 'added' | 'removed' | 'updated'; object: 'membership' | 'plugin';
+                         appId?: string; serviceId?: string; detail: string }
+interface ServiceProtection { keyAuth: boolean; findings: AccessFinding[] }
+interface AccessPolicy { services: ServiceRef[]; apps: { app: AppRef; services: ServiceRef[] }[] }
+interface AccessReport { repairs: AccessRepair[]; findings: AccessFinding[] }
+
+grantAccess(app: AppRef, service: ServiceRef): Promise<void>;    // repeat = one membership
+revokeAccess(app: AppRef, service: ServiceRef): Promise<void>;   // missing = ok
+protectService(service: ServiceRef): Promise<ServiceProtection>; // throws GatewayServiceConflictError
+applyAccessPolicy(policy: AccessPolicy): Promise<AccessReport>;  // reconcile; writes only on drift
+isAccessDenied(response: { status: number; headers: Headers; body: Uint8Array }): boolean;
+```
+
+`GatewayServiceConflictError(serviceName)` is new and isn't mapped globally; `import.ts` turns it into
+the 422. `ensureConsumer` now also adds `portal-consumer`, so a consumer can't hold a key without it.
+
+| Call | Kong Admin API | Idempotency and failure |
+| --- | --- | --- |
+| Membership add | `PUT /consumers/{username}/acls/{group}` with `{ tags }` | Upsert by group name; repeats keep one row and the same ID. Tags are the usual portal tags. |
+| Membership remove | `DELETE /consumers/{username}/acls/{group}` | 404 counts as success. |
+| ACL plugin | `PUT /plugins/{stable id}` with `{ name: 'acl', service or route, config: { allow or deny, hide_groups_header: true }, tags }` | Stable ID is a UUIDv5-style SHA-1 of `instanceId:acl:scopeId` using `node:crypto`, no new dependency. The same ID converts deny to allow with no gap. A conflicting ACL gets Kong's 409, so it fails closed. |
+| Key-auth copy (global only) | `PUT /plugins/{stable id}` with the global plugin's `config` plus `hide_credentials: true` | Reconcile keeps it equal to the global config. |
+| Hide on existing key-auth | `PATCH /plugins/{id}` with `{ config: { hide_credentials: true } }` | Merges, so other config and tags stay. Sent only when off. |
+| Reads | `/services`, `/routes`, `/plugins`, `/consumers?tags=`, `/key-auths?tags=`, `/acls` (all paged) | All reads finish before any write. |
+| Unmanaged clean-up | `DELETE /plugins/{id}` for a portal deny ACL at a scope no longer needing one | Otherwise a service that drops key-auth would answer 401 to anonymous callers. |
+
+**`applyAccessPolicy` order:**
+1. Read everything. A failed read throws before any write, so nothing changes (AC 6).
+2. For each owned consumer in the policy, add missing memberships and remove extra ones. Desired is
+   `portal-consumer` plus `portal-svc-<id>` per subscribed service. Other consumers are never touched.
+3. If step 2 added memberships and step 4 will create or convert a plugin, wait 6 seconds.
+4. For each Kong service, compute desired plugins using the scope rule, and write only what differs:
+   - **Managed, key-auth present:** `allow` ACL, and `hide_credentials` on service and route key-auth.
+     A foreign ACL at any scope: skip the ACL and report a finding, but still hide.
+   - **Managed, key-auth gone:** keep an existing portal ACL, because it fails closed, and report a
+     finding. Don't delete it: that would turn a published API public without anyone deciding to.
+   - **Unmanaged, key-auth present:** `deny` ACL. A foreign ACL at the same scope or globally: skip it.
+     Report a finding if that ACL is a `deny` list without `portal-consumer`, or if a route has one.
+   - **Unmanaged, no key-auth:** delete any portal deny ACL.
+5. Report linked services missing from Kong, and services linked by more than one API.
+
+A `GatewayRejectedError` on one object is recorded as a finding and the run continues. A
+`GatewayUnavailableError` ends the run; the next run converges. "Key-auth present" means an enabled
+plugin. Compare only the fields the portal sets, so the run makes no writes when there's no drift.
+
+**Server flows:**
+- **Create app:** `ensureConsumer`, `grantAccess` for each distinct service, `issueCredential`, then
+  the existing Postgres writes. Any failure reaches the existing `deleteConsumer` compensation, which
+  cascades memberships (verified), and no key is shown.
+- **Import:** in a transaction, take `pg_advisory_xact_lock(hashtextextended('service:' || id, 0))` to
+  serialize imports of one service, then the shared `71833002` lock so reconcile can't see a protected
+  service with no row. Check the link, call `protectService`, insert. If the insert fails, reconcile
+  turns the ACL back to `deny` within 5 minutes.
+- **Reconcile:** the existing orphan and credential clean-up runs first, then `applyAccessPolicy`.
+  Log each repair and finding at `warn`, with IDs and names only. Reports contain no key values.
+- **Proxy:** `registerProxy` takes the adapter. After reading the gateway's response, if
+  `isAccessDenied` is true, send the problem body with the same status and headers, and
+  `content-type: application/problem+json`.
+
+### Verified on a live Kong
+Run during design against `kong:3.9` (3.9.4) with Postgres and go-httpbin. 36 of 36 checks passed.
+The first run failed 12 because the script allowed too little time for propagation, then passed after
+it waited longer; that's why the first risk below is there.
+
+| Behaviour | Result |
+| --- | --- |
+| Deny ACL: portal key, operator key, no key, public route | 403, 200, 401, 200 (AC 3) |
+| Route-only key-auth with route deny: portal key, operator key, open sibling route | 403, 200, 200 |
+| Service deny on a route-only service, open sibling route | **401**, which is why the scope rule exists |
+| Allow ACL with hiding: key in header and in query | 200, key in neither place, `X-Consumer-Custom-Id` kept, no `X-Consumer-Groups` (AC 4) |
+| Non-portal consumer on a managed service, before and after joining the group | 403, then 200 |
+| Route-scoped foreign `deny` under a service-scoped `allow` | Portal key gets **200**, which is why any foreign ACL refuses an import |
+| Second ACL at one scope | Kong answers 409 |
+| Service-scoped key-auth copy under a global plugin | Key hidden there, still visible on other services, global plugin unchanged |
+| Deny with key-auth `anonymous` set: no key, portal key | 200, 403 |
+| ACL 403 compared with an upstream 403 | Only the upstream one has `X-Kong-Upstream-Latency`. ACL body: `{"message":"You cannot consume this service"}` |
+| Time to take effect, one node | Membership or new key: under 15 ms in repeated runs. New plugin: about 4 s in one measurement. New routes needed more than 1.5 s. |
+
+### Risks
+| Risk | Mitigation and test |
+| --- | --- |
+| Plugin and route changes take seconds to apply, even on one node, so tests that check at once will flake. | QA polls for up to 10 s after any plugin write. Membership and key checks need no polling. |
+| A subscribed key is refused during the upgrade (AC 5). | Memberships first, plus the settle wait. QA calls with a subscribed key in a loop throughout the upgrade and fails on any 403. Multi-node isn't tested: the wait assumes the default `db_update_frequency` of 5 s, and the upgrade notes must say so. |
+| Linking locks out internal callers, and `hide_credentials` breaks upstreams that read the key. | Accepted by Elango. The upgrade notes state both, and how to add a consumer to the group. |
+| Global key-auth means a deny ACL on every service in the operator's Kong. | Each is tagged and removable by tag. QA covers global key-auth with a non-portal consumer. |
+| The first reconcile holds the advisory lock across many writes, so app creation waits. | Writes take milliseconds and the wait is once only. Steady-state runs only read. |
+| Kong's `headers` setting can remove the latency header that `isAccessDenied` checks. | The fixed message is still checked, so the worst case is an upstream 403 with Kong's exact text getting the portal's copy. Low impact. |
+| The portal's plugins outlive the portal. | The upgrade notes give the removal commands, by the `portal-instance-<id>` tag. |
+| Existing tests assume more than one API per service. | `journeys.ts` publishes twice to one service, and `app.test.ts` imports repeatedly. Both need updating; see tasks. |
+
+**Restart check (AC 5):** compare Kong objects by ID and config, ignoring `updated_at`. With
+`SEED_SAMPLE` on, the seed re-PUTs its own objects on every boot, which bumps that field.
 
 ### Tasks
-- [ ] [backend] …
-- [ ] [frontend] …
-- [ ] [qa] …
+- [ ] [backend] JSO-256 adapter-sdk: add `grantAccess`, `revokeAccess`, `protectService`, `applyAccessPolicy`, `isAccessDenied`, their types, `GatewayServiceConflictError` and the `accessControl` capability; add the AC 10 conformance cases.
+- [ ] [backend] JSO-257 adapter-kong: have `ensureConsumer` add `portal-consumer`, and implement `grantAccess` and `revokeAccess` with upsert and delete by group name, tagged.
+- [ ] [backend] JSO-258 adapter-kong: implement `protectService` with the scope rule, foreign-ACL check before any write, stable plugin IDs, hiding on service and route plugins, the global key-auth copy, and `isAccessDenied`.
+- [ ] [backend] JSO-259 adapter-kong: implement `applyAccessPolicy` in the design's order, with the settle wait and no writes when there's no drift.
+- [ ] [backend] JSO-260 server: extend `reconcile.ts` to build the policy from Postgres, call `applyAccessPolicy` after the existing clean-up, and log repairs and findings with no secrets.
+- [ ] [backend] JSO-261 server: grant access in `POST /v1/apps` before issuing the key, inside the existing compensation.
+- [ ] [backend] JSO-262 server: add the import locks, `gateway-service-already-linked` and `gateway-service-has-acl` refusals, `protectService` and `warnings`; update `seed.ts` to protect the sample service and send `hide_credentials: true`.
+- [ ] [backend] JSO-263 server: pass the adapter to `registerProxy` and rewrite Kong's ACL 403 to `/problems/api-access-denied` using the UX copy.
+- [ ] [backend] JSO-264 Regenerate `packages/sdk`, update the fake adapter in `app.test.ts`, and fix unit tests that import twice onto one service.
+- [ ] [backend] JSO-265 Docs: add upgrade notes (keys lose unsubscribed APIs, internal callers locked out and how to add them to `portal-svc-<serviceId>`, `hide_credentials`, foreign ACL warnings, one API per service, multi-node assumption, removing plugins by tag) and update `docs/engineering-conventions.md`.
+- [ ] [frontend] JSO-266 Admin import: map `gateway-service-has-acl` and `gateway-service-already-linked` to `gatewayServiceId` field errors, using the UX copy.
+- [ ] [frontend] JSO-267 Admin import: replace the key-auth-off warning with copy saying the API is public, show `warnings` from the import response, and reword the already-linked note to say the import will be refused.
+- [ ] [qa] JSO-268 AC 1, 3, 4: access-rule suite on real Kong and Postgres in Testcontainers, covering all five access-rule rows, plus route-only and global key-auth variants.
+- [ ] [qa] JSO-269 AC 2: Playwright, try-it with an unsubscribed key shows the 403 and the UX message; an upstream 403 stays unchanged.
+- [ ] [qa] JSO-270 AC 5, 6: upgrade from a v0.1 state with a call loop that fails on any refused subscribed key; restart compare ignoring `updated_at`; Kong down at boot, then converging on the next run with no secret in logs.
+- [ ] [qa] JSO-271 AC 7: all four drift cases repaired in one run, with untagged groups on non-portal consumers and their membership of `portal-svc-*` left alone.
+- [ ] [qa] JSO-272 AC 8: Kong failing or timing out during the grant gives the gateway error, no key, no app row, and a retry with one consumer and no duplicate groups.
+- [ ] [qa] JSO-273 AC 9, 10: publish and subscribe flow; foreign ACL refused at service, route and global scope with plugins unchanged; second link refused; conformance suite passes against Kong.
+- [ ] [qa] JSO-274 Update `apps/portal/e2e/journeys.ts` to publish to separate Kong services, and run the `docker compose` quickstart and smoke scripts with hiding on.
 
 ## UX  _(ui-designer)_
 Summary + link to `docs/design/NNN-*.md`
