@@ -1,7 +1,7 @@
 ---
 id: 004
 title: Per-API access control on Kong
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-06
 linear: JSO-233
@@ -420,43 +420,48 @@ Bug retest audit: listed all direct Bug children of JSO-233 without a result lim
 - [x] JSO-280 After an import refusal, focus stays on the alert instead of the Kong service field (minor)
 - [ ] JSO-281 API reference info line points to an apikey field that isn't there when security is set per operation (minor)
 - [ ] JSO-282 Restarting the server resets `created_at` on the sample's Kong objects (minor)
+- [ ] JSO-283 Keyboard users can't scroll Scalar's response body to read the end of the 403 message (minor)
+- [ ] JSO-284 Kong service hint says "See the upgrade notes" but gives no link to them (minor)
 - [x] [frontend] Fix JSO-279: make the try-it response body readable at desktop widths, and assert it in the AC 2 browser test
 - [x] [frontend] Fix JSO-280 and JSO-278: after an import refusal, focus reliably moves to the Kong service field in a real browser and under test load, keeping the existing focus assertion unrelaxed
 
 ## User testing  _(user-tester)_
-Run on 2026-11-06 in Orca's built-in browser against clean Docker Compose installs of this branch, with Kong 3.9.4. Access results come from real calls through Kong; Admin API calls set up operator fixtures and drift. Screenshots are in `docs/uat/004/`.
+Re-run on 2026-11-06 after the JSO-279 and JSO-280 fixes, in Orca's built-in browser, on clean Docker Compose installs of this branch with Kong 3.9.4. The images include commit `90a3b87`; only tests and docs changed after it. Access results come from real calls through Kong, and Admin API calls set up operator fixtures and drift. This run's screenshots are in `docs/uat/004/retest/`. The earlier run's are in `docs/uat/004/`.
 
 | User story | Result | Screenshot |
 | --- | --- | --- |
-| Platform engineer: a portal key works only on subscribed APIs | **Pass.** Subscribed 200; unsubscribed API and unmanaged key-auth service 403; missing, unknown and revoked keys 401. A newly published API refused existing keys and accepted a new app's key. All of an app's active keys reached the same APIs. | [02](../uat/004/02-create-app-hint-1280.png), [10](../uat/004/10-admin-orders-published.png), [14](../uat/004/14-second-app-key-works-with-orders.png), [19](../uat/004/19-tryit-orders-key-200.png) |
-| Platform engineer: upstreams never receive portal keys | **Pass.** The echo showed no key from the header or the query parameter, no `X-Consumer-Groups`, and `X-Consumer-Custom-Id` present. | [04](../uat/004/04-tryit-subscribed-200-1280.png) |
-| Platform engineer: non-portal traffic keeps working | **Pass.** On the unmanaged service, the non-portal consumer got 200 and still reached the upstream with its key. Anonymous calls to a public route got 200. As accepted in the spec, the same consumer got 403 once its service was published, until added to the group. | Kong calls only |
-| Platform engineer: changes in Kong are put back automatically | **Pass.** All four drift cases were repaired in one scheduled run, with the ACL's plugin ID unchanged. The operator consumer's own memberships stayed, and logs held no key values. | Kong calls only |
-| Developer: an existing key keeps working after an upgrade | **Pass, one minor finding.** Real upgrade from `main` images: 415 of 415 calls returned 200 during the upgrade. Afterwards the key got 200 on its API and 403 on the internal service (200 before), and the upstream stopped receiving it. Restart changed only `created_at` on seed objects (JSO-282). | [20](../uat/004/20-upgrade-dashboard-existing-app.png), [21](../uat/004/21-upgrade-existing-key-200.png) |
-| Developer: a clear explanation when a key is refused | **Fail on desktop (JSO-279).** The status and message text are correct, and the Get an API key flow then gives 200, but only `"title"` and `"detai"` are visible in a 116px box. At 375px the start of each line shows and the rest scrolls sideways, as designed. | [11](../uat/004/11-tryit-refused-403-1280.png), [13](../uat/004/13-tryit-refused-403-375.png) |
+| Platform engineer: a portal key works only on subscribed APIs | **Pass.** Subscribed 200; unsubscribed API 403; missing, unknown and revoked keys 401. A newly published API refused existing keys and accepted a new app's key. An app's second key reached the same APIs, and revoking it left the first working. | [02](../uat/004/retest/02-create-app-hint-1200.png), [08](../uat/004/retest/08-admin-orders-published.png), [11](../uat/004/retest/11-tryit-subscribed-200.png) |
+| Platform engineer: upstreams never receive portal keys | **Pass.** The echo showed no key from the header or the query parameter, no `X-Consumer-Groups`, and `X-Consumer-Custom-Id` present. A key-auth plugin turned back off was re-hidden by reconcile. | [11](../uat/004/retest/11-tryit-subscribed-200.png) |
+| Platform engineer: non-portal traffic keeps working | **Pass, after the first reconcile.** On an unmanaged key-auth service the operator's key got 200 and still reached the upstream with its key, anonymous got 401 as before, and a public route got 200 anonymously. Portal keys got 403 there only after the scheduled run; before it they got 200, which is the window of up to 5 minutes accepted in the design. Publishing locked the operator's consumer out of that service with 403 until it joined the group, then 200, as accepted in the spec. | Kong calls only |
+| Platform engineer: changes in Kong are put back automatically | **Pass.** All four drift cases were repaired in one scheduled run, and the sample ACL kept its plugin ID. The operator consumer's own group and its added `portal-svc-*` membership stayed. Logs held no key values. | Kong calls only |
+| Developer: an existing key keeps working after an upgrade | **Pass, one known minor.** Real upgrade from `main` images (`89e0430`): 401 of 401 calls returned 200 throughout. Afterwards the key got 200 on its API and 403 on the internal service (200 before), and the upstream stopped receiving it. A restart changed only `created_at` on three seed objects (JSO-282). | [17](../uat/004/retest/17-upgrade-dashboard-existing-app.png) |
+| Developer: a clear explanation when a key is refused | **Pass, one new minor (JSO-283).** The 403, `title` and start of `detail` are readable at 1280px, and sideways scrolling by mouse or touch reaches the end of `detail`. At 375px the body is visible but shows only the start of each long line, as designed. **Get an API key** led to an app that gave 200. Keyboard users can't scroll sideways. | [10](../uat/004/retest/10-tryit-refused-403-body-1280.png), [15](../uat/004/retest/15-tryit-403-keyboard-1200.png) |
 
 Other visible criteria and states:
 
 | Check | Result | Screenshot |
 | --- | --- | --- |
-| AC 8: Kong down during Create app | Pass. Gateway error, values kept, no key dialog and no app row. Retry gave one app, one consumer and one membership per group. | [22](../uat/004/22-create-app-kong-down-error.png) |
-| AC 6: server boots with Kong down | Partly walked. The server started, reported the gateway unreachable, and logs held no key or admin password. Recovery on the next run wasn't re-walked; QA's test covers it. | Server logs only |
-| AC 9: refused imports and public warnings | Pass on copy and outcome: nothing was published and plugins were unchanged. Focus is wrong after a refusal (JSO-280). | [05](../uat/004/05-admin-linked-warning-before-submit.png), [06](../uat/004/06-admin-refused-already-linked.png), [07](../uat/004/07-admin-refused-foreign-acl.png), [08](../uat/004/08-admin-public-warning-before-submit.png), [09](../uat/004/09-admin-public-published-warning.png), [18](../uat/004/18-admin-refused-foreign-acl-375.png) |
-| Try-it: revoked key and upstream's own 403 | Pass. The revoked key showed Kong's 401, and the upstream's 403 wasn't rewritten. | Results read from the page; captures came out blank |
-| Mistakes: empty name, no API chosen, wrong password, refresh and back after the key dialog, non-admin on `/admin/apis` | Pass. Clear messages, the key isn't shown again, and non-admins get Page not found. | [03](../uat/004/03-key-dialog.png), [15](../uat/004/15-app-detail-after-refresh.png) |
-| Expired session on submit | Pass. Goes to sign-in, keeps the return address and says "Sign in to continue." The typed form values aren't restored. | None |
-| Keyboard: reference, sign-up, Create app, key dialog, try-it | Pass with Tab, Enter and Escape, ending in a 200. Escape doesn't close the key dialog; **I've saved it** does. Escape closes the try-it client and returns focus. | None |
-| 375px | Portal pages don't scroll sideways. Try-it works. | [13](../uat/004/13-tryit-refused-403-375.png), [18](../uat/004/18-admin-refused-foreign-acl-375.png) |
-| Browser health | No console errors on the last page checked. Console and network weren't checked after every journey. | None |
+| AC 8: Kong down during Create app | Pass. Gateway error with **Try again**, focus on the alert, values kept, no key dialog and no app row. The retry gave one app, one consumer and no duplicate groups. | [16](../uat/004/retest/16-create-app-kong-down.png) |
+| AC 6: server boots with Kong down | Pass, including recovery. The server started and reported the gateway unreachable, logs held no key or admin password, and app, subscription and key counts didn't change. The next scheduled run restored a removed membership and the key returned 200. | Server logs only |
+| AC 9: refused imports and public warnings | Pass. Copy matches the design, nothing was published, plugins were unchanged, focus reaches the field and a new service choice clears the refusal. The hint's "See the upgrade notes" has no link (JSO-284). | [03](../uat/004/retest/03-admin-refused-foreign-acl-1200.png), [04](../uat/004/retest/04-admin-linked-warning-1200.png), [05](../uat/004/retest/05-admin-refused-already-linked-1200.png), [06](../uat/004/retest/06-admin-public-warning-before.png), [07](../uat/004/retest/07-admin-public-published.png), [13](../uat/004/retest/13-admin-refused-foreign-acl-375.png), [20](../uat/004/retest/20-admin-service-hint-no-link.png) |
+| Try-it: revoked key and upstream's own 403 | Pass. The revoked key showed Kong's 401. The upstream's 403 came through with no portal message. | Read from the page |
+| Mistakes: empty name, no API chosen, wrong password, double submit, refresh after the key dialog, non-admin on `/admin/apis` | Pass. Clear messages, one app from a double submit, the key isn't shown again, and non-admins get Page not found. The double submit was two scripted clicks, not a physical double-click. | None |
+| Expired session on submit | Pass. Goes to sign-in, keeps the return address, says "Sign in to continue" and creates no app. The typed form values aren't restored. | None |
+| Keyboard: reference, Create app, key dialog, try-it | Pass with Tab, Enter and Escape, apart from JSO-283. Sign-in and sign-up weren't repeated by keyboard in this run. Focus stays in the key dialog; Escape doesn't close it and **I've saved it** does. | None |
+| 375px and 320px | Pass. Home, reference, dashboard and Create app don't scroll sideways at either width. The phone journey and its menu work. **I've saved it** sits below the fold, inside the dialog's scroll. | [12](../uat/004/retest/12-api-reference-375.png), [14](../uat/004/retest/14-admin-billing-published-375.png), [19](../uat/004/retest/19-key-dialog-375.png) |
+| Browser health | No console errors or failed requests when checked after the Kong-outage retry and after the phone journey. Not checked after every journey. | None |
 
 Notes:
-- **Time to start:** clean install 14 seconds with images already built, and the upgrade 11 seconds. QA's 146-second quickstart run, which includes image builds, is the better measure of a first install.
-- **Known bugs:** none were In Review, so nothing needed re-testing. I didn't re-observe JSO-277, because my try-it calls came after its 30-second window.
-- **Not tested:** the portal's 502 state, double-clicking submit (the button disables at once), and multi-node Kong.
-- **Screenshot artefacts:** Orca's viewport emulation sometimes captured blank or tiled pages. Blank ones were removed, 18, 19 and 21 were cropped, and the measurements above were read from the page. Keys visible in 03 and 14 are test keys from installs that have since been deleted.
-- **Published service hint:** a consumer locked out at publish gets a plain 403 with no hint, which is the accepted risk stated in the Kong service hint and upgrade notes.
+- **Time to start:** clean install 13 seconds and upgrade 9 seconds, both with images already built. QA's 171.6-second quickstart run, which includes image builds, is the better measure of a first install.
+- **Bug re-tests:** none were In Review, because QA had already closed JSO-278, JSO-279 and JSO-280. I re-tested JSO-279 and JSO-280 anyway and both hold. JSO-278 is about test load, so the browser can't show it.
+- **Known minors:** JSO-277 reproduced: with a warm cache, try-it returned 400 on a just-published API for at least 16 seconds, and had cleared when next checked about 80 seconds later. JSO-282 was confirmed. JSO-281 wasn't re-tested.
+- **Follow-up:** JSO-285 (Backlog) covers Scalar's own toolbar on the quickstart's API references. It isn't caused by this spec.
+- **Not tested:** the portal's 502 state, the `partial-key-auth` warning, and multi-node Kong.
+- **Measured rather than pictured:** Orca's viewport emulation captures tiled pages, so 09, 10, 12, 13, 14 and 19 are cropped, and the 375px 403 result comes from measurements on the page (body 353px wide, unobscured, scrolling to the end of `detail`). Files marked 1200 are the native viewport, which is 1199px wide.
+- **Unreproduced:** one scripted sign-up click on the just-started `main` images did nothing, and a second click worked. It was probably before the page hydrated, and it didn't happen on this branch.
+- **Test keys:** the key visible in 19 belongs to an install that has since been deleted.
 
-**Disposition: `building`**, because major bug JSO-279 is open.
+**Disposition: `review`.** No blocker or major bug is open. Five minor bugs remain: JSO-277, JSO-281, JSO-282, JSO-283 and JSO-284.
 
 ## Review  _(tech-lead)_
 
