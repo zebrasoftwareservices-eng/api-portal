@@ -6,7 +6,11 @@ Claude Code reads it through `CLAUDE.md`.
 Free, open-source (Apache 2.0) API developer portal that connects to API gateways —
 Kong first, AWS API Gateway second, then APISIX, Envoy Gateway, Apigee, Azure APIM.
 Built by Zebra Software Services as a reputation project: adoption and quality matter
-more than feature count. Product context: `docs/product-brief.md`.
+more than feature count. Product context: `docs/product-brief.md`. Sprint plan and reserved
+spec numbers: `docs/roadmap.md`.
+
+Each company installs its own portal (single-tenant, self-hosted). No billing, paid plans or
+multi-tenant hosting: plans are free access tiers (rate limits, quotas, approval).
 
 ## The one rule
 `docker compose up` must give a working portal against a real Kong in under five minutes.

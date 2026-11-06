@@ -36,10 +36,13 @@ The Codex roles are pinned to `gpt-6.1-sol`, the Codex coding model on ChatGPT P
    and Docker. Avoid **Full access**: it lets agents change files anywhere on the Mac.
 
 ## Run a spec
+Planned features and their reserved spec numbers live in `docs/roadmap.md` (one-week sprints, one
+Linear milestone per sprint). Start a planned feature from its Linear issue:
 ```bash
-cd ~/Documents/ZSS/api-portal
+cd ~/Documents/ZSS/api-portal && git pull
 node scripts/factory.mjs status          # every spec, its Linear issue, and what's next
-node scripts/factory.mjs start 001       # new worktree feat/jso-117-001-… + Claude coordinator
+node scripts/factory.mjs start JSO-233   # planned feature: worktree 004-per-api-access-control, PM writes spec 004
+node scripts/factory.mjs start 001       # existing spec: new worktree feat/jso-117-001-… + Claude coordinator
 ```
 `start` runs `orca worktree create … --agent claude --linear-issue JSO-117 --prompt "…factory skill…"`.
 In the new worktree the coordinator plans the next stage, starts the workers, waits, updates

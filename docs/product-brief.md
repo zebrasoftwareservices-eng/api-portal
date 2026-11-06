@@ -1,6 +1,6 @@
 # Product brief — API Developer Portal (working name: Portal)
 
-Last updated: 2026-11-02 · Owner: Elango (Zebra Software Services)
+Last updated: 2026-11-06 · Owner: Elango (Zebra Software Services)
 
 ## What we're building
 A free, open-source (Apache 2.0) developer portal that connects to the API gateways teams
@@ -24,12 +24,19 @@ and get working credentials on the gateway; AI agents read every page as Markdow
 - One adapter interface per gateway; any gateway can also validate portal-issued JWTs.
 - Agent-ready: Markdown for every page, `llms.txt`, later an MCP server per API product.
 
+## Deployment model
+Single-tenant and self-hosted: each company installs its own portal on its own servers
+(Docker compose today, Helm chart in v0.8). There is no multi-tenant hosting.
+
 ## Scope
-**MVP (spec 001):** Kong quickstart — import OpenAPI, publish docs, developer sign-up,
-app + Kong key-auth credential, try-it console, key revoke.
-**Next:** AWS API Gateway REST adapter (spec 002), rate-limit plans, theming, Helm chart.
-**Later:** page builder, widget SDK, APISIX/Envoy/Apigee/Azure adapters, MCP server, AI search, WASM hooks.
-**Not doing:** paid tiers, monetization/billing as a priority, a hosted SaaS before the open-source core is adopted.
+**Shipped (v0.1):** Kong quickstart (spec 001) — import OpenAPI, publish docs, developer sign-up,
+app + Kong key-auth credential, try-it console, key revoke — and a static demo on Vercel (spec 002).
+**Next (v0.2–v0.9, one-week sprints):** see `docs/roadmap.md` — per-API access control, gateway
+connections from the admin UI and a live demo, accounts and teams, products with free plan tiers and
+approvals, usage and docs upgrades, branding and content, governance and production install, then the
+AWS adapter and OAuth credentials.
+**Later:** Konnect, APISIX, Envoy, Azure and Apigee adapters, MCP server per product, AI search, widget SDK, page builder.
+**Not doing:** billing, paid plans or payment providers; multi-tenant hosting; a hosted SaaS.
 
 ## Distribution
 GitHub + Docker images + Helm chart first. Free listings on AWS and Google Cloud marketplaces
