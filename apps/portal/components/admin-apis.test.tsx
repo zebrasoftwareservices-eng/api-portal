@@ -1,9 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminApis } from './admin-apis';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+const service = {
+  id: 'svc',
+  name: 'sample-svc',
+  routes: [{ id: 'route', paths: ['/sample'] }],
+  keyAuth: true,
+};
+function mockServices(items: (typeof service & { linkedApiSlug?: string })[]) {
+  mocks.get.mockImplementation((path: string) =>
+    Promise.resolve({
+      data: path.includes('services')
+        ? { items }
+        : path.includes('health')
+          ? { gateway: { reachable: true } }
+          : { items: [] },
+    }),
+  );
+}
+async function fillUrlImport(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByLabelText('From a URL'));
+  await user.type(
+    screen.getByLabelText('Document URL'),
+    'https://example.com/openapi.yaml',
+  );
+  await user.selectOptions(screen.getByLabelText('Kong service'), 'svc');
+}
 vi.mock('../lib/client', () => ({
   api: { GET: mocks.get, POST: mocks.post },
   retrySeconds: () => 0,
@@ -16,24 +41,7 @@ vi.mock('../lib/client', () => ({
 describe('admin import', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.get.mockImplementation((path: string) =>
-      Promise.resolve({
-        data: path.includes('services')
-          ? {
-              items: [
-                {
-                  id: 'svc',
-                  name: 'sample-svc',
-                  routes: [{ id: 'route', paths: ['/sample'] }],
-                  keyAuth: true,
-                },
-              ],
-            }
-          : path.includes('health')
-            ? { gateway: { reachable: true } }
-            : { items: [] },
-      }),
-    );
+    mockServices([service]);
   });
   it('submits URL source and shows the first validation error without losing form values', async () => {
     const user = userEvent.setup();
@@ -79,7 +87,7 @@ describe('admin import', () => {
   it('reads files as content, resets after publishing and links to the reference', async () => {
     const user = userEvent.setup();
     mocks.post.mockResolvedValue({
-      data: { id: 'api', title: 'Orders', slug: 'orders' },
+      data: { id: 'api', title: 'Orders', slug: 'orders', warnings: [] },
       response: new Response(null, { status: 201 }),
     });
     render(<AdminApis />);
@@ -103,5 +111,206 @@ describe('admin import', () => {
       await screen.findByRole('link', { name: 'View Orders' }),
     ).toHaveAttribute('href', '/apis/orders');
     expect(screen.getByLabelText('Kong service')).toHaveValue('');
+  });
+  it.each([
+    {
+      type: 'gateway-service-has-acl',
+      title: 'Another ACL plugin applies to this service',
+      detail:
+        "An ACL plugin this portal didn't create applies to the Kong service sample-svc, either on the service, on one of its routes or globally. The portal can't control access while it's there, so it hasn't changed this service's plugins.",
+      field:
+        "This service has an ACL plugin the portal didn't create. Remove it in Kong and try again, or choose another service.",
+    },
+    {
+      type: 'gateway-service-already-linked',
+      title: 'This service already has a published API',
+      detail:
+        'This Kong service already serves /apis/orders. A Kong service can serve only one published API, because access is granted per service.',
+      field:
+        'This service already serves a published API. Choose another service.',
+    },
+  ])(
+    'keeps values and focuses the service for $type, then clears the refusal on selection',
+    async ({ type, title, detail, field }) => {
+      const user = userEvent.setup();
+      mockServices([service, { ...service, id: 'other', name: 'other-svc' }]);
+      mocks.post.mockResolvedValue({
+        error: { status: 422, type: `/problems/${type}`, title, detail },
+        response: new Response(null, { status: 422 }),
+      });
+      render(<AdminApis />);
+      await fillUrlImport(user);
+      await user.click(
+        screen.getByRole('button', { name: 'Import and publish' }),
+      );
+      const select = screen.getByLabelText('Kong service');
+      await waitFor(() => expect(select).toHaveFocus());
+      expect(select).toHaveAttribute('aria-invalid', 'true');
+      expect(select).toHaveAccessibleDescription(`⚠ ${field}`);
+      expect(select).toHaveValue('svc');
+      expect(screen.getByLabelText('Document URL')).toHaveValue(
+        'https://example.com/openapi.yaml',
+      );
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent(title);
+      expect(alert).toHaveTextContent(detail);
+      expect(alert).toHaveTextContent('Nothing was published.');
+      expect(
+        mocks.get.mock.calls.filter(([path]) => path.includes('services')),
+      ).toHaveLength(1);
+      await user.selectOptions(select, 'other');
+      expect(select).toHaveAttribute('aria-invalid', 'false');
+      expect(select).toHaveAccessibleDescription(
+        /Publishing limits this service/,
+      );
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByText(`⚠ ${field}`)).not.toBeInTheDocument();
+    },
+  );
+  it('keeps unrelated import problems when the service changes', async () => {
+    const user = userEvent.setup();
+    mockServices([service, { ...service, id: 'other', name: 'other-svc' }]);
+    mocks.post.mockResolvedValue({
+      error: {
+        status: 422,
+        type: '/problems/invalid-openapi',
+        title: 'Invalid OpenAPI',
+        detail: 'Missing info',
+      },
+      response: new Response(null, { status: 422 }),
+    });
+    render(<AdminApis />);
+    await fillUrlImport(user);
+    await user.click(
+      screen.getByRole('button', { name: 'Import and publish' }),
+    );
+    await screen.findByRole('alert');
+    await user.selectOptions(screen.getByLabelText('Kong service'), 'other');
+    expect(screen.getByRole('alert')).toHaveTextContent('Missing info');
+  });
+  it('warns that an unprotected API will be public and leaves publishing enabled', async () => {
+    const user = userEvent.setup();
+    mockServices([{ ...service, keyAuth: false }]);
+    render(<AdminApis />);
+    await screen.findByRole('option', { name: /sample-svc/ });
+    await user.selectOptions(screen.getByLabelText('Kong service'), 'svc');
+    expect(screen.getByText(/This API will be public/)).toHaveTextContent(
+      "⚠ This API will be public. Key-auth isn't enabled on this service, so anyone can call it without a key. To require keys, enable the key-auth plugin on the service in Kong, then select Refresh list.",
+    );
+    expect(
+      screen.getByRole('button', { name: 'Import and publish' }),
+    ).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  it('shows only the linked-service warning even when key-auth is off, and lets the server decide', async () => {
+    const user = userEvent.setup();
+    mockServices([{ ...service, keyAuth: false, linkedApiSlug: 'orders' }]);
+    render(<AdminApis />);
+    await screen.findByRole('option', { name: /sample-svc/ });
+    await user.selectOptions(screen.getByLabelText('Kong service'), 'svc');
+    expect(screen.getByText(/This service already serves/)).toHaveTextContent(
+      '⚠ This service already serves /apis/orders. A Kong service can serve only one published API, so this import will be refused. Choose another one.',
+    );
+    expect(
+      screen.queryByText(/This API will be public/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Publishing limits this service/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Import and publish' }),
+    ).toBeEnabled();
+  });
+  it('keeps all server warnings in order after resetting, describes the focused success, and clears on the next submit', async () => {
+    const user = userEvent.setup();
+    const warnings = [
+      {
+        code: 'partial-key-auth',
+        message:
+          "Key-auth is on only some of this service's routes. Keys are checked on those routes, and the other routes stay open to anyone. To protect them, enable key-auth on the service in Kong.",
+      },
+      {
+        code: 'api-public',
+        message:
+          "This API is public. Key-auth isn't enabled on this service, so anyone can call it without a key. To require keys, enable the key-auth plugin on the service in Kong.",
+      },
+      {
+        code: 'future-code',
+        message: 'A future server warning is also shown.',
+      },
+    ];
+    mocks.post
+      .mockResolvedValueOnce({
+        data: { id: 'api', title: 'Orders', slug: 'orders', warnings },
+        response: new Response(null, { status: 201 }),
+      })
+      .mockResolvedValueOnce({
+        error: {
+          status: 422,
+          type: '/problems/invalid-openapi',
+          title: 'Invalid OpenAPI',
+        },
+        response: new Response(null, { status: 422 }),
+      });
+    render(<AdminApis />);
+    await fillUrlImport(user);
+    await user.click(
+      screen.getByRole('button', { name: 'Import and publish' }),
+    );
+    const success = (
+      await screen.findByRole('link', { name: 'View Orders' })
+    ).closest('[role="status"]')!;
+    await waitFor(() => expect(success).toHaveFocus());
+    expect(screen.getByLabelText('Kong service')).toHaveValue('');
+    const ids = success.getAttribute('aria-describedby')!.split(' ');
+    expect(ids).toHaveLength(warnings.length);
+    ids.forEach((id, index) => {
+      const warning = document.getElementById(id)!;
+      expect(warning).toHaveTextContent(`⚠ ${warnings[index]!.message}`);
+      expect(warning).not.toHaveAttribute('role', 'alert');
+    });
+    expect(success).toHaveAccessibleDescription(
+      warnings.map(({ message }) => `⚠ ${message}`).join(' '),
+    );
+    expect(within(success as HTMLElement).getByRole('link')).toHaveAttribute(
+      'href',
+      '/apis/orders',
+    );
+    await fillUrlImport(user);
+    expect(
+      screen.getByText(warnings[2]!.message, { exact: false }),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole('button', { name: 'Import and publish' }),
+    );
+    await screen.findByRole('alert');
+    expect(
+      screen.queryByRole('link', { name: 'View Orders' }),
+    ).not.toBeInTheDocument();
+    warnings.forEach(({ message }) =>
+      expect(
+        screen.queryByText(message, { exact: false }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+  it('describes the service effects only for an unlinked service with key-auth', async () => {
+    const user = userEvent.setup();
+    mockServices([
+      service,
+      { ...service, id: 'other', name: 'other-svc', keyAuth: false },
+    ]);
+    render(<AdminApis />);
+    await screen.findByRole('option', { name: /sample-svc/ });
+    const select = screen.getByLabelText('Kong service');
+    expect(select).not.toHaveAttribute('aria-describedby');
+    await user.selectOptions(select, 'svc');
+    expect(select).toHaveAccessibleDescription(
+      'Publishing limits this service to apps that include this API. Other Kong consumers lose access until you add them to its group, and Kong stops forwarding API keys to the upstream. See the upgrade notes.',
+    );
+    await user.selectOptions(select, 'other');
+    expect(select).not.toHaveAttribute('aria-describedby');
+    expect(
+      screen.queryByText(/Publishing limits this service/),
+    ).not.toBeInTheDocument();
   });
 });

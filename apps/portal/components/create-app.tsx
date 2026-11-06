@@ -193,9 +193,15 @@ export function CreateApp({ slug }: { slug?: string }) {
                 )}
               </Field>
               <fieldset
-                aria-describedby={errors.apiIds ? 'api-error' : undefined}
+                aria-describedby={
+                  errors.apiIds ? 'api-hint api-error' : 'api-hint'
+                }
               >
                 <legend>APIs this app uses</legend>
+                <p className="hint" id="api-hint">
+                  This app&apos;s keys work only on the APIs you choose here. To
+                  use another API later, create another app.
+                </p>
                 {slug && data && !data.items.some((a) => a.slug === slug) && (
                   <p className="muted">
                     The API you came from isn&apos;t available any more. Choose

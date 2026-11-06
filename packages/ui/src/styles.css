@@ -294,6 +294,7 @@ legend {
   overflow: hidden;
 }
 .alert {
+  overflow-wrap: anywhere;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);

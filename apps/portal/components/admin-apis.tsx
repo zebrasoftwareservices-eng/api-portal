@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Button, Input, PageHeader, Table } from '@portal/ui';
-import type { ApiDetail, GatewayService, Problem } from '../lib/types';
+import type { GatewayService, Problem } from '../lib/types';
+import type { components } from '@portal/sdk';
 import { api, networkProblem, retrySeconds } from '../lib/client';
 import { useResource } from './use-resource';
 import { Field, focusInvalid } from './field';
@@ -28,7 +29,9 @@ export function AdminApis() {
   const [retry, setRetry] = useState(0);
   const [pending, setPending] = useState(false);
   const lock = useRef(false);
-  const [published, setPublished] = useState<ApiDetail>();
+  const [published, setPublished] =
+    useState<components['schemas']['ImportedApi']>();
+  const warningId = useId();
   const success = useRef<HTMLDivElement>(null);
   const form = useRef<HTMLFormElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -104,6 +107,14 @@ export function AdminApis() {
           'gateway-service-not-found': [
             'gatewayServiceId',
             'This service no longer exists in Kong. Refresh the list and choose another.',
+          ],
+          'gateway-service-has-acl': [
+            'gatewayServiceId',
+            "This service has an ACL plugin the portal didn't create. Remove it in Kong and try again, or choose another service.",
+          ],
+          'gateway-service-already-linked': [
+            'gatewayServiceId',
+            'This service already serves a published API. Choose another service.',
           ],
           'gateway-service-has-no-route': [
             'routePath',
@@ -202,6 +213,13 @@ export function AdminApis() {
         <div
           className="alert success"
           role="status"
+          aria-describedby={
+            published.warnings?.length
+              ? published.warnings
+                  .map((_, index) => `${warningId}-${index}`)
+                  .join(' ')
+              : undefined
+          }
           ref={success}
           tabIndex={-1}
         >
@@ -209,6 +227,15 @@ export function AdminApis() {
           <a href={`/apis/${published.slug}`}>View {published.title}</a>
         </div>
       )}
+      {published?.warnings?.map((warning, index) => (
+        <div
+          className="alert warning"
+          id={`${warningId}-${index}`}
+          key={`${warningId}-${index}`}
+        >
+          ⚠ {warning.message}
+        </div>
+      ))}
       <form
         ref={form}
         noValidate
@@ -317,7 +344,15 @@ export function AdminApis() {
               )}
             </Field>
           )}
-          <Field label="Kong service" error={errors.gatewayServiceId}>
+          <Field
+            label="Kong service"
+            error={errors.gatewayServiceId}
+            hint={
+              selected?.keyAuth && !selected.linkedApiSlug
+                ? 'Publishing limits this service to apps that include this API. Other Kong consumers lose access until you add them to its group, and Kong stops forwarding API keys to the upstream. See the upgrade notes.'
+                : undefined
+            }
+          >
             {(props) => (
               <select
                 {...props}
@@ -326,6 +361,15 @@ export function AdminApis() {
                 value={service}
                 onChange={(e) => {
                   setService(e.target.value);
+                  setErrors((current) => ({
+                    ...current,
+                    gatewayServiceId: '',
+                  }));
+                  if (
+                    problem?.type.endsWith('/gateway-service-has-acl') ||
+                    problem?.type.endsWith('/gateway-service-already-linked')
+                  )
+                    setProblem(undefined);
                   if (
                     !services.data?.items
                       .find((s) => s.id === e.target.value)
@@ -370,11 +414,12 @@ export function AdminApis() {
           >
             Refresh list
           </Button>
-          {selected && !selected.keyAuth && (
+          {selected && !selected.linkedApiSlug && !selected.keyAuth && (
             <div className="alert warning">
-              ⚠ Key-auth isn&apos;t enabled on this service. Developers will get
-              keys, but Kong won&apos;t check them. Enable the key-auth plugin
-              on the service in Kong to protect it.
+              ⚠ This API will be public. Key-auth isn&apos;t enabled on this
+              service, so anyone can call it without a key. To require keys,
+              enable the key-auth plugin on the service in Kong, then select
+              Refresh list.
             </div>
           )}
           {noRoute && (
@@ -384,7 +429,11 @@ export function AdminApis() {
             </div>
           )}
           {selected?.linkedApiSlug && (
-            <p>This service already serves /apis/{selected.linkedApiSlug}.</p>
+            <div className="alert warning">
+              ⚠ This service already serves /apis/{selected.linkedApiSlug}. A
+              Kong service can serve only one published API, so this import will
+              be refused. Choose another one.
+            </div>
           )}
           <details
             open={options}

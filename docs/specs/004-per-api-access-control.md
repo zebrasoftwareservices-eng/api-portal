@@ -327,9 +327,9 @@ it waited longer; that's why the first risk below is there.
 - [ ] [backend] JSO-263 server: pass the adapter to `registerProxy` and rewrite Kong's ACL 403 to `/problems/api-access-denied` using the UX copy.
 - [ ] [backend] JSO-264 Regenerate `packages/sdk`, update the fake adapter in `app.test.ts`, and fix unit tests that import twice onto one service.
 - [ ] [backend] JSO-265 Docs: add upgrade notes (keys lose unsubscribed APIs, internal callers locked out and how to add them to `portal-svc-<serviceId>`, `hide_credentials`, foreign ACL warnings, one API per service, multi-node assumption, removing plugins by tag) and update `docs/engineering-conventions.md`.
-- [ ] [frontend] JSO-266 Admin import: map `gateway-service-has-acl` and `gateway-service-already-linked` to `gatewayServiceId` field errors, using the UX copy.
-- [ ] [frontend] JSO-267 Admin import: replace the key-auth-off warning with copy saying the API is public, show `warnings` from the import response, and reword the already-linked note to say the import will be refused.
-- [ ] [frontend] JSO-276 Copy additions approved by Elango: API reference info line, Create-app hint and Kong service hint, matching §4.4 of the UX design with the accessibility wiring in §5.
+- [x] [frontend] JSO-266 Admin import: map `gateway-service-has-acl` and `gateway-service-already-linked` to `gatewayServiceId` field errors, using the UX copy.
+- [x] [frontend] JSO-267 Admin import: replace the key-auth-off warning with copy saying the API is public, show `warnings` from the import response, and reword the already-linked note to say the import will be refused.
+- [x] [frontend] JSO-276 Copy additions approved by Elango: API reference info line, Create-app hint and Kong service hint, matching §4.4 of the UX design with the accessibility wiring in §5.
 - [ ] [qa] JSO-268 AC 1, 3, 4: access-rule suite on real Kong and Postgres in Testcontainers, covering all five access-rule rows, plus route-only and global key-auth variants.
 - [ ] [qa] JSO-269 AC 2: Playwright, try-it with an unsubscribed key shows the 403 and the UX message; an upstream 403 stays unchanged.
 - [ ] [qa] JSO-270 AC 5, 6: upgrade from a v0.1 state with a call loop that fails on any refused subscribed key; restart compare ignoring `updated_at`; Kong down at boot, then converging on the next run with no secret in logs.
@@ -363,6 +363,9 @@ go slightly beyond it. They're tracked in JSO-276:
   publishing a new API after the upgrade might never read them.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend (JSO-266, JSO-267, JSO-276): admin import maps both new refusals to the Kong service field, retains values and focus, and clears stale refusals when the service changes. Public and linked-service warnings use the UX copy; successful imports keep all server warning messages in response order after the form resets and associate them with the focused success alert. Existing alert styles now wrap long names.
+- Added the approved API reference info line, API-choice hint and key-auth service effects hint with accessible descriptions. Component coverage checks refusal focus and recovery, warning persistence and future warning codes, conditional service notes, and the API-choice hint during loading, validation and empty states. Validation: workspace lint and typecheck pass, and the full portal suite passes 68 tests. The full workspace suite currently fails only in backend app tests while the adapter fake and repeated imports are being updated; QA should verify the live Scalar 403 body at desktop and mobile sizes, supplied by the proxy.
 
 ## Test report  _(qa-tester)_
 | Criterion | Test file | Result |
