@@ -1,9 +1,63 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import type { GatewayAdapter } from './index.js';
-export function conformance(factory: () => GatewayAdapter, instanceId: string) {
+import { GatewayUnavailableError, type GatewayAdapter } from './index.js';
+interface AccessFixture {
+  serviceId: string;
+  memberships(
+    appId: string,
+  ): Promise<{ id: string; group: string; tags: string[] }[]>;
+  unavailable(): GatewayAdapter;
+}
+
+export function conformance(
+  factory: () => GatewayAdapter,
+  instanceId: string,
+  access?: () => AccessFixture,
+) {
   describe('GatewayAdapter conformance', () => {
+    it('supports idempotent tagged access grants and unavailable gateway errors', async () => {
+      if (!access)
+        throw new Error('An access fixture is required for conformance');
+      const fixture = access();
+      const adapter = factory();
+      const app = { id: randomUUID() };
+      const service = { id: fixture.serviceId };
+      expect(adapter.capabilities().accessControl).toBe(true);
+      try {
+        await adapter.ensureConsumer(app);
+        await adapter.grantAccess(app, service);
+        const before = await fixture.memberships(app.id);
+        await adapter.grantAccess(app, service);
+        expect(await fixture.memberships(app.id)).toEqual(before);
+        expect(
+          before.filter((m) => m.group === `portal-svc-${service.id}`),
+        ).toHaveLength(1);
+        for (const membership of before)
+          expect(membership.tags).toEqual(
+            expect.arrayContaining([
+              'portal',
+              `portal-instance-${instanceId}`,
+              `portal-app-${app.id}`,
+            ]),
+          );
+        await adapter.revokeAccess(app, service);
+        await adapter.revokeAccess(app, service);
+        expect(
+          (await fixture.memberships(app.id)).some(
+            (m) => m.group === `portal-svc-${service.id}`,
+          ),
+        ).toBe(false);
+        await expect(
+          fixture.unavailable().grantAccess(app, service),
+        ).rejects.toBeInstanceOf(GatewayUnavailableError);
+        await expect(
+          fixture.unavailable().revokeAccess(app, service),
+        ).rejects.toBeInstanceOf(GatewayUnavailableError);
+      } finally {
+        await adapter.deleteConsumer(app);
+      }
+    });
     it('converges repeated writes, tags owned objects and tolerates repeated deletes', async () => {
       const adapter = factory();
       const app = { id: randomUUID() };

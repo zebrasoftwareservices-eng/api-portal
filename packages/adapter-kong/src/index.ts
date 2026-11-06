@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
+import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
 import {
+  GatewayServiceConflictError,
+  type ServiceRef,
+  type ServiceProtection,
+  type AccessPolicy,
+  type AccessReport,
+  type AccessFinding,
   GatewayRejectedError,
   GatewayUnavailableError,
   consumerUsername,
@@ -21,6 +30,8 @@ interface Entity {
   route?: { id: string } | null;
   consumer?: { id: string };
   enabled?: boolean;
+  group?: string;
+  config?: Record<string, unknown>;
 }
 export interface KongConfig {
   adminUrl: string;
@@ -37,6 +48,7 @@ export class KongAdapter implements GatewayAdapter {
   capabilities() {
     return {
       apiKeys: true,
+      accessControl: true,
       oauthClients: false,
       plans: false,
       usage: false,
@@ -162,7 +174,434 @@ export class KongAdapter implements GatewayAdapter {
       },
     );
     if (!consumer) throw new GatewayUnavailableError();
+    await this.putMembership(app, 'portal-consumer');
     return { id: consumer.id, username };
+  }
+  private async putMembership(app: AppRef, group: string) {
+    await this.request(
+      `/consumers/${consumerUsername(app)}/acls/${encodeURIComponent(group)}`,
+      'PUT',
+      {
+        group,
+        tags: portalTags(this.config.instanceId, app),
+      },
+    );
+  }
+  async grantAccess(app: AppRef, service: ServiceRef) {
+    await this.putMembership(app, `portal-svc-${service.id}`);
+  }
+  async revokeAccess(app: AppRef, service: ServiceRef) {
+    await this.request(
+      `/consumers/${consumerUsername(app)}/acls/${encodeURIComponent(`portal-svc-${service.id}`)}`,
+      'DELETE',
+      undefined,
+      true,
+    );
+  }
+  private owns(entity: Entity) {
+    return (
+      entity.tags?.includes(`portal-instance-${this.config.instanceId}`) ===
+      true
+    );
+  }
+  private stableId(kind: string, scopeId: string) {
+    const bytes = createHash('sha1')
+      .update(`${this.config.instanceId}:${kind}:${scopeId}`)
+      .digest()
+      .subarray(0, 16);
+    bytes[6] = (bytes[6]! & 15) | 80;
+    bytes[8] = (bytes[8]! & 63) | 128;
+    const hex = bytes.toString('hex');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  private async topology() {
+    const [services, routes, plugins] = await Promise.all([
+      this.pages('/services?size=1000'),
+      this.pages('/routes?size=1000'),
+      this.pages('/plugins?size=1000'),
+    ]);
+    return { services, routes, plugins };
+  }
+  private applicable(plugin: Entity, service: Entity, routes: Entity[]) {
+    return (
+      !plugin.consumer &&
+      (plugin.service?.id === service.id ||
+        routes.some((r) => r.id === plugin.route?.id) ||
+        (!plugin.service && !plugin.route))
+    );
+  }
+  private planService(
+    service: Entity,
+    allRoutes: Entity[],
+    plugins: Entity[],
+    managed: boolean,
+  ) {
+    const routes = allRoutes.filter((r) => r.service?.id === service.id);
+    const active = plugins.filter(
+      (p) => p.enabled !== false && this.applicable(p, service, routes),
+    );
+    const auth = active.filter((p) => p.name === 'key-auth');
+    // Disabled foreign ACLs also conflict with Kong's one-plugin-per-scope constraint.
+    const foreign = plugins.filter(
+      (p) =>
+        p.name === 'acl' &&
+        !this.owns(p) &&
+        this.applicable(p, service, routes),
+    );
+    const globalAuth = auth.find((p) => !p.service && !p.route);
+    const serviceAuth = auth.find(
+      (p) => p.service?.id === service.id && !p.route,
+    );
+    const scopes =
+      serviceAuth || globalAuth
+        ? [{ service: { id: service.id } }]
+        : routes
+            .filter((r) => auth.some((p) => p.route?.id === r.id))
+            .map((r) => ({ route: { id: r.id } }));
+    const findings: AccessFinding[] = [];
+    const writes: {
+      path: string;
+      method: string;
+      body?: Record<string, unknown>;
+    }[] = [];
+    const finding = (code: string, message: string) =>
+      findings.push({
+        code,
+        serviceId: service.id,
+        serviceName: service.name ?? service.id,
+        message,
+      });
+    if (foreign.length && (managed || foreign.some((p) => p.route)))
+      finding(
+        'foreign-acl',
+        'An operator ACL prevents the portal from enforcing its access policy.',
+      );
+    const desiredIds = new Set<string>();
+    for (const scope of scopes) {
+      const scopeId = 'service' in scope ? scope.service.id : scope.route.id;
+      const existing = plugins.find(
+        (p) =>
+          p.name === 'acl' &&
+          (('service' in scope && p.service?.id === scopeId && !p.route) ||
+            ('route' in scope && p.route?.id === scopeId)),
+      );
+      const conflict = managed
+        ? foreign.length > 0
+        : foreign.some(
+            (p) =>
+              (!p.service && !p.route) ||
+              ('service' in scope && p.service?.id === scopeId && !p.route) ||
+              ('route' in scope && p.route?.id === scopeId),
+          );
+      if (conflict) {
+        if (
+          !findings.some((f) => f.code === 'foreign-acl') &&
+          (managed ||
+            foreign.some(
+              (p) =>
+                p.route ||
+                (Array.isArray(p.config?.deny) &&
+                  !p.config.deny.includes('portal-consumer')),
+            ))
+        )
+          finding(
+            'foreign-acl',
+            'An operator ACL prevents the portal from enforcing its access policy.',
+          );
+        continue;
+      }
+      const config = {
+        [managed ? 'allow' : 'deny']: [
+          managed ? `portal-svc-${service.id}` : 'portal-consumer',
+        ],
+        hide_groups_header: true,
+      };
+      const id =
+        existing && this.owns(existing)
+          ? existing.id
+          : this.stableId('acl', scopeId);
+      desiredIds.add(id);
+      const opposite = managed ? 'deny' : 'allow';
+      if (
+        !existing ||
+        existing.enabled === false ||
+        JSON.stringify(existing.config?.[managed ? 'allow' : 'deny']) !==
+          JSON.stringify(config[managed ? 'allow' : 'deny']) ||
+        (Array.isArray(existing.config?.[opposite]) &&
+          existing.config[opposite].length > 0) ||
+        existing.config?.hide_groups_header !== true ||
+        !portalTags(this.config.instanceId).every((t) =>
+          existing.tags?.includes(t),
+        )
+      )
+        writes.push({
+          path: `/plugins/${id}`,
+          method: 'PUT',
+          body: {
+            name: 'acl',
+            ...scope,
+            enabled: true,
+            config,
+            tags: portalTags(this.config.instanceId),
+          },
+        });
+    }
+    if (managed) {
+      for (const p of auth.filter((p) => p.service || p.route)) {
+        if (p.config?.hide_credentials !== true)
+          writes.push({
+            path: `/plugins/${p.id}`,
+            method: 'PATCH',
+            body: { config: { hide_credentials: true } },
+          });
+      }
+      if (globalAuth && !serviceAuth) {
+        const id = this.stableId('key-auth', service.id);
+        writes.push({
+          path: `/plugins/${id}`,
+          method: 'PUT',
+          body: {
+            name: 'key-auth',
+            service: { id: service.id },
+            config: { ...globalAuth.config, hide_credentials: true },
+            tags: portalTags(this.config.instanceId),
+          },
+        });
+      } else if (
+        globalAuth &&
+        serviceAuth &&
+        this.owns(serviceAuth) &&
+        serviceAuth.id === this.stableId('key-auth', service.id)
+      ) {
+        const config = { ...globalAuth.config, hide_credentials: true };
+        if (!isDeepStrictEqual(config, serviceAuth.config))
+          writes.push({
+            path: `/plugins/${serviceAuth.id}`,
+            method: 'PUT',
+            body: {
+              name: 'key-auth',
+              service: { id: service.id },
+              config,
+              tags: portalTags(this.config.instanceId),
+            },
+          });
+      }
+      if (
+        !auth.length &&
+        !plugins.some(
+          (p) =>
+            p.name === 'acl' &&
+            this.owns(p) &&
+            this.applicable(p, service, routes),
+        )
+      )
+        finding(
+          'api-public',
+          "This API is public. Key-auth isn't enabled on this service, so anyone can call it without a key. To require keys, enable the key-auth plugin on the service in Kong.",
+        );
+      else if (
+        auth.length > 0 &&
+        !serviceAuth &&
+        !globalAuth &&
+        scopes.length < routes.length
+      )
+        finding(
+          'partial-key-auth',
+          "Key-auth is on only some of this service's routes. Keys are checked on those routes, and the other routes stay open to anyone. To protect them, enable key-auth on the service in Kong.",
+        );
+    }
+    for (const p of plugins.filter(
+      (p) =>
+        p.name === 'acl' && this.owns(p) && this.applicable(p, service, routes),
+    )) {
+      if (desiredIds.has(p.id)) continue;
+      if (managed && !auth.length) {
+        finding(
+          'key-auth-missing',
+          'Key-auth was removed; the portal ACL is retained to fail closed.',
+        );
+      } else if (
+        (managed && auth.length > 0 && foreign.length === 0) ||
+        (!managed &&
+          Array.isArray(p.config?.deny) &&
+          p.config.deny.includes('portal-consumer'))
+      ) {
+        writes.push({ path: `/plugins/${p.id}`, method: 'DELETE' });
+      }
+    }
+    return { auth, foreign, findings, writes };
+  }
+  async protectService(ref: ServiceRef): Promise<ServiceProtection> {
+    const { services, routes, plugins } = await this.topology();
+    const service = services.find((s) => s.id === ref.id);
+    if (!service) throw new GatewayRejectedError(404);
+    const plan = this.planService(service, routes, plugins, true);
+    if (plan.foreign.length)
+      throw new GatewayServiceConflictError(service.name ?? service.id);
+    for (const write of plan.writes)
+      await this.request(write.path, write.method, write.body);
+    return { keyAuth: plan.auth.length > 0, findings: plan.findings };
+  }
+  async applyAccessPolicy(policy: AccessPolicy): Promise<AccessReport> {
+    const report: AccessReport = { repairs: [], findings: [] };
+    const { services, routes, plugins } = await this.topology();
+    const consumers = await this.listOwnedConsumers();
+    // Snapshot every membership before any write: a failed read cannot leave a partial upgrade.
+    const memberships = await Promise.all(
+      consumers.map((c) =>
+        this.pages(`/consumers/${encodeURIComponent(c.id)}/acls?size=1000`),
+      ),
+    );
+    const plans = services.map((s) => ({
+      service: s,
+      plan: this.planService(
+        s,
+        routes,
+        plugins,
+        policy.services.some((ref) => ref.id === s.id),
+      ),
+    }));
+    const attempt = async (
+      operation: () => Promise<unknown>,
+      serviceId: string,
+      serviceName: string,
+    ) => {
+      try {
+        await operation();
+        return true;
+      } catch (error) {
+        if (!(error instanceof GatewayRejectedError)) throw error;
+        report.findings.push({
+          code: 'gateway-rejected',
+          serviceId,
+          serviceName,
+          message: 'The gateway rejected an access policy repair.',
+        });
+        return false;
+      }
+    };
+    let added = false;
+    for (const [i, consumer] of consumers.entries()) {
+      const desiredApp = policy.apps.find((a) => a.app.id === consumer.appId);
+      if (!desiredApp) continue;
+      const desired = new Set([
+        'portal-consumer',
+        ...desiredApp.services.map((s) => `portal-svc-${s.id}`),
+      ]);
+      const actual = memberships[i]!;
+      for (const group of desired)
+        if (!actual.some((m) => m.group === group)) {
+          if (
+            await attempt(
+              () => this.putMembership(desiredApp.app, group),
+              '',
+              '',
+            )
+          ) {
+            added = true;
+            report.repairs.push({
+              action: 'added',
+              object: 'membership',
+              appId: consumer.appId,
+              detail: group,
+            });
+          }
+        }
+      for (const m of actual)
+        if (m.group && !desired.has(m.group)) {
+          if (
+            await attempt(
+              () =>
+                this.request(
+                  `/consumers/${encodeURIComponent(consumer.id)}/acls/${encodeURIComponent(m.id)}`,
+                  'DELETE',
+                  undefined,
+                  true,
+                ),
+              '',
+              '',
+            )
+          )
+            report.repairs.push({
+              action: 'removed',
+              object: 'membership',
+              appId: consumer.appId,
+              detail: m.group,
+            });
+        }
+    }
+    if (
+      added &&
+      plans.some(({ plan }) => plan.writes.some((w) => w.method === 'PUT'))
+    )
+      await delay(6000);
+    for (const { service, plan } of plans) {
+      report.findings.push(...plan.findings);
+      for (const write of plan.writes)
+        if (
+          await attempt(
+            () => this.request(write.path, write.method, write.body),
+            service.id,
+            service.name ?? service.id,
+          )
+        )
+          report.repairs.push({
+            action:
+              write.method === 'DELETE'
+                ? 'removed'
+                : plugins.some((p) => write.path.endsWith(`/${p.id}`))
+                  ? 'updated'
+                  : 'added',
+            object: 'plugin',
+            serviceId: service.id,
+            detail:
+              write.body?.name === 'key-auth' || write.method === 'PATCH'
+                ? 'key-auth credentials hidden'
+                : 'ACL policy repaired',
+          });
+    }
+    for (const ref of policy.services) {
+      const count = policy.services.filter((s) => s.id === ref.id).length;
+      const service = services.find((s) => s.id === ref.id);
+      if (!service || count > 1) {
+        if (
+          report.findings.some(
+            (f) =>
+              f.serviceId === ref.id &&
+              f.code === (!service ? 'service-missing' : 'service-shared'),
+          )
+        )
+          continue;
+        report.findings.push({
+          code: !service ? 'service-missing' : 'service-shared',
+          serviceId: ref.id,
+          serviceName: service?.name ?? ref.id,
+          message: !service
+            ? 'A published service is missing from the gateway.'
+            : 'Multiple published APIs share this service and its access group.',
+        });
+      }
+    }
+    return report;
+  }
+  isAccessDenied(response: {
+    status: number;
+    headers: Headers;
+    body: Uint8Array;
+  }) {
+    if (
+      response.status !== 403 ||
+      response.headers.has('x-kong-upstream-latency')
+    )
+      return false;
+    try {
+      return (
+        JSON.parse(new TextDecoder().decode(response.body)).message ===
+        'You cannot consume this service'
+      );
+    } catch {
+      return false;
+    }
   }
   async deleteConsumer(app: AppRef) {
     await this.request(
@@ -194,14 +633,16 @@ export class KongAdapter implements GatewayAdapter {
       this.pages(`/consumers?${filter}`),
       this.pages(`/key-auths?${filter}`),
     ]);
-    return consumers.map((c) => ({
-      id: c.id,
-      username: c.username ?? '',
-      appId: c.custom_id ?? '',
-      tags: c.tags ?? [],
-      credentials: credentials
-        .filter((k) => k.consumer?.id === c.id)
-        .map((k) => ({ id: k.id, tags: k.tags ?? [] })),
-    }));
+    return consumers
+      .filter((c) => this.owns(c))
+      .map((c) => ({
+        id: c.id,
+        username: c.username ?? '',
+        appId: c.custom_id ?? '',
+        tags: c.tags ?? [],
+        credentials: credentials
+          .filter((k) => k.consumer?.id === c.id)
+          .map((k) => ({ id: k.id, tags: k.tags ?? [] })),
+      }));
   }
 }

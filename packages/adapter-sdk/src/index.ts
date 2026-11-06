@@ -4,6 +4,7 @@ export interface AppRef {
 }
 export interface Capabilities {
   apiKeys: true;
+  accessControl: true;
   oauthClients: false;
   plans: false;
   usage: false;
@@ -35,6 +36,40 @@ export interface OwnedConsumer extends ConsumerRef {
   tags: string[];
   credentials: { id: string; tags: string[] }[];
 }
+export interface ServiceRef {
+  id: string;
+}
+export interface AccessFinding {
+  code: string;
+  serviceId: string;
+  serviceName: string;
+  message: string;
+}
+export interface AccessRepair {
+  action: 'added' | 'removed' | 'updated';
+  object: 'membership' | 'plugin';
+  appId?: string;
+  serviceId?: string;
+  detail: string;
+}
+export interface ServiceProtection {
+  keyAuth: boolean;
+  findings: AccessFinding[];
+}
+export interface AccessPolicy {
+  services: ServiceRef[];
+  apps: { app: AppRef; services: ServiceRef[] }[];
+}
+export interface AccessReport {
+  repairs: AccessRepair[];
+  findings: AccessFinding[];
+}
+export class GatewayServiceConflictError extends Error {
+  constructor(readonly serviceName: string) {
+    super('An operator ACL applies to the gateway service');
+    this.name = 'GatewayServiceConflictError';
+  }
+}
 export interface GatewayAdapter {
   readonly kind: 'kong';
   capabilities(): Capabilities;
@@ -48,6 +83,15 @@ export interface GatewayAdapter {
     credential: CredentialSpec,
   ): Promise<IssuedCredential>;
   revokeCredential(app: AppRef, credentialId: string): Promise<void>;
+  grantAccess(app: AppRef, service: ServiceRef): Promise<void>;
+  revokeAccess(app: AppRef, service: ServiceRef): Promise<void>;
+  protectService(service: ServiceRef): Promise<ServiceProtection>;
+  applyAccessPolicy(policy: AccessPolicy): Promise<AccessReport>;
+  isAccessDenied(response: {
+    status: number;
+    headers: Headers;
+    body: Uint8Array;
+  }): boolean;
   listOwnedConsumers(): Promise<OwnedConsumer[]>;
 }
 export class GatewayUnavailableError extends Error {
