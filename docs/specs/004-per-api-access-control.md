@@ -1,7 +1,7 @@
 ---
 id: 004
 title: Per-API access control on Kong
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-06
 linear: JSO-233
@@ -300,6 +300,8 @@ it waited longer; that's why the first risk below is there.
 | Deny with key-auth `anonymous` set: no key, portal key | 200, 403 |
 | ACL 403 compared with an upstream 403 | Only the upstream one has `X-Kong-Upstream-Latency`. ACL body: `{"message":"You cannot consume this service"}` |
 | Time to take effect, one node | Membership or new key: under 15 ms in repeated runs. New plugin: about 4 s in one measurement. New routes needed more than 1.5 s. |
+| ACL 403 body by `Accept` (added in review, Kong 3.9.4) | Kong follows the header: JSON for none, `*/*` or `application/json`; plain text, XML or HTML for those types. The design's "ACL body" row above holds only for JSON. See JSO-287. |
+| Reading ACLs at scale (added in review, Kong 3.9.4, Postgres `max_connections` 100) | One concurrent read per consumer: 100 consumers succeed, 200 or more exhaust Kong's Postgres connections. One paged `/acls` read: 6001 rows in 383 ms. See JSO-286. |
 
 ### Risks
 | Risk | Mitigation and test |
@@ -313,8 +315,9 @@ it waited longer; that's why the first risk below is there.
 | The portal's plugins outlive the portal. | The upgrade notes give the removal commands, by the `portal-instance-<id>` tag. |
 | Existing tests assume more than one API per service. | `journeys.ts` publishes twice to one service, and `app.test.ts` imports repeatedly. Both need updating; see tasks. |
 
-**Restart check (AC 5):** compare Kong objects by ID and config, ignoring `updated_at`. With
-`SEED_SAMPLE` on, the seed re-PUTs its own objects on every boot, which bumps that field.
+**Restart check (AC 5):** compare Kong objects by ID and config, ignoring `created_at` and
+`updated_at`. With `SEED_SAMPLE` on, the seed re-PUTs its own objects on every boot, and Kong's PUT
+resets both fields. Corrected in review; see JSO-282 and the Review section.
 
 ### Tasks
 - [x] [backend] JSO-256 adapter-sdk: add `grantAccess`, `revokeAccess`, `protectService`, `applyAccessPolicy`, `isAccessDenied`, their types, `GatewayServiceConflictError` and the `accessControl` capability; add the AC 10 conformance cases.
@@ -337,6 +340,8 @@ it waited longer; that's why the first risk below is there.
 - [x] [qa] JSO-272 AC 8: Kong failing or timing out during the grant gives the gateway error, no key, no app row, and a retry with one consumer and no duplicate groups.
 - [x] [qa] JSO-273 AC 9, 10: publish and subscribe flow; foreign ACL refused at service, route and global scope with plugins unchanged; second link refused; conformance suite passes against Kong.
 - [x] [qa] JSO-274 Update `apps/portal/e2e/journeys.ts` to publish to separate Kong services, and run the `docker compose` quickstart and smoke scripts with hiding on.
+- [ ] [backend] Fix JSO-286: read ACLs in `applyAccessPolicy` with one paged `/acls` request grouped by consumer, and add a real-Kong case with at least 500 owned consumers plus a unit case asserting no per-consumer read.
+- [ ] [backend] Fix JSO-287: make `isAccessDenied` recognise Kong's refusal in every `Accept` format while upstream 403s still pass through, and add unit cases per format plus a server test with `Accept: application/xml`.
 
 ## UX  _(ui-designer)_
 Full design: [docs/design/004-per-api-access-control.md](../design/004-per-api-access-control.md).
@@ -464,6 +469,55 @@ Notes:
 **Disposition: `review`.** No blocker or major bug is open. Five minor bugs remain: JSO-277, JSO-281, JSO-282, JSO-283 and JSO-284.
 
 ## Review  _(tech-lead)_
+Reviewed on 2026-11-06 at `14af7de`. **Result: two blocking findings, so the status goes back to `building`.** The design, access rules, contract, error format and tagging otherwise hold up, and I found no secrets in logs or responses.
+
+### Checks
+| Check | Result |
+| --- | --- |
+| `pnpm lint`, `pnpm typecheck` | Pass |
+| `pnpm test --force` | Pass, with no cache: 136 tests, including the expected failure for JSO-277 |
+| `packages/sdk` against `openapi.yaml` | No drift after regenerating |
+| Quickstart and `pnpm test:e2e` | Not re-run here. QA ran both at `90a3b87`, and UAT did clean installs. Since then only tests and docs changed. |
+| CI | No evidence yet: the branch has no PR. |
+| Live Kong 3.9.4, disposable containers | Ran the built adapter for the `Accept`, scale and disabled-plugin cases below. |
+
+### Blocking
+Both are `[backend]`, and both have a Fix task in the task list.
+
+1. **JSO-286: reconcile fails above about 100 apps.** `packages/adapter-kong/src/index.ts:450` sends one ACL read per owned consumer, all at once, where the design says one paged `/acls` read. On Postgres's default of 100 connections, 100 consumers succeed and 200 or more fail with `GatewayUnavailableError`. The run stops before any write, so above that size the upgrade never applies access control and drift is never repaired, which breaks AC 5 and AC 7. It also reaches live traffic: 1 of 100 first-use operator keys got a 500 during a burst at 1000 consumers, against none without one. The exact limit depends on the install, and the quickstart shares one Postgres between Kong and the portal.
+2. **JSO-287: AC 2 fails for operations that aren't JSON.** `packages/adapter-kong/src/index.ts:587` only recognises Kong's refusal when the body parses as JSON, but Kong follows the forwarded `Accept` header. `text/plain`, `application/xml` and `text/html` all returned false on a live Kong. Scalar sets `Accept` from the operation's declared 2xx content types, so an API documented as XML or plain text shows Kong's raw 403 with no next step by default. No test varies `Accept`.
+
+### Suggestions
+None of these need to hold the merge.
+
+- **JSO-288** `apps/portal/components/admin-apis.tsx:40`: the focus effect runs on every `errors` change, so changing the Kong service while a file error shows moves focus to the file input. From reading the code; not reproduced.
+- **JSO-289** `packages/adapter-kong/src/index.ts:358`: a disabled service key-auth under a global plugin makes `protectService` fail with Kong's 409. Reproduced.
+- **JSO-290** `packages/adapter-kong/src/index.ts:473`: a rejected membership doesn't stop plugin writes, and its finding names no service. From reading the code; not reproduced.
+- **JSO-291**: no changeset for a change that breaks existing behaviour, and the README doesn't link the upgrade notes.
+- **JSO-282 clean-up** `apps/portal/e2e/gateway.ts:138` and `docs/upgrade-004-access-control.md:69`: see the ruling below. Remove the test's timestamp check and its `test.fail`, keep the ID check, and have the notes mention `created_at` too.
+
+### Rulings on the coordinator's questions
+| Topic | Ruling | Why |
+| --- | --- | --- |
+| Sample API on existing installs | **Not blocking.** | Fresh installs protect it before the row exists (`apps/server/src/seed.ts:42`). On upgrade it stays as open as it was until the first reconcile, which is queued at startup, so seconds plus the 6-second wait and propagation. I read this from the startup order and didn't time it. With Kong down at boot, it lasts until Kong is back and the next scheduled run, up to 5 minutes later. Turning `SEED_SAMPLE` on later, on an install with other APIs, gets the same short gap. |
+| JSO-282, `created_at` on restart | **Correct the restart check; don't change the seed.** | IDs and config don't change, and access doesn't depend on these timestamps. Comparing before each PUT would add code for a cosmetic field on sample objects. The design's check is corrected above. AC 5's wording is Elango's, so this reading is listed below for him. |
+| JSO-277, try-it 400 after publishing | **Not blocking; I'd fix it now.** | The cache is on `main` too, so this isn't a regression, it clears within 30 seconds, and no criterion covers it. It's still a confusing first experience and the fix is small: reload the catalog once on a miss before refusing (`apps/server/src/proxy.ts:101`). |
+| JSO-281, info line and missing field | **Not blocking; I'd fix it now.** | The developer can recover through the selector, and the next step in AC 2 isn't affected. It's a copy change to `apps/portal/app/apis/[slug]/page.tsx`, with wording from the ui-designer. |
+| JSO-283, keyboard scrolling | **Not blocking; keep it open.** | The status, title and start of the message are readable, and the info line repeats the next step, so keyboard users still get it. Scalar owns the panel, so the fix likely needs a Scalar upgrade. |
+| JSO-284, unlinked upgrade notes | **Not blocking.** | The hint still states the effects. Fix it along with JSO-291, once the notes have a public URL. |
+
+### For Elango at merge
+My three design choices stand as built, and I'd keep all of them. These are decisions for you, not findings:
+
+1. **Operator `deny` ACLs:** one that doesn't list `portal-consumer` on an unmanaged service leaves portal keys working there, and the portal only warns. This is a known exception to the third access rule, and the alternative is editing a plugin we don't own.
+2. **Hand-added groups:** reconcile removes any group not backed by a subscription from consumers the portal owns. This is the choice most likely to surprise an operator, and the upgrade notes state it.
+3. **One API per service:** there's no way to publish a new version of an API on the same service until spec 012. The workaround is a separate Kong service.
+4. **AC 5's wording:** "changes nothing in Kong" now excludes `created_at` and `updated_at` on the sample's objects. If you want it literal, JSO-282 becomes a backend fix to the seed.
+5. **JSO-277 and JSO-281:** do you want these in this build round? They have no Fix tasks unless you say so.
+6. **Multi-node Kong** is still untested. The upgrade notes say so.
+
+### Before re-review
+QA re-runs the suite, and the user-tester checks AC 2 on an XML or plain-text operation in the browser. JSO-286 and JSO-287 move to Done on re-review.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
