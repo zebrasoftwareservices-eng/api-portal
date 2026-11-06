@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button, Input, PageHeader, Table } from '@portal/ui';
 import type { GatewayService, Problem } from '../lib/types';
 import type { components } from '@portal/sdk';
 import { api, networkProblem, retrySeconds } from '../lib/client';
 import { useResource } from './use-resource';
-import { Field, focusInvalid } from './field';
+import { Field } from './field';
 import { ProblemAlert } from './problem-alert';
 import { DateValue } from './date';
 export function serviceLabel(s: GatewayService) {
@@ -35,6 +35,14 @@ export function AdminApis() {
   const success = useRef<HTMLDivElement>(null);
   const form = useRef<HTMLFormElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  // Child alert effects run first. Focus invalid controls only after React has
+  // committed their errors and re-enabled the fieldset after a request.
+  useEffect(() => {
+    if (!pending && Object.values(errors).some(Boolean))
+      form.current
+        ?.querySelector<HTMLElement>('[aria-invalid="true"]')
+        ?.focus();
+  }, [errors, pending, problem]);
   const selected = services.data?.items.find((s) => s.id === service);
   const noRoute = selected && !selected.routes.some((r) => r.paths.length);
   function chooseFile(value: File | undefined) {
@@ -79,7 +87,6 @@ export function AdminApis() {
     setErrors(invalid);
     if (Object.keys(invalid).length) {
       if (invalid.slug || invalid.routePath) setOptions(true);
-      focusInvalid(form.current!);
       return;
     }
     lock.current = true;
@@ -133,7 +140,6 @@ export function AdminApis() {
         if (field) {
           setErrors({ [field[0]]: field[1] });
           if (['slug', 'routePath'].includes(field[0])) setOptions(true);
-          focusInvalid(form.current!);
         } else if (error.status === 400) {
           setErrors(
             Object.fromEntries(
@@ -146,7 +152,6 @@ export function AdminApis() {
             ),
           );
           setOptions(true);
-          focusInvalid(form.current!);
         }
         if (type === 'gateway-service-not-found') void services.reload();
       } else if (data) {

@@ -283,6 +283,19 @@ test('AC 2: Scalar shows a real access refusal and preserves an upstream 403', a
         .getByText("This key doesn't have access to this API", { exact: false })
         .last(),
     ).toBeVisible();
+    // JSO-279: DOM visibility alone passes even when CSS squeezes the body
+    // into 116px. Measure the actual code scroller at desktop and mobile sizes.
+    const body = page.locator('.body-raw-scroller').last();
+    for (const width of [1280, 1920, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(body).toBeVisible();
+      await expect
+        .poll(async () => (await body.boundingBox())?.width ?? 0)
+        .toBeGreaterThan(width >= 1024 ? 400 : 280);
+      await expect(
+        page.getByRole('region', { name: 'Body', exact: true }),
+      ).toBeVisible();
+    }
     // Grant only for the upstream-pass-through assertion; the UI refusal above used an unsubscribed app.
     expect(
       (
@@ -587,6 +600,101 @@ for (const mode of ['sign-up', 'sign-in'] as const) {
     } finally {
       release();
       await page.unrouteAll({ behavior: 'wait' });
+    }
+  });
+}
+
+// JSO-280/278: exercise both real server refusals, including repeat submits.
+for (const conflict of ['already-linked', 'has-acl'] as const) {
+  test(`admin ${conflict} refusal returns keyboard focus to Kong service`, async ({
+    page,
+    context,
+  }) => {
+    await context.request.post('/api/auth/sign-in/email', {
+      data: { email: 'admin@example.com', password: 'change-me-now' },
+    });
+    const services = (
+      await (await context.request.get('/api/v1/admin/gateway/services')).json()
+    ).items;
+    let serviceId = services.find(
+      (service: { linkedApiSlug?: string }) =>
+        service.linkedApiSlug === 'sample',
+    ).id;
+    if (conflict === 'has-acl') {
+      serviceId = crypto.randomUUID();
+      expect(
+        (
+          await context.request.put(
+            `http://localhost:8001/services/${serviceId}`,
+            {
+              data: { name: `qa-acl-${serviceId}`, url: 'http://httpbin:8080' },
+            },
+          )
+        ).ok(),
+      ).toBe(true);
+      expect(
+        (
+          await context.request.post(
+            `http://localhost:8001/services/${serviceId}/routes`,
+            {
+              data: { paths: [`/qa-acl-${serviceId}`] },
+            },
+          )
+        ).ok(),
+      ).toBe(true);
+      expect(
+        (
+          await context.request.post(
+            `http://localhost:8001/services/${serviceId}/plugins`,
+            {
+              data: { name: 'acl', config: { allow: ['operator'] } },
+            },
+          )
+        ).ok(),
+      ).toBe(true);
+    }
+    await page.goto('/admin/apis');
+    const select = page.getByLabel('Kong service', { exact: true });
+    await select.selectOption(serviceId);
+    await page.getByLabel('OpenAPI file', { exact: true }).setInputFiles({
+      name: 'valid.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(
+        JSON.stringify({
+          openapi: '3.1.0',
+          info: { title: 'Focus regression', version: '1' },
+          paths: {},
+        }),
+      ),
+    });
+    for (const width of [1280, 375]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const result = page.waitForResponse(
+          (r) =>
+            r.url().endsWith('/api/v1/admin/apis') &&
+            r.request().method() === 'POST',
+        );
+        await page.getByRole('button', { name: 'Import and publish' }).click();
+        const response = await result;
+        expect(response.status()).toBe(422);
+        expect((await response.json()).type).toBe(
+          `/problems/gateway-service-${conflict}`,
+        );
+        await expect(select).toBeFocused();
+        await expect(select).toHaveAttribute('aria-invalid', 'true');
+        await expect(
+          page.getByRole('alert').filter({ hasText: 'Nothing was published.' }),
+        ).toBeVisible();
+        // Wait two paints so an alert effect cannot steal focus after the assertion.
+        await page.evaluate(
+          () =>
+            new Promise((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve)),
+            ),
+        );
+        await expect(select).toBeFocused();
+      }
     }
   });
 }

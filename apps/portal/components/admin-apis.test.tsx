@@ -167,6 +167,50 @@ describe('admin import', () => {
       expect(screen.queryByText(`⚠ ${field}`)).not.toBeInTheDocument();
     },
   );
+  it('focuses the committed invalid field after a delayed refusal without relying on animation frames', async () => {
+    const user = userEvent.setup();
+    let refuse!: (value: unknown) => void;
+    mocks.post.mockReturnValue(
+      new Promise((resolve) => {
+        refuse = resolve;
+      }),
+    );
+    render(<AdminApis />);
+    await fillUrlImport(user);
+    await user.click(
+      screen.getByRole('button', { name: 'Import and publish' }),
+    );
+    const select = screen.getByLabelText('Kong service');
+    expect(select).toBeDisabled();
+    const focusOrder: string[] = [];
+    const recordFocus = (event: FocusEvent) => {
+      if (event.target === select) focusOrder.push('service');
+      else if ((event.target as HTMLElement).getAttribute('role') === 'alert')
+        focusOrder.push('alert');
+    };
+    document.addEventListener('focusin', recordFocus);
+    // A delayed/throttled animation frame must not decide when React's DOM is ready.
+    const frame = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation(() => 0);
+    try {
+      refuse({
+        error: {
+          status: 422,
+          type: '/problems/gateway-service-has-acl',
+          title: 'Another ACL plugin applies to this service',
+        },
+        response: new Response(null, { status: 422 }),
+      });
+      await waitFor(() => expect(select).toHaveFocus());
+      expect(select).toBeEnabled();
+      expect(select).toHaveAttribute('aria-invalid', 'true');
+      expect(focusOrder).toEqual(['alert', 'service']);
+    } finally {
+      frame.mockRestore();
+      document.removeEventListener('focusin', recordFocus);
+    }
+  });
   it('keeps unrelated import problems when the service changes', async () => {
     const user = userEvent.setup();
     mockServices([service, { ...service, id: 'other', name: 'other-svc' }]);
