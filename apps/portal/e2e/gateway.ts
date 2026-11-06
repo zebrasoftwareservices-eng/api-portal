@@ -101,11 +101,21 @@ test('sample seed converges across server restarts against real Kong', async ({
       plugins.data.filter((p: { name: string }) => p.name === 'key-auth'),
     ).toHaveLength(1);
     expect(service.tags).toContain('portal-seed');
+    // Review ruling for AC 5 / JSO-282: seed PUTs may reset timestamps;
+    // IDs and the complete configuration must remain stable across restart.
+    const stable = ({
+      created_at: _created,
+      updated_at: _updated,
+      ...object
+    }: Record<string, unknown>) => object;
     return {
-      service: service.id,
-      route: route.id,
-      plugin: plugins.data.find((p: { name: string }) => p.name === 'key-auth')
-        .id,
+      service: stable(service),
+      route: stable(route),
+      plugins: plugins.data
+        .map(stable)
+        .sort((a: { id: string }, b: { id: string }) =>
+          a.id.localeCompare(b.id),
+        ),
     };
   };
   const before = await snapshot();
@@ -133,62 +143,6 @@ test('sample seed converges across server restarts against real Kong', async ({
   expect(logs).not.toMatch(/pk_[A-Za-z0-9_-]{43}/);
   expect(logs).not.toContain('QA-password-123');
   expect(logs).not.toContain('change-me-now');
-});
-
-test('JSO-282: seed creation timestamps survive a real server restart', async ({
-  request,
-}) => {
-  test.setTimeout(120_000);
-  const snapshot = async () => {
-    const service = await (
-      await request.get('http://localhost:8001/services/portal-sample')
-    ).json();
-    const route = await (
-      await request.get('http://localhost:8001/routes/portal-sample')
-    ).json();
-    const plugins = await (
-      await request.get(`http://localhost:8001/services/${service.id}/plugins`)
-    ).json();
-    const keyAuth = plugins.data.find(
-      (plugin: { name: string }) => plugin.name === 'key-auth',
-    );
-    return [service, route, keyAuth].map((object) => ({
-      id: object.id,
-      created_at: object.created_at,
-    }));
-  };
-  const before = await snapshot();
-  execFileSync(
-    'docker',
-    ['compose', '-f', 'deploy/docker-compose.yml', 'restart', 'server'],
-    { encoding: 'utf8' },
-  );
-  await expect
-    .poll(
-      async () => {
-        try {
-          return (
-            await request.get('http://localhost:4000/api/v1/health')
-          ).status();
-        } catch {
-          return 0;
-        }
-      },
-      { timeout: 60_000 },
-    )
-    .toBe(200);
-  const after = await snapshot();
-  expect(after.map((object) => object.id)).toEqual(
-    before.map((object) => object.id),
-  );
-  for (const object of [...before, ...after]) {
-    expect(object.id).toEqual(expect.any(String));
-    expect(object.created_at).toEqual(expect.any(Number));
-  }
-  // Only the timestamp assertion is an expected failure; setup/recovery and
-  // identity failures must still fail the suite normally.
-  test.fail(true, 'Known minor JSO-282: seed PUT resets Kong created_at');
-  expect(after).toEqual(before);
 });
 
 test('AC 6: server boots while Kong is down and the next reconcile repairs access without changing keys or subscriptions', async ({
