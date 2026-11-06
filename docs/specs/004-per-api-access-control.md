@@ -1,7 +1,7 @@
 ---
 id: 004
 title: Per-API access control on Kong
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-06
 linear: JSO-233
@@ -338,7 +338,28 @@ it waited longer; that's why the first risk below is there.
 - [ ] [qa] JSO-274 Update `apps/portal/e2e/journeys.ts` to publish to separate Kong services, and run the `docker compose` quickstart and smoke scripts with hiding on.
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/NNN-*.md`
+Full design: [docs/design/004-per-api-access-control.md](../design/004-per-api-access-control.md).
+
+There are no new screens, components or tokens. The design changes copy and states on three screens from spec 001:
+- **API reference:** a refused key shows `403` in Scalar's response panel, with the title "This key
+  doesn't have access to this API" and a next step: select **Get an API key** and create an app that
+  includes this API (AC 2). The server's problem body holds this text. The page's info line repeats
+  the next step, because Scalar's panel can't hold a link and appears not to wrap long lines. That
+  comes from reading Scalar's source and hasn't been checked in a browser, so the user-tester checks
+  it at 1280px and 375px.
+- **Create app:** a new hint says the app's keys work only on the APIs chosen and that using another
+  API means creating another app. A failed grant uses the existing gateway errors (AC 8).
+- **Admin: APIs:** new field errors and alerts for both import refusals (AC 9), a warning that a service
+  with no key-auth makes the API public, post-publish warnings from `warnings[]`, and a note that a
+  linked service's import will be refused.
+
+**For Elango or the tech lead:** the spec scopes UI work to error copy, and these three additions go
+slightly beyond it. They're tracked in JSO-276:
+- the API reference info line
+- the Create-app hint
+- a Kong service hint warning that publishing locks out other Kong consumers and hides keys from the
+  upstream. Elango accepted that risk with the upgrade notes as the place to state it, but an admin
+  publishing a new API after the upgrade might never read them.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
