@@ -1,7 +1,7 @@
 ---
 id: 005
 title: First-run setup and gateway connections
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-234
