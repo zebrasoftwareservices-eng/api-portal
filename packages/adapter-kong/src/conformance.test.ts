@@ -72,6 +72,12 @@ conformance(
   () => adapter,
   instanceId,
   () => ({
+    refused: () =>
+      new KongAdapter({
+        adminUrl: 'http://refused.test',
+        instanceId,
+        fetch: async () => new Response('', { status: 401 }),
+      }),
     serviceId: randomUUID(),
     memberships: async (appId) =>
       (await adapter.request<{
