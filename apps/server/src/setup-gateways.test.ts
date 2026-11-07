@@ -487,6 +487,15 @@ it('disables with no Kong call, blocks discovery/import/sample/app/key creation,
   expect(protect).not.toHaveBeenCalled();
   expect(issue).not.toHaveBeenCalled();
   expect((await call('GET', 'apis')).json().items).toHaveLength(1);
+  const { GatewayUnavailableError } = await import('@portal/adapter-sdk');
+  revoke.mockRejectedValueOnce(new GatewayUnavailableError());
+  const failedRevoke = await call(
+    'DELETE',
+    `apps/${appId}/credentials/${credentialId}`,
+  );
+  expect(failedRevoke.statusCode).toBe(503);
+  expect(failedRevoke.json().type).toBe('/problems/gateway-unavailable');
+  expect((await db.db.select().from(credentials))[0]?.status).toBe('active');
   expect(
     (await call('DELETE', `apps/${appId}/credentials/${credentialId}`))
       .statusCode,
