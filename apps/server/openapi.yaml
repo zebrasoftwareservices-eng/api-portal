@@ -485,6 +485,11 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '422': { $ref: '#/components/responses/GatewayCheckFailed' }
+        '503':
+          description: The stored admin token cannot be decrypted (`/problems/gateway-unavailable`). Enter the token again before testing or saving. No outbound request is made.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/admin/gateways/{gatewayId}:
@@ -524,6 +529,11 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
         '422': { $ref: '#/components/responses/GatewayCheckFailed' }
+        '503':
+          description: The stored admin token cannot be decrypted (`/problems/gateway-unavailable`). Enter the token again before testing or saving. No outbound request is made.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '429': { $ref: '#/components/responses/RateLimited' }
     delete:
       tags: [gateways]

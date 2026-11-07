@@ -21,6 +21,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether this install still needs its first admin
+         * @description Public, so the portal can send every page to the setup screen. Reveals nothing secret.
+         */
+        get: operations["getSetupStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/setup/admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create the first admin and sign them in
+         * @description Atomic and serialized: of any number of submissions, at the same time or later, exactly
+         *     one creates an admin. The response sets the session cookie. When
+         *     `NODE_ENV=production`, `setupToken` must match the token this server start wrote to its
+         *     logs. The token lives only in memory, is replaced on each start and stops working once an
+         *     admin exists. Rate-limited to 10 requests per minute per IP.
+         */
+        post: operations["createFirstAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apis": {
         parameters: {
             query?: never;
@@ -149,7 +193,9 @@ export interface paths {
         put?: never;
         /**
          * Issue another API key for an app
-         * @description The returned `key` is shown once and never stored by the portal.
+         * @description The returned `key` is shown once and never stored by the portal. The consumer and its
+         *     access are upserted first, so this also works when the connection now points at a Kong
+         *     that doesn't have the app's consumer yet (spec 005 AC 7(e)).
          */
         post: operations["createCredential"];
         delete?: never;
@@ -188,7 +234,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Kong services that an imported spec can be linked to */
+        /**
+         * List Kong services that an imported spec can be linked to
+         * @description Leaves out services tagged `portal-internal`, such as the protected Admin API route from
+         *     the docs recipe. The import screen calls this before showing its form. On a disabled
+         *     connection it makes no request to Kong and returns `/problems/gateway-disabled`, so the
+         *     service list isn't offered (spec 005 AC 7(b)).
+         */
         get: operations["listGatewayServices"];
         put?: never;
         post?: never;
@@ -219,8 +271,114 @@ export interface paths {
          *     get 403 until their app subscribes, and so do non-portal consumers until the operator adds
          *     them to the group `portal-svc-<serviceId>`. A service without key-auth gets no ACL and
          *     publishes with an `api-public` warning. Kong applies plugin changes within about 5 seconds.
+         *
+         *     On a disabled connection the import is refused with `/problems/gateway-disabled` before the
+         *     body is validated, `spec.url` is fetched or Kong is called, and nothing is left behind
+         *     (spec 005 AC 7(b)).
          */
         post: operations["importApi"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gateways": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The gateway connection, and the bundled Kong's values if this install has one */
+        get: operations["listGateways"];
+        put?: never;
+        /**
+         * Check and save the gateway connection
+         * @description Runs the same checks as `testGateway`, then saves. The portal uses the connection from the
+         *     next request, with no restart, and queues a reconcile. On any failure nothing is saved.
+         *     A refused second add makes no request to the supplied URL.
+         */
+        post: operations["createGateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gateways/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check connection values without saving anything
+         * @description Read-only: it makes GET requests only and changes nothing in Kong or Postgres. Failure
+         *     messages never contain the token or a response body. Rate-limited to 30 requests per minute
+         *     per admin. Pass `gatewayId` when editing, so a blank token can use the stored one if the
+         *     Admin API URL is unchanged. With a changed URL and a stored token, a blank token gets
+         *     `/problems/gateway-token-required` and the stored token is never sent.
+         */
+        post: operations["testGateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gateways/{gatewayId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove the connection and its stored token
+         * @description Makes no request to Kong. The portal's objects stay there, including its ACLs, so traffic is
+         *     unchanged; the docs describe tag-based cleanup.
+         */
+        delete: operations["deleteGateway"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit, disable or re-enable the connection
+         * @description A change to only `enabled: false` makes no request to Kong, so a connection to a Kong that
+         *     is down can still be disabled. Every other change runs the same checks as `testGateway`
+         *     first. On any failure nothing is saved and the existing connection keeps working. That
+         *     includes `enabled: true`: if a check fails, the response names that case and the connection
+         *     stays disabled.
+         */
+        patch: operations["updateGateway"];
+        trace?: never;
+    };
+    "/v1/admin/gateways/{gatewayId}/sample": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish the sample API on the bundled Kong
+         * @description Only when the connection is enabled, its Admin API URL equals the bundled Kong's and no API
+         *     has the slug `sample` (`Gateway.sampleAvailable`). The sample's upstream exists only in the
+         *     bundled compose network.
+         */
+        post: operations["addSampleApi"];
         delete?: never;
         options?: never;
         head?: never;
@@ -279,6 +437,12 @@ export interface components {
             /** @example The API gateway didn't respond. Nothing was created. Try again in a moment. */
             detail?: string;
             instance?: string;
+            /** @description With `/problems/gateway-in-use`: published APIs on this gateway */
+            apis?: number;
+            /** @description With `/problems/gateway-in-use`: active keys on this gateway */
+            activeKeys?: number;
+            /** @description With `/problems/gateway-keys-missing`: active keys with no consumer on the new Kong */
+            affectedKeys?: number;
             /** @description Field or document errors. For `/problems/invalid-openapi`, only the first error is returned. */
             errors?: {
                 /** @description JSON Pointer into the request body or the OpenAPI document, e.g. /paths/~1pets/get/responses */
@@ -291,12 +455,111 @@ export interface components {
             /** @enum {string} */
             status: "ok";
             version: string;
-            gateway: {
+            gateway: null | {
                 /** @enum {string} */
                 kind: "kong";
                 reachable: boolean;
                 version?: string;
             };
+        };
+        SetupStatus: {
+            /** @description True until the first admin exists */
+            adminRequired: boolean;
+            /** @description True while an admin is required and `NODE_ENV=production` */
+            setupTokenRequired: boolean;
+        };
+        CreateFirstAdminRequest: {
+            /** Format: email */
+            email: string;
+            password: string;
+            /** @description Defaults to Administrator */
+            name?: string;
+            /** @description Required when `setupTokenRequired` is true */
+            setupToken?: string;
+        };
+        GatewayUrls: {
+            /**
+             * Format: uri
+             * @example http://kong:8001
+             */
+            adminUrl: string;
+            /**
+             * Format: uri
+             * @description Address of Kong's proxy as the server reaches it. Used by try-it. Checked.
+             * @example http://kong:8000
+             */
+            proxyInternalUrl: string;
+            /**
+             * Format: uri
+             * @description Address developers call, shown in the catalog. The server can't check it from inside, so only its form is validated.
+             * @example http://localhost:8000
+             */
+            proxyPublicUrl: string;
+        };
+        Gateway: components["schemas"]["GatewayUrls"] & {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "kong";
+            /** @description Whether a token is stored. The token itself is never returned. */
+            hasAdminToken: boolean;
+            enabled: boolean;
+            /**
+             * @description `env`: set by `KONG_ADMIN_URL`, so editing, disabling and removing are refused.
+             * @enum {string}
+             */
+            managedBy: "admin" | "env";
+            /** @description Whether `addSampleApi` would be accepted */
+            sampleAvailable: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        GatewayList: {
+            items: components["schemas"]["Gateway"][];
+            /** @description The bundled Kong's values for the form. Null when this install has none. */
+            bundled: null | components["schemas"]["GatewayUrls"];
+        };
+        CreateGatewayRequest: components["schemas"]["GatewayUrls"] & {
+            /** @description Optional; sent as `Kong-Admin-Token` */
+            adminToken?: string;
+        };
+        TestGatewayRequest: components["schemas"]["GatewayUrls"] & {
+            /**
+             * Format: uuid
+             * @description The connection being edited. Omit for a new one.
+             */
+            gatewayId?: string;
+            /** @description A new token. Absent or empty keeps the stored one if the URL is unchanged. Null means this connection uses no token. */
+            adminToken?: string | null;
+        };
+        UpdateGatewayRequest: {
+            /** Format: uri */
+            adminUrl?: string;
+            /** @description A new token. Absent or empty keeps the stored one if the URL is unchanged. Null removes it, and the connection uses no token. */
+            adminToken?: string | null;
+            /** Format: uri */
+            proxyInternalUrl?: string;
+            /** Format: uri */
+            proxyPublicUrl?: string;
+            enabled?: boolean;
+            /** @description The admin accepted that active keys won't work on this Kong */
+            confirmMissingKeys?: boolean;
+        };
+        GatewayTestResult: {
+            /**
+             * @description Kong version
+             * @example 3.9.4
+             */
+            version: string;
+            /** @description Empty when there is nothing to report, including when there are no active keys. */
+            warnings: {
+                /** @enum {string} */
+                code: "active-keys-missing";
+                message: string;
+                affectedKeys: number;
+            }[];
         };
         User: {
             /** Format: uuid */
@@ -480,6 +743,38 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /**
+         * @description A field is malformed, isn't http(s), carries credentials, a query or a fragment, or resolves
+         *     to a link-local or cloud metadata address (`/problems/validation`). `errors[].pointer` names
+         *     the field, such as `/adminUrl`. The portal made no request to a refused address.
+         */
+        GatewayFieldInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description A connection check failed and nothing was saved. Messages contain neither the token nor a
+         *     response body. `type` is one of:
+         *     `/problems/gateway-unreachable` (network error, 5 s timeout or 5xx; for `localhost`, the detail
+         *     says the address is resolved from the server),
+         *     `/problems/gateway-token-refused` (401 or 403),
+         *     `/problems/gateway-not-kong` (the URL answers but isn't a Kong Admin API),
+         *     `/problems/gateway-read-only` (DB-less mode or a data plane node),
+         *     `/problems/gateway-proxy-unreachable` (the Admin API passed but the internal proxy URL failed),
+         *     `/problems/gateway-token-required` (URL changed with a stored token; enter it again).
+         */
+        GatewayCheckFailed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description Missing `scalar_url`, or it isn't under a published API's base URL (`/problems/try-it-target-not-allowed`) */
         TryItNotAllowed: {
             headers: {
@@ -544,6 +839,7 @@ export interface components {
         Slug: components["schemas"]["Slug"];
         AppId: string;
         CredentialId: string;
+        GatewayId: string;
     };
     requestBodies: never;
     headers: never;
@@ -560,7 +856,10 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Server is up. `gateway.reachable` reports Kong's Admin API. */
+            /**
+             * @description Server is up, with or without a gateway. `gateway` is null when none is connected;
+             *     otherwise `gateway.reachable` reports Kong's Admin API.
+             */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -569,6 +868,72 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
+        };
+    };
+    getSetupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Setup status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    createFirstAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFirstAdminRequest"];
+            };
+        };
+        responses: {
+            /** @description Admin created and signed in */
+            201: {
+                headers: {
+                    /** @description Better Auth session cookie */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            /** @description The setup token is missing or wrong (`/problems/setup-token-invalid`). No admin was created. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An admin already exists (`/problems/setup-complete`). Nothing was changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
         };
     };
     listApis: {
@@ -720,7 +1085,11 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The developer already has an app with this name (`/problems/app-name-taken`) */
+            /**
+             * @description The developer already has an app with this name (`/problems/app-name-taken`), or the
+             *     API's gateway connection is disabled (`/problems/gateway-disabled`). When disabled,
+             *     nothing is created in Kong or Postgres.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -779,7 +1148,11 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
-            /** @description The app already has 5 active keys (`/problems/credential-limit`) */
+            /**
+             * @description `type` is one of `/problems/credential-limit` (the app already has 5 active keys),
+             *     `/problems/gateway-disabled` (the connection is disabled) or
+             *     `/problems/gateway-not-connected` (no gateway exists). Nothing was created.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -839,6 +1212,18 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            /**
+             * @description `type` is one of `/problems/gateway-not-connected` (no gateway exists; the detail points
+             *     to Admin → Gateways) or `/problems/gateway-disabled` (the connection is disabled).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             502: components["responses"]["GatewayRejected"];
             503: components["responses"]["GatewayUnavailable"];
         };
@@ -870,7 +1255,11 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
-            /** @description Slug already used (`/problems/api-slug-taken`) */
+            /**
+             * @description Slug already used (`/problems/api-slug-taken`), no gateway is connected
+             *     (`/problems/gateway-not-connected`), or the connection is disabled
+             *     (`/problems/gateway-disabled`). Nothing was created in Kong or Postgres.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -902,6 +1291,233 @@ export interface operations {
              *     `detail` names that API's slug).
              */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["GatewayRejected"];
+            503: components["responses"]["GatewayUnavailable"];
+        };
+    };
+    listGateways: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description At most one item until spec 017. Never includes the admin token. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGatewayRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Gateway"];
+                };
+            };
+            400: components["responses"]["GatewayFieldInvalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description A gateway already exists; a portal connects to one (`/problems/gateway-exists`). It is unchanged. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: components["responses"]["GatewayCheckFailed"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    testGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestGatewayRequest"];
+            };
+        };
+        responses: {
+            /** @description All checks passed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayTestResult"];
+                };
+            };
+            400: components["responses"]["GatewayFieldInvalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["GatewayCheckFailed"];
+            429: components["responses"]["RateLimited"];
+            /** @description The stored admin token cannot be decrypted (`/problems/gateway-unavailable`). Enter the token again before testing or saving. No outbound request is made. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `type` is `/problems/gateway-env-managed` or `/problems/gateway-in-use`. For the second,
+             *     `apis` and `activeKeys` say how many depend on it. Nothing was removed.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGatewayRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Gateway"];
+                };
+            };
+            400: components["responses"]["GatewayFieldInvalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `type` is `/problems/gateway-env-managed` (set by environment variables, so read-only)
+             *     or `/problems/gateway-keys-missing` (`affectedKeys` active keys have no consumer on this
+             *     Kong; send `confirmMissingKeys: true` to save anyway). Nothing was saved.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: components["responses"]["GatewayCheckFailed"];
+            429: components["responses"]["RateLimited"];
+            /** @description The stored admin token cannot be decrypted (`/problems/gateway-unavailable`). Enter the token again before testing or saving. No outbound request is made. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    addSampleApi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Published */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `type` is `/problems/gateway-disabled` (the connection is disabled; this is checked first)
+             *     or `/problems/sample-not-available` (this gateway can't take the sample). Nothing was created.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
