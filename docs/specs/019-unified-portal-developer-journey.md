@@ -1,7 +1,7 @@
 ---
 id: 019
 title: Unified portal — developer journey
-status: ready # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-316
@@ -208,13 +208,220 @@ recorded here.
 
 ## Technical design _(tech-lead)_
 
-Components · API contract · Data model · Adapter calls · Risks
+Frontend-only, as the spec requires. `apps/server/openapi.yaml`, the database and the gateway
+adapters don't change, and neither does `packages/sdk`. There are no `[backend]` tasks, so the
+backend stage (JSO-356) has no work.
+
+No ADR. Nothing here is a lasting architecture choice: it is one page's client state, a small
+helper for one sign-in link, and a card layout for one screen.
+
+### Components
+
+| File | Change |
+| ---- | ------ |
+| `apps/portal/lib/access.ts` (new) | Access rules as plain functions, with no React, so all six table rows can be unit-tested. |
+| `apps/portal/lib/client.ts` | Add `quietApi`, a second generated client with no middleware. Share the base URL with `api`. |
+| `apps/portal/components/api-access.tsx` (new) | `ApiAccessProvider` holds the access state. `ApiAccessAction`, `ApiAccessStatus` and `TryItRecovery` read it. |
+| `apps/portal/app/apis/[slug]/page.tsx` | Non-demo branch only: wrap the page in the provider and use the three components. The demo branch stays as it is, so it never mounts the check. |
+| `apps/portal/lib/navigation.ts`, `components/auth-form.tsx` | Compute the link between sign-up and sign-in (criterion 3). |
+| `apps/portal/components/create-app.tsx` | Focus the app name when `slug` is set; rename the breadcrumb. |
+| `apps/portal/components/header.tsx` | Rename the link, fix `aria-current`, set the menu's initial focus. |
+| `apps/portal/components/dashboard.tsx`, `app/dashboard/page.tsx`, `app/dashboard/loading.tsx` | Rename to My apps, read `?api=`, add the access label and the cards. |
+| `apps/portal/components/app-detail.tsx` | Rename the breadcrumb, add **Try this API** to each APIs row. |
+| `packages/ui/src/styles.css` | Card list, table/card switch, wrapping for long names in actions. |
+
+### Access check
+
+**Why it runs in the browser.** Criterion 5 needs the title, base URL and reference on screen
+before the response arrives, and criterion 6 needs a retry with no page reload. The server page
+keeps deciding `signedIn` with its existing `currentUser()` call and passes it to the provider. A
+signed-out person therefore gets **Get an API key** in the server-rendered HTML and makes no
+`GET /v1/apps` request.
+
+**Why it can't use `api` or `useResource`.** The middleware on `api` in `lib/client.ts` breaks the
+spec on this one call:
+
+| Response | What `api` does | What the spec needs |
+| -------- | --------------- | ------------------- |
+| 401 | Toast, then redirects to `/sign-in` | Signed-out row, no message (criterion 5) |
+| 403 | Redirects to `/not-found` | Failed check (anything other than 200 or 401) |
+| 429 | Toast | Failed check, with only the one message |
+| Network error | Toast | Failed check, with only the one message |
+
+`useResource` has no timeout and clears its error while reloading, but the failure message has to
+stay on screen during a retry. So `lib/access.ts` calls `quietApi.GET('/v1/apps', { signal, cache: 'no-store' })`
+directly. `quietApi` is for this check only; everything else keeps `api`.
+
+**`lib/access.ts`**
+
+```ts
+export type Access =
+  | { kind: 'signed-out' } // signed out, or the check returned 401
+  | { kind: 'checking' }
+  | { kind: 'none' }
+  | { kind: 'one'; app: { id: string; name: string } }
+  | { kind: 'several' }
+  | { kind: 'failed' };
+
+export function accessFromApps(apps: App[], slug: string): Access; // match on subscriptions[].slug; key status is ignored
+export async function checkAccess(slug: string, signal: AbortSignal): Promise<Access>;
+export function accessAction(access: Access, slug: string): { label: string; href: string } | null;
+export function recoverySentence(access: Access): string; // the exact sentences in criterion 7
+```
+
+- `checkAccess` returns `signed-out` on 401, `accessFromApps` on a 200 whose `items` is an array,
+  and `failed` for everything else, including a thrown error or an abort. A 200 that can't be read
+  as a list of apps counts as failed. It reads only `response.status`, so no problem detail can
+  reach the screen.
+- `accessAction` returns:
+  - `signed-out`: **Get an API key**, `keyDestination(slug, false)`
+  - `none`: **Get an API key**, `keyDestination(slug, true)`
+  - `one`: **Open in {name}**, `/dashboard/apps/{id}`
+  - `several`: **View your apps**, `/dashboard?api={slug}`
+  - `checking` and `failed`: `null`
+- Pass `data.slug` from `GET /v1/apis/{slug}`, not the route parameter.
+
+**`ApiAccessProvider` state**
+
+- `access` starts as `signedIn ? checking : signed-out`, so the server and client render the same
+  thing. `retrying` is a separate boolean.
+- Each attempt gets a new `AbortController` and a `setTimeout(abort, 10_000)`. Aborting covers the
+  body as well as the headers, so a late response can't change anything (criterion 6). The effect
+  cleanup aborts too. After each `await`, ignore the result unless this attempt's controller is
+  still the current one, so React Strict Mode's second effect run and an unmount can't write stale
+  state.
+- **Try again** sets `retrying` and leaves `access` as `failed`, so the message stays. Use
+  `aria-disabled` and `aria-busy` during the retry and ignore clicks, not `disabled`, which would
+  drop keyboard focus when a retry fails.
+- When a retry ends with an action, including 401 → signed out, focus moves to that action in an
+  effect. The first check never moves focus.
+- Rerun the check when `signedIn` or `slug` changes.
+
+**Keeping the reference's state (criterion 6).** `Reference` builds a new `configuration` object
+every time it renders, so re-rendering it on an access change could reset Scalar. The page therefore
+passes the reference to the provider as `children`, created in the server component:
+
+```tsx
+<ApiAccessProvider slug={data.slug} signedIn={!!user}>
+  <div className="stack">
+    <PageHeader /* title, breadcrumb */ actions={<ApiAccessAction />} />
+    {/* version badge, base URL */}
+    <ApiAccessStatus />
+    <div className="alert">{/* existing instruction */} <TryItRecovery /></div>
+    <Reference documentUrl={data.documentUrl} />
+  </div>
+</ApiAccessProvider>
+```
+
+A state change re-renders only the context readers, because the `children` element keeps its
+identity. Don't move `Reference` inside a component that reads the context, and don't give it a key
+that depends on access. Only an e2e test against the real Scalar can prove this.
+
+### Sign-in and sign-up links (criterion 3)
+
+The middleware and the **Get an API key** link both produce `next=/dashboard/apps/new?api={slug}`,
+so the sign-in page can't tell them apart from `next` alone. The difference is made when the person
+crosses between the two forms. Add to `lib/navigation.ts`:
+
+- `signInLink(next)`, used on the sign-up page: if `safeNext(next)` is create app with an `api`
+  value, return `/sign-in?next=/apis/{slug}`. Otherwise keep today's link.
+- `signUpLink(next)`, used on the sign-in page: if `safeNext(next)` is exactly `/apis/{slug}`,
+  return `/sign-up?next=/dashboard/apps/new?api={slug}`. Otherwise keep today's link.
+
+`AuthForm`'s `link` uses these, which also covers **Sign in instead**, since it renders the same
+value. Encode the slug when building the link. The middleware's direct redirect to
+`/sign-in?next=/dashboard/apps/new?api={slug}` doesn't go through either function, so it still
+returns to create app. `auth-form.test.tsx:57` asserts the old link and has to change.
+
+### My apps (criteria 1, 4, 8)
+
+- `app/dashboard/page.tsx` reads `searchParams.api` and passes it to `Dashboard` only if it's a
+  string, because a repeated parameter arrives as an array. This follows `CreateApp`.
+- The label's API name comes from the matching `subscriptions[].title`, so no extra request is
+  needed. No match means no label and no error. Don't sort or filter `items`.
+- **Render the cards as a separate `<ul>` next to the table** and switch between them with CSS at
+  the existing 768 px breakpoint: cards below it, table from it up. Both 375 px and 640 px get
+  cards, so the design's "compact table only when all cells fit" case never arises.
+- Don't reuse the `.responsive-table` stacking CSS. It has no column labels, would need a fifth
+  column for **Open app** that must not appear at 1280 px, and `display: grid` on `tr` removes the
+  table semantics. The criterion asks for a list. Leave that CSS alone, because the keys and admin
+  tables use it.
+- In the table, the label goes in the Name cell, which keeps the four columns. On both layouts, use
+  `overflow-wrap: anywhere` and `min-width: 0` for names.
+- Keep the API list and active key count logic in one place, so the two layouts can't disagree.
+- `caption` changes to "My apps" too. "Your app" in `app/dashboard/apps/[appId]/page.tsx` is a
+  fallback page title, isn't the "Your apps" label, and stays.
+
+### Header (criteria 1, 2)
+
+- APIs is current when `pathname === '/' || pathname.startsWith('/apis/')`. My apps and Admin keep
+  their `startsWith` checks. Only one nav is mounted at a time at 1280 px, because the menu's nav
+  renders only while the dialog is open.
+- Radix focuses the first link by default, but criterion 2 wants the close button. Use
+  `onOpenAutoFocus` on `Dialog.Content`: call `preventDefault()`, then focus a ref on **Close menu**.
+  Radix already handles the focus trap, Escape and returning focus to the trigger. Links are plain
+  `<a href>`, so selecting My apps is a full load with the menu closed.
+
+### Create app (criterion 3)
+
+Focus the app name once on mount when `slug` is set, through a ref on `Input`. Without `slug` the
+page behaves as it does today.
+
+### API contract
+
+No change. This spec relies only on what's already in the contract:
+
+| Call | Fields used | Handling |
+| ---- | ----------- | -------- |
+| `GET /v1/apps` | `items[].id`, `name`, `subscriptions[].slug`, `subscriptions[].title`, `credentials[].status`, `createdAt` | 200 → access from the list; 401 → signed out; anything else, a network error or 10 s → failed |
+
+The server returns every app for the owner with no pagination, so the check sees all of them.
+
+### Data model
+
+No change.
+
+### Gateway adapter calls
+
+None.
+
+### Risks and how to test them
+
+| Risk | Test |
+| ---- | ---- |
+| Scalar loses the typed value on an access change | e2e against the real reference: fill Authentication Value, fail then recover the check, assert the value and that the page didn't reload. |
+| A timed-out or superseded request changes the page | Unit tests with fake timers: a response after 10 s, and a retry racing an older attempt. |
+| The global client's redirect or toast leaks into the check | e2e for 401, 403 and a network abort: URL unchanged, no toast. Component test that the check never calls `api`. |
+| A stubbed 401 with a live session redirects `/sign-up` to `/dashboard`, because the sign-up page sees a valid cookie | For the end-to-end path, make it real with `context.clearCookies()`. A stubbed 401 can only assert the link's `href`. |
+| Unbroken 80-character names overflow, or Scalar itself overflows, at 375 px | e2e `scrollWidth` checks on the API page and My apps at 375 and 640. If Scalar is the cause, file a bug instead of targeting its classes (design §9). |
+| Table and cards are both in the DOM | Playwright `getByRole` ignores the hidden layout, but `getByText` doesn't. Component tests run without the CSS, so scope queries with `within`. |
+| Conflict with 003's frontend fixes, which run alongside this spec (roadmap) | Rebase before review; `header.tsx`, `app-detail.tsx` and `auth-form.tsx` are the likely overlaps. |
+
+Accepted limits, with no change here:
+
+- After a 401, the header still shows the signed-in links until the next page load. **My apps**
+  goes through the middleware to sign-in, so nothing breaks.
+- If `/v1/me` itself fails, `currentUser()` returns null, so the page shows the signed-out row. The
+  sign-up page shows its form and doesn't create an app, so this can't produce a duplicate app. The
+  underlying behaviour is already tracked in JSO-191.
 
 ### Tasks
 
-- [ ] [backend] …
-- [ ] [frontend] …
-- [ ] [qa] …
+- [ ] [frontend] JSO-382 `lib/access.ts` and `quietApi`: add the `Access` type, `accessFromApps`, `checkAccess`, `accessAction` and `recoverySentence` from the design, with unit tests for every table row, each failure response and each criterion 7 sentence.
+- [ ] [frontend] JSO-383 `components/api-access.tsx`: build the provider and its three readers, with the 10-second abort, stale-attempt guard, retry state and focus move after a successful retry, plus component tests with fake timers.
+- [ ] [frontend] JSO-384 API page: wrap the non-demo branch in the provider with `Reference` as stable `children`, replace the fixed action and 403 sentence, and update `api-page.test.tsx`.
+- [ ] [frontend] JSO-385 Auth links: add `signInLink` and `signUpLink` to `lib/navigation.ts`, use them in `AuthForm`, and update `navigation.test.ts` and `auth-form.test.tsx`.
+- [ ] [frontend] JSO-386 Create app: focus the app name on mount when `slug` is set, and rename the breadcrumb to My apps.
+- [ ] [frontend] JSO-387 Header: rename Dashboard to My apps, make APIs current on `/apis/{slug}`, and focus **Close menu** on open, with a new `header.test.tsx`.
+- [ ] [frontend] JSO-388 My apps naming and label: rename the heading, page title, loading heading and caption, read `?api=`, and show the text label on apps with access in the Name cell, with a new `dashboard.test.tsx`.
+- [ ] [frontend] JSO-389 My apps cards: add the card list and the 768 px switch in `packages/ui/src/styles.css`, and wrap long names and action labels so nothing overflows at 375 or 640 px.
+- [ ] [frontend] JSO-390 App page: rename the breadcrumb to My apps and add **Try this API** to every APIs row, leaving the **Try your key** card as it is, and update `app-detail.test.tsx`.
+- [ ] [qa] JSO-391 AC 1, 2: e2e navigation for visitor, developer and admin at 1280 px, including `aria-current`, naming and page titles, and mobile menu focus and Escape at 375 px.
+- [ ] [qa] JSO-392 AC 3: e2e for all four sign-up and sign-in paths from an API page and the direct `/dashboard/apps/new?api={slug}` visit, asserting the checked API and focus.
+- [ ] [qa] JSO-393 AC 4, 7: e2e for one and two apps with access, including revoked keys, an 80-character name at 375 px, the highlight and its absence, an unknown `?api=`, and the 403 sentence for each row.
+- [ ] [qa] JSO-394 AC 5, 6: e2e for the delayed check, 401, 500, 503, network failure and the 10-second timeout, and retry recovery that keeps a typed Authentication Value in the real Scalar reference.
+- [ ] [qa] JSO-395 AC 8, 9: e2e for My apps columns and cards with a 10-API app and an unbroken 80-character name at 1280, 640 and 375 px, and **Try this API** with and without an active key.
+- [ ] [qa] JSO-396 AC 10: extend `deploy/e2e-demo/demo.test.ts` so `/` and `/apis/sample` show no My apps or access action and the browser never requests `/api/v1/apps`.
 
 ## UX _(ui-designer)_
 
