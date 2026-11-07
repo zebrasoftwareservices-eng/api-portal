@@ -63,3 +63,17 @@ it('refuses oversized streamed bodies and network errors', async () => {
   expect(await a.checkConnection()).toEqual({ outcome: 'unreachable' });
   expect(await a.checkProxy('http://kong:8000')).toBe(false);
 });
+
+it('maps a timeout while reading the Admin API body to unreachable', async () => {
+  const a = adapter(
+    async () =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(new DOMException('timeout', 'TimeoutError'));
+          },
+        }),
+      ),
+  );
+  expect(await a.checkConnection()).toEqual({ outcome: 'unreachable' });
+});

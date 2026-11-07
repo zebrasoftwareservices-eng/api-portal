@@ -186,8 +186,10 @@ export class KongAdapter implements GatewayAdapter {
       )
         return { outcome: 'read-only' };
       return { outcome: 'ok', version: root.version };
-    } catch {
-      return { outcome: 'not-gateway' };
+    } catch (error) {
+      return {
+        outcome: error instanceof SyntaxError ? 'not-gateway' : 'unreachable',
+      };
     } finally {
       await reader?.cancel().catch(() => {});
     }
