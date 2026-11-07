@@ -19,6 +19,7 @@ import {
   normalizeUrl,
   resolveToken,
   checkConnection,
+  connectionFailure,
   requireEnabled,
   type GatewayConnection,
   type GatewayRow,
@@ -212,23 +213,16 @@ export async function registerGateways(
           try {
             owned = await adapter.listOwnedConsumers();
           } catch (error) {
-            if (
-              error instanceof GatewayRejectedError &&
-              [401, 403].includes(error.status)
-            )
-              throw new Problem(
-                422,
-                'gateway-token-refused',
-                'Kong refused the request because the Admin API token is wrong or missing. Check the token and try again.',
-              );
-            if (
-              error instanceof GatewayUnavailableError ||
-              error instanceof GatewayRejectedError
-            )
-              throw new Problem(
-                422,
-                'gateway-unreachable',
-                "The portal couldn't reach that address. Check the Admin API URL and that Kong is running.",
+            if (error instanceof GatewayUnavailableError)
+              throw connectionFailure('unreachable', values.adminUrl);
+            if (error instanceof GatewayRejectedError)
+              throw connectionFailure(
+                [401, 403].includes(error.status)
+                  ? 'refused'
+                  : error.status >= 500
+                    ? 'unreachable'
+                    : 'not-gateway',
+                values.adminUrl,
               );
             throw error;
           }

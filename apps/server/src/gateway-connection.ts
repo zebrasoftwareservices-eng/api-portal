@@ -172,6 +172,28 @@ export const connectionDetails = {
   'read-only':
     "This Kong runs in DB-less mode or as a data plane node. The portal can't work with it, because it needs to write consumers and keys. Change the Admin API URL to a Kong with a database, or to its control plane.",
 };
+export function connectionFailure(
+  outcome: keyof typeof connectionDetails,
+  adminUrl: string,
+) {
+  const codes = {
+    unreachable: 'gateway-unreachable',
+    refused: 'gateway-token-refused',
+    'not-gateway': 'gateway-not-kong',
+    'read-only': 'gateway-read-only',
+  };
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(
+    new URL(adminUrl).hostname,
+  );
+  return new Problem(
+    422,
+    codes[outcome],
+    connectionDetails[outcome] +
+      (outcome === 'unreachable' && local
+        ? ' This address is resolved from the server, not your machine.'
+        : ''),
+  );
+}
 export async function checkConnection(
   values: ConnectionValues,
   adapter: GatewayAdapter,
@@ -179,25 +201,8 @@ export async function checkConnection(
   await checkAddress(values.adminUrl, 'adminUrl');
   await checkAddress(values.proxyInternalUrl, 'proxyInternalUrl');
   const check = await adapter.checkConnection();
-  if (check.outcome !== 'ok') {
-    const codes = {
-      unreachable: 'gateway-unreachable',
-      refused: 'gateway-token-refused',
-      'not-gateway': 'gateway-not-kong',
-      'read-only': 'gateway-read-only',
-    };
-    const local = ['localhost', '127.0.0.1', '[::1]'].includes(
-      new URL(values.adminUrl).hostname,
-    );
-    throw new Problem(
-      422,
-      codes[check.outcome],
-      connectionDetails[check.outcome] +
-        (check.outcome === 'unreachable' && local
-          ? ' This address is resolved from the server, not your machine.'
-          : ''),
-    );
-  }
+  if (check.outcome !== 'ok')
+    throw connectionFailure(check.outcome, values.adminUrl);
   if (!(await adapter.checkProxy(values.proxyInternalUrl)))
     throw new Problem(
       422,

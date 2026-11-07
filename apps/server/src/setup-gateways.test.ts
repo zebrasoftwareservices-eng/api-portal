@@ -839,3 +839,31 @@ it('try-it uses newly saved proxy URLs immediately after its catalog has been re
     ).statusCode,
   ).toBe(400);
 });
+
+it.each([401, 404, 503])(
+  'maps candidate consumer-list failure %s through the same fixed connection messages',
+  async (status) => {
+    const { GatewayRejectedError } = await import('@portal/adapter-sdk');
+    await boot();
+    await claim();
+    const id = await connectGateway();
+    owned.mockRejectedValueOnce(new GatewayRejectedError(status));
+    const response = await call('POST', 'admin/gateways/test', {
+      ...values,
+      gatewayId: id,
+      adminUrl: 'http://localhost:8002',
+      adminToken: null,
+    });
+    expect(response.statusCode, response.body).toBe(422);
+    expect(response.json().type).toBe(
+      '/problems/' +
+        (status === 401
+          ? 'gateway-token-refused'
+          : status === 404
+            ? 'gateway-not-kong'
+            : 'gateway-unreachable'),
+    );
+    if (status === 503)
+      expect(response.json().detail).toContain('resolved from the server');
+  },
+);
