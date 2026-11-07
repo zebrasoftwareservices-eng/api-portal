@@ -344,7 +344,7 @@ resets both fields. Corrected in review; see JSO-282 and the Review section.
 - [x] [backend] Fix JSO-287: make `isAccessDenied` recognise Kong's refusal in every `Accept` format while upstream 403s still pass through, and add unit cases per format plus a server test with `Accept: application/xml`.
 - [ ] [backend] Fix JSO-277: on a catalog miss in `apps/server/src/proxy.ts`, reload the published APIs once before refusing, so a just-published API works in try-it at once and an unpublished target is still refused; turn the `it.fails` regression in `apps/server/src/app.test.ts` into a normal passing test. Approved by Elango on 2026-11-07.
 - [ ] [backend] Fix JSO-291, changeset only: add a `.changeset/` file for this breaking change that points to `docs/upgrade-004-access-control.md`. The README link stays open, so leave JSO-291 in Backlog and comment what was done. Approved by Elango on 2026-11-07.
-- [ ] [frontend] Fix JSO-281: make the API reference info line match the JSO-281 wording in §4.4 of the UX design, so it's correct when security is set per operation, with a test. Approved by Elango on 2026-11-07.
+- [x] [frontend] Fix JSO-281: make the API reference info line match the JSO-281 wording in §4.4 of the UX design, so it's correct when security is set per operation, with a test. Approved by Elango on 2026-11-07.
 
 ## UX  _(ui-designer)_
 Full design: [docs/design/004-per-api-access-control.md](../design/004-per-api-access-control.md).
@@ -371,6 +371,8 @@ go slightly beyond it. They're tracked in JSO-276:
   publishing a new API after the upgrade might never read them.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend JSO-281 (2026-11-07; commit `4683804`): the live API reference info line now matches UX §4.4, naming Scalar's Value field and explaining Select Auth Type for documents with operation-level security. A server-rendered page regression checks the complete copy and the Get an API key destination; it failed against the old wording and passes with the fix. Fresh `pnpm lint --force`, `pnpm typecheck --force` and `pnpm test --force` pass, including all 70 portal tests. QA/UAT should verify the guidance against a per-operation-security document in Scalar; the bug remains open for independent verification, and demo copy is unchanged.
 
 - Backend review fixes (JSO-286, JSO-287, 2026-11-06): reconcile now takes one paged `/acls` snapshot and groups memberships by owned consumer ID before any write, avoiding the per-consumer request burst and ignoring other consumers' memberships. Unit coverage asserts pagination, exact membership repair, foreign-consumer preservation and no per-consumer reads; the real-Kong regression reconciles 501 owned consumers with 1,002 memberships and no repairs (5.8 seconds including setup and cleanup).
 - ACL refusal detection now matches Kong's fixed message across JSON, plain text, XML and HTML while retaining the status and upstream-latency checks. Format-specific unit tests and real negotiated Kong responses pass; the server regression sends `Accept: application/xml`, checks the UX problem response and verifies XML upstream 403 pass-through. Validation: `pnpm lint`, `pnpm typecheck` and `pnpm test --force` pass (147 tests: 69 portal, 39 Kong adapter, 38 server, 1 database; includes the existing expected-failure JSO-277 regression). QA should rerun quickstart/e2e, and UAT should check AC 2 on an XML or plain-text operation; those browser checks were not rerun in this backend round. No API contract change was needed.
