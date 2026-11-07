@@ -1,7 +1,7 @@
 ---
 id: 019
 title: Unified portal — developer journey
-status: review # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-316
@@ -552,6 +552,63 @@ Notes:
   locally. That's test data (JSO-408), not product behaviour.
 
 ## Review _(tech-lead)_
+
+Review 2026-11-07 (JSO-360) of `git diff main...HEAD` (`aa3626c`…`bb2cd4d`). **No blocking findings.
+Status: approved.**
+
+Checks run in this worktree:
+
+- `pnpm lint`: PASS. `pnpm typecheck`: PASS.
+- `pnpm test`: one failure on this machine's Node 26 in `components/key-reveal-dialog.test.tsx:57`,
+  a file this branch doesn't touch. Node's own `localStorage` global hides jsdom's. With
+  `NODE_OPTIONS=--no-experimental-webstorage`, all 117 portal tests pass, and the other packages are
+  unchanged. CI pins Node 22 through `.nvmrc`, so CI is unaffected. Follow-up JSO-410 (Backlog).
+- I didn't rerun e2e or the quickstart. I relied on QA's runs of 2026-11-07: 42/42 e2e, 32 demo e2e,
+  Compose healthy in 134 s. The branch doesn't change the server, Compose or the images.
+- `main` has one newer commit (`4668cac`, factory config and docs). `git merge-tree` shows it merges
+  cleanly.
+
+Against the design:
+
+- **Contract and data:** no change to `openapi.yaml`, the database, the adapters or `packages/sdk`,
+  as designed. The access check reads only `response.status` and the fields the design lists, so no
+  problem detail or secret reaches the page.
+- **Access check** (`components/api-access.tsx`, `lib/access.ts`): matches the design. Each attempt
+  has its own `AbortController`, a 10-second abort, and a guard that ignores a superseded attempt. A
+  `Promise.race` against the abort covers a transport that ignores the signal. Retry keeps `failed`
+  on screen, uses `aria-disabled`, and moves focus only after a retry that ends in an action. The
+  check uses `quietApi`, so the global 401/403/429 redirects and toasts can't fire. A 200 that can't
+  be read as a list of apps counts as failed, not as no access.
+- **Reference state:** `Reference` is created in the server component and passed as `children`, so an
+  access change doesn't re-render it. QA's e2e proves this against the real Scalar.
+- **Auth links** (`lib/navigation.ts`): both functions go through `safeNext`, encode the slug, and
+  leave the middleware's direct create-app redirect alone. The tests cover open redirects and
+  encoded slugs.
+- **Header, My apps, create app, app page:** match criteria 1, 2, 4, 8 and 9 and the UX section. The
+  cards are a separate `<ul>`, switched at 768 px. Table semantics are kept, and the shared
+  `.responsive-table` CSS is untouched. The API list and key count are worked out once for both
+  layouts.
+- **Tests:** every criterion has a unit or component test and a browser test (see Test report).
+  Criterion 10 is covered by `deploy/e2e-demo/demo.test.ts`.
+
+### Blocking
+
+None.
+
+### Suggestions
+
+- `apps/portal/components/api-access.tsx:140` — **Try again** sits inside the `role="status"` live
+  region, so some screen readers read the whole message again when its label changes to
+  **Checking…**. Consider keeping only the message and the hidden announcement inside the live
+  region, with the button next to it. Not blocking: the design asks for one mounted live region,
+  and this has one.
+- `apps/portal/components/create-app.tsx:35` — restoring focus after an empty API result finds
+  `PageHeader`'s `h1` through `querySelector`. This depends on `PageHeader`'s markup. If another
+  screen needs the same thing, give `PageHeader` a heading ref instead. The behaviour itself is a
+  good addition and is tested (`create-app.test.tsx`).
+- `package.json` allows Node `>=22`, but `pnpm test` fails on Node 25 and later without the
+  webstorage flag. This was here before the branch and is tracked in JSO-410.
+- Rebase on `main` before merging (one commit behind, no conflicts).
 
 ## Definition of Done
 
