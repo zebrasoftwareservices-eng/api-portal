@@ -1,7 +1,7 @@
 ---
 id: 004
 title: Per-API access control on Kong
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-06
 linear: JSO-233
@@ -302,6 +302,7 @@ it waited longer; that's why the first risk below is there.
 | Time to take effect, one node | Membership or new key: under 15 ms in repeated runs. New plugin: about 4 s in one measurement. New routes needed more than 1.5 s. |
 | ACL 403 body by `Accept` (added in review, Kong 3.9.4) | Kong follows the header: JSON for none, `*/*` or `application/json`; plain text, XML or HTML for those types. The design's "ACL body" row above holds only for JSON. See JSO-287. |
 | Reading ACLs at scale (added in review, Kong 3.9.4, Postgres `max_connections` 100) | One concurrent read per consumer: 100 consumers succeed, 200 or more exhaust Kong's Postgres connections. One paged `/acls` read: 6001 rows in 383 ms. See JSO-286. |
+| Query-string key in Kong's own access log (added in review, Kong 3.9) | With `KONG_PROXY_ACCESS_LOG=/dev/stdout`, the log line holds `?apikey=<key>`; a header key isn't logged. A custom format using `$uri` leaves out the query, and the call still returns 200. See JSO-296. |
 
 ### Risks
 | Risk | Mitigation and test |
@@ -550,57 +551,65 @@ Notes:
 **Disposition: `review`.** No blocker or major bug is open. Six minor bugs remain: JSO-277, JSO-281, JSO-282, JSO-283, JSO-284 and JSO-292.
 
 ## Review  _(tech-lead)_
-Re-reviewed on 2026-11-06 at `c864c38`. **Result: no blocking findings, so the status goes to `approved`.** Both findings from the first review (at `14af7de`) are fixed and closed. Elango's merge gate and the decisions listed below are still open.
+Third review, on 2026-11-07 at `5314938`. **Result: no blocking findings, so the status goes to `approved`.** This covers the changes since my approval at `ba39f8f`: JSO-277, JSO-281 and the changeset. Elango's merge gate and the decisions listed below are still open.
 
 ### Checks
 | Check | Result |
 | --- | --- |
-| `pnpm lint`, `pnpm typecheck` | Pass |
-| `pnpm test --force` | Pass, with no cache: 147 tests (69 portal, 39 Kong adapter, 38 server, 1 database), including the expected failure for JSO-277, the only skip or expected-failure marker in the unit, integration or e2e code |
+| `pnpm lint`, `pnpm typecheck` | Pass, with no cache |
+| `pnpm test --force` | Pass, with no cache: 148 tests (70 portal, 39 Kong adapter, 38 server, 1 database). No `skip`, `only`, `fails` or `todo` markers remain in `apps`, `packages` or `deploy`. |
 | `packages/sdk` against `openapi.yaml` | No drift after regenerating |
-| Quickstart and `pnpm test:e2e` | Not re-run here. QA ran both at `4148d99` (24 of 24 e2e tests, quickstart smoke in 125.5 seconds), and UAT did clean installs of the same commit. Only docs changed after it, and no application code changed after `4e97c56`. |
+| Code read | All of the JSO-277, JSO-281 and changeset changes, and the `main...HEAD` diff of the server flows and Kong adapter, with no new findings. I didn't re-read the rest of the portal UI or the tests; they're unchanged since the last review, apart from the tests listed in QA's report. |
+| Quickstart and `pnpm test:e2e` | Not re-run here. QA's results stand: 24 of 24 e2e tests, and the quickstart smoke in 98.7 seconds on `c2737c1`. Since that commit only `apps/portal/e2e/journeys.ts` and docs have changed. |
+| CI | **Not yet run on this code.** PR #4 is green, but at `ba39f8f`, and that's still the branch's tip on `origin`. JSO-277, JSO-281 and the changeset have no CI result until the branch is pushed, so the Definition of Done's CI item stays open. |
 | Multi-node Kong | Not tested by anyone. The upgrade notes say so. |
-| CI | **No evidence.** The branch has no PR and isn't on `origin`, so the Definition of Done's CI item stays open until a PR runs. |
 
 ### Blocking
 None.
 
-### Fixed since the first review
-Both are moved to Done.
+### Rulings the coordinator asked for
+| Topic | Ruling | Why |
+| --- | --- | --- |
+| JSO-277, a database read on every refused target (`apps/server/src/proxy.ts:106`) | **Not blocking.** Suggestion JSO-297. | The route needs no sign-in, so repeated bad input is reachable, but `@fastify/rate-limit` caps it at 60 a minute per client IP before the handler runs. That's at most one extra catalog read a second per IP. JSO-169 covers forged `X-Forwarded-For`. The public catalog routes run the same query with no limit at all (JSO-298), so this adds no new exposure. Resetting the expiry is fine, because the data was just read. The reload is still wasteful for malformed and external targets, and a request can read twice when the cache has expired. I read this from the code and didn't measure it. |
+| QA's rate-budget reset | **Doesn't hide a problem.** Suggestion JSO-300. | All six failures in QA's log are 429s from try-it, in the run started right after a passing one. The JSO-169 test empties the budget on purpose and is test 23 of 24. So this is about test order: the limit itself is on `main` too and worked as designed. CI runs the suite once. One thing to know: developers behind one NAT share a budget of 60 a minute. |
+| JSO-296, keys in Kong's access log | **Follow-up; doesn't affect this spec.** Stays in Backlog. | AC 4 and the access rules cover what the upstream receives. Kong's log isn't an upstream log, the behaviour isn't new, and the portal's own logs strip the query (`apps/server/src/app.ts:58`). I reproduced it on Kong 3.9 with the compose setting. The upgrade notes should say that Kong and anything in front of it still log query strings, advise sending keys in the header, and give a `$uri` log format. The exact wording is on JSO-296. |
+| JSO-294, JSO-295, copy | **Not blocking; leave them out of this change.** | JSO-294's copy is on `main` too, and no criterion covers it. JSO-295's wording is new here, but UAT reached a working call by following it. Fix both in one small copy PR straight after the merge, JSO-294 first, because it's the first instruction after a key is created. |
+| Changeset (`.changeset/per-api-access-control.md`) | **Not blocking, but wrong.** Suggestion JSO-299. | No workflow runs `changeset version` on merge, so nothing releases yet. A trial run took four packages from 0.1.0 to **1.0.0**, and the portal to 0.1.1, while the roadmap plans this sprint as v0.2. Use `minor` and include the portal. The link works from `.changeset/` but breaks once it's copied into `apps/*/CHANGELOG.md` and `packages/*/CHANGELOG.md`; the prose still gives the path. |
 
-- **JSO-286: reconcile failed above about 100 apps.** `packages/adapter-kong/src/index.ts:452` now takes one paged `/acls` read before any write, as the design says. It reads without a tag filter on purpose, because AC 7(b) needs to see hand-added memberships that have no portal tag, and memberships of consumers the portal doesn't own are ignored. A real-Kong test reconciles 501 consumers with 1,002 memberships, which passes the first 1,000-row page (`packages/adapter-kong/src/conformance.test.ts:137`), and a unit test forbids per-consumer reads (`packages/adapter-kong/src/access.test.ts`). That test covers the no-drift run. Writes on a first upgrade are sequential, so they don't bring back the connection burst.
-- **JSO-287: AC 2 failed for operations that aren't JSON.** `packages/adapter-kong/src/index.ts:603` now looks for Kong's fixed message in any format, still only on a 403 with no `X-Kong-Upstream-Latency`. The real-Kong test checks all four negotiated formats, the server test covers an XML refusal and an XML upstream 403, and QA and UAT confirmed it in Scalar. I updated the design's `headers` risk to match: an upstream 403 now only has to contain Kong's text, and only when the operator has also removed the latency header. It's still low impact.
+### Fixed since the last review
+- **JSO-277:** a just-published API works in try-it at once, and unpublished and external targets are still refused without a gateway call (`apps/server/src/app.test.ts`, formerly an expected failure). QA and UAT confirmed it.
+- **JSO-281:** the info line matches §4.4 of the UX design, with a page test (`apps/portal/components/api-page.test.tsx:13`). UAT confirmed it on each document type, with the wording issue now in JSO-295.
 
 ### Suggestions
-None of these need to hold the merge.
+None of these need to hold the merge. All are in Backlog.
 
-- **JSO-288** `apps/portal/components/admin-apis.tsx:40`: the focus effect runs on every `errors` change, so changing the Kong service while a file error shows moves focus to the file input. From reading the code; not reproduced.
+- **JSO-297** `apps/server/src/proxy.ts:106`: skip the catalog reload for targets that can never match.
+- **JSO-298** `apps/server/src/catalog.ts:56`: public catalog routes read every full document with no rate limit. This is on `main` too. From reading the code; not measured.
+- **JSO-299** `.changeset/per-api-access-control.md:2`: wrong version bump, and a link that breaks in the changelogs. Fix before the first release.
+- **JSO-300** `apps/portal/e2e/gateway.ts:260`: a rerun within a minute fails. Tests only.
+- **JSO-288** `apps/portal/components/admin-apis.tsx:40`: the focus effect runs on every `errors` change. From reading the code; not reproduced.
 - **JSO-289** `packages/adapter-kong/src/index.ts:358`: a disabled service key-auth under a global plugin makes `protectService` fail with Kong's 409. Reproduced.
 - **JSO-290** `packages/adapter-kong/src/index.ts:473`: a rejected membership doesn't stop plugin writes, and its finding names no service. From reading the code; not reproduced.
-- **JSO-291**: no changeset for a change that breaks existing behaviour, and the README doesn't link the upgrade notes.
-
-These four are still open in Backlog, unchanged since the first review. The JSO-282 clean-up from that review is done: the restart test now compares whole objects apart from the two timestamps (`apps/portal/e2e/gateway.ts:104`), and the upgrade notes mention both.
+- **JSO-291**: the README doesn't link the upgrade notes. The changeset part is done.
 
 ### Rulings on open bugs
 | Topic | Ruling | Why |
 | --- | --- | --- |
-| Sample API on existing installs | **Not blocking.** | Fresh installs protect it before the row exists (`apps/server/src/seed.ts:42`). On upgrade it stays as open as it was until the first reconcile, which is queued at startup, so seconds plus the 6-second wait and propagation. I read this from the startup order and didn't time it. With Kong down at boot, it lasts until Kong is back and the next scheduled run, up to 5 minutes later. Turning `SEED_SAMPLE` on later, on an install with other APIs, gets the same short gap. |
-| JSO-282, `created_at` on restart | **Correct the restart check; don't change the seed.** | IDs and config don't change, and access doesn't depend on these timestamps. Comparing before each PUT would add code for a cosmetic field on sample objects. The design's check is corrected above. AC 5's wording is Elango's, so this reading is listed below for him. |
-| JSO-277, try-it 400 after publishing | **Not blocking; I'd fix it now.** | The cache is on `main` too, so this isn't a regression, it clears within 30 seconds, and no criterion covers it. It's still a confusing first experience and the fix is small: reload the catalog once on a miss before refusing (`apps/server/src/proxy.ts:101`). |
-| JSO-281, info line and missing field | **Not blocking; I'd fix it now.** | The developer can recover through the selector, and the next step in AC 2 isn't affected. It's a copy change to `apps/portal/app/apis/[slug]/page.tsx`, with wording from the ui-designer. |
-| JSO-283, keyboard scrolling | **Not blocking; keep it open.** | The status, title and start of the message are readable, and the info line repeats the next step, so keyboard users still get it. Scalar owns the panel, so the fix likely needs a Scalar upgrade. |
+| Sample API on existing installs | **Not blocking.** | Unchanged from the last review. Fresh installs protect it before the row exists (`apps/server/src/seed.ts:42`). On upgrade it stays as open as it was until the first reconcile, which is queued at startup. With Kong down at boot, that's until Kong is back and the next scheduled run. |
+| JSO-282, `created_at` on restart | **Correct the restart check; don't change the seed.** | IDs and config don't change, and access doesn't depend on these timestamps. AC 5's wording is Elango's, so this reading is listed below. |
+| JSO-283, keyboard scrolling | **Not blocking; keep it open.** | The status, title and start of the message are readable, and the info line repeats the next step. Scalar owns the panel. |
 | JSO-284, unlinked upgrade notes | **Not blocking.** | The hint still states the effects. Fix it along with JSO-291, once the notes have a public URL. |
-| JSO-292, service not marked linked until reload (new) | **Not blocking.** | An admin who tries the same service again still gets the `gateway-service-already-linked` refusal, which AC 9's design requires, so nothing is published twice. Only the advance note is late. From UAT's report and the server check; I didn't reproduce it. |
+| JSO-292, service not marked linked until reload | **Not blocking.** | Trying the same service again still gets the `gateway-service-already-linked` refusal, so nothing is published twice. |
 
 ### For Elango at merge
-My three design choices stand as built, and I'd keep all of them. These are decisions for you, not findings:
+These are decisions for you, not findings. The first three are design choices I'd keep.
 
 1. **Operator `deny` ACLs:** one that doesn't list `portal-consumer` on an unmanaged service leaves portal keys working there, and the portal only warns. This is a known exception to the third access rule, and the alternative is editing a plugin we don't own.
-2. **Hand-added groups:** reconcile removes any group not backed by a subscription from consumers the portal owns. This is the choice most likely to surprise an operator, and the upgrade notes state it.
+2. **Hand-added groups:** reconcile removes any group not backed by a subscription from consumers the portal owns. The upgrade notes state it.
 3. **One API per service:** there's no way to publish a new version of an API on the same service until spec 012. The workaround is a separate Kong service.
 4. **AC 5's wording:** "changes nothing in Kong" now excludes `created_at` and `updated_at` on the sample's objects. If you want it literal, JSO-282 becomes a backend fix to the seed.
-5. **JSO-277 and JSO-281:** do you want these in this build round? They have no Fix tasks unless you say so.
-6. **Multi-node Kong** is still untested. The upgrade notes say so.
+5. **Multi-node Kong** is still untested. The upgrade notes say so.
+6. **Before release, not before merge:** JSO-299, so the release doesn't go out as 1.0.0, and the JSO-296 text for the upgrade notes. You may want that text in before anyone connects a real Kong, which is this sprint's goal.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
