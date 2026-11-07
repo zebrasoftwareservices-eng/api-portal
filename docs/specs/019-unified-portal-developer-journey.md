@@ -1,7 +1,7 @@
 ---
 id: 019
 title: Unified portal — developer journey
-status: building # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-316
@@ -464,14 +464,62 @@ shows another action. It needs a server change, so it's tracked as a follow-up i
 
 ## Test report _(qa-tester)_
 
+QA run 2026-11-07. Browser coverage is registered by
+`deploy/e2e/unified-journey.test.ts`; the tests live in
+`apps/portal/e2e/unified-journey.test.ts` (abbreviated **journey** below).
+Browser routes stub only the access-list response where deterministic access/failure states
+are needed; authentication, server pages and the Scalar reference are real. The app-link test
+creates real gateway services, imported APIs, an app and a key, then revokes the key.
+
 | Criterion | Test file | Result |
 | --------- | --------- | ------ |
+| 1 — navigation by role, current page, naming, titles and loading | journey `AC1`, `AC1,4,9`; `components/header.test.tsx`, `components/dashboard.test.tsx` | PASS — unit and browser, including loading |
+| 2 — keyboard mobile menu, focus trap/return, Close/Escape, link navigation | journey `AC2`; `components/header.test.tsx` | PASS — unit and browser |
+| 3 — signup, no-access, existing-account Sign in/Sign in instead, round trip, direct create-app continuation | journey six `AC3` tests; `lib/navigation.test.ts`, `components/auth-form.test.tsx`, `components/create-app.test.tsx` | PASS — unit and browser |
+| 4 — one/revoked-key app, long name, several apps, unfiltered labels and unknown API | journey `AC4,7,8`, `AC1,4,9`; `lib/access.test.ts`, `components/dashboard.test.tsx` | PASS — unit and browser |
+| 5 — delayed access response, reference available, 401 treated as signed out | journey `AC5,7` and `AC5,6,7: access 401`; `components/api-access.test.tsx` | PASS — unit and browser |
+| 6 — 500/503/network/timeout, late result ignored, failed/successful retry, focus and real Scalar value retained | journey parameterized `AC5,6,7`, `AC6`; `components/api-access.test.tsx`, `lib/access.test.ts` | PASS — unit and browser |
+| 7 — exact 403 recovery copy for every access state | journey `AC3`, `AC4,7,8`, `AC5,7`, `AC5,6,7`; `lib/access.test.ts` | PASS — unit exact sentences and browser |
+| 8 — four desktop columns; three mobile cards, 80-character name, ten APIs at 1280/640/375 px | journey `AC4,7,8`; `components/dashboard.test.tsx` | PASS — unit and browser |
+| 9 — three API links with and without an active key; existing Try your key behavior | journey `AC1,4,9`; `components/app-detail.test.tsx` | PASS — unit and browser |
+| 10 — demo navigation, no access action, no apps request | `deploy/e2e-demo/demo.test.ts` `019 AC10`, existing desktop/mobile demo journeys; `components/api-page.test.tsx` | PASS — 32 demo browser tests |
+
+Validation:
+
+- `pnpm lint`: PASS.
+- `pnpm typecheck`: PASS, including the new browser tests.
+- `NODE_OPTIONS=--no-experimental-webstorage pnpm test`: PASS from Turbo cache;
+  fresh parallel `turbo run test --force` hit the database test's 120-second timeout while
+  Docker and demo builds ran. The fresh serial retry
+  (`NODE_OPTIONS=--no-experimental-webstorage pnpm exec turbo run test --force --concurrency=1`)
+  PASSED: 195 tests across 28 files (1 database, 117 portal, 39 Kong adapter, 38 server),
+  12/12 Turbo tasks successful with zero cache hits.
+- `pnpm test:e2e:demo`: PASS, 32 tests, production static demo build.
+- `pnpm test:e2e`: PASS, 42/42 in one complete final run (19 new spec-019 cases).
+  The real first-call journey (signup, key reveal, Kong call and revoke) PASSED, as did the
+  real gateway outage, duplicate retry and restart/reconciliation checks.
+- Quickstart `docker compose -f deploy/docker-compose.yml up -d --build --wait`: PASS,
+  all services healthy in 134 seconds after the coordinated port handoff and project-network
+  recreation. An earlier attempt was blocked by another worktree using port 8000; the initial
+  reused network also had a PostgreSQL DNS failure. Only this project was recreated, with
+  volumes preserved; no other worktree containers were touched.
+- Failure coverage includes invalid auth/import input, duplicate submissions/accounts,
+  non-admin permission, expired session and real gateway outage in the existing full suite,
+  plus new deterministic 401/403/500/503/network/timeout access checks and retry focus.
+- No Bug-labelled children of JSO-316 were In Review at QA start; none required retest.
+- Test development initially exposed selector assumptions: duplicate imported sample titles,
+  Next's empty route-announcer alert, Scalar's unnamed global-auth region, hidden-label spacing
+  and in-page hashes. These test assertions were corrected; no application code changed.
+  A consecutive full-suite rerun also inherited the security test's exhausted in-memory
+  rate-limit bucket (429); restarting this project server before the final run restored a
+  clean test state. The repeat-run isolation follow-up is **JSO-408**, unparented in Backlog.
+  No remaining spec-019 flakiness was observed.
+- This worktree's Compose project was torn down after verification, preserving volumes and
+  releasing the standard ports. No blocker or major bug is open; disposition: **uat**.
 
 ### Bugs
 
-<!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-
-- [ ] …
+None found. No blocker, major or minor product bug was opened during this QA run.
 
 ## User testing _(user-tester)_
 
