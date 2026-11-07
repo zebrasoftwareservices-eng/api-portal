@@ -867,3 +867,150 @@ it.each([401, 404, 503])(
       expect(response.json().detail).toContain('resolved from the server');
   },
 );
+
+it('AC 9: every gateway operation rejects signed-out, developer and expired sessions before outbound checks', async () => {
+  await boot();
+  await claim();
+  const id = await connectGateway();
+  const signup = await app.inject({
+    method: 'POST',
+    url: '/api/auth/sign-up/email',
+    payload: {
+      email: 'limited@example.com',
+      password: 'test-password-123',
+      name: 'Limited',
+    },
+  });
+  const developer = signup.headers['set-cookie']!.toString().split(';')[0]!;
+  const expired = cookie;
+  await db.client`update session set expires_at = now() - interval '1 hour' where user_id = ${ownerId}`;
+  vi.clearAllMocks();
+  seen.length = 0;
+  for (const [auth, expected] of [
+    ['', 401],
+    [developer, 403],
+    [expired, 401],
+  ] as const) {
+    for (const [method, path, payload] of [
+      ['GET', 'admin/gateways'],
+      ['GET', 'admin/gateway/services'],
+      ['POST', 'admin/gateways', values],
+      ['POST', 'admin/gateways/test', values],
+      ['PATCH', `admin/gateways/${id}`, { enabled: false }],
+      ['DELETE', `admin/gateways/${id}`],
+      ['POST', `admin/gateways/${id}/sample`],
+    ] as const)
+      expect((await call(method, path, payload, auth)).statusCode).toBe(
+        expected,
+      );
+  }
+  expect(seen).toHaveLength(0);
+  expect(adapter.checkConnection).not.toHaveBeenCalled();
+  expect(adapter.listServices).not.toHaveBeenCalled();
+  expect((await db.db.select().from(gateways))[0]?.enabled).toBe(true);
+});
+
+it.each([
+  'unreachable',
+  'refused',
+  'not-gateway',
+  'read-only',
+  'proxy',
+] as const)(
+  'AC 4: failing candidate %s leaves the existing connection and encrypted token intact',
+  async (failure) => {
+    await boot();
+    await claim();
+    const id = await connectGateway();
+    const [before] = await db.db.select().from(gateways);
+    if (failure === 'proxy') proxyReachable = false;
+    else outcome = { outcome: failure };
+    const input = {
+      ...values,
+      adminUrl: 'http://localhost:9001',
+      adminToken: 'candidate-secret',
+    };
+    for (const [method, path, payload] of [
+      ['POST', 'admin/gateways/test', { ...input, gatewayId: id }],
+      ['PATCH', `admin/gateways/${id}`, input],
+    ] as const) {
+      const response = await call(method, path, payload);
+      expect(response.statusCode).toBe(422);
+      expect(response.body).not.toContain('candidate-secret');
+      expect(response.body).not.toContain('unique-gateway-secret');
+    }
+    expect((await db.db.select().from(gateways))[0]).toEqual(before);
+    expect(logs.join('')).not.toContain('candidate-secret');
+  },
+);
+
+it.each(['adminUrl', 'proxyInternalUrl', 'proxyPublicUrl'] as const)(
+  'AC 4: malformed %s identifies the field and cannot be saved',
+  async (field) => {
+    await boot();
+    await claim();
+    for (const path of ['admin/gateways/test', 'admin/gateways']) {
+      const response = await call('POST', path, {
+        ...values,
+        [field]: 'file:///secret',
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().errors).toContainEqual(
+        expect.objectContaining({ pointer: '/' + field }),
+      );
+    }
+    expect(adapter.checkConnection).not.toHaveBeenCalled();
+    expect(await db.db.select().from(gateways)).toHaveLength(0);
+  },
+);
+
+it('AC 5: missing gateway and unavailable service discovery have actionable errors and no partial import', async () => {
+  const { GatewayUnavailableError } = await import('@portal/adapter-sdk');
+  await boot();
+  await claim();
+  const missing = await call('GET', 'admin/gateway/services');
+  expect(missing.statusCode).toBe(409);
+  expect(missing.json().detail).toContain('Admin → Gateways');
+  await connectGateway();
+  adapter.listServices.mockRejectedValueOnce(new GatewayUnavailableError());
+  const unavailable = await call('GET', 'admin/gateway/services');
+  expect(unavailable.statusCode).toBe(503);
+  expect(unavailable.json().type).toBe('/problems/gateway-unavailable');
+  expect(await db.db.select().from(apis)).toHaveLength(0);
+  expect((await call('GET', 'admin/gateway/services')).json().items).toEqual([
+    { ...service, linkedApiSlug: null },
+  ]);
+});
+
+it.each(['admin-only', 'kong-only', 'both'] as const)(
+  'AC 8: production startup with %s environment variables covers just the missing setup part',
+  async (mode) => {
+    const { start } = await import('./startup.js');
+    config = loadConfig({
+      DATABASE_URL: container.getConnectionUri(),
+      ...(mode !== 'kong-only'
+        ? {
+            ADMIN_EMAIL: 'production@example.com',
+            ADMIN_PASSWORD: 'production-test-password',
+          }
+        : {}),
+      ...(mode !== 'admin-only'
+        ? { KONG_ADMIN_URL: 'http://127.0.0.1:1' }
+        : {}),
+    });
+    config.NODE_ENV = 'production';
+    config.PORT = 0;
+    app = await start(config);
+    expect((await call('GET', 'setup')).json()).toEqual({
+      adminRequired: mode === 'kong-only',
+      setupTokenRequired: mode === 'kong-only',
+    });
+    const rows = await db.db.select().from(gateways);
+    if (mode === 'admin-only') expect(rows).toHaveLength(0);
+    else expect(rows[0]).toMatchObject({ managedBy: 'env', enabled: true });
+    expect((await db.db.select().from(user)).length).toBe(
+      mode === 'kong-only' ? 0 : 1,
+    );
+    expect((await call('GET', 'health')).statusCode).toBe(200);
+  },
+);
