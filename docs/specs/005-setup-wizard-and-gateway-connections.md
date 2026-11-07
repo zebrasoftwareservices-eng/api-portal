@@ -91,7 +91,7 @@ admin environment variables set.
    file or URL. **Then** the API is published, and a developer who creates an app for it gets a key
    that returns 200 through Kong. **If** Kong is unreachable when services are listed, **then** they
    see the "gateway unavailable" message with a retry, and nothing is lost. **If** no gateway is
-   connected, **then** they're pointed to Admin → Gateways.
+   connected, **then** they're pointed to Admin → Gateways. **If** it's disabled, criterion 7(b) applies.
 6. **Given** the engineer connected the bundled Kong in the wizard **When** they opt in to the sample
    API **Then** it's published and a developer's key returns 200 on it. **When** they don't opt in
    **Then** the catalog stays empty and Kong has no sample objects. **Given** any other Kong **Then**
@@ -101,10 +101,12 @@ admin environment variables set.
    apply. With the URL changed and a token stored, Test and save are refused with a message to enter the
    token again, and the stored token is never sent to the new host. If they instead choose "this Kong needs
    no token" (`adminToken: null`), the checks in criterion 4 run with no token, and saving removes the stored
-   token; (b) disables it, **Then** creating a new app or key on its APIs, or importing an API on that gateway,
-   shows a clear error and leaves nothing partial. Key revoke and the reconcile job keep running, existing keys
-   keep working through Kong and the docs stay published. If Kong can't be reached, revoke shows a clear error,
-   and the reconcile job logs one. Re-enabling it reruns the checks in criterion 4: if one fails, they see that
+   token; (b) disables it, **Then** creating a new app or key on its APIs shows a clear error and leaves nothing
+   partial. Starting an import on that gateway is refused with a clear error before the admin fills in a form, and
+   the service list isn't offered. The server still checks on submit, so an import submitted anyway is refused and
+   leaves nothing partial. Publishing the sample API on that gateway is blocked the same way. Key revoke and the
+   reconcile job keep running, existing keys keep working through Kong and the docs stay published. If Kong can't
+   be reached, revoke shows a clear error, and the reconcile job logs one. Re-enabling it reruns the checks in criterion 4: if one fails, they see that
    case's message and it stays disabled, so a connection to a dead Kong stays disabled until Kong answers;
    (c) removes it while APIs or active keys depend on it, **Then** removal is refused, naming how many;
    (d) removes it with nothing depending on it, **Then** the connection and its stored token are deleted,
@@ -179,6 +181,12 @@ admin environment variables set.
   keep running, and report a clear error if Kong can't be reached. Existing keys keep working through Kong and
   docs stay published. Revoking access would mean deleting keys that can't be recreated. Re-enabling reruns the
   checks in criterion 4, so a connection to a dead Kong stays disabled until Kong answers. — Elango, 2026-11-07.
+- [x] **When is an import on a disabled gateway refused?** Decided: when the import starts, before the admin fills
+  in a form, and the service list isn't offered. The server still checks on submit (criterion 7(b)). — Elango, 2026-11-07.
+- [x] **Does the import block cover the sample API?** Decided: yes. Publishing the sample on a disabled gateway is
+  blocked too (criterion 7(b)). — Elango, 2026-11-07.
+- [x] **Where does the refusal for an environment-managed gateway go if the work is split?** Decided: criterion 8's
+  refusal of edit, disable and remove moves to the second pull request, with criterion 7. — Elango, 2026-11-07.
 - [x] **Should removing a gateway clean up the portal's objects in Kong?** Decided: no. Removal leaves them
   in Kong, including the `deny` ACLs from spec 004 on the operator's services, and the docs describe
   tag-based cleanup (criteria 7(d) and 10). A removal should never break traffic. — Elango, 2026-11-07. The
@@ -216,7 +224,8 @@ admin environment variables set.
   sample API must change in the same pull request. Spec 006 relies on criterion 8.
 - **If this won't fit one pull request:** ship criteria 1–6, 9 and 10 plus environment variables first, because
   they meet the issue's "Done when". Move edit, disable and remove (criterion 7) to a second pull request, along
-  with criterion 8's "gateway becomes editable" part and criterion 10's tag-based cleanup docs.
+  with criterion 8's "gateway becomes editable" part, criterion 8's refusal of edit, disable and remove on an
+  environment-managed gateway, and criterion 10's tag-based cleanup docs.
 
 ---
 <!-- Sections below are filled by later stages. -->
