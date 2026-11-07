@@ -1,7 +1,7 @@
 ---
 id: 004
 title: Per-API access control on Kong
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-06
 linear: JSO-233
@@ -439,10 +439,71 @@ Bug retest audit: queried all direct Bug children of JSO-233 without a limit: **
 - [ ] JSO-283 Keyboard users can't scroll Scalar's response body to read the end of the 403 message (minor)
 - [ ] JSO-284 Kong service hint says "See the upgrade notes" but gives no link to them (minor)
 - [ ] JSO-292 After publishing, the Kong service list doesn't mark that service as linked until the page reloads (minor)
+- [ ] JSO-294 App page's "Try your key" still says to paste into the apikey field, which gives a 401 (minor)
+- [ ] JSO-295 Info line says "Select Auth Type" and "key scheme", but the screen shows "Auth Type" and bare scheme names (minor)
 - [x] [frontend] Fix JSO-279: make the try-it response body readable at desktop widths, and assert it in the AC 2 browser test
 - [x] [frontend] Fix JSO-280 and JSO-278: after an import refusal, focus reliably moves to the Kong service field in a real browser and under test load, keeping the existing focus assertion unrelaxed
 
 ## User testing  _(user-tester)_
+Fourth run, on 2026-11-07, after the JSO-277 and JSO-281 fixes, in Orca's built-in browser. The stack was the Compose install QA left running, built from this worktree at `c2737c1` with Kong 3.9.4; only tests and this spec changed after that build. It kept QA's data, so this wasn't a clean install. Screenshots are in `docs/uat/004/retest3/`. App code changed only in `apps/server/src/proxy.ts` and the info line since the third run, which follows below.
+
+**Disposition: `review`.** No blocker or major bug is open. Both fixes work in the browser, so JSO-277 and JSO-281 stay Done. Six minor bugs are open: JSO-294 and JSO-295, which are new, plus JSO-282, JSO-283, JSO-284 and JSO-292 from earlier runs.
+
+**JSO-277: try-it straight after publishing. Pass.** I waited out the 30-second cache so the warm request was sure to reload it, then published through the admin screen and sent the first request 11 seconds after the warm one.
+
+| Step | Time | Result |
+| --- | --- | --- |
+| Warm request on an existing API | +0.9 s | 200 through Kong. [21](../uat/004/retest3/21-jso277-warm-request-200-1280.png) |
+| Publish a new API from the admin screen | +3.6 s | Published and in the catalog |
+| First send on the new API, key's app not subscribed | +11.1 s | Kong's real 403 with the portal's message, and no `try-it-target-not-allowed`. [23](../uat/004/retest3/23-jso277-new-api-sent-inside-window-1280.png) |
+| Get an API key, then send with the new app's key | Next | 200. [24](../uat/004/retest3/24-jso277-subscribed-new-app-200-1280.png) |
+| Target with no published API, and an external URL | Same page | Both 400 `try-it-target-not-allowed`, so neither is forwarded |
+
+My first attempt took 43 seconds, so the cache had already expired and it proved nothing. The timings above are from the second attempt, which replaced it.
+
+**JSO-281: following the info line literally. Pass, with a new minor bug on its wording (JSO-295).**
+
+| Document | What the Authentication panel shows | Following the line | Screenshot |
+| --- | --- | --- | --- |
+| Sample API (top-level security) | Scheme already chosen, Name `apikey`, Value empty | Paste into Value, send: **200** | [08](../uat/004/retest3/08-sample-reference-auth-1280.png), [13](../uat/004/retest3/13-sample-send-200-1280.png) |
+| Per-operation `apiKey` in a header | "No authentication selected" and a control reading **Auth Type** | Open it, choose `key`, Value appears, paste, send: **200**, key not at the upstream, `X-Consumer-Custom-Id` present | [01](../uat/004/retest3/01-perop-reference-select-auth-type-1280.png), [04](../uat/004/retest3/04-perop-select-auth-type-open-1280.png), [05](../uat/004/retest3/05-perop-key-scheme-chosen-1280.png), [07](../uat/004/retest3/07-perop-send-result-1280.png) |
+| Per-operation `apiKey` in the query | Same, with the key sent as `?apikey=` | **200**, key not at the upstream | [25](../uat/004/retest3/25-query-key-subscribed-200-key-hidden-1280.png) |
+| Two `apiKey` schemes | List shows `key` and `partnerToken` | `key`: **200**. `partnerToken`: 401 "No API key found in request", then a retry with `key` works | [09](../uat/004/retest3/09-two-schemes-auth-type-list-1280.png), [14](../uat/004/retest3/14-two-schemes-key-200-1280.png), [15](../uat/004/retest3/15-two-schemes-wrong-scheme-401-1280.png) |
+| Bearer only | The portal adds `portalApiKey` and preselects it, so Value shows and no choice is needed | Paste, send: **200** | [10](../uat/004/retest3/10-bearer-auth-type-list-1280.png), [12](../uat/004/retest3/12-bearer-send-result-1280.png) |
+| Bearer and `apiKey` together | List shows `key` and `token` | `key`: **200**. `token` shows a **Bearer Token** field, not Value, and gets 401 | [16](../uat/004/retest3/16-mixed-auth-type-list-1280.png), [17](../uat/004/retest3/17-mixed-bearer-chosen-field-1280.png), [18](../uat/004/retest3/18-mixed-bearer-send-1280.png), [26](../uat/004/retest3/26-mixed-key-subscribed-200-1280.png) |
+
+The bearer answer the coordinator asked about: Scalar does show a different field for a bearer scheme. That only matters when a document has both kinds of scheme and the developer picks the bearer one, and the line's "key scheme" points them the right way. [27](../uat/004/retest3/27-closed-control-reads-auth-type-1280.png) shows the closed control.
+
+| User story | Result | Evidence |
+| --- | --- | --- |
+| Platform engineer: a portal key works only on subscribed APIs | **Pass.** Browser: subscribed 200, unsubscribed 403. Kong calls: unknown and missing keys 401. | [07](../uat/004/retest3/07-perop-send-result-1280.png), [23](../uat/004/retest3/23-jso277-new-api-sent-inside-window-1280.png), [24](../uat/004/retest3/24-jso277-subscribed-new-app-200-1280.png) |
+| Platform engineer: upstreams never receive portal keys | **Pass.** The upstream's echo, read on screen, has no key from a header or a query parameter, and has `X-Consumer-Custom-Id`. | [07](../uat/004/retest3/07-perop-send-result-1280.png), [25](../uat/004/retest3/25-query-key-subscribed-200-key-hidden-1280.png) |
+| Platform engineer: non-portal traffic keeps working | **Pass.** No screen covers this, so it's real calls through Kong. Unmanaged key-auth service: portal key 403, operator key 200, anonymous 401. Public route: anonymous 200. | Kong calls only |
+| Platform engineer: changes in Kong are put back automatically | **Pass.** No screen covers this either. All four drift cases were repaired in one scheduled run, 221 seconds after I made them. The restored ACL kept its plugin ID, and logs held no keys. | Kong calls and server log |
+| Developer: an existing key keeps working after an upgrade | **Pass, partly carried forward.** I didn't repeat the upgrade from `main`, because nothing it depends on changed: see the third run and QA's rerun. On this build, a server restart left Kong's services, routes and plugins identical apart from timestamps, and an existing key still got 200 and 403 correctly. | [34](../uat/004/retest3/34-dashboard-app-after-restart-1280.png) |
+| Developer: a clear explanation when a key is refused | **Pass.** The panel shows `403 Forbidden` and "This key doesn't have access to this API". The body reads: "This key's app doesn't have access to this API. Select Get an API key on this page, create an app that includes this API, and send the request with the new key. If this key's app should already have access, tell the portal admin." **Get an API key** opened Create app with the API ticked, and the new key got 200. | [20](../uat/004/retest3/20-mixed-key-unsubscribed-403-1280.png), [23](../uat/004/retest3/23-jso277-new-api-sent-inside-window-1280.png), [24](../uat/004/retest3/24-jso277-subscribed-new-app-200-1280.png) |
+
+Other checks on this journey:
+
+| Check | Result | Screenshot |
+| --- | --- | --- |
+| 375px: info line, Auth Type list, Value, Send | Pass. 200, and no sideways page scroll. | [29](../uat/004/retest3/29-reference-info-line-375.png), [30](../uat/004/retest3/30-select-auth-type-open-375.png), [31](../uat/004/retest3/31-key-in-value-375.png), [32](../uat/004/retest3/32-send-200-375.png) |
+| Keyboard: Auth Type control | Pass. Enter opens it, Down and Enter choose the scheme, Escape closes it with focus back on the control, and Tab reaches Value. | [28](../uat/004/retest3/28-keyboard-scheme-chosen-1280.png) |
+| Browser health | No console errors or warnings on the reference or dashboard pages I checked. The only failed requests were the expected 403s. | None |
+
+Notes:
+- **New, minor, JSO-294:** the app page's "Try your key" card still says "the apikey field". Taken literally on the sample API, the key replaces the header name, and the call gets a 401 with the key visible in plain text. The info line on the API reference gives the correct steps, so the developer can recover. It's the first instruction after a key is created, and the fix looks like one sentence of copy. [03](../uat/004/retest3/03-app-page-try-your-key-apikey-field.png), [35](../uat/004/retest3/35-sample-key-pasted-into-apikey-name-field-401-1280.png), where I blurred the key.
+- **New, minor, JSO-295:** the line says "Select Auth Type", but "Select" is screen-reader text, so the screen shows "Auth Type". It also says "key scheme", while the list shows only the document's own names.
+- **Follow-up, JSO-296, not a bug in this spec:** Kong's own access log records the key when it's sent as a query parameter. The upstream and portal logs don't.
+- **Bug re-tests:** no Bug issue was In Review, because QA had already moved JSO-277 and JSO-281 to Done. I re-tested both anyway and they stay Done.
+- **Not re-tested, code unchanged:** JSO-282, JSO-283, JSO-284 and JSO-292. Also not repeated: sign-up and sign-in mistakes, Kong down during Create app, import refusals, the full v0.1 upgrade and non-JSON operations. See the third run and QA's rerun.
+- **Not tested:** multi-node Kong, and how a brand-new key-auth service behaves in the seconds before Kong applies its plugins.
+- **Test tool quirk, not a portal bug:** Orca's `click` and mouse commands didn't trigger Scalar's Send button, while Enter and a script-triggered click did. QA's Playwright test sends with a real click, so I used Enter throughout.
+- **Screenshots:** the refusal's full body is quoted above because Orca's capture came out blank after scrolling inside the client. [23](../uat/004/retest3/23-jso277-new-api-sent-inside-window-1280.png) shows its title. Earlier, [02](../uat/004/retest2/02-xml-refused-403-1200.png) showed the same message in full. [19](../uat/004/retest3/19-query-send-1280.png) is the query document's 403 with an unsubscribed key.
+- **Time to start:** not measured, because the stack was already running. QA's latest quickstart run took 98.7 seconds.
+- **Test data left behind:** my `uat5-*` services, APIs, consumer and test accounts remain in the local Compose volume alongside QA's data. The stack is stopped, and I didn't delete the volume.
+
+### Third run, carried forward
 Third run, on 2026-11-06, after the JSO-286 and JSO-287 fixes, in Orca's built-in browser on a clean Docker Compose install of `4148d99` (application code at `4e97c56`) with Kong 3.9.4. Access results come from real calls through Kong. The Admin API only set up operator fixtures and drift. Screenshots are in `docs/uat/004/retest2/`; earlier runs are in `docs/uat/004/` and `docs/uat/004/retest/`.
 
 **AC 2 on non-JSON operations (the check the review asked for).** Each API was published through the admin screen on its own Kong service, with a small test upstream that returns its own 403 body in the operation's format. All of this was read on screen in Scalar's response panel:
