@@ -786,3 +786,56 @@ it('boots the real environment path, hands management back when variables are re
   expect((await call('GET', 'health')).statusCode).toBe(200);
   expect(await db.db.select().from(apis)).toHaveLength(0);
 });
+
+it('try-it uses newly saved proxy URLs immediately after its catalog has been read', async () => {
+  config = loadConfig({ DATABASE_URL: container.getConnectionUri() });
+  const fetcher = vi.fn(async () => new Response('ok'));
+  ({ app } = await createApp({
+    db: db.db,
+    config,
+    adapterFor: () => adapter,
+    proxyFetch: fetcher,
+    logger: false,
+  }));
+  await claim();
+  const id = await connectGateway();
+  await publish(id);
+  expect(
+    (
+      await call(
+        'GET',
+        'try-it?scalar_url=' +
+          encodeURIComponent('http://localhost:8000/pets/get'),
+      )
+    ).statusCode,
+  ).toBe(200);
+  expect(
+    (
+      await call('PATCH', `admin/gateways/${id}`, {
+        proxyInternalUrl: 'http://127.0.0.1:9000',
+        proxyPublicUrl: 'http://localhost:9000',
+      })
+    ).statusCode,
+  ).toBe(200);
+  expect(
+    (
+      await call(
+        'GET',
+        'try-it?scalar_url=' +
+          encodeURIComponent('http://localhost:9000/pets/get'),
+      )
+    ).statusCode,
+  ).toBe(200);
+  expect(String(fetcher.mock.calls.at(-1)![0])).toBe(
+    'http://127.0.0.1:9000/pets/get',
+  );
+  expect(
+    (
+      await call(
+        'GET',
+        'try-it?scalar_url=' +
+          encodeURIComponent('http://localhost:8000/pets/get'),
+      )
+    ).statusCode,
+  ).toBe(400);
+});
