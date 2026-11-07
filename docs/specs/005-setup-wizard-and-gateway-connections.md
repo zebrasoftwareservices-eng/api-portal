@@ -473,6 +473,7 @@ Full design: [docs/design/005-setup-wizard-and-gateway-connections.md](../design
 
 - Frontend (JSO-328, JSO-329, JSO-367–JSO-370, JSO-365): added the first-admin wizard, setup-aware middleware and sign-in landing, shared Kong connection form, gateway management card and confirmation dialogs, sample opt-in, Admin navigation, and import/developer refusal states. Calls use the generated SDK; gateway tokens stay in component state and are cleared on successful save. Failed service refresh and stale import submissions preserve entries; environment-managed connections have no mutation controls.
 - Frontend validation: `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed (the full suite needs Docker/network access outside the restricted sandbox); portal suite has 110 passing tests covering setup, connection checks, token semantics, missing-key confirmation, disable/remove refusals, sample eligibility, import states and developer messages. QA should verify keyboard/focus and responsive flows against a running portal, plus each real Kong failure case. JSO-379 fixes the Node 25+ test storage globals by using Vitest's jsdom realm.
+- Frontend UAT fix (JSO-398): sign-in now reads the portal role from `/v1/me` through the SDK because Better Auth's sign-in response omits it, then sends admins without a gateway or explicit `next` to `/setup/gateway`, including admin-only installs. Regression tests use a sign-in response without a role and cover absent/present gateways, developer landing and explicit continuations; `pnpm lint`, `pnpm typecheck` and `pnpm test` pass (112 portal tests; unchanged integration suites cached). QA/UAT should recheck sign-in after skipping setup and on an admin-only install; the bug remains open for verification.
 
 ## Test report  _(qa-tester)_
 QA run: 2026-11-07, macOS/Node 26.13.0, real PostgreSQL 17 and Kong 3.9. Compose project `spec005qa` is isolated from the pre-existing `portal-postgres-1` container.
@@ -504,7 +505,7 @@ No product flakiness observed; Kong configuration propagation uses bounded polli
 - [x] JSO-366 Unreadable stored-token recovery (safe 503 and replacement/removal regression passes, Done).
 - [ ] JSO-381 Gateway help links point to a nonexistent Kong Admin API guide (minor).
 - [ ] JSO-398 Admin with no gateway lands on the dashboard after sign-in, not the wizard (major)
-- [ ] [frontend] Fix JSO-398: send an admin with no gateway and no `next` to `/setup/gateway` after sign-in, including on an admin-only install (major)
+- [x] [frontend] Fix JSO-398: send an admin with no gateway and no `next` to `/setup/gateway` after sign-in, including on an admin-only install (major)
 - [ ] JSO-399 Reloading `/setup/gateway` after saving loses the sample choice (minor)
 - [ ] JSO-400 Raw problem titles shown to users: "validation", "gateway unavailable" (minor)
 - [ ] JSO-401 "1 active keys" in the repoint dialog, and the Test warning has no count (minor)

@@ -19,7 +19,10 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mocks.replace, refresh: mocks.refresh }),
 }));
 describe('account forms', () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.get.mockResolvedValue({ data: { id: 'user', role: 'developer' } });
+  });
   it.each(['sign-up', 'sign-in'] as const)(
     'keeps %s inert until hydration attaches its submit handler',
     (mode) => {
@@ -114,10 +117,11 @@ describe('account forms', () => {
     'lands an admin without a next target according to gateway presence: %s',
     async (exists) => {
       mocks.signin.mockResolvedValue({
-        data: { user: { id: 'admin', role: 'admin' } },
+        data: { user: { id: 'admin' } },
       });
-      mocks.get.mockResolvedValue({
-        data: { items: exists ? [{ id: 'gw' }] : [] },
+      mocks.get.mockImplementation(async (path: string) => {
+        if (path === '/v1/me') return { data: { id: 'admin', role: 'admin' } };
+        return { data: { items: exists ? [{ id: 'gw' }] : [] } };
       });
       render(<AuthForm mode="sign-in" />);
       const user = userEvent.setup();
@@ -129,6 +133,34 @@ describe('account forms', () => {
           exists ? '/dashboard' : '/setup/gateway',
         ),
       );
+      expect(mocks.get.mock.calls).toEqual([
+        ['/v1/me'],
+        ['/v1/admin/gateways'],
+      ]);
     },
   );
+  it('keeps developers on the dashboard without requesting admin endpoints', async () => {
+    mocks.signin.mockResolvedValue({ data: { user: { id: 'user' } } });
+    render(<AuthForm mode="sign-in" />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Email'), 'dev@example.com');
+    await user.type(screen.getByLabelText('Password'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith('/dashboard'),
+    );
+    expect(mocks.get.mock.calls).toEqual([['/v1/me']]);
+  });
+  it('honors an explicit next target without checking for a gateway', async () => {
+    mocks.signin.mockResolvedValue({ data: { user: { id: 'admin' } } });
+    render(<AuthForm mode="sign-in" next="/admin/apis" />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Email'), 'admin@example.com');
+    await user.type(screen.getByLabelText('Password'), 'password123');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith('/admin/apis'),
+    );
+    expect(mocks.get).not.toHaveBeenCalled();
+  });
 });

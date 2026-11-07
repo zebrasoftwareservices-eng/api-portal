@@ -118,15 +118,14 @@ export function AuthForm({
                 );
             } else {
               let destination = safeNext(next);
-              if (
-                !next &&
-                !signup &&
-                result.data?.user &&
-                'role' in result.data.user &&
-                result.data.user.role === 'admin'
-              ) {
-                const { data } = await api.GET('/v1/admin/gateways');
-                if (data && !data.items.length) destination = '/setup/gateway';
+              if (!next && !signup) {
+                // Better Auth's sign-in response omits the portal role.
+                const { data: user } = await api.GET('/v1/me');
+                if (user?.role === 'admin') {
+                  const { data } = await api.GET('/v1/admin/gateways');
+                  if (data && !data.items.length)
+                    destination = '/setup/gateway';
+                }
               }
               router.replace(destination);
               router.refresh();
