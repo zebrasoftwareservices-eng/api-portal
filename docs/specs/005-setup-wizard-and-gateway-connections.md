@@ -1,7 +1,7 @@
 ---
 id: 005
 title: First-run setup and gateway connections
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-234
@@ -503,10 +503,38 @@ No product flakiness observed; Kong configuration propagation uses bounded polli
 - [x] JSO-379 Portal component tests use Node storage globals instead of jsdom on Node 25+ (110 component tests pass on Node 26, Done).
 - [x] JSO-366 Unreadable stored-token recovery (safe 503 and replacement/removal regression passes, Done).
 - [ ] JSO-381 Gateway help links point to a nonexistent Kong Admin API guide (minor).
+- [ ] JSO-398 Admin with no gateway lands on the dashboard after sign-in, not the wizard (major)
+- [ ] [frontend] Fix JSO-398: send an admin with no gateway and no `next` to `/setup/gateway` after sign-in, including on an admin-only install (major)
+- [ ] JSO-399 Reloading `/setup/gateway` after saving loses the sample choice (minor)
+- [ ] JSO-400 Raw problem titles shown to users: "validation", "gateway unavailable" (minor)
+- [ ] JSO-401 "1 active keys" in the repoint dialog, and the Test warning has no count (minor)
+- [ ] JSO-402 localhost failure message does not say what to enter instead (minor)
+- [ ] JSO-403 Setup token hint does not match the log line (minor)
+- [ ] JSO-404 Protected-route recipe needs `curl`, which the Kong image lacks (minor)
+- [ ] JSO-405 Import form disappears on first load when Kong is down (minor)
+- [ ] JSO-406 Redundant "Connect a Kong" heading on the wizard gateway step (minor)
 
 ## User testing  _(user-tester)_
+Run on 2026-11-07 in Orca's built-in browser, against this branch's images and real Kong 3.9.4. Screenshots are in `docs/uat/005/`.
+
 | User story | Result | Screenshot |
 | --- | --- | --- |
+| Fresh install walks me through creating the first admin | **Pass.** Every page goes to `/setup`, sign-up is refused, Kong is empty, and a second admin gets 409. Production token: wrong, missing, old and post-admin tokens are refused, and each start gives a new one | `01`, `02`, `03`, `51`, `52` |
+| Test a Kong connection before saving it | **Pass.** Every criterion 4 case shows its message on real targets, including DB-less and a protected route, and Save refuses too. A passed Test says nothing is saved, and editing a field clears it. Copy issues: JSO-400, JSO-402 | `05`, `06`, `07`, `37`, `38`, `42` |
+| Edit, disable and remove a connection from the admin screens | **Pass.** 7(a) to 7(e) all walked with a second, protected Kong. The token never appears in a response, log or the page after saving. Copy issue: JSO-401 | `16`, `17`, `23`, `27`–`34`, `39`–`44`, `46`, `48`, `49` |
+| Pick from Kong's services when importing | **Pass.** Routes and key-auth are shown, the key returns 200 through Kong and in try-it, and retry keeps entries through an outage. First-load difference: JSO-405 | `09`, `24`, `25`, `26`, `35`, `36`, `50` |
+| The sample API is my choice | **Pass.** Declining leaves the catalog and Kong empty, and opting in publishes it with a working key. A reload loses the choice: JSO-399 | `10`, `11`, `12`, `15`, `18`, `19`, `22` |
+| Environment variables keep working, with no wizard | **Fail.** Admin, Kong and sample variables in production pass, with a read-only card and 409 refusals, and Kong-only passes. **Admin-only fails:** the admin lands on the dashboard and never sees the wizard (JSO-398, major) | `54`, `55`, `56`, `57`, `13` |
+| A documented safe way to reach the Kong Admin API | **Pass with minor issues.** Recipe results: right token 200, wrong 401, outside the allowlist 403, portal key 403, hidden from discovery. Cleanup removes only tagged objects and traffic is unchanged. The UI links to the guide are dead (JSO-381), and the recipe needs `curl`, which the Kong image lacks (JSO-404) | `45` |
+
+Other journeys: at 390×844 the wizard, card, dialog and import have no sideways scroll, and form buttons are 44px (`m01`–`m08`). The wizard works with Tab, Enter and Escape only, in the designed order, and focus returns to the trigger after a dialog (`53`). Wrong password, empty forms, a double-clicked Save (one POST), back button and an expired session (sent to sign-in) all behave. Developers get 404 on admin pages and 403 from the gateway API, and signed-out callers get 401. The console stayed clean, and the only failed requests were the expected refusals.
+
+Notes:
+- **Speed:** `up --wait` took 139 s with a build, mostly cached, and 13 s from built images. That cached build isn't a first-time figure; QA's clean build reached `/setup` in 220.2 s. Flow A at 390px took 25 s of scripted actions, so it isn't a human reading time.
+- **Flow A judgement:** a passed Test isn't mistaken for a save, because the alert says so and the form stays. The "What saving changes" notice stays visible above the buttons, so it's easy to read, though at 390px it's several screens of text before Save.
+- **Not walked:** a real v0.2 upgrade, which QA also covered only at the migration and startup layers. The desktop runs used Orca's 805px-wide browser, not 1280px, so the 1280px layout wasn't checked.
+- **How it was run:** each run used its own compose project (`-p spec005uat…`), because the default `portal` project held another worktree's containers. Another worktree replaced the shared `portal-server` image during testing, which caused a false crash. Runs after that used `--build`. Follow-up: JSO-407.
+- **Evidence:** the second half of the mobile screenshots repeats the first because of how the tool captures them, not the page. API keys are masked in screenshots.
 
 ## Review  _(tech-lead)_
 
