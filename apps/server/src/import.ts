@@ -4,9 +4,12 @@ import { bundle, validate } from '@scalar/openapi-parser';
 import { z } from 'zod';
 import { uuidv7 } from 'uuidv7';
 import { apis, type Database } from '@portal/db';
-import { eq } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import type { GatewayAdapter } from '@portal/adapter-sdk';
+import {
+  GatewayServiceConflictError,
+  type GatewayAdapter,
+} from '@portal/adapter-sdk';
 import { requireUser, type Auth } from './auth.js';
 import { Problem } from './problem.js';
 import { apiDetail, publishedApis } from './catalog.js';
@@ -304,30 +307,63 @@ export function registerImport(
           'api-slug-taken',
           'An API with this slug is already published.',
         );
-      const inserted = await db
-        .insert(apis)
-        .values({
-          id: uuidv7(),
-          slug,
-          title: info.title,
-          version: info.version,
-          description: info.description,
-          document,
-          sourceUrl,
-          gatewayId,
-          gatewayServiceId: service.id,
-          gatewayServiceName: service.name,
-          routePath,
-          createdBy: user.id,
-        })
-        .onConflictDoNothing()
-        .returning();
-      if (!inserted.length)
-        throw new Problem(
-          409,
-          'api-slug-taken',
-          'An API with this slug is already published.',
+      const { inserted, protection } = await db.transaction(async (tx) => {
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${'service:' + service.id}, 0))`,
         );
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+        const [linked] = await tx
+          .select({ slug: apis.slug })
+          .from(apis)
+          .where(
+            and(
+              eq(apis.gatewayId, gatewayId),
+              eq(apis.gatewayServiceId, service.id),
+            ),
+          );
+        if (linked)
+          throw new Problem(
+            422,
+            'gateway-service-already-linked',
+            `This Kong service already serves /apis/${linked.slug}. A Kong service can serve only one published API, because access is granted per service.`,
+          );
+        let protection;
+        try {
+          protection = await adapter.protectService({ id: service.id });
+        } catch (error) {
+          if (!(error instanceof GatewayServiceConflictError)) throw error;
+          throw new Problem(
+            422,
+            'gateway-service-has-acl',
+            `An ACL plugin this portal didn't create applies to the Kong service ${error.serviceName}, either on the service, on one of its routes or globally. The portal can't control access while it's there, so it hasn't changed this service's plugins.`,
+          );
+        }
+        const inserted = await tx
+          .insert(apis)
+          .values({
+            id: uuidv7(),
+            slug,
+            title: info.title,
+            version: info.version,
+            description: info.description,
+            document,
+            sourceUrl,
+            gatewayId,
+            gatewayServiceId: service.id,
+            gatewayServiceName: service.name,
+            routePath,
+            createdBy: user.id,
+          })
+          .onConflictDoNothing()
+          .returning();
+        if (!inserted.length)
+          throw new Problem(
+            409,
+            'api-slug-taken',
+            'An API with this slug is already published.',
+          );
+        return { inserted, protection };
+      });
       const row = (await publishedApis(db)).find(
         (a) => a.api.id === inserted[0]?.id,
       );
@@ -335,7 +371,12 @@ export function registerImport(
       return reply
         .code(201)
         .header('Location', `/api/v1/apis/${slug}`)
-        .send(apiDetail(row));
+        .send({
+          ...apiDetail(row),
+          warnings: protection.findings
+            .filter((f) => ['api-public', 'partial-key-auth'].includes(f.code))
+            .map(({ code, message }) => ({ code, message })),
+        });
     },
   );
 }

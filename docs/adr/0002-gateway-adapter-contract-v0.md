@@ -66,5 +66,5 @@ them later is a non-breaking addition behind `capabilities()`.
   It has no usable credential the developer has seen, so the risk is clutter, not access.
 - `docs/engineering-conventions.md` should be updated to the v0 interface when this is accepted.
 - Key-auth alone does not scope a key to one API: any portal key works on every key-auth
-  service in that Kong. Per-API scoping (Kong ACL groups attached to the consumer) belongs to
-  the rate-limit plans spec, and its ADR will extend this one.
+  service in that Kong. Superseded by [ADR 0005](0005-per-api-access-control-kong-acl.md): spec 004
+  delivers per-API scoping ahead of the rate-limit plans spec.

@@ -107,11 +107,12 @@ export interface paths {
         put?: never;
         /**
          * Create an app, subscribe it to APIs and issue its first API key
-         * @description Atomic from the developer's point of view (spec 001 AC 6 and 8). The server
-         *     upserts the Kong consumer and key-auth credential first, then writes Postgres in one
-         *     transaction. On any failure it deletes whatever it created in Kong and stores
-         *     nothing, so a retry creates exactly one consumer. The returned `credential.key` is
-         *     never shown again.
+         * @description Atomic from the developer's point of view (spec 001 AC 6 and 8, spec 004 AC 8). The
+         *     server upserts the Kong consumer, grants access to each subscribed API, issues the
+         *     key-auth credential, then writes Postgres in one transaction. On any failure it deletes
+         *     whatever it created in Kong and stores nothing, so a retry creates exactly one consumer.
+         *     The returned `credential.key` is never shown again. The key works only on the APIs in
+         *     `apiIds`; Kong answers 403 on every other key-auth service (ADR 0005).
          */
         post: operations["createApp"];
         delete?: never;
@@ -212,6 +213,12 @@ export interface paths {
          *     bundles external `$ref`s. On success the API is published to the public catalog.
          *     On a validation failure nothing is stored, and the response `detail` names the
          *     first error (spec 001 AC 4).
+         *
+         *     Publishing applies access control to the linked service (ADR 0005): an `allow` ACL for
+         *     the service's portal group, and `hide_credentials` on its key-auth plugins. Existing keys
+         *     get 403 until their app subscribes, and so do non-portal consumers until the operator adds
+         *     them to the group `portal-svc-<serviceId>`. A service without key-auth gets no ACL and
+         *     publishes with an `api-public` warning. Kong applies plugin changes within about 5 seconds.
          */
         post: operations["importApi"];
         delete?: never;
@@ -235,6 +242,9 @@ export interface paths {
          * @description Scalar's proxy protocol (ADR 0003). Forwards the method, body and allowed headers to
          *     the gateway (public base URL rewritten to the internal one) and passes the gateway's
          *     status, headers and body back unchanged; for example, Kong's 401 is returned as a 401.
+         *     The one exception is Kong's own access-control refusal: the status stays 403 and the
+         *     headers pass through, but the body becomes the `/problems/api-access-denied` problem, so
+         *     the console can say what to do next. A 403 from the upstream service passes unchanged.
          *     No session needed. Rate-limited to 60 requests per minute per IP. Strips cookies,
          *     doesn't follow redirects, caps bodies at 1 MiB, 10 s timeout.
          *     POST, PUT, PATCH and DELETE behave the same way.
@@ -322,6 +332,19 @@ export interface components {
                 name: string;
             };
         };
+        ImportedApi: components["schemas"]["ApiDetail"] & {
+            /** @description Published, but the admin should know this. Empty when there is nothing to report. */
+            warnings: components["schemas"]["ImportWarning"][];
+        };
+        ImportWarning: {
+            /**
+             * @description `api-public`: the service has no key-auth, so anyone can call this API without a key.
+             *     `partial-key-auth`: key-auth is only on some of the service's routes, so the other routes stay open.
+             * @enum {string}
+             */
+            code: "api-public" | "partial-key-auth";
+            message: string;
+        };
         ImportApiRequest: {
             /** @description Exactly one of `url` or `content` */
             spec: {
@@ -346,9 +369,9 @@ export interface components {
                 name?: string | null;
                 paths: string[];
             }[];
-            /** @description True if the key-auth plugin is enabled on the service or one of its routes */
+            /** @description True if an enabled key-auth plugin applies to the service */
             keyAuth: boolean;
-            /** @description Slug of the published API already linked to this service */
+            /** @description Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`. */
             linkedApiSlug?: string | null;
         };
         CreateAppRequest: {
@@ -459,6 +482,19 @@ export interface components {
         };
         /** @description Missing `scalar_url`, or it isn't under a published API's base URL (`/problems/try-it-target-not-allowed`) */
         TryItNotAllowed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description Kong refused the key because its app isn't subscribed to this API
+         *     (`/problems/api-access-denied`). `title` and `detail` hold the copy from the UX design.
+         *     Responses from the upstream service, including its own 403s, are not rewritten.
+         */
+        TryItAccessDenied: {
             headers: {
                 [name: string]: unknown;
             };
@@ -828,7 +864,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiDetail"];
+                    "application/json": components["schemas"]["ImportedApi"];
                 };
             };
             400: components["responses"]["ValidationError"];
@@ -858,7 +894,12 @@ export interface operations {
              *     `/problems/unsupported-openapi-version` (not 3.0.x or 3.1.x),
              *     `/problems/spec-url-unreachable` (fetching `spec.url` failed or timed out after 10 s),
              *     `/problems/gateway-service-not-found`,
-             *     `/problems/gateway-service-has-no-route` (no route with a path, and no `routePath` given).
+             *     `/problems/gateway-service-has-no-route` (no route with a path, and no `routePath` given),
+             *     `/problems/gateway-service-has-acl` (an ACL plugin the portal didn't create applies to the
+             *     service, globally or on the service or one of its routes; `detail` names the service, and
+             *     its plugins are unchanged),
+             *     `/problems/gateway-service-already-linked` (another published API uses this service;
+             *     `detail` names that API's slug).
              */
             422: {
                 headers: {
@@ -885,6 +926,7 @@ export interface operations {
         requestBody?: never;
         responses: {
             400: components["responses"]["TryItNotAllowed"];
+            403: components["responses"]["TryItAccessDenied"];
             413: components["responses"]["PayloadTooLarge"];
             429: components["responses"]["RateLimited"];
             504: components["responses"]["TryItTimeout"];
@@ -914,6 +956,7 @@ export interface operations {
         };
         responses: {
             400: components["responses"]["TryItNotAllowed"];
+            403: components["responses"]["TryItAccessDenied"];
             413: components["responses"]["PayloadTooLarge"];
             429: components["responses"]["RateLimited"];
             504: components["responses"]["TryItTimeout"];
@@ -943,6 +986,7 @@ export interface operations {
         };
         responses: {
             400: components["responses"]["TryItNotAllowed"];
+            403: components["responses"]["TryItAccessDenied"];
             413: components["responses"]["PayloadTooLarge"];
             429: components["responses"]["RateLimited"];
             504: components["responses"]["TryItTimeout"];
@@ -972,6 +1016,7 @@ export interface operations {
         };
         responses: {
             400: components["responses"]["TryItNotAllowed"];
+            403: components["responses"]["TryItAccessDenied"];
             413: components["responses"]["PayloadTooLarge"];
             429: components["responses"]["RateLimited"];
             504: components["responses"]["TryItTimeout"];
@@ -1001,6 +1046,7 @@ export interface operations {
         };
         responses: {
             400: components["responses"]["TryItNotAllowed"];
+            403: components["responses"]["TryItAccessDenied"];
             413: components["responses"]["PayloadTooLarge"];
             429: components["responses"]["RateLimited"];
             504: components["responses"]["TryItTimeout"];

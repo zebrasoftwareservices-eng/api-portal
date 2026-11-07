@@ -105,6 +105,6 @@ export async function createApp(options: AppOptions) {
   registerCatalog(app, db);
   registerImport(app, db, auth, adapter, gatewayId);
   registerApps(app, db, auth, adapter, gatewayId);
-  await registerProxy(app, db, options.proxyFetch);
+  await registerProxy(app, db, adapter, options.proxyFetch);
   return { app, auth };
 }

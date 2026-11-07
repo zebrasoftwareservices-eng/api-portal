@@ -51,7 +51,7 @@ export function CatalogView({
             }
           />
         ) : (
-          <div className="grid">
+          <div className="portal-grid">
             {items.map((api) => (
               <a
                 key={api.slug}

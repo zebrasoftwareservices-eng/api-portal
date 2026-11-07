@@ -93,4 +93,41 @@ describe('create app', () => {
       resolve({ data: { app: { id: 'a' }, credential: { key: 'pk_test' } } }),
     );
   });
+  it('keeps the API access hint associated with the choices alongside validation errors', async () => {
+    const user = userEvent.setup();
+    render(<CreateApp />);
+    const group = screen.getByRole('group', { name: 'APIs this app uses' });
+    const hint =
+      "This app's keys work only on the APIs you choose here. To use another API later, create another app.";
+    expect(group).toHaveAccessibleDescription(hint);
+    await waitFor(() => expect(screen.getByRole('checkbox')).toBeChecked());
+    await user.click(screen.getByRole('checkbox'));
+    await user.type(screen.getByLabelText('App name'), 'Bot');
+    await user.click(
+      screen.getByRole('button', { name: 'Create app and get key' }),
+    );
+    expect(group).toHaveAccessibleDescription(
+      `${hint} ⚠ Choose at least one API.`,
+    );
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+  it('keeps the hint while the choices load and removes it when the empty state replaces the form', async () => {
+    let resolve!: (value: unknown) => void;
+    mocks.get.mockImplementation(
+      () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    );
+    render(<CreateApp />);
+    expect(screen.getByRole('status')).toHaveTextContent('Loading APIs');
+    expect(
+      screen.getByRole('group', { name: 'APIs this app uses' }),
+    ).toHaveAccessibleDescription(/This app's keys work only/);
+    await act(async () => resolve({ data: { items: [] } }));
+    expect(screen.getByText('No APIs to use yet')).toBeInTheDocument();
+    expect(
+      screen.queryByText(/This app's keys work only/),
+    ).not.toBeInTheDocument();
+  });
 });

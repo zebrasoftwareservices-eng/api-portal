@@ -275,7 +275,7 @@ legend {
   text-align: center;
   padding: 48px 24px;
 }
-.grid {
+.portal-grid {
   display: grid;
   gap: 24px;
 }
@@ -294,6 +294,7 @@ legend {
   overflow: hidden;
 }
 .alert {
+  overflow-wrap: anywhere;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -395,7 +396,7 @@ caption {
   border-radius: var(--radius);
 }
 @media (min-width: 640px) {
-  .grid {
+  .portal-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -409,7 +410,7 @@ caption {
   }
 }
 @media (min-width: 1024px) {
-  .grid {
+  .portal-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

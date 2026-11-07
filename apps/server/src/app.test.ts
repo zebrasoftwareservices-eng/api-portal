@@ -13,14 +13,17 @@ import {
   credentials,
   user,
   instanceSettings,
+  subscriptions,
   session,
 } from '@portal/db';
 import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import {
   GatewayUnavailableError,
+  GatewayServiceConflictError,
   type GatewayAdapter,
 } from '@portal/adapter-sdk';
+import { KongAdapter } from '@portal/adapter-kong';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { reconcile } from './reconcile.js';
@@ -46,6 +49,7 @@ const adapter: GatewayAdapter = {
   kind: 'kong',
   capabilities: () => ({
     apiKeys: true,
+    accessControl: true,
     oauthClients: false,
     plans: false,
     usage: false,
@@ -59,8 +63,8 @@ const adapter: GatewayAdapter = {
       keyAuth: true,
     },
   ],
-  getService: async () => ({
-    id: 'service',
+  getService: async (id) => ({
+    id,
     name: 'pets',
     routes: [{ id: 'route', name: null, paths: ['/sample'] }],
     keyAuth: true,
@@ -87,6 +91,15 @@ const adapter: GatewayAdapter = {
     const c = owned.get(app.id);
     if (c) c.credentials = c.credentials.filter((k) => k.id !== id);
   }),
+  grantAccess: vi.fn(async () => {}),
+  revokeAccess: vi.fn(async () => {}),
+  protectService: vi.fn(async () => ({ keyAuth: true, findings: [] })),
+  applyAccessPolicy: vi.fn(async () => ({ repairs: [], findings: [] })),
+  isAccessDenied: (response) =>
+    new KongAdapter({
+      adminUrl: 'http://unused',
+      instanceId: 'test',
+    }).isAccessDenied(response),
   listOwnedConsumers: async () => [...owned.values()],
 };
 const proxyFetch = vi.fn().mockImplementation(
@@ -255,6 +268,32 @@ describe('contract endpoints', () => {
     });
     expect(result.statusCode).toBe(401);
     expect(result.json().type).toBe('/problems/unauthenticated');
+    const consumersBefore = vi.mocked(adapter.ensureConsumer).mock.calls.length;
+    const grantsBefore = vi.mocked(adapter.grantAccess).mock.calls.length;
+    const keysBefore = vi.mocked(adapter.issueCredential).mock.calls.length;
+    const appsBefore = await connection.db.select().from(apps);
+    const create = await server.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      headers: { cookie: expiredCookie },
+      payload: { name: 'expired-session-access', apiIds: [apiId] },
+    });
+    expect(create.statusCode).toBe(401);
+    expect(create.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(create.json().type).toBe('/problems/unauthenticated');
+    expect(create.body).not.toContain('pk_');
+    expect(vi.mocked(adapter.ensureConsumer).mock.calls).toHaveLength(
+      consumersBefore,
+    );
+    expect(vi.mocked(adapter.grantAccess).mock.calls).toHaveLength(
+      grantsBefore,
+    );
+    expect(vi.mocked(adapter.issueCredential).mock.calls).toHaveLength(
+      keysBefore,
+    );
+    expect(await connection.db.select().from(apps)).toEqual(appsBefore);
   });
   it('compensates a credential failure and permits a clean retry', async () => {
     vi.mocked(adapter.issueCredential).mockRejectedValueOnce(
@@ -309,6 +348,45 @@ describe('contract endpoints', () => {
         })
       ).body,
     ).not.toContain('pk_');
+  });
+  it('compensates failed grants before key creation and leaves no app or consumer', async () => {
+    const beforeApps = await connection.db.select().from(apps);
+    const beforeConsumers = owned.size;
+    const issueCalls = vi.mocked(adapter.issueCredential).mock.calls.length;
+    vi.mocked(adapter.grantAccess).mockRejectedValueOnce(
+      new GatewayUnavailableError(),
+    );
+    const result = await server.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      headers: { cookie },
+      payload: { name: 'grant-failure', apiIds: [apiId] },
+    });
+    expect(result.statusCode).toBe(503);
+    expect(result.body).not.toContain('pk_');
+    expect(await connection.db.select().from(apps)).toEqual(beforeApps);
+    expect(owned.size).toBe(beforeConsumers);
+    expect(vi.mocked(adapter.issueCredential).mock.calls).toHaveLength(
+      issueCalls,
+    );
+    expect(result.json()).toMatchObject({
+      type: '/problems/gateway-unavailable',
+      status: 503,
+    });
+    const retry = await server.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      headers: { cookie },
+      payload: { name: 'grant-failure', apiIds: [apiId] },
+    });
+    expect(retry.statusCode, retry.body).toBe(201);
+    expect(owned.size).toBe(beforeConsumers + 1);
+    const retryApp = retry.json().app.id;
+    expect(owned.get(retryApp)?.credentials).toHaveLength(1);
+    expect(vi.mocked(adapter.grantAccess)).toHaveBeenLastCalledWith(
+      { id: retryApp },
+      { id: 'service' },
+    );
   });
   it('serializes concurrent key creation to five keys and preserves active status on revoke failure', async () => {
     const [app] = await connection.db.select().from(apps);
@@ -388,6 +466,83 @@ describe('contract endpoints', () => {
     expect(logs.join('')).not.toContain('pk_');
     expect(logs.join('')).not.toContain('test-password-123');
   });
+  it('rewrites only gateway ACL 403s with the UX problem and preserves gateway headers', async () => {
+    const url = '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get';
+    const body = JSON.stringify({ message: 'You cannot consume this service' });
+    proxyFetch.mockResolvedValueOnce(
+      new Response(body, {
+        status: 403,
+        headers: { 'x-kong-request-id': 'test' },
+      }),
+    );
+    const refused = await server.inject(url);
+    expect(refused.statusCode).toBe(403);
+    expect(refused.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(refused.headers['x-kong-request-id']).toBe('test');
+    expect(refused.json()).toEqual({
+      type: '/problems/api-access-denied',
+      title: "This key doesn't have access to this API",
+      status: 403,
+      detail:
+        "This key's app doesn't have access to this API. Select Get an API key on this page, create an app that includes this API, and send the request with the new key. If this key's app should already have access, tell the portal admin.",
+    });
+    proxyFetch.mockResolvedValueOnce(
+      new Response(body, {
+        status: 403,
+        headers: { 'x-kong-upstream-latency': '1' },
+      }),
+    );
+    expect((await server.inject(url)).body).toBe(body);
+  });
+  it('rewrites negotiated XML ACL refusals and preserves XML upstream 403s', async () => {
+    const url = '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get';
+    const body =
+      '<error><message>You cannot consume this service</message></error>';
+    proxyFetch.mockResolvedValueOnce(
+      new Response(body, {
+        status: 403,
+        headers: {
+          'content-type': 'application/xml',
+          'x-kong-request-id': 'xml-refusal',
+        },
+      }),
+    );
+    const refused = await server.inject({
+      url,
+      headers: { accept: 'application/xml', apikey: 'pk_unsubscribed' },
+    });
+    expect(proxyFetch.mock.calls.at(-1)?.[1].headers.get('accept')).toBe(
+      'application/xml',
+    );
+    expect(refused.statusCode).toBe(403);
+    expect(refused.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(refused.headers['x-kong-request-id']).toBe('xml-refusal');
+    expect(refused.json()).toMatchObject({
+      type: '/problems/api-access-denied',
+      title: "This key doesn't have access to this API",
+      detail: expect.stringContaining('Select Get an API key'),
+    });
+    proxyFetch.mockResolvedValueOnce(
+      new Response(body, {
+        status: 403,
+        headers: {
+          'content-type': 'application/xml',
+          'x-kong-upstream-latency': '0',
+        },
+      }),
+    );
+    const upstream = await server.inject({
+      url,
+      headers: { accept: 'application/xml' },
+    });
+    expect(upstream.statusCode).toBe(403);
+    expect(upstream.headers['content-type']).toContain('application/xml');
+    expect(upstream.body).toBe(body);
+  });
   it('imports for admins and leaves nothing published after validation failure', async () => {
     await connection.db
       .update(user)
@@ -441,10 +596,88 @@ info: {}`,
       method: 'POST',
       url: '/api/v1/admin/apis',
       headers: { cookie },
-      payload: { spec: { content }, gatewayServiceId: 'service' },
+      payload: { spec: { content }, gatewayServiceId: 'import-service' },
     });
     expect(valid.statusCode, valid.body).toBe(201);
     expect(valid.json().slug).toBe('imported-api');
+    expect(valid.json().warnings).toEqual([]);
+  });
+  it('refuses duplicate service links before protection and maps foreign ACL conflicts', async () => {
+    const spec = {
+      content: JSON.stringify({
+        openapi: '3.1.0',
+        info: { title: 'Another API', version: '1' },
+        paths: {},
+      }),
+    };
+    const count = vi.mocked(adapter.protectService).mock.calls.length;
+    const linked = await server.inject({
+      method: 'POST',
+      url: '/api/v1/admin/apis',
+      headers: { cookie },
+      payload: { spec, gatewayServiceId: 'service' },
+    });
+    expect(linked.statusCode).toBe(422);
+    expect(linked.json()).toMatchObject({
+      type: '/problems/gateway-service-already-linked',
+      title: 'This service already has a published API',
+    });
+    expect(linked.json().detail).toContain('/apis/sample');
+    expect(vi.mocked(adapter.protectService).mock.calls).toHaveLength(count);
+    vi.mocked(adapter.protectService).mockRejectedValueOnce(
+      new GatewayServiceConflictError('operator-service'),
+    );
+    const conflict = await server.inject({
+      method: 'POST',
+      url: '/api/v1/admin/apis',
+      headers: { cookie },
+      payload: { spec, gatewayServiceId: 'foreign' },
+    });
+    expect(conflict.statusCode).toBe(422);
+    expect(conflict.json()).toMatchObject({
+      type: '/problems/gateway-service-has-acl',
+      title: 'Another ACL plugin applies to this service',
+    });
+    expect(conflict.json().detail).toContain('operator-service');
+    expect(
+      (await connection.db.select().from(apis)).some(
+        (a) => a.gatewayServiceId === 'foreign',
+      ),
+    ).toBe(false);
+  });
+  it('serializes simultaneous imports to one service and returns adapter warnings', async () => {
+    const spec = {
+      content: JSON.stringify({
+        openapi: '3.1.0',
+        info: { title: 'Concurrent API', version: '1' },
+        paths: {},
+      }),
+    };
+    vi.mocked(adapter.protectService).mockResolvedValueOnce({
+      keyAuth: false,
+      findings: [
+        {
+          code: 'api-public',
+          serviceId: 'concurrent',
+          serviceName: 'Concurrent',
+          message: 'This API is public.',
+        },
+      ],
+    });
+    const results = await Promise.all(
+      ['first', 'second'].map((slug) =>
+        server.inject({
+          method: 'POST',
+          url: '/api/v1/admin/apis',
+          headers: { cookie },
+          payload: { spec, slug, gatewayServiceId: 'concurrent' },
+        }),
+      ),
+    );
+    expect(results.map((r) => r.statusCode).sort()).toEqual([201, 422]);
+    expect(results.find((r) => r.statusCode === 201)?.json().warnings).toEqual([
+      { code: 'api-public', message: 'This API is public.' },
+    ]);
   });
   it('reconciles orphans and revoked keys and warns for missing active credentials', async () => {
     const orphan = uuidv7();
@@ -462,10 +695,112 @@ info: {}`,
     const warn = vi.fn();
     await reconcile(connection.db, adapter, { warn });
     expect(owned.has(orphan)).toBe(false);
+    expect(adapter.applyAccessPolicy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        services: expect.arrayContaining([{ id: 'service' }]),
+        apps: expect.arrayContaining([
+          { app: { id: key.appId }, services: [{ id: 'service' }] },
+        ]),
+      }),
+    );
     expect(warn).toHaveBeenCalledWith(
       expect.objectContaining({ credentialId: key.id }),
       expect.stringContaining('drift'),
     );
+  });
+  it('AC 6: unavailable gateway reconciliation leaves persisted keys/subscriptions unchanged and the next run converges', async () => {
+    const before = {
+      apps: await connection.db.select().from(apps),
+      keys: await connection.db.select().from(credentials),
+      subscriptions: await connection.db.select().from(subscriptions),
+    };
+    const warn = vi.fn();
+    const list = vi
+      .spyOn(adapter, 'listOwnedConsumers')
+      .mockRejectedValueOnce(new GatewayUnavailableError());
+    await expect(
+      reconcile(connection.db, adapter, { warn }),
+    ).rejects.toBeInstanceOf(GatewayUnavailableError);
+    expect(await connection.db.select().from(apps)).toEqual(before.apps);
+    expect(await connection.db.select().from(credentials)).toEqual(before.keys);
+    expect(await connection.db.select().from(subscriptions)).toEqual(
+      before.subscriptions,
+    );
+    list.mockRestore();
+    await reconcile(connection.db, adapter, { warn });
+    expect(adapter.applyAccessPolicy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        apps: expect.arrayContaining(
+          before.apps.map((app) => ({
+            app: { id: app.id },
+            services: [{ id: 'service' }],
+          })),
+        ),
+      }),
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('pk_');
+  });
+  it('JSO-277: immediately accepts a newly published API after the proxy catalog cache is warm', async () => {
+    const config = loadConfig({ DATABASE_URL: container.getConnectionUri() });
+    const fetchGateway = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ message: 'You cannot consume this service' }),
+          { status: 403 },
+        ),
+    );
+    const { app: fresh } = await createApp({
+      db: connection.db,
+      config,
+      adapter,
+      gatewayId,
+      proxyFetch: fetchGateway,
+    });
+    const id = uuidv7(),
+      slug = `cache-${id}`;
+    try {
+      await fresh.inject(
+        '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get',
+      );
+      const target = `/api/v1/try-it?scalar_url=http://localhost:8000/${slug}/get`;
+      const unpublished = await fresh.inject(target);
+      expect(unpublished.statusCode).toBe(400);
+      expect(unpublished.json().type).toBe(
+        '/problems/try-it-target-not-allowed',
+      );
+      expect(fetchGateway).toHaveBeenCalledTimes(1);
+      await connection.db.insert(apis).values({
+        id,
+        slug,
+        title: 'Newly published',
+        version: '1',
+        gatewayId,
+        gatewayServiceId: id,
+        gatewayServiceName: slug,
+        routePath: `/${slug}`,
+        document: {
+          openapi: '3.1.0',
+          info: { title: slug, version: '1' },
+          paths: {},
+        },
+      });
+      const result = await fresh.inject(target);
+      expect(result.statusCode, result.body).toBe(403);
+      expect(result.json().type).toBe('/problems/api-access-denied');
+      expect(fetchGateway).toHaveBeenCalledTimes(2);
+      const unknown = await fresh.inject(
+        `/api/v1/try-it?scalar_url=http://localhost:8000/${slug}-unpublished/get`,
+      );
+      expect(unknown.statusCode).toBe(400);
+      const external = await fresh.inject(
+        '/api/v1/try-it?scalar_url=http://evil.test/sample/get',
+      );
+      expect(external.statusCode).toBe(400);
+      expect(fetchGateway).toHaveBeenCalledTimes(2);
+    } finally {
+      await fresh.close();
+      await connection.db.delete(apis).where(eq(apis.id, id));
+    }
   });
   it('enforces proxy response/request caps, timeout problems and rate limits', async () => {
     const url = '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get';
