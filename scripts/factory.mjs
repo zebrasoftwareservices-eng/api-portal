@@ -2,6 +2,7 @@
 // Factory runner for the API Developer Portal software factory.
 //
 //   node scripts/factory.mjs status [--json]              every spec, its status, Linear issue, what's next
+//   node scripts/factory.mjs next [--json] [--no-linear]  planned features (docs/roadmap.md): in progress, ready, blocked
 //   node scripts/factory.mjs plan <id> [--json]           the next stage of one spec (used by the coordinator)
 //   node scripts/factory.mjs plan --idea "<text>" | --linear <KEY-123> [--json]
 //   node scripts/factory.mjs prompt <role> <id>           one role's task prompt, to paste into any agent
@@ -646,6 +647,87 @@ function specWorktree(spec) {
   }
   return null;
 }
+// ---------- next: planned work from docs/roadmap.md ----------
+function roadmapRows() {
+  const p = join(ROOT, 'docs', 'roadmap.md');
+  if (!existsSync(p)) return [];
+  const rows = [];
+  for (const line of readFileSync(p, 'utf8').split('\n')) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.split('|').slice(1, -1).map((c) => c.trim().replace(/`/g, ''));
+    if (cells.length < 6 || !/^\d+$/.test(cells[0]) || !/^\d{3}$/.test(cells[1])) continue;
+    const [sprint, id, slug, key, needs, feature] = cells;
+    rows.push({
+      sprint: Number(sprint), id, slug, key, feature,
+      needs: needs.match(/\b\d{3}\b/g) || [],
+      waitsOn: needs.replace(/\b\d{3}\b/g, '').replace(/^[\s,·—-]+|[\s,·—-]+$/g, '').trim(),
+    });
+  }
+  return rows;
+}
+function worktreesByBranch() {
+  const r = spawnSync('git', ['worktree', 'list', '--porcelain'], { cwd: mainRepoRoot(), encoding: 'utf8' });
+  if (r.status !== 0) return [];
+  return r.stdout.split(/\n\s*\n/).map((block) => ({
+    path: (block.match(/^worktree (.+)$/m) || [])[1],
+    branch: (block.match(/^branch refs\/heads\/(.+)$/m) || [])[1],
+  })).filter((w) => w.path && w.branch);
+}
+function nextWork(args) {
+  const noLinear = Boolean(flag(args, '--no-linear'));
+  const rows = roadmapRows();
+  if (!rows.length) die('docs/roadmap.md has no reserved spec table');
+  const specs = Object.fromEntries(specFiles().map((f) => { const s = loadSpec(join(SPECS, f)); return [s.id, s]; }));
+  const trees = worktreesByBranch();
+  const done = new Set();
+  for (const r of rows) {
+    const wt = trees.find((w) => w.branch.startsWith('feat/') && w.branch.endsWith(`${r.id}-${r.slug}`));
+    r.workspace = wt ? wt.path.split('/').pop() : null;
+    r.status = specs[r.id]?.status || null;
+    const inTree = wt && join(wt.path, 'docs', 'specs', `${r.id}-${r.slug}.md`);
+    if (inTree && existsSync(inTree)) {
+      const m = readFileSync(inTree, 'utf8').match(/^status:[ \t]*([a-z]+)/m);
+      if (m) r.status = m[1];
+    }
+    const issue = noLinear ? null : readIssue(r.key);
+    r.linearState = issue?.state?.name || null;
+    r.linearType = issue?.state?.type || null;
+    if (specs[r.id]?.status === 'done' || r.linearType === 'completed') done.add(r.id);
+  }
+  const out = { inProgress: [], ready: [], waiting: [], blocked: [], done: [], canceled: [] };
+  for (const r of rows) {
+    r.missing = r.needs.filter((n) => !done.has(n));
+    if (done.has(r.id)) out.done.push(r);
+    else if (r.linearType === 'canceled') out.canceled.push(r);
+    else if (r.workspace || r.linearType === 'started' || r.status) out.inProgress.push(r);
+    else if (r.missing.length) out.blocked.push(r);
+    else if (r.waitsOn) out.waiting.push(r);
+    else out.ready.push(r);
+  }
+  if (json) {
+    const strip = (r) => ({ sprint: r.sprint, spec: r.id, slug: r.slug, linear: r.key, feature: r.feature, status: r.status, linearState: r.linearState, workspace: r.workspace, needs: r.needs, missing: r.missing, waitsOn: r.waitsOn || null, start: `node scripts/factory.mjs start ${r.key}` });
+    console.log(JSON.stringify(Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.map(strip)])), null, 2));
+    return;
+  }
+  const line = (r) => `  ${r.id}  ${r.key.padEnd(8)} Sprint ${r.sprint}  ${r.feature}`;
+  console.log('Planned work, in roadmap order (docs/roadmap.md)\n');
+  console.log('In progress');
+  if (!out.inProgress.length) console.log('  none');
+  for (const r of out.inProgress) console.log(`${line(r)}\n       ${[r.status && `spec ${r.status}`, r.linearState && `Linear ${r.linearState}`, r.workspace && `workspace ${r.workspace}`].filter(Boolean).join(' · ')}`);
+  console.log('\nReady to start (take them in sprint order)');
+  if (!out.ready.length) console.log('  none');
+  for (const r of out.ready) console.log(`${line(r)}\n       node scripts/factory.mjs start ${r.key}`);
+  if (out.waiting.length) {
+    console.log('\nNeeds Elango first');
+    for (const r of out.waiting) console.log(`${line(r)}\n       ${r.waitsOn}, then: node scripts/factory.mjs start ${r.key}`);
+  }
+  if (out.blocked.length) {
+    console.log('\nBlocked');
+    for (const r of out.blocked) console.log(`${line(r)}\n       waits for spec ${r.missing.join(', ')}`);
+  }
+  console.log(`\nDone: ${out.done.length ? out.done.map((r) => r.id).join(', ') : 'none of the planned features yet'}`);
+  if (noLinear) console.log('(Linear not checked: --no-linear)');
+}
 function resume(args) {
   const dry = Boolean(flag(args, '--dry-run'));
   const spec = findSpec(args[0]);
@@ -758,6 +840,9 @@ switch (cmd) {
   case 'resume':
     resume(args);
     break;
+  case 'next':
+    nextWork(args);
+    break;
   case 'linear-init':
     linearInit(findSpec(args[0]));
     break;
@@ -768,6 +853,6 @@ switch (cmd) {
     track(args);
     break;
   default:
-    console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 21).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+    console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').slice(1, 22).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
     process.exit(cmd ? 1 : 0);
 }

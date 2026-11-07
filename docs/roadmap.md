@@ -26,27 +26,31 @@ Last updated: 2026-11-06 · Owner: Elango · Linear project: **API Portal** (one
 - If a coordinator stops: `node scripts/factory.mjs resume <spec id>`.
 
 ## Reserved spec numbers
-The factory reads this table: `start <Linear key>` names the worktree and branch after the reserved spec, and the
-product manager writes `docs/specs/<spec>-<slug>.md`.
+The factory reads this table: `start <Linear key>` names the worktree and branch after the reserved spec, the
+product manager writes `docs/specs/<spec>-<slug>.md`, and `next` uses **Needs** (specs that must be done first, or
+something Elango has to do) to list what is ready to start:
+```bash
+node scripts/factory.mjs next
+```
 
-| Sprint | Spec | Slug | Linear | Feature |
-| --- | --- | --- | --- | --- |
-| 1 | 003 | backlog-fixes-001-002 | JSO-232 | Fix the open bugs and review findings from specs 001 and 002 |
-| 1 | 004 | per-api-access-control | JSO-233 | Per-API access control on Kong: ACL groups and hidden credentials |
-| 2 | 005 | setup-wizard-and-gateway-connections | JSO-234 | First-run setup and gateway connections in the admin UI |
-| 2 | 006 | hosted-live-demo | JSO-127 | Hosted live demo behind the Vercel portal |
-| 3 | 007 | email-and-account-security | JSO-235 | Email delivery, verification, password reset and two-factor login |
-| 3 | 008 | teams-and-roles | JSO-236 | Teams own apps and keys: invites and roles |
-| 4 | 009 | api-products-and-plans | JSO-237 | API products and free plans with rate limits |
-| 4 | 010 | access-requests-and-visibility | JSO-238 | Access requests with admin approval, and catalog visibility levels |
-| 5 | 011 | usage-and-insights | JSO-239 | Usage meter per app and admin insights |
-| 5 | 012 | docs-versions-search-agents | JSO-240 | API versions and changelog, spec linting, search and agent-ready docs |
-| 6 | 013 | theme-editor | JSO-241 | Theme editor: logo, colours, fonts and custom CSS |
-| 6 | 014 | pages-articles-navigation | JSO-242 | Pages, articles and navigation managed in the admin UI |
-| 7 | 015 | portal-governance | JSO-243 | Portal governance: staff roles, registration approval, private portal, audit log |
-| 7 | 016 | production-install-helm | JSO-244 | Production install: hardened compose, Helm chart, backups and upgrades |
-| 8 | 017 | aws-api-gateway-adapter | JSO-245 | AWS API Gateway adapter: API keys and usage plans |
-| 8 | 018 | oauth-client-credentials | JSO-246 | OAuth 2.0 client credentials through an external identity provider |
+| Sprint | Spec | Slug | Linear | Needs | Feature |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 003 | backlog-fixes-001-002 | JSO-232 | — | Fix the open bugs and review findings from specs 001 and 002 |
+| 1 | 004 | per-api-access-control | JSO-233 | — | Per-API access control on Kong: ACL groups and hidden credentials |
+| 2 | 005 | setup-wizard-and-gateway-connections | JSO-234 | 004 | First-run setup and gateway connections in the admin UI |
+| 2 | 006 | hosted-live-demo | JSO-127 | Elango: choose hosting and set secrets | Hosted live demo behind the Vercel portal |
+| 3 | 007 | email-and-account-security | JSO-235 | — | Email delivery, verification, password reset and two-factor login |
+| 3 | 008 | teams-and-roles | JSO-236 | 007 | Teams own apps and keys: invites and roles |
+| 4 | 009 | api-products-and-plans | JSO-237 | 004, 008 | API products and free plans with rate limits |
+| 4 | 010 | access-requests-and-visibility | JSO-238 | 009 | Access requests with admin approval, and catalog visibility levels |
+| 5 | 011 | usage-and-insights | JSO-239 | 009 | Usage meter per app and admin insights |
+| 5 | 012 | docs-versions-search-agents | JSO-240 | — | API versions and changelog, spec linting, search and agent-ready docs |
+| 6 | 013 | theme-editor | JSO-241 | — | Theme editor: logo, colours, fonts and custom CSS |
+| 6 | 014 | pages-articles-navigation | JSO-242 | — | Pages, articles and navigation managed in the admin UI |
+| 7 | 015 | portal-governance | JSO-243 | 009 | Portal governance: staff roles, registration approval, private portal, audit log |
+| 7 | 016 | production-install-helm | JSO-244 | — | Production install: hardened compose, Helm chart, backups and upgrades |
+| 8 | 017 | aws-api-gateway-adapter | JSO-245 | 005, 009 | AWS API Gateway adapter: API keys and usage plans |
+| 8 | 018 | oauth-client-credentials | JSO-246 | 009 | OAuth 2.0 client credentials through an external identity provider |
 
 Already shipped: **v0.1** — spec 001 (Kong quickstart) and spec 002 (static demo mode on Vercel).
 

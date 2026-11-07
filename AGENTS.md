@@ -9,6 +9,9 @@ Built by Zebra Software Services as a reputation project: adoption and quality m
 more than feature count. Product context: `docs/product-brief.md`. Sprint plan and reserved
 spec numbers: `docs/roadmap.md`.
 
+When Elango asks what to work on next, run `node scripts/factory.mjs next`, show him its
+output, and offer to start the first ready item with the `start` command it prints.
+
 Each company installs its own portal (single-tenant, self-hosted). No billing, paid plans or
 multi-tenant hosting: plans are free access tiers (rate limits, quotas, approval).
 

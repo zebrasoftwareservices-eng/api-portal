@@ -40,6 +40,7 @@ Planned features and their reserved spec numbers live in `docs/roadmap.md` (one-
 Linear milestone per sprint). Start a planned feature from its Linear issue:
 ```bash
 cd ~/Documents/ZSS/api-portal && git pull
+node scripts/factory.mjs next            # planned features: in progress, ready to start, blocked
 node scripts/factory.mjs status          # every spec, its Linear issue, and what's next
 node scripts/factory.mjs start JSO-233   # planned feature: worktree 004-per-api-access-control, PM writes spec 004
 node scripts/factory.mjs start 001       # existing spec: new worktree feat/jso-117-001-… + Claude coordinator
