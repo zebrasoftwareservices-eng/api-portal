@@ -1,7 +1,7 @@
 ---
 id: 005
 title: First-run setup and gateway connections
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-234
@@ -475,13 +475,34 @@ Full design: [docs/design/005-setup-wizard-and-gateway-connections.md](../design
 - Frontend validation: `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed (the full suite needs Docker/network access outside the restricted sandbox); portal suite has 110 passing tests covering setup, connection checks, token semantics, missing-key confirmation, disable/remove refusals, sample eligibility, import states and developer messages. QA should verify keyboard/focus and responsive flows against a running portal, plus each real Kong failure case. JSO-379 fixes the Node 25+ test storage globals by using Vitest's jsdom realm.
 
 ## Test report  _(qa-tester)_
-| Criterion | Test file | Result |
+QA run: 2026-11-07, macOS/Node 26.13.0, real PostgreSQL 17 and Kong 3.9. Compose project `spec005qa` is isolated from the pre-existing `portal-postgres-1` container.
+
+| Criterion | Automated coverage | Result |
 | --- | --- | --- |
+| 1 — empty install, redirects, signup gate, five-minute startup | `deploy/quickstart-smoke.mjs`; `apps/portal/e2e/setup-gateways.test.ts`; `apps/server/src/setup-gateways.test.ts` | Fresh build/start reached `/setup` in **220.2s**; server/signup and browser checks pass |
+| 2 — atomic first admin, session, skip, production token lifecycle | `apps/server/src/setup-gateways.test.ts`; `apps/server/src/startup.test.ts`; `apps/portal/components/setup-form.test.tsx`; `apps/portal/e2e/setup-gateways.test.ts` | API/component tests pass, including concurrent duplicate submissions and missing/wrong/expired token; browser checks pass |
+| 3 — live connection, encrypted/redacted token, singleton, defaults and warning | `apps/server/src/setup-gateways.test.ts`; `apps/portal/components/gateway-form.test.tsx`; `apps/portal/e2e/setup-gateways.test.ts` | API/component tests pass; browser checks pass |
+| 4 — unreachable/timeout, 401/403, non-Kong, DB-less, proxy, malformed URLs, failed saves preserve connection | `apps/server/src/setup-gateways.test.ts`; `packages/adapter-kong/src/connection.test.ts`; `packages/adapter-kong/src/conformance.test.ts`; `apps/portal/components/gateway-form.test.tsx` | Pass, including real DB-less Kong and fixed responses without token/body leakage |
+| 5 — service/routes/key-auth discovery, import, working key, unavailable retry and disconnected/disabled states | `apps/portal/e2e/journeys.ts`; `apps/server/src/app.test.ts`; `apps/server/src/setup-gateways.test.ts`; `apps/portal/components/admin-apis.test.tsx` | API/component tests pass; full browser import journey passes |
+| 6 — bundled sample opt-in/out and other-Kong refusal | `apps/server/src/setup-gateways.test.ts`; `apps/portal/e2e/setup-gateways.test.ts` | Server eligibility/refusal tests pass; browser first-call journey passes |
+| 7(a) — preserve blank token, changed URL refusal without forwarding, explicit null | `apps/server/src/setup-gateways.test.ts`; `apps/portal/components/gateway-form.test.tsx` | Pass, including scheme/port/path changes and unreadable-token recovery |
+| 7(b) — disable guards, no partial import/app/key/sample, revoke/reconcile, failed re-enable and restart | `apps/server/src/setup-gateways.test.ts`; `apps/server/src/background-job.test.ts`; `apps/portal/components/admin-apis.test.tsx`; `apps/portal/e2e/setup-gateways.test.ts` | API/component tests pass; revoke outage preserves active key for retry; browser traffic/docs checks pass |
+| 7(c,d) — dependency counts; deletion preserves Kong objects, deny ACLs and traffic | `apps/server/src/setup-gateways.test.ts`; `packages/db/src/migrate.test.ts`; `apps/portal/e2e/setup-gateways.test.ts` | Server/database checks pass; real Kong snapshot/removal journey passes |
+| 7(e) — repoint warning/confirmation/decline, two Kongs, reprovisioned new key | `apps/server/src/setup-gateways.test.ts`; `packages/adapter-kong/src/conformance.test.ts`; `apps/portal/components/gateways.test.tsx` | Pass: new key works on second Kong, old key stays on first; no keys copied |
+| 8 — environment combinations in production, read-only management, upgrade preservation | `apps/server/src/setup-gateways.test.ts`; `apps/server/src/startup.test.ts`; `packages/db/src/migrate.test.ts`; `deploy/quickstart-smoke.mjs` | Pass for production admin-only/Kong-only/both, environment handover and migration preserving admin, active credential and consumer reference; Compose environment sample passes. Upgrade is covered at migration/startup layers, not a historical v0.2 image deployment |
+| 9 — all gateway endpoints reject signed-out/developer/expired session before outbound calls | `apps/server/src/setup-gateways.test.ts` | Pass (401/403, no adapter/candidate calls) |
+| 10 — real protected-route recipe, allowlist, portal key 403, exact-tag cleanup | `packages/adapter-kong/src/conformance.test.ts`; `docs/connect-kong.md` | Pass against real Kong; docs also cover same-network and unsafe default deployment. UI help links remain broken (minor JSO-381) |
+
+Validation: `pnpm lint` (7 tasks), `pnpm typecheck` (12 tasks), `pnpm test` (258 tests: 91 server, 110 portal, 55 Kong adapter, 2 database), and `pnpm test:e2e:demo` (31 tests) pass. Additional targeted server run (39 tests) and enhanced migration run (2 tests) pass. `pnpm test:e2e` passes all 25 Compose-backed browser cases (1.9m); `deploy/smoke.mjs` and `deploy/outage-smoke.mjs` pass (first call, revoke, Kong outage/retry with no partial app, server outage without demo fallback).
+
+No product flakiness observed; Kong configuration propagation uses bounded polling. Test authoring corrections before passing reruns: a historical-schema fixture column, the disabled-state locator, and subscription-before-API teardown order. An accidental concurrent smoke invocation overlapped the browser test's intentional database reset and failed its seeded-sample precondition; the sequential rerun passed. No blocker or major bug is open; ready for UAT with minor JSO-381 outstanding. Historical upgrade validation covers the schema/startup contract rather than traffic through a deployed historical image.
 
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] JSO-380 Try-it retained saved proxy URLs for 30 seconds (fixed in 2293bf4; awaiting QA verification).
-- [ ] JSO-379 Portal component tests use Node storage globals instead of jsdom on Node 25+ (fixed; awaiting QA verification).
+- [x] JSO-380 Try-it retained saved proxy URLs for 30 seconds (verified by immediate saved-URL regression, Done).
+- [x] JSO-379 Portal component tests use Node storage globals instead of jsdom on Node 25+ (110 component tests pass on Node 26, Done).
+- [x] JSO-366 Unreadable stored-token recovery (safe 503 and replacement/removal regression passes, Done).
+- [ ] JSO-381 Gateway help links point to a nonexistent Kong Admin API guide (minor).
 
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |
