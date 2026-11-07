@@ -513,3 +513,95 @@ caption {
     min-height: 44px;
   }
 }
+
+/* Developer journey: names and access actions always wrap, including unbroken names. */
+.page-header > div,
+.access-actions,
+.app-cards > li {
+  min-width: 0;
+}
+.access-action {
+  max-width: 320px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  scroll-margin-top: calc(var(--portal-header-height) + 16px);
+}
+.access-placeholder {
+  width: 160px;
+  height: 40px;
+  background: var(--muted);
+  border-radius: calc(var(--radius) - 2px);
+}
+.access-status,
+.apps-table td,
+.app-cards,
+.subscription-list {
+  overflow-wrap: anywhere;
+}
+.apps-table {
+  width: 100%;
+  table-layout: fixed;
+}
+.app-access-label {
+  display: block;
+  width: fit-content;
+  white-space: normal;
+  margin-top: 8px;
+}
+.app-cards {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.app-cards dl {
+  margin: 0;
+}
+.app-cards dt {
+  color: var(--muted-foreground);
+}
+.app-cards dd {
+  margin: 0 0 12px;
+}
+.subscription-list {
+  list-style: none;
+  padding: 0;
+}
+.subscription-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+.subscription-list li > span {
+  min-width: 0;
+}
+.subscription-list .button {
+  flex-shrink: 0;
+}
+@media (max-width: 767px) {
+  .apps-table {
+    display: none;
+  }
+  .app-cards {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+  }
+  .access-action,
+  .access-placeholder {
+    width: 100%;
+    max-width: none;
+    min-height: 44px;
+  }
+  .subscription-list li {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .subscription-list .button {
+    width: 100%;
+    min-height: 44px;
+  }
+}

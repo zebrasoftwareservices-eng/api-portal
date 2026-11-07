@@ -2,7 +2,7 @@
 export default function Loading() {
   return (
     <div className="stack" role="status">
-      <h1>Your apps</h1>
+      <h1>My apps</h1>
       {[1, 2, 3].map((i) => (
         <div key={i} className="skeleton" style={{ height: 64 }} />
       ))}

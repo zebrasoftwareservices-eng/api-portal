@@ -2,7 +2,12 @@
 import { notFound } from 'next/navigation';
 import { CodeValue, PageHeader } from '@portal/ui';
 import { serverClient, currentUser } from '../../../lib/server';
-import { keyDestination } from '../../../lib/navigation';
+import {
+  ApiAccessProvider,
+  ApiAccessAction,
+  ApiAccessStatus,
+  TryItRecovery,
+} from '../../../components/api-access';
 import { Reference } from '../../../components/reference';
 import { DemoReference } from '../../../components/demo-reference';
 import { isDemo } from '../../../lib/demo';
@@ -59,26 +64,24 @@ export default async function ApiPage({
   if (error?.status === 404) notFound();
   if (!data) throw new Error('API unavailable');
   return (
-    <div className="stack">
-      <PageHeader
-        title={data.title}
-        breadcrumb={[{ label: 'APIs', href: '/' }, { label: data.title }]}
-        actions={
-          <a className="button" href={keyDestination(slug, !!user)}>
-            Get an API key
-          </a>
-        }
-      />
-      <span className="badge">v{data.version}</span>
-      <CodeValue value={data.gatewayBaseUrl} label="Base URL" />
-      <div className="alert">
-        ⓘ To try a request, go to Authentication and paste a key from an app
-        that includes this API into the Value field. If you see Select Auth Type
-        instead, open it and choose this API&apos;s key scheme first. Then
-        choose an operation and select Send. If you get a 403, select Get an API
-        key to create an app that includes it.
+    <ApiAccessProvider slug={data.slug} signedIn={!!user}>
+      <div className="stack">
+        <PageHeader
+          title={data.title}
+          breadcrumb={[{ label: 'APIs', href: '/' }, { label: data.title }]}
+          actions={<ApiAccessAction />}
+        />
+        <span className="badge">v{data.version}</span>
+        <CodeValue value={data.gatewayBaseUrl} label="Base URL" />
+        <ApiAccessStatus />
+        <div className="alert">
+          ⓘ To try a request, go to Authentication and paste a key from an app
+          that includes this API into the Value field. If you see Select Auth
+          Type instead, open it and choose this API&apos;s key scheme first.
+          Then choose an operation and select Send. <TryItRecovery />
+        </div>
+        <Reference documentUrl={data.documentUrl} />
       </div>
-      <Reference documentUrl={data.documentUrl} />
-    </div>
+    </ApiAccessProvider>
   );
 }

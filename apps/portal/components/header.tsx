@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
+import { useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button, Dialog, toast } from '@portal/ui';
 import { isDemo, QUICKSTART_URL } from '../lib/demo';
@@ -8,9 +9,15 @@ export function Header() {
   const { user } = usePortal();
   const pathname = usePathname();
   const router = useRouter();
+  const close = useRef<HTMLButtonElement>(null);
   const links = (
     <>
-      <a href="/" aria-current={pathname === '/' ? 'page' : undefined}>
+      <a
+        href="/"
+        aria-current={
+          pathname === '/' || pathname.startsWith('/apis/') ? 'page' : undefined
+        }
+      >
         APIs
       </a>
       {isDemo() ? (
@@ -25,7 +32,7 @@ export function Header() {
               pathname.startsWith('/dashboard') ? 'page' : undefined
             }
           >
-            Dashboard
+            My apps
           </a>
           {user.role === 'admin' && (
             <a
@@ -83,15 +90,23 @@ export function Header() {
             </Dialog.Trigger>
             <Dialog.Portal>
               <Dialog.Overlay className="overlay" />
-              <Dialog.Content className="dialog">
+              <Dialog.Content
+                className="dialog"
+                onOpenAutoFocus={(event) => {
+                  event.preventDefault();
+                  close.current?.focus();
+                }}
+              >
                 <Dialog.Title>Menu</Dialog.Title>
                 <Dialog.Description className="sr-only">
                   Portal navigation
                 </Dialog.Description>
-                <nav aria-label="Mobile navigation">{links}</nav>
                 <Dialog.Close asChild>
-                  <Button variant="secondary">Close menu</Button>
+                  <Button ref={close} variant="secondary">
+                    Close menu
+                  </Button>
                 </Dialog.Close>
+                <nav aria-label="Mobile navigation">{links}</nav>
               </Dialog.Content>
             </Dialog.Portal>
           </Dialog.Root>
