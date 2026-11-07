@@ -14,6 +14,8 @@ info:
     - Authentication: Better Auth owns `/api/auth/*` (email + password sign-up, sign-in and
       sign-out; session cookie). Those routes are not described here. Operations marked
       `sessionCookie` need a signed-in user; `/v1/admin/*` also needs `role = admin`.
+      Until the first admin exists, `/api/auth/sign-up/email` refuses every request; the first
+      admin is created with `POST /v1/setup/admin` (spec 005).
     - Errors are RFC 9457 `application/problem+json` with a relative `type` URI such as
       `/problems/gateway-unavailable`.
     - IDs are UUIDv7. Timestamps are UTC ISO 8601 (`date-time`).
@@ -30,8 +32,12 @@ tags:
     description: The signed-in user
   - name: apps
     description: A developer's apps and their API keys
+  - name: setup
+    description: First-run setup (spec 005, ADR 0006)
   - name: admin
     description: Admin-only operations
+  - name: gateways
+    description: The gateway connection (spec 005, ADR 0006). One per install until spec 017.
   - name: try-it
     description: Proxy used by the try-it console (ADR 0003)
 
@@ -44,10 +50,67 @@ paths:
       security: []
       responses:
         '200':
-          description: Server is up. `gateway.reachable` reports Kong's Admin API.
+          description: |
+            Server is up, with or without a gateway. `gateway` is null when none is connected;
+            otherwise `gateway.reachable` reports Kong's Admin API.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Health' }
+
+  /v1/setup:
+    get:
+      tags: [setup]
+      operationId: getSetupStatus
+      summary: Whether this install still needs its first admin
+      description: |
+        Public, so the portal can send every page to the setup screen. Reveals nothing secret.
+      security: []
+      responses:
+        '200':
+          description: Setup status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SetupStatus' }
+
+  /v1/setup/admin:
+    post:
+      tags: [setup]
+      operationId: createFirstAdmin
+      summary: Create the first admin and sign them in
+      description: |
+        Atomic and serialized: of any number of submissions, at the same time or later, exactly
+        one creates an admin. The response sets the session cookie. When
+        `NODE_ENV=production`, `setupToken` must match the token this server start wrote to its
+        logs. The token lives only in memory, is replaced on each start and stops working once an
+        admin exists. Rate-limited to 10 requests per minute per IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateFirstAdminRequest' }
+      responses:
+        '201':
+          description: Admin created and signed in
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: Better Auth session cookie
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403':
+          description: The setup token is missing or wrong (`/problems/setup-token-invalid`). No admin was created.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: An admin already exists (`/problems/setup-complete`). Nothing was changed.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
 
   /v1/apis:
     get:
@@ -172,7 +235,10 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
         '409':
-          description: The developer already has an app with this name (`/problems/app-name-taken`)
+          description: |
+            The developer already has an app with this name (`/problems/app-name-taken`), or the
+            API's gateway connection is disabled (`/problems/gateway-disabled`). When disabled,
+            nothing is created in Kong or Postgres.
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -200,7 +266,10 @@ paths:
       tags: [apps]
       operationId: createCredential
       summary: Issue another API key for an app
-      description: The returned `key` is shown once and never stored by the portal.
+      description: |
+        The returned `key` is shown once and never stored by the portal. The consumer and its
+        access are upserted first, so this also works when the connection now points at a Kong
+        that doesn't have the app's consumer yet (spec 005 AC 7(e)).
       parameters:
         - $ref: '#/components/parameters/AppId'
       responses:
@@ -212,7 +281,10 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: The app already has 5 active keys (`/problems/credential-limit`)
+          description: |
+            `type` is one of `/problems/credential-limit` (the app already has 5 active keys),
+            `/problems/gateway-disabled` (the connection is disabled) or
+            `/problems/gateway-not-connected` (no gateway exists). Nothing was created.
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -244,6 +316,9 @@ paths:
       tags: [admin]
       operationId: listGatewayServices
       summary: List Kong services that an imported spec can be linked to
+      description: |
+        Leaves out services tagged `portal-internal`, such as the protected Admin API route from
+        the docs recipe.
       responses:
         '200':
           description: Services with their routes
@@ -258,6 +333,7 @@ paths:
                     items: { $ref: '#/components/schemas/GatewayService' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/GatewayNotConnected' }
         '502': { $ref: '#/components/responses/GatewayRejected' }
         '503': { $ref: '#/components/responses/GatewayUnavailable' }
 
@@ -296,7 +372,9 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '409':
-          description: Slug already used (`/problems/api-slug-taken`)
+          description: |
+            Slug already used (`/problems/api-slug-taken`), or no gateway is connected
+            (`/problems/gateway-not-connected`).
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -318,6 +396,162 @@ paths:
             its plugins are unchanged),
             `/problems/gateway-service-already-linked` (another published API uses this service;
             `detail` names that API's slug).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '502': { $ref: '#/components/responses/GatewayRejected' }
+        '503': { $ref: '#/components/responses/GatewayUnavailable' }
+
+  /v1/admin/gateways:
+    get:
+      tags: [gateways]
+      operationId: listGateways
+      summary: The gateway connection, and the bundled Kong's values if this install has one
+      responses:
+        '200':
+          description: At most one item until spec 017. Never includes the admin token.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [gateways]
+      operationId: createGateway
+      summary: Check and save the gateway connection
+      description: |
+        Runs the same checks as `testGateway`, then saves. The portal uses the connection from the
+        next request, with no restart, and queues a reconcile. On any failure nothing is saved.
+        A refused second add makes no request to the supplied URL.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateGatewayRequest' }
+      responses:
+        '201':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Gateway' }
+        '400': { $ref: '#/components/responses/GatewayFieldInvalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: A gateway already exists; a portal connects to one (`/problems/gateway-exists`). It is unchanged.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/GatewayCheckFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/admin/gateways/test:
+    post:
+      tags: [gateways]
+      operationId: testGateway
+      summary: Check connection values without saving anything
+      description: |
+        Read-only: it makes GET requests only and changes nothing in Kong or Postgres. Failure
+        messages never contain the token or a response body. Rate-limited to 30 requests per minute
+        per admin. Pass `gatewayId` when editing, so a blank token can use the stored one if the
+        Admin API URL is unchanged. With a changed URL and a stored token, a blank token gets
+        `/problems/gateway-token-required` and the stored token is never sent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestGatewayRequest' }
+      responses:
+        '200':
+          description: All checks passed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GatewayTestResult' }
+        '400': { $ref: '#/components/responses/GatewayFieldInvalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/GatewayCheckFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/admin/gateways/{gatewayId}:
+    parameters:
+      - $ref: '#/components/parameters/GatewayId'
+    patch:
+      tags: [gateways]
+      operationId: updateGateway
+      summary: Edit, disable or re-enable the connection
+      description: |
+        A change to only `enabled: false` makes no request to Kong, so a connection to a Kong that
+        is down can still be disabled. Every other change runs the same checks as `testGateway`
+        first. On any failure nothing is saved and the existing connection keeps working.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateGatewayRequest' }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Gateway' }
+        '400': { $ref: '#/components/responses/GatewayFieldInvalid' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            `type` is `/problems/gateway-env-managed` (set by environment variables, so read-only)
+            or `/problems/gateway-keys-missing` (`affectedKeys` active keys have no consumer on this
+            Kong; send `confirmMissingKeys: true` to save anyway). Nothing was saved.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422': { $ref: '#/components/responses/GatewayCheckFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    delete:
+      tags: [gateways]
+      operationId: deleteGateway
+      summary: Remove the connection and its stored token
+      description: |
+        Makes no request to Kong. The portal's objects stay there, including its ACLs, so traffic is
+        unchanged; the docs describe tag-based cleanup.
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            `type` is `/problems/gateway-env-managed` or `/problems/gateway-in-use`. For the second,
+            `apis` and `activeKeys` say how many depend on it. Nothing was removed.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/admin/gateways/{gatewayId}/sample:
+    parameters:
+      - $ref: '#/components/parameters/GatewayId'
+    post:
+      tags: [gateways]
+      operationId: addSampleApi
+      summary: Publish the sample API on the bundled Kong
+      description: |
+        Only when the connection's Admin API URL equals the bundled Kong's and no API has the slug
+        `sample` (`Gateway.sampleAvailable`). The sample's upstream exists only in the bundled
+        compose network.
+      responses:
+        '201':
+          description: Published
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: This gateway can't take the sample (`/problems/sample-not-available`). Nothing was created.
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -451,6 +685,11 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    GatewayId:
+      name: gatewayId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
 
   responses:
     ValidationError:
@@ -481,6 +720,33 @@ components:
       headers:
         Retry-After:
           schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    GatewayNotConnected:
+      description: No gateway is connected (`/problems/gateway-not-connected`). The detail points to Admin → Gateways.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    GatewayFieldInvalid:
+      description: |
+        A field is malformed, isn't http(s), carries credentials, a query or a fragment, or resolves
+        to a link-local or cloud metadata address (`/problems/validation`). `errors[].pointer` names
+        the field, such as `/adminUrl`. The portal made no request to a refused address.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    GatewayCheckFailed:
+      description: |
+        A connection check failed and nothing was saved. Messages contain neither the token nor a
+        response body. `type` is one of:
+        `/problems/gateway-unreachable` (network error, 5 s timeout or 5xx; for `localhost`, the detail
+        says the address is resolved from the server),
+        `/problems/gateway-token-refused` (401 or 403),
+        `/problems/gateway-not-kong` (the URL answers but isn't a Kong Admin API),
+        `/problems/gateway-read-only` (DB-less mode or a data plane node),
+        `/problems/gateway-proxy-unreachable` (the Admin API passed but the internal proxy URL failed),
+        `/problems/gateway-token-required` (URL changed with a stored token; enter it again).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -532,6 +798,9 @@ components:
         status: { type: integer }
         detail: { type: string, examples: ["The API gateway didn't respond. Nothing was created. Try again in a moment."] }
         instance: { type: string }
+        apis: { type: integer, description: 'With `/problems/gateway-in-use`: published APIs on this gateway' }
+        activeKeys: { type: integer, description: 'With `/problems/gateway-in-use`: active keys on this gateway' }
+        affectedKeys: { type: integer, description: 'With `/problems/gateway-keys-missing`: active keys with no consumer on the new Kong' }
         errors:
           type: array
           description: Field or document errors. For `/problems/invalid-openapi`, only the first error is returned.
@@ -555,12 +824,134 @@ components:
         status: { type: string, enum: [ok] }
         version: { type: string }
         gateway:
-          type: object
-          required: [kind, reachable]
+          oneOf:
+            - type: 'null'
+            - type: object
+              required: [kind, reachable]
+              properties:
+                kind: { type: string, enum: [kong] }
+                reachable: { type: boolean }
+                version: { type: string }
+
+    SetupStatus:
+      type: object
+      required: [adminRequired, setupTokenRequired]
+      properties:
+        adminRequired: { type: boolean, description: True until the first admin exists }
+        setupTokenRequired: { type: boolean, description: True while an admin is required and `NODE_ENV=production` }
+
+    CreateFirstAdminRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        name: { type: string, minLength: 1, maxLength: 80, description: Defaults to Administrator }
+        setupToken: { type: string, maxLength: 128, description: Required when `setupTokenRequired` is true }
+
+    GatewayUrls:
+      type: object
+      required: [adminUrl, proxyInternalUrl, proxyPublicUrl]
+      properties:
+        adminUrl: { type: string, format: uri, pattern: '^https?://', examples: ['http://kong:8001'] }
+        proxyInternalUrl:
+          type: string
+          format: uri
+          pattern: '^https?://'
+          description: Address of Kong's proxy as the server reaches it. Used by try-it. Checked.
+          examples: ['http://kong:8000']
+        proxyPublicUrl:
+          type: string
+          format: uri
+          pattern: '^https?://'
+          description: Address developers call, shown in the catalog. The server can't check it from inside, so only its form is validated.
+          examples: ['http://localhost:8000']
+
+    Gateway:
+      allOf:
+        - $ref: '#/components/schemas/GatewayUrls'
+        - type: object
+          required: [id, kind, hasAdminToken, enabled, managedBy, sampleAvailable, createdAt, updatedAt]
           properties:
+            id: { type: string, format: uuid }
             kind: { type: string, enum: [kong] }
-            reachable: { type: boolean }
-            version: { type: string }
+            hasAdminToken: { type: boolean, description: Whether a token is stored. The token itself is never returned. }
+            enabled: { type: boolean }
+            managedBy:
+              type: string
+              enum: [admin, env]
+              description: '`env`: set by `KONG_ADMIN_URL`, so editing, disabling and removing are refused.'
+            sampleAvailable: { type: boolean, description: Whether `addSampleApi` would be accepted }
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+
+    GatewayList:
+      type: object
+      required: [items, bundled]
+      properties:
+        items:
+          type: array
+          maxItems: 1
+          items: { $ref: '#/components/schemas/Gateway' }
+        bundled:
+          description: The bundled Kong's values for the form. Null when this install has none.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/GatewayUrls'
+
+    CreateGatewayRequest:
+      allOf:
+        - $ref: '#/components/schemas/GatewayUrls'
+        - type: object
+          properties:
+            adminToken: { type: string, minLength: 1, maxLength: 1024, writeOnly: true, description: Optional; sent as `Kong-Admin-Token` }
+
+    TestGatewayRequest:
+      allOf:
+        - $ref: '#/components/schemas/GatewayUrls'
+        - type: object
+          properties:
+            gatewayId: { type: string, format: uuid, description: The connection being edited. Omit for a new one. }
+            adminToken:
+              description: A new token. Absent or empty keeps the stored one if the URL is unchanged. Null means this connection uses no token.
+              writeOnly: true
+              oneOf:
+                - { type: string, maxLength: 1024 }
+                - { type: 'null' }
+
+    UpdateGatewayRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        adminUrl: { type: string, format: uri, pattern: '^https?://' }
+        adminToken:
+          description: A new token. Absent or empty keeps the stored one if the URL is unchanged. Null removes it, and the connection uses no token.
+          writeOnly: true
+          oneOf:
+            - { type: string, maxLength: 1024 }
+            - { type: 'null' }
+        proxyInternalUrl: { type: string, format: uri, pattern: '^https?://' }
+        proxyPublicUrl: { type: string, format: uri, pattern: '^https?://' }
+        enabled: { type: boolean }
+        confirmMissingKeys: { type: boolean, description: The admin accepted that active keys won't work on this Kong }
+
+    GatewayTestResult:
+      type: object
+      required: [version, warnings]
+      properties:
+        version: { type: string, description: Kong version, examples: ['3.9.4'] }
+        warnings:
+          type: array
+          description: Empty when there is nothing to report, including when there are no active keys.
+          items:
+            type: object
+            required: [code, message, affectedKeys]
+            properties:
+              code: { type: string, enum: [active-keys-missing] }
+              message: { type: string }
+              affectedKeys: { type: integer, minimum: 1 }
 
     User:
       type: object
