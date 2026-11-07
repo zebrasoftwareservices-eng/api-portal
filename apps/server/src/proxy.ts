@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import type { GatewayAdapter } from '@portal/adapter-sdk';
+import type { AdapterFor } from './gateway-connection.js';
 import type { Database } from '@portal/db';
 import { publishedApis, baseUrl, type PublishedApi } from './catalog.js';
 import { readLimited } from './import.js';
@@ -59,7 +59,7 @@ export function resolveTarget(target: string, rows: PublishedApi[]) {
 export async function registerProxy(
   server: FastifyInstance,
   db: Database,
-  adapter: GatewayAdapter,
+  adapterFor: AdapterFor,
   fetcher: typeof fetch = fetch,
 ) {
   await server.register(async (app) => {
@@ -175,7 +175,7 @@ export async function registerProxy(
             if (!blocked.has(name) && !connectionNames.includes(name))
               reply.header(name, value);
           if (
-            adapter.isAccessDenied({
+            adapterFor(target.row.gateway).isAccessDenied({
               status: response.status,
               headers: response.headers,
               body: data,
