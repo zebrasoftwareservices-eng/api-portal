@@ -611,6 +611,14 @@ These are decisions for you, not findings. The first three are design choices I'
 5. **Multi-node Kong** is still untested. The upgrade notes say so.
 6. **Before release, not before merge:** JSO-299, so the release doesn't go out as 1.0.0, and the JSO-296 text for the upgrade notes. You may want that text in before anyone connects a real Kong, which is this sprint's goal.
 
+### Check of `87e562c` against the JSO-299 and JSO-296 rulings
+Focused check on 2026-11-07, not a full re-review. **Result: correct, so the status stays `approved`.** `87e562c` is the only commit since my approval at `454e565`. It changes only `.changeset/per-api-access-control.md` and `docs/upgrade-004-access-control.md`, so I didn't re-run lint, typecheck, tests, e2e or the quickstart. This doesn't change the CI item in the Definition of Done. Item 6 above is now done.
+
+- **Version (JSO-299):** all five packages are `minor`. `pnpm changeset status --verbose` takes `@portal/adapter-sdk`, `@portal/adapter-kong`, `@portal/server`, `@portal/sdk` and `@portal/portal` to 0.2.0, with no major or patch releases.
+- **Link (JSO-299):** the relative link is gone, and the prose keeps the repo-root path, which exists. The rest of the changeset text is unchanged.
+- **Log note (JSO-296):** it sits under "Changes for developers and upstream services". Apart from line wrapping, it matches the ruling's text, and both config lines match exactly. The diff only adds lines to this file.
+- **Linear:** JSO-299 is closed. JSO-296 stays in Backlog for its open questions: the Compose default format and a warning at import for `in: query` documents.
+
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
 - [ ] Every user story passes in the browser (User testing section)
