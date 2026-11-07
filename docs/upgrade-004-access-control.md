@@ -22,6 +22,19 @@ check the server's access-policy warnings after the first reconcile.
   routes; other routes stay public. A global key-auth plugin is never changed: the portal
   makes a service-scoped copy for managed services so it can hide credentials there.
 
+Hiding credentials stops Kong forwarding the key to upstreams, but Kong's own access log
+still records the full query string, including a key sent as `?apikey=`. So can any load
+balancer in front of Kong. Send keys in the `apikey` header where you can. To keep query
+strings out of Kong's log, set a format that uses `$uri`:
+
+```text
+KONG_NGINX_HTTP_LOG_FORMAT=portal_noquery '$remote_addr [$time_local] "$request_method $uri" $status $body_bytes_sent'
+KONG_PROXY_ACCESS_LOG=/dev/stdout portal_noquery
+```
+
+This removes all query strings from the log, not only keys, so adjust it if you rely on
+them. Rotate any key that may already be in forwarded logs.
+
 To keep an operator's consumer working on a managed service, use the service's UUID from
 Kong, not the API's UUID. For example, with your own Admin API authentication options:
 
