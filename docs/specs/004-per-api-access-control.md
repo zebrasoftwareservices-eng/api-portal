@@ -343,7 +343,7 @@ resets both fields. Corrected in review; see JSO-282 and the Review section.
 - [x] [backend] Fix JSO-286: read ACLs in `applyAccessPolicy` with one paged `/acls` request grouped by consumer, and add a real-Kong case with at least 500 owned consumers plus a unit case asserting no per-consumer read.
 - [x] [backend] Fix JSO-287: make `isAccessDenied` recognise Kong's refusal in every `Accept` format while upstream 403s still pass through, and add unit cases per format plus a server test with `Accept: application/xml`.
 - [x] [backend] Fix JSO-277: on a catalog miss in `apps/server/src/proxy.ts`, reload the published APIs once before refusing, so a just-published API works in try-it at once and an unpublished target is still refused; turn the `it.fails` regression in `apps/server/src/app.test.ts` into a normal passing test. Approved by Elango on 2026-11-07.
-- [ ] [backend] Fix JSO-291, changeset only: add a `.changeset/` file for this breaking change that points to `docs/upgrade-004-access-control.md`. The README link stays open, so leave JSO-291 in Backlog and comment what was done. Approved by Elango on 2026-11-07.
+- [x] [backend] Fix JSO-291, changeset only: add a `.changeset/` file for this breaking change that points to `docs/upgrade-004-access-control.md`. The README link stays open, so leave JSO-291 in Backlog and comment what was done. Approved by Elango on 2026-11-07.
 - [x] [frontend] Fix JSO-281: make the API reference info line match the JSO-281 wording in §4.4 of the UX design, so it's correct when security is set per operation, with a test. Approved by Elango on 2026-11-07.
 
 ## UX  _(ui-designer)_
