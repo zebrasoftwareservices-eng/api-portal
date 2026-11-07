@@ -1,7 +1,7 @@
 ---
 id: 019
 title: Unified portal — developer journey
-status: uat # draft → ready → designed → building → testing → uat → review → approved → done
+status: review # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-316
@@ -521,10 +521,35 @@ Validation:
 
 None found. No blocker, major or minor product bug was opened during this QA run.
 
+UAT 2026-11-07: no bugs were In Review to re-test, and user testing found no new spec-019 bugs. The one
+out-of-scope problem I saw is already tracked as JSO-162 (Backlog). I cancelled my duplicate, JSO-409.
+
 ## User testing _(user-tester)_
+
+UAT run 2026-11-07 (JSO-359) on the local quickstart, which was healthy in 111 s, in Orca's built-in browser
+at 1280, about 805, 390 and 375 px. Twenty-one journeys, with screenshots, are in
+[`docs/uat/019/notes.md`](../uat/019/notes.md).
 
 | User story | Result | Screenshot |
 | ---------- | ------ | ---------- |
+| API page shows the next step for my access (no access, one app incl. revoked keys, several apps, highlighted My apps) | Pass | `docs/uat/019/19-api-page-no-access.png`, `07-api-page-one-app.png`, `17-api-page-revoked-key-app.png`, `10-api-page-several-apps.png`, `11-my-apps-highlighted.png` |
+| Visitor goes from an API to a key without losing their place (sign-up, Sign in, Sign in instead, Create an account) | Pass | `02-api-page-visitor.png`, `03-signup-from-api.png`, `04-create-app-preselected.png`, `23-sign-in-returns-to-api.png`, `24-signup-duplicate-sign-in-instead.png`, `25-create-account-round-trip.png` |
+| From an app to a call in one step (Try this API → paste key → 200 OK through Kong) | Pass | `06-app-page.png`, `07-api-page-one-app.png`, `08-try-it-200.png`, `18-app-page-ten-apis.png` |
+| Navigation and My apps work on a phone (cards, keyboard menu, 80-character names, no sideways scroll) | Pass | `13-my-apps-mobile-cards.png`, `14-mobile-menu-open.png`, `15-mobile-menu-my-apps.png`, `16-api-page-long-name-375.png` |
+| Portal says when it can't confirm access (failure message, failed and successful Try again, typed value kept) | Pass | `20-access-check-failed.png`, `21-retry-success.png` |
+
+Navigation by role and current link (AC1): visitor, developer and admin all pass (`01-home-visitor.png`,
+`09-my-apps-one.png`, `26-admin-nav.png`). The console was clean. The only failed request was a deliberate
+duplicate sign-up (422).
+
+Notes:
+- Not walked in the browser: the 5-second delay, 500/503 and the 10-second timeout. Orca's browser can only
+  abort a request, so I walked the network-error case and nothing else. Also not walked: a 401 mid-session, the
+  static demo (AC10) and the 640 px width. QA's browser tests cover all of these.
+- The catalog card's long base URL running into **View reference →** comes from spec 001 and is already
+  tracked as JSO-162 (Backlog). I cancelled my duplicate, JSO-409.
+- Leftover QA APIs, including five titled "Sample HTTP API", make the catalog and the create-app list noisy
+  locally. That's test data (JSO-408), not product behaviour.
 
 ## Review _(tech-lead)_
 
