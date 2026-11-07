@@ -1,7 +1,7 @@
 # Team charter — the software factory
 
 Elango is the only human: product owner, final approver and merger. Every other role is an AI
-agent, run by Orca on Claude Code (Claude Pro) or Codex (ChatGPT Pro). In this repo each role
+agent, run by Orca on Claude Code (Claude Pro), Codex (ChatGPT Pro) or Antigravity (Google account). In this repo each role
 is a file in `factory/roles/`, generated into `.claude/agents/` and `.codex/agents/`. In the Claude Project
 "api portal", call a role by starting your message with its tag.
 
@@ -15,7 +15,7 @@ is a file in `factory/roles/`, generated into `.claude/agents/` and `.codex/agen
 | `Backend:` | backend-developer | Codex | Server, data, adapters | Fastify handlers, Drizzle migrations, gateway adapters, tests | Touches UI code; changes the contract silently |
 | `Frontend:` | frontend-developer | Codex | Portal UI | Next.js pages and components using tokens and the generated client | Touches server or adapter code |
 | `QA:` | qa-tester | Codex | Proof it works | Integration + e2e tests, test report, bug list | Fixes app code itself |
-| `UAT:` | user-tester | Claude Code | The real user's experience | Browser walkthroughs in Orca, screenshots, User testing report, bug list | Edits code or tests |
+| `UAT:` | user-tester | Antigravity | The real user's experience | Browser walkthroughs in Orca, screenshots, User testing report, bug list | Edits code or tests |
 
 A **coordinator** (Claude Code, `factory` skill) runs the pipeline in Orca. It starts each role
 as a supervised worker and never does a role's work itself.

@@ -25,7 +25,8 @@
       "model": "gpt-6.1-sol"
     },
     "user-tester": {
-      "agent": "claude"
+      "agent": "antigravity",
+      "model": "gemini-3.8-flash-high"
     }
   },
   "parallelBuild": true,
@@ -45,7 +46,8 @@
     },
     "agentLabels": {
       "claude": "Claude Code",
-      "codex": "Codex"
+      "codex": "Codex",
+      "antigravity": "Antigravity"
     }
   }
 }

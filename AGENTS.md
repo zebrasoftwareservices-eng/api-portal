@@ -1,7 +1,7 @@
 # API Developer Portal — agent instructions
 
-Shared instructions for every coding agent on this repo. Codex reads this file directly;
-Claude Code reads it through `CLAUDE.md`.
+Shared instructions for every coding agent on this repo. Codex and Antigravity read this file
+directly; Claude Code reads it through `CLAUDE.md`.
 
 Free, open-source (Apache 2.0) API developer portal that connects to API gateways —
 Kong first, AWS API Gateway second, then APISIX, Envoy Gateway, Apigee, Azure APIM.
@@ -108,7 +108,7 @@ Codex custom agents (`.codex/agents/`), the Claude copy of the factory skill and
 | backend-developer | Codex | Server, database, gateway adapters |
 | frontend-developer | Codex | Portal UI |
 | qa-tester | Codex | Integration + e2e tests, test report, bugs |
-| user-tester | Claude Code | Real-user testing in Orca's built-in browser, screenshots, bugs |
+| user-tester | Antigravity (Gemini 3.8 Flash) | Real-user testing in Orca's built-in browser, screenshots, bugs |
 
 A spec's `status` moves: `draft` → **Elango approves** → `ready` → tech-lead → `designed`
 → ui-designer → `building` → backend + frontend → `testing` → qa-tester → `uat`

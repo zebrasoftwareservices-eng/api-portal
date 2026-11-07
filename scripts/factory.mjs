@@ -13,7 +13,7 @@
 //   node scripts/factory.mjs linear-init <id>             create the spec's Linear feature + stage issues
 //   node scripts/factory.mjs linear-tasks <id>            create a Linear issue for every task in the spec's task list
 //   node scripts/factory.mjs track <id> sync              move Linear issues to match the spec status
-//   node scripts/factory.mjs track <id> start <stage> [--agent claude|codex]
+//   node scripts/factory.mjs track <id> start <stage> [--agent claude|codex|antigravity]
 //   node scripts/factory.mjs track <id> note <stage|feature> < summary.txt
 //   node scripts/factory.mjs track <id> gate
 //
@@ -294,7 +294,7 @@ function track(args) {
         break;
       }
       const stage = STAGES.find((s) => s.key === target);
-      const who = agent === 'codex' ? 'Codex' : agent === 'claude' ? 'Claude Code' : agent || 'an agent';
+      const who = (agent && LINEAR?.agentLabels?.[agent]) || agent || 'an agent';
       const m = moveForward(key, 'started');
       if (m) log.push(m);
       const c = orcaLinear(['comment', 'add', key, '--body', `▶ Started: ${stage.role || 'Elango'} on ${who} (spec status: ${spec.status}).`]);
