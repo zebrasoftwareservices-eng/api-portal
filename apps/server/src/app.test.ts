@@ -740,52 +740,68 @@ info: {}`,
     );
     expect(JSON.stringify(warn.mock.calls)).not.toContain('pk_');
   });
-  it.fails(
-    'JSO-277: immediately accepts a newly published API after the proxy catalog cache is warm',
-    async () => {
-      const config = loadConfig({ DATABASE_URL: container.getConnectionUri() });
-      const { app: fresh } = await createApp({
-        db: connection.db,
-        config,
-        adapter,
+  it('JSO-277: immediately accepts a newly published API after the proxy catalog cache is warm', async () => {
+    const config = loadConfig({ DATABASE_URL: container.getConnectionUri() });
+    const fetchGateway = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ message: 'You cannot consume this service' }),
+          { status: 403 },
+        ),
+    );
+    const { app: fresh } = await createApp({
+      db: connection.db,
+      config,
+      adapter,
+      gatewayId,
+      proxyFetch: fetchGateway,
+    });
+    const id = uuidv7(),
+      slug = `cache-${id}`;
+    try {
+      await fresh.inject(
+        '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get',
+      );
+      const target = `/api/v1/try-it?scalar_url=http://localhost:8000/${slug}/get`;
+      const unpublished = await fresh.inject(target);
+      expect(unpublished.statusCode).toBe(400);
+      expect(unpublished.json().type).toBe(
+        '/problems/try-it-target-not-allowed',
+      );
+      expect(fetchGateway).toHaveBeenCalledTimes(1);
+      await connection.db.insert(apis).values({
+        id,
+        slug,
+        title: 'Newly published',
+        version: '1',
         gatewayId,
-        proxyFetch: async () =>
-          new Response(
-            JSON.stringify({ message: 'You cannot consume this service' }),
-            { status: 403 },
-          ),
+        gatewayServiceId: id,
+        gatewayServiceName: slug,
+        routePath: `/${slug}`,
+        document: {
+          openapi: '3.1.0',
+          info: { title: slug, version: '1' },
+          paths: {},
+        },
       });
-      const id = uuidv7(),
-        slug = `cache-${id}`;
-      try {
-        await fresh.inject(
-          '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get',
-        );
-        await connection.db.insert(apis).values({
-          id,
-          slug,
-          title: 'Newly published',
-          version: '1',
-          gatewayId,
-          gatewayServiceId: id,
-          gatewayServiceName: slug,
-          routePath: `/${slug}`,
-          document: {
-            openapi: '3.1.0',
-            info: { title: slug, version: '1' },
-            paths: {},
-          },
-        });
-        const result = await fresh.inject(
-          `/api/v1/try-it?scalar_url=http://localhost:8000/${slug}/get`,
-        );
-        expect(result.statusCode, result.body).toBe(403);
-      } finally {
-        await fresh.close();
-        await connection.db.delete(apis).where(eq(apis.id, id));
-      }
-    },
-  );
+      const result = await fresh.inject(target);
+      expect(result.statusCode, result.body).toBe(403);
+      expect(result.json().type).toBe('/problems/api-access-denied');
+      expect(fetchGateway).toHaveBeenCalledTimes(2);
+      const unknown = await fresh.inject(
+        `/api/v1/try-it?scalar_url=http://localhost:8000/${slug}-unpublished/get`,
+      );
+      expect(unknown.statusCode).toBe(400);
+      const external = await fresh.inject(
+        '/api/v1/try-it?scalar_url=http://evil.test/sample/get',
+      );
+      expect(external.statusCode).toBe(400);
+      expect(fetchGateway).toHaveBeenCalledTimes(2);
+    } finally {
+      await fresh.close();
+      await connection.db.delete(apis).where(eq(apis.id, id));
+    }
+  });
   it('enforces proxy response/request caps, timeout problems and rate limits', async () => {
     const url = '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get';
     proxyFetch.mockResolvedValueOnce(new Response('x'.repeat(1024 * 1024 + 1)));

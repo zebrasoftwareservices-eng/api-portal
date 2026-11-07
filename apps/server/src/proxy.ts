@@ -102,7 +102,13 @@ export async function registerProxy(
           cached = await publishedApis(db);
           expires = Date.now() + 30000;
         }
-        const target = resolveTarget(query.scalar_url, cached);
+        let target = resolveTarget(query.scalar_url, cached);
+        if (!target) {
+          // A newly published API may be missing from the still-valid catalog.
+          cached = await publishedApis(db);
+          expires = Date.now() + 30000;
+          target = resolveTarget(query.scalar_url, cached);
+        }
         if (!target)
           throw new Problem(
             400,
