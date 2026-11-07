@@ -100,4 +100,25 @@ describe('app keys', () => {
     await user.click(button);
     expect(mocks.post).not.toHaveBeenCalled();
   });
+  it.each(['gateway-disabled', 'gateway-not-connected'])(
+    'shows the right new-key refusal for %s',
+    async (code) => {
+      mocks.post.mockResolvedValue({
+        error: { type: `/problems/${code}`, title: code, status: 409 },
+        response: new Response(null, { status: 409 }),
+      });
+      render(<AppDetail appId="app-1" />);
+      const user = userEvent.setup();
+      await user.click(
+        await screen.findByRole('button', { name: 'Create key' }),
+      );
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        code === 'gateway-disabled'
+          ? 'New apps and keys are paused'
+          : 'No API gateway is connected',
+      );
+      expect(screen.getByRole('alert')).not.toHaveTextContent('5 active keys');
+      expect(mocks.setReveal).not.toHaveBeenCalled();
+    },
+  );
 });

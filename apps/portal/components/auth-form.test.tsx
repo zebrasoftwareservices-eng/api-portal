@@ -9,8 +9,10 @@ const mocks = vi.hoisted(() => ({
   signin: vi.fn(),
   replace: vi.fn(),
   refresh: vi.fn(),
+  get: vi.fn(),
 }));
 vi.mock('../lib/client', () => ({
+  api: { GET: mocks.get },
   auth: { signUp: { email: mocks.signup }, signIn: { email: mocks.signin } },
 }));
 vi.mock('next/navigation', () => ({
@@ -108,4 +110,25 @@ describe('account forms', () => {
       expect(mocks.replace).toHaveBeenCalledWith('/dashboard'),
     );
   });
+  it.each([false, true])(
+    'lands an admin without a next target according to gateway presence: %s',
+    async (exists) => {
+      mocks.signin.mockResolvedValue({
+        data: { user: { id: 'admin', role: 'admin' } },
+      });
+      mocks.get.mockResolvedValue({
+        data: { items: exists ? [{ id: 'gw' }] : [] },
+      });
+      render(<AuthForm mode="sign-in" />);
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText('Email'), 'admin@example.com');
+      await user.type(screen.getByLabelText('Password'), 'password123');
+      await user.click(screen.getByRole('button', { name: 'Sign in' }));
+      await waitFor(() =>
+        expect(mocks.replace).toHaveBeenCalledWith(
+          exists ? '/dashboard' : '/setup/gateway',
+        ),
+      );
+    },
+  );
 });

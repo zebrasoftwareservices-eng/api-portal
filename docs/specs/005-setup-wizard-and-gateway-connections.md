@@ -439,12 +439,12 @@ The conformance suite gains `checkConnection` cases for a healthy gateway and a 
 - [ ] [backend] JSO-325 `deploy/docker-compose.yml`, `deploy/.env.example` and README: no default admin or gateway, the bundled hint, and the new quickstart steps.
 - [ ] [backend] JSO-326 New docs page on reaching the Kong Admin API: same-network option, the protected-route recipe, the warning not to expose the default compose file, tag-based cleanup including the `hide_credentials` caveat, and what repointing does and doesn't move.
 - [ ] [backend] JSO-327 Update `apps/server/src/*.test.ts` and `deploy/*.mjs` for the new options, and run the existing suites on the environment path so they keep their seeded sample.
-- [ ] [frontend] JSO-328 `middleware.ts`: send every page to `/setup` until an admin exists, cache the answer once false, pass public pages through when the server is down, and keep demo builds unaffected.
-- [ ] [frontend] JSO-329 `/setup`: first admin form, the setup token field when `setupTokenRequired`, refusal messages, and sign-in on success.
-- [ ] [frontend] JSO-367 `/setup/gateway` and post-sign-in landing: pre-filled bundled values, Test, what the portal will change in this Kong, skip, and the sample opt-in only when `sampleAvailable`, showing the message if the sample call returns `gateway-disabled`.
-- [ ] [frontend] JSO-368 `/admin/gateways` and nav: add, edit, disable, re-enable and remove; read-only state when `managedBy` is `env`; blank token keeps the stored one; a "this Kong needs no token" option.
-- [ ] [frontend] JSO-369 Show every AC 4 message at the right field, including when a re-enable fails and the row stays disabled, the 7(a) re-enter-token message, the 7(e) warning with explicit confirmation and decline, and the 7(c) counts.
-- [ ] [frontend] JSO-370 Import screen (`admin-apis.tsx`): wait for the service list before showing the form, which today renders straight away. `gateway-disabled` shows the disabled state instead of the form and offers no service list, with a link to Admin → Gateways, while published APIs stay listed. The same refusal on submit shows the message and keeps what was entered. `gateway-not-connected` links to Admin → Gateways, and `gateway-unavailable` shows a retry that loses nothing, in place of today's one message for any error. Handle `gateway: null` wherever health is read. Handle `gateway-disabled` on Create app and New key.
+- [x] [frontend] JSO-328 `middleware.ts`: send every page to `/setup` until an admin exists, cache the answer once false, pass public pages through when the server is down, and keep demo builds unaffected.
+- [x] [frontend] JSO-329 `/setup`: first admin form, the setup token field when `setupTokenRequired`, refusal messages, and sign-in on success.
+- [x] [frontend] JSO-367 `/setup/gateway` and post-sign-in landing: pre-filled bundled values, Test, what the portal will change in this Kong, skip, and the sample opt-in only when `sampleAvailable`, showing the message if the sample call returns `gateway-disabled`.
+- [x] [frontend] JSO-368 `/admin/gateways` and nav: add, edit, disable, re-enable and remove; read-only state when `managedBy` is `env`; blank token keeps the stored one; a "this Kong needs no token" option.
+- [x] [frontend] JSO-369 Show every AC 4 message at the right field, including when a re-enable fails and the row stays disabled, the 7(a) re-enter-token message, the 7(e) warning with explicit confirmation and decline, and the 7(c) counts.
+- [x] [frontend] JSO-370 Import screen (`admin-apis.tsx`): wait for the service list before showing the form, which today renders straight away. `gateway-disabled` shows the disabled state instead of the form and offers no service list, with a link to Admin → Gateways, while published APIs stay listed. The same refusal on submit shows the message and keeps what was entered. `gateway-not-connected` links to Admin → Gateways, and `gateway-unavailable` shows a retry that loses nothing, in place of today's one message for any error. Handle `gateway: null` wherever health is read. Handle `gateway-disabled` on Create app and New key.
 - [ ] [qa] JSO-371 AC 1, 2: fresh compose with no settings reaches `/setup` within 5 minutes, sign-up refused, no Kong objects; simultaneous submissions; production token right, wrong, missing and after an admin exists; a new token on each start.
 - [ ] [qa] JSO-372 AC 3, 4, 9: real Kong connect without restart, token encrypted and absent from responses and logs, second add refused; every failure case including real DB-less Kong; signed-out and developer callers get 401 or 403 with no outbound request.
 - [ ] [qa] JSO-373 AC 5, 6: pick a discovered service, import, and a developer's key returns 200; Kong down and no gateway states; sample opt-in, opt-out and non-bundled Kong.
@@ -465,13 +465,16 @@ Full design: [docs/design/005-setup-wizard-and-gateway-connections.md](../design
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
+- Frontend (JSO-328, JSO-329, JSO-367–JSO-370, JSO-365): added the first-admin wizard, setup-aware middleware and sign-in landing, shared Kong connection form, gateway management card and confirmation dialogs, sample opt-in, Admin navigation, and import/developer refusal states. Calls use the generated SDK; gateway tokens stay in component state and are cleared on successful save. Failed service refresh and stale import submissions preserve entries; environment-managed connections have no mutation controls.
+- Frontend validation: `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed (the full suite needs Docker/network access outside the restricted sandbox); portal suite has 110 passing tests covering setup, connection checks, token semantics, missing-key confirmation, disable/remove refusals, sample eligibility, import states and developer messages. QA should verify keyboard/focus and responsive flows against a running portal, plus each real Kong failure case. JSO-379 fixes the Node 25+ test storage globals by using Vitest's jsdom realm.
+
 ## Test report  _(qa-tester)_
 | Criterion | Test file | Result |
 | --- | --- | --- |
 
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
+- [ ] JSO-379 Portal component tests use Node storage globals instead of jsdom on Node 25+ (fixed; awaiting QA verification).
 
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |

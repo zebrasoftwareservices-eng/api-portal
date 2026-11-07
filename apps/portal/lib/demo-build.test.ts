@@ -27,6 +27,7 @@ describe('build-time demo switch', () => {
     expect(built.env!.PORTAL_DEMO_ACTIVE).toBe('true');
     expect(await built.rewrites!()).toEqual({
       beforeFiles: [
+        '/setup/:path*',
         '/sign-in',
         '/sign-up',
         '/dashboard/:path*',

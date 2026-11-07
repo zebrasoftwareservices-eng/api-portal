@@ -8,6 +8,16 @@ export function Header() {
   const { user } = usePortal();
   const pathname = usePathname();
   const router = useRouter();
+  if (pathname === '/setup')
+    return (
+      <header className="site-header">
+        <div className="header-inner">
+          <a className="brand" href="/">
+            Developer Portal
+          </a>
+        </div>
+      </header>
+    );
   const links = (
     <>
       <a href="/" aria-current={pathname === '/' ? 'page' : undefined}>
