@@ -86,7 +86,7 @@ admin environment variables set.
    | Internal proxy URL unreachable | The Admin API passed, but the portal can't reach the proxy |
    | Malformed URL, or a scheme other than http(s) | Which field to fix |
 
-5. **Given** a connected gateway **When** the admin starts an import **Then** they pick from the
+5. **Given** a connected, enabled gateway **When** the admin starts an import **Then** they pick from the
    services Kong reports, each showing its routes and whether it has key-auth, and supply an OpenAPI
    file or URL. **Then** the API is published, and a developer who creates an app for it gets a key
    that returns 200 through Kong. **If** Kong is unreachable when services are listed, **then** they
@@ -99,10 +99,13 @@ admin environment variables set.
 7. **Given** a gateway saved from the admin screens **When** the admin: (a) edits it and leaves the token
    blank, **Then** with the Admin API URL unchanged, the stored token is kept and the checks in criterion 4
    apply. With the URL changed and a token stored, Test and save are refused with a message to enter the
-   token again, and the stored token is never sent to the new host; (b) disables it, **Then** creating a new
-   app or key on its APIs shows a clear error and leaves nothing partial. Nothing else is blocked: key revoke,
-   app delete and the reconcile job keep running, existing keys keep working through Kong and the docs stay
-   published. If Kong can't be reached, revoke and delete show a clear error, and the reconcile job logs one;
+   token again, and the stored token is never sent to the new host. If they instead choose "this Kong needs
+   no token" (`adminToken: null`), the checks in criterion 4 run with no token, and saving removes the stored
+   token; (b) disables it, **Then** creating a new app or key on its APIs, or importing an API on that gateway,
+   shows a clear error and leaves nothing partial. Key revoke and the reconcile job keep running, existing keys
+   keep working through Kong and the docs stay published. If Kong can't be reached, revoke shows a clear error,
+   and the reconcile job logs one. Re-enabling it reruns the checks in criterion 4: if one fails, they see that
+   case's message and it stays disabled, so a connection to a dead Kong stays disabled until Kong answers;
    (c) removes it while APIs or active keys depend on it, **Then** removal is refused, naming how many;
    (d) removes it with nothing depending on it, **Then** the connection and its stored token are deleted,
    the portal's objects stay in Kong, including the `deny` ACLs from spec 004, traffic through Kong is
@@ -140,6 +143,7 @@ admin environment variables set.
   status and the checks in criterion 4.
 - **Rotating `PORTAL_ENCRYPTION_KEY`, or recovering a lost admin account.** Password reset is spec 007.
 - **Audit log of gateway changes** (spec 015) and **production install hardening** (spec 016).
+- **Setup token with several server replicas.** Spec 016 owns this. The follow-up is still to be filed in Linear.
 - **Provisioning or securing the operator's Kong for them.** We document the recipe; they apply it.
 
 ## Open questions
@@ -157,7 +161,8 @@ admin environment variables set.
   — Elango, 2026-11-07.
 - [x] **What does a blank token mean on an edit?** Decided: it keeps the stored token only when the URL is
   unchanged. A changed URL requires the token to be entered again, and the stored token is never sent to the
-  new host (criterion 7(a)). — Elango, 2026-11-07.
+  new host. A separate "this Kong needs no token" option (`adminToken: null`) removes a stored token
+  (criterion 7(a)). — Elango, 2026-11-07.
 - [x] **One gateway per install until spec 017?** Decided: yes, and a second add is refused (criterion 3).
   The server wires a single adapter at startup today, so this keeps the change to one pull request. JSO-245
   depends on this spec, and spec 017 would lift the limit. — Elango, 2026-11-07.
@@ -169,10 +174,11 @@ admin environment variables set.
   when there are no active keys. If the admin declines, nothing is saved and the existing connection keeps
   working (criterion 7(e)). The portal stores only a key's last four characters, so it can't recreate keys on
   another Kong. — Elango, 2026-11-07. The tech lead confirms feasibility in design.
-- [x] **Does disabling mean what criterion 7(b) says?** Decided: yes. Disable blocks only new apps and new
-  keys. Key revoke, app delete and the reconcile job keep running, and show a clear error if Kong can't be
-  reached. Existing keys keep working through Kong and docs stay published. Revoking access would mean
-  deleting keys that can't be recreated. — Elango, 2026-11-07.
+- [x] **Does disabling mean what criterion 7(b) says?** Decided: yes. Disable blocks new apps, new keys and
+  API import on that gateway, each with a clear error and nothing partial. Key revoke and the reconcile job
+  keep running, and report a clear error if Kong can't be reached. Existing keys keep working through Kong and
+  docs stay published. Revoking access would mean deleting keys that can't be recreated. Re-enabling reruns the
+  checks in criterion 4, so a connection to a dead Kong stays disabled until Kong answers. — Elango, 2026-11-07.
 - [x] **Should removing a gateway clean up the portal's objects in Kong?** Decided: no. Removal leaves them
   in Kong, including the `deny` ACLs from spec 004 on the operator's services, and the docs describe
   tag-based cleanup (criteria 7(d) and 10). A removal should never break traffic. — Elango, 2026-11-07. The
@@ -206,13 +212,11 @@ admin environment variables set.
   us the public address. The public URL can't be checked from the server. Propose which fields are required.
 - **Dependency on spec 004.** It isn't merged (PR #4 is open). Design by reading its branch
   `origin/feat/jso-233-004-per-api-access-control` without merging it, and revisit if PR #4 changes before it merges.
-- **App delete doesn't exist yet.** Criterion 7(b) names it, but neither `main` nor spec 004's branch has an app
-  delete operation, and this spec doesn't add one. That part of the criterion can't be tested until one exists.
 - **Quickstart.** The default compose file changes, so CI smoke and e2e tests that rely on the seeded admin and
   sample API must change in the same pull request. Spec 006 relies on criterion 8.
 - **If this won't fit one pull request:** ship criteria 1–6, 9 and 10 plus environment variables first, because
   they meet the issue's "Done when". Move edit, disable and remove (criterion 7) to a second pull request, along
-  with criterion 10's tag-based cleanup docs.
+  with criterion 8's "gateway becomes editable" part and criterion 10's tag-based cleanup docs.
 
 ---
 <!-- Sections below are filled by later stages. -->
