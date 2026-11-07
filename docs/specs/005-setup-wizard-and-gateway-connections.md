@@ -245,12 +245,11 @@ The whole scope fits one pull request, so the split suggested above isn't needed
 | Which fields are required? | `adminUrl`, `proxyInternalUrl` and `proxyPublicUrl`, because the catalog and try-it need them. The token is optional. The public URL's form is validated, but it isn't fetched. |
 | Is 7(e) feasible? (Elango asked) | **Yes.** `listOwnedConsumers()` on a candidate adapter reads the new Kong by instance tag, and the server compares `custom_id` with the apps that have active keys. It only reads, so a declined save changes nothing. |
 | Is 7(d) feasible? (Elango asked) | **Yes, with one migration.** Removal makes no Kong call, so traffic can't change. Revoked credentials and consumer mappings still reference the row today, so their foreign keys must change (see Data model). |
+| How does `SEED_SAMPLE=true` behave on a disabled gateway? | **Startup skips the seed, logs a warning and still starts.** Elango's ruling blocks publishing the sample on a disabled gateway, and seeding publishes it, so nothing is written to Kong or Postgres. A sample that's already published stays published. Failing startup would lock the admin out of re-enabling. The flag isn't consumed, so the next start after a re-enable seeds. Criterion 8 isn't affected: when `KONG_ADMIN_URL` is set, the environment sync sets `enabled = true` before the seed, so only a gateway saved from the admin screens can be disabled here. |
 
-**Four things Elango may want to look at:**
+**Two things Elango may want to look at:**
 - **A gateway with a published API can't be removed.** The portal has no way to unpublish an API, so 7(c) always refuses once one exists, including the sample. Follow-up: JSO-310.
 - **Pointing at a new Kong doesn't move published APIs.** They keep the old Kong's service IDs, and reconcile logs `service-missing`. Criterion 7(e) only asks for a warning about keys, and says none may appear when there are no active keys, so the warning follows that exactly. The docs page must say this. Follow-up: JSO-310.
-- **One addition to the spec: "this Kong needs no token".** `adminToken: null` removes a stored token. Without it, moving from a protected Kong to an open one would mean typing a junk token, because a blank token is refused when the URL changes. A blank field still behaves as 7(a) says, and the stored token is never sent.
-- **Re-enabling runs the checks.** The spec doesn't say; a disabled connection to a dead Kong stays disabled until Kong answers.
 
 ### Verified on a live Kong
 Kong 3.9.4, using the merged `KongAdapter` through the protected route. Each result below was observed.
@@ -290,7 +289,7 @@ The allowlist must hold the portal server's address as Kong sees it. Behind a lo
 | `apps/server/src/gateways.ts` (new) | `/v1/admin/gateways*` | AC 3, 4, 6, 7, 9 |
 | `apps/server/src/setup.ts` (new) | `/v1/setup*`, `createFirstAdmin`, setup token | AC 1, 2 |
 | `apps/server/src/auth.ts` | `user.create.before` hook that refuses sign-up with no admin | AC 1 |
-| `apps/server/src/startup.ts` | Environment sync, optional bootstrap, token, jobs load the gateway when they run | AC 1, 2, 8 |
+| `apps/server/src/startup.ts` | Environment sync, optional bootstrap, token, jobs load the gateway when they run, no seed on a disabled gateway | AC 1, 2, 7, 8 |
 | `apps.ts`, `import.ts`, `proxy.ts`, `reconcile.ts`, `seed.ts`, `app.ts`, `problem.ts` | Load the gateway per request or job; new problem types and fields | AC 3, 5, 7 |
 | `apps/portal/middleware.ts` | Sends every page to `/setup` until an admin exists | AC 1 |
 | `apps/portal` pages | `/setup`, `/setup/gateway`, `/admin/gateways`, and import states | AC 2–7 |
@@ -310,14 +309,15 @@ No new dependencies: `@fastify/rate-limit`, `node:net` `BlockList` and `node:dns
 | `GET /v1/admin/gateways` | 200 `GatewayList` (`items`, `bundled`) | 401, 403 |
 | `POST /v1/admin/gateways` | 201 `Gateway` | 400, 401, 403; 409 `gateway-exists`; 422 checks; 429 |
 | `POST /v1/admin/gateways/test` (30/min per admin) | 200 `GatewayTestResult` (`version`, `warnings`) | 400, 401, 403, 404; 422 checks; 429 |
-| `PATCH /v1/admin/gateways/{id}` | 200 `Gateway` | 400, 401, 403, 404; 409 `gateway-env-managed`, `gateway-keys-missing`; 422 checks; 429 |
+| `PATCH /v1/admin/gateways/{id}` | 200 `Gateway` | 400, 401, 403, 404; 409 `gateway-env-managed`, `gateway-keys-missing`; 422 checks, including on `enabled: true`; 429 |
 | `DELETE /v1/admin/gateways/{id}` | 204 | 401, 403, 404; 409 `gateway-env-managed`, `gateway-in-use` (with `apis`, `activeKeys`) |
-| `POST /v1/admin/gateways/{id}/sample` | 201 `ApiDetail` | 401, 403, 404; 409 `sample-not-available`; 502, 503 |
+| `POST /v1/admin/gateways/{id}/sample` | 201 `ApiDetail` | 401, 403, 404; 409 `gateway-disabled`, `sample-not-available`; 502, 503 |
 
 Changes to existing operations:
 - `GET /v1/health`: `gateway` may be null, and the status stays 200.
 - `GET /v1/admin/gateway/services`, `POST /v1/admin/apis`, `POST /v1/apps/{id}/credentials`: 409 `gateway-not-connected`.
-- `POST /v1/apps`, `POST /v1/apps/{id}/credentials`: 409 `gateway-disabled`, before any Kong write.
+- `POST /v1/apps`, `POST /v1/apps/{id}/credentials`, `POST /v1/admin/apis`: 409 `gateway-disabled`, before any Kong write.
+- `GET /v1/admin/gateway/services`: 409 `gateway-disabled`, with no request to Kong, so the service list isn't offered. The import screen uses this to refuse before the form.
 - `/api/auth/sign-up/email` refuses while no admin exists. Better Auth owns that route, so the refusal is its JSON error, not problem+json.
 
 **AC 4 message map.** The `detail` strings are fixed in `gateway-connection.ts` and never interpolate anything Kong sent:
@@ -363,7 +363,7 @@ migrate → instance row
                         no:  a row left as 'env' becomes 'admin'; otherwise leave it alone
 → ADMIN_EMAIL + ADMIN_PASSWORD set and no admin? createFirstAdmin
 → NODE_ENV=production and still no admin? generate the token and log it
-→ SEED_SAMPLE and a gateway exists? seed (with no gateway: log a warning and skip)
+→ SEED_SAMPLE and an enabled gateway exists? seed (no gateway, or disabled: log a warning and skip)
 → start jobs → listen
 ```
 - `ADMIN_EMAIL` without `ADMIN_PASSWORD`, or the reverse, fails at startup with a clear message. `KONG_ADMIN_TOKEN` or `KONG_PROXY_*` without `KONG_ADMIN_URL` is only used as described above.
@@ -376,11 +376,15 @@ migrate → instance row
 - **`loadGateway`:** selects the single row, decrypts the token and builds the adapter through an injected `adapterFor(row)`. That replaces `adapter` and `gatewayId` in `createApp`'s options, and tests pass a fake factory. A token that can't be decrypted logs an error without the value, and acts like an unavailable gateway: 503 on gateway calls and `reachable: false` on health, so a changed encryption key doesn't fail the compose health check.
 - **Save:** runs the checks with no lock held. Then one transaction takes `pg_advisory_xact_lock(71833002)` exclusively, the lock app creation holds in shared mode and reconcile holds while it runs, re-reads the row, re-applies the `env`, exists and dependents rules, writes, and commits. A save may wait for a running reconcile. After the commit it queues `gateway-reconcile` through an injected `enqueueReconcile`, so new deny ACLs don't wait 5 minutes.
 - **Remove:** same lock, then count `apis` and active `credentials`. Above zero is 409 with both counts.
-- **Disable:** app and key creation check `enabled` before any Kong write. Revoke, reconcile, import, discovery, the catalog and try-it ignore it (7(b)).
+- **Disable:** `requireEnabled` refuses with 409 `gateway-disabled` on app and key creation, discovery, import and the sample, before any Kong call. Revoke, reconcile, the catalog and try-it ignore it, so existing keys and docs carry on (7(b)). A change to only `enabled: false` makes no Kong call, so a dead Kong can still be disabled.
+- **Re-enable:** `enabled: true` runs the normal save order, so the checks in criterion 4 run first. If one fails, the response is that case's 422 and the row stays disabled. With the URL unchanged there's no missing-key count.
+- **Import start:** `GET /v1/admin/gateway/services` checks `enabled` right after the admin check and before any Kong call. The import screen waits for this response before it shows the form, and on `gateway-disabled` shows the disabled state instead of the form, with a link to Admin → Gateways.
+- **Import submit:** `POST /v1/admin/apis` checks `enabled` right after the admin check, before it parses the body, fetches `spec.url` or calls Kong. A disabled gateway therefore answers 409 even for an invalid document. The transaction then re-reads `enabled` after taking the shared lock and before `protectService`, so a disable that commits mid-import can't be followed by a Kong write. An import already past that point finishes first, because the save waits for the lock.
 - **Reconcile:** loads the gateway after it holds the lock, and returns at once if none exists. When Kong can't be reached it logs through the existing `backgroundJob` path.
 - **`createCredential`:** adds `ensureConsumer` and `grantAccess` for the app's subscribed services before `issueCredential`, and upserts `gateway_consumers`. Without this, a new key on an existing app gets a 502 after repointing, because Kong has no such consumer. Both calls are idempotent. It uses the existing shared lock and compensation.
 - **`createFirstAdmin`:** under `pg_advisory_xact_lock(71833003)`: if an admin exists, 409; check the token in constant time on SHA-256 digests; insert `user` with `role = 'admin'` and `account` with `providerId = 'credential'`, `accountId = user.id` and `password = await (await auth.$context).password.hash(...)`. After the commit, call `auth.api.signInEmail` with `returnHeaders: true` and copy `set-cookie`. If that sign-in fails, return 201 without a cookie; the portal sends them to `/sign-in`. If a user who predates this spec already has that email, the response is 400 `validation` on `/email`.
-- **Sample:** `seedSample` takes the loaded adapter, unchanged otherwise. `sampleAvailable` is `adminUrl === hint` and no API has slug `sample`, so it can't overwrite an API an admin published under that slug. It queues a reconcile afterwards.
+- **Sample:** `seedSample` takes the loaded adapter, unchanged otherwise. `sampleAvailable` is `enabled`, `adminUrl === hint` and no API has slug `sample`, so the wizard doesn't offer it on a disabled gateway and it can't overwrite an API an admin published under that slug. `POST …/sample` checks in this order: admin, the row exists, `gateway-disabled`, `sample-not-available`. It then takes the shared lock, re-reads `enabled` and seeds, and queues a reconcile afterwards.
+- **Seed at startup:** reads `enabled` from the row and follows the decision above. The deferred `seed-sample` job loads the gateway when it runs. If the gateway has since been removed or disabled, the job logs a warning and returns without throwing, so its retries stop and it writes nothing.
 - **Try-it:** `isAccessDenied` holds no connection state, so build the adapter from the `row.gateway` that `publishedApis` already joins.
 
 ### Adapter calls
@@ -417,7 +421,7 @@ The conformance suite gains `checkConnection` cases for a healthy gateway and a 
 | After repointing, reconcile writes ACLs to the new Kong | Intended, and it's why AC 3 tells the admin first. `service-missing` is only logged. |
 | Downstream specs assume seeded defaults | Spec 006 uses the environment path, which `SEED_SAMPLE=true` keeps working. Test: AC 8 with `NODE_ENV=production`. |
 | Local `pnpm dev` now starts with the wizard | Documented in the README. |
-| App delete doesn't exist (7(b)) | That part can't be tested in this spec. Follow-up: JSO-311. |
+| A disable lands during an import or sample | The re-read under the shared lock, with the save holding the exclusive lock. Test: a disable during a slow import waits for it, and an import or sample that takes the lock after the disable is refused with no Kong write. |
 
 ### Tasks
 - [ ] [backend] JSO-312 `packages/db`: migration and schema for `managed_by`, `enabled`, the singleton index and the changed foreign keys, with an upgrade test from a v0.2 row and revoked credentials.
@@ -425,26 +429,26 @@ The conformance suite gains `checkConnection` cases for a healthy gateway and a 
 - [ ] [backend] JSO-314 `config.ts`: optional admin and `KONG_ADMIN_URL`, empty string means unset, `SEED_SAMPLE` defaults to false, `PORTAL_BUNDLED_KONG_ADMIN_URL`, and a clear failure when only one admin variable is set.
 - [ ] [backend] JSO-315 `adapter-sdk` and `adapter-kong`: `checkConnection` and `checkProxy` per the design, `portal-internal` filter in `listServices`, and conformance cases.
 - [ ] [backend] JSO-317 `gateway-connection.ts`: `loadGateway` with `adapterFor`, `requireGateway`, `requireEnabled`, URL normalising, the SSRF check with `BlockList`, and the shared checks with the AC 4 message map.
-- [ ] [backend] JSO-318 Move `app.ts`, `apps.ts`, `import.ts`, `proxy.ts`, `reconcile.ts`, `seed.ts` and health to the per-request gateway, including null health, `gateway-not-connected`, `gateway-disabled`, and an undecryptable token acting as unavailable.
+- [ ] [backend] JSO-318 Move `app.ts`, `apps.ts`, `import.ts`, `proxy.ts`, `reconcile.ts`, `seed.ts` and health to the per-request gateway, including null health, `gateway-not-connected`, an undecryptable token acting as unavailable, and `gateway-disabled` on app and key creation, on `GET /v1/admin/gateway/services` with no Kong call, and on `POST /v1/admin/apis` before the document or Kong is touched, re-checked under the shared lock before `protectService`.
 - [ ] [backend] JSO-319 `createCredential`: ensure the consumer and grant access before issuing, and upsert `gateway_consumers`, so a new key works after repointing.
-- [ ] [backend] JSO-320 `gateways.ts`: list, create, test, update and delete, with the exclusive lock, env-managed refusals, 7(a) token rules, 7(e) missing-key count and confirmation, 7(c) counts, and a queued reconcile after each save.
-- [ ] [backend] JSO-321 `POST /v1/admin/gateways/{id}/sample` and `sampleAvailable`, so the sample is refused on any Kong but the bundled one and can't overwrite an API with slug `sample`.
+- [ ] [backend] JSO-320 `gateways.ts`: list, create, test, update and delete, with the exclusive lock, env-managed refusals, 7(a) token rules, 7(e) missing-key count and confirmation, 7(c) counts, a queued reconcile after each save, and re-enable: `enabled: true` runs the checks in criterion 4, and on failure returns that case's 422 and stays disabled, while a change to only `enabled: false` makes no Kong call.
+- [ ] [backend] JSO-321 `POST /v1/admin/gateways/{id}/sample` and `sampleAvailable`, so the sample is refused with `gateway-disabled` on a disabled gateway (`sampleAvailable` false, re-checked under the shared lock), is refused on any Kong but the bundled one, and can't overwrite an API with slug `sample`.
 - [ ] [backend] JSO-322 `setup.ts` and `auth.ts`: `GET /v1/setup`, `POST /v1/setup/admin` with direct atomic insert and sign-in cookie, setup token check, rate limit, and the `user.create.before` hook.
-- [ ] [backend] JSO-323 `startup.ts`: environment sync and `managed_by` handover, shared `createFirstAdmin`, setup token log line and redact paths, jobs that load the gateway when they run, and seeding only when a gateway exists.
+- [ ] [backend] JSO-323 `startup.ts`: environment sync and `managed_by` handover, shared `createFirstAdmin`, setup token log line and redact paths, jobs that load the gateway when they run, and seeding only when an enabled gateway exists: with none or a disabled one, startup and the `seed-sample` job log a warning, write nothing and don't fail or retry.
 - [ ] [backend] JSO-324 `problem.ts`: new problem types, titles and the `apis`, `activeKeys` and `affectedKeys` fields.
 - [ ] [backend] JSO-325 `deploy/docker-compose.yml`, `deploy/.env.example` and README: no default admin or gateway, the bundled hint, and the new quickstart steps.
 - [ ] [backend] JSO-326 New docs page on reaching the Kong Admin API: same-network option, the protected-route recipe, the warning not to expose the default compose file, tag-based cleanup including the `hide_credentials` caveat, and what repointing does and doesn't move.
 - [ ] [backend] JSO-327 Update `apps/server/src/*.test.ts` and `deploy/*.mjs` for the new options, and run the existing suites on the environment path so they keep their seeded sample.
 - [ ] [frontend] JSO-328 `middleware.ts`: send every page to `/setup` until an admin exists, cache the answer once false, pass public pages through when the server is down, and keep demo builds unaffected.
 - [ ] [frontend] JSO-329 `/setup`: first admin form, the setup token field when `setupTokenRequired`, refusal messages, and sign-in on success.
-- [ ] [frontend] `/setup/gateway` and post-sign-in landing: pre-filled bundled values, Test, what the portal will change in this Kong, skip, and the sample opt-in only when `sampleAvailable`.
+- [ ] [frontend] `/setup/gateway` and post-sign-in landing: pre-filled bundled values, Test, what the portal will change in this Kong, skip, and the sample opt-in only when `sampleAvailable`, showing the message if the sample call returns `gateway-disabled`.
 - [ ] [frontend] `/admin/gateways` and nav: add, edit, disable, re-enable and remove; read-only state when `managedBy` is `env`; blank token keeps the stored one; a "this Kong needs no token" option.
-- [ ] [frontend] Show every AC 4 message at the right field, the 7(a) re-enter-token message, the 7(e) warning with explicit confirmation and decline, and the 7(c) counts.
-- [ ] [frontend] Import screen: `gateway-not-connected` links to Admin → Gateways, and `gateway-unavailable` shows a retry that loses nothing. Handle `gateway: null` wherever health is read. Handle `gateway-disabled` on Create app and New key.
+- [ ] [frontend] Show every AC 4 message at the right field, including when a re-enable fails and the row stays disabled, the 7(a) re-enter-token message, the 7(e) warning with explicit confirmation and decline, and the 7(c) counts.
+- [ ] [frontend] Import screen (`admin-apis.tsx`): wait for the service list before showing the form, which today renders straight away. `gateway-disabled` shows the disabled state instead of the form and offers no service list, with a link to Admin → Gateways, while published APIs stay listed. The same refusal on submit shows the message and keeps what was entered. `gateway-not-connected` links to Admin → Gateways, and `gateway-unavailable` shows a retry that loses nothing, in place of today's one message for any error. Handle `gateway: null` wherever health is read. Handle `gateway-disabled` on Create app and New key.
 - [ ] [qa] AC 1, 2: fresh compose with no settings reaches `/setup` within 5 minutes, sign-up refused, no Kong objects; simultaneous submissions; production token right, wrong, missing and after an admin exists; a new token on each start.
 - [ ] [qa] AC 3, 4, 9: real Kong connect without restart, token encrypted and absent from responses and logs, second add refused; every failure case including real DB-less Kong; signed-out and developer callers get 401 or 403 with no outbound request.
 - [ ] [qa] AC 5, 6: pick a discovered service, import, and a developer's key returns 200; Kong down and no gateway states; sample opt-in, opt-out and non-bundled Kong.
-- [ ] [qa] AC 7: every path (a) to (e) on real Kongs, including two Kongs for (e), and removal leaving `deny` ACLs and traffic unchanged. Mark the app delete part of (b) as blocked by JSO-311.
+- [ ] [qa] AC 7: every path (a) to (e) on real Kongs, including two Kongs for (e), and removal leaving `deny` ACLs and traffic unchanged. For (b), also: new app and key refused; revoke and reconcile with Kong up and down; the import screen shows no form or service list; `GET /v1/admin/gateway/services` and an import submitted anyway get `gateway-disabled` with no new Kong objects or API row; a direct call to `POST /v1/admin/gateways/{id}/sample` gets `gateway-disabled` and leaves nothing, because the opt-in is only in the wizard; a restart with `SEED_SAMPLE=true` skips the seed and stays healthy; and re-enable against a dead Kong shows that case's message and stays disabled, then succeeds once Kong answers.
 - [ ] [qa] AC 8: full, admin-only and Kong-only environment variables, with `NODE_ENV=production`; env-managed refusals; a v0.2 upgrade using the new compose file keeps every key working and the gateway becomes editable.
 - [ ] [qa] AC 10: follow the docs page on a real Kong: right and wrong token, outside the allowlist, portal key 403, and tag-based cleanup leaving untagged objects untouched.
 - [ ] [qa] CI: fresh-install path first, then environment path for the existing smoke and e2e suites, and confirm the demo smoke is unaffected.

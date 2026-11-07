@@ -318,7 +318,9 @@ paths:
       summary: List Kong services that an imported spec can be linked to
       description: |
         Leaves out services tagged `portal-internal`, such as the protected Admin API route from
-        the docs recipe.
+        the docs recipe. The import screen calls this before showing its form. On a disabled
+        connection it makes no request to Kong and returns `/problems/gateway-disabled`, so the
+        service list isn't offered (spec 005 AC 7(b)).
       responses:
         '200':
           description: Services with their routes
@@ -333,7 +335,13 @@ paths:
                     items: { $ref: '#/components/schemas/GatewayService' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
-        '409': { $ref: '#/components/responses/GatewayNotConnected' }
+        '409':
+          description: |
+            `type` is one of `/problems/gateway-not-connected` (no gateway exists; the detail points
+            to Admin → Gateways) or `/problems/gateway-disabled` (the connection is disabled).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '502': { $ref: '#/components/responses/GatewayRejected' }
         '503': { $ref: '#/components/responses/GatewayUnavailable' }
 
@@ -353,6 +361,10 @@ paths:
         get 403 until their app subscribes, and so do non-portal consumers until the operator adds
         them to the group `portal-svc-<serviceId>`. A service without key-auth gets no ACL and
         publishes with an `api-public` warning. Kong applies plugin changes within about 5 seconds.
+
+        On a disabled connection the import is refused with `/problems/gateway-disabled` before the
+        body is validated, `spec.url` is fetched or Kong is called, and nothing is left behind
+        (spec 005 AC 7(b)).
       requestBody:
         required: true
         content:
@@ -373,8 +385,9 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '409':
           description: |
-            Slug already used (`/problems/api-slug-taken`), or no gateway is connected
-            (`/problems/gateway-not-connected`).
+            Slug already used (`/problems/api-slug-taken`), no gateway is connected
+            (`/problems/gateway-not-connected`), or the connection is disabled
+            (`/problems/gateway-disabled`). Nothing was created in Kong or Postgres.
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -484,7 +497,9 @@ paths:
       description: |
         A change to only `enabled: false` makes no request to Kong, so a connection to a Kong that
         is down can still be disabled. Every other change runs the same checks as `testGateway`
-        first. On any failure nothing is saved and the existing connection keeps working.
+        first. On any failure nothing is saved and the existing connection keeps working. That
+        includes `enabled: true`: if a check fails, the response names that case and the connection
+        stays disabled.
       requestBody:
         required: true
         content:
@@ -538,9 +553,9 @@ paths:
       operationId: addSampleApi
       summary: Publish the sample API on the bundled Kong
       description: |
-        Only when the connection's Admin API URL equals the bundled Kong's and no API has the slug
-        `sample` (`Gateway.sampleAvailable`). The sample's upstream exists only in the bundled
-        compose network.
+        Only when the connection is enabled, its Admin API URL equals the bundled Kong's and no API
+        has the slug `sample` (`Gateway.sampleAvailable`). The sample's upstream exists only in the
+        bundled compose network.
       responses:
         '201':
           description: Published
@@ -551,7 +566,9 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
-          description: This gateway can't take the sample (`/problems/sample-not-available`). Nothing was created.
+          description: |
+            `type` is `/problems/gateway-disabled` (the connection is disabled; this is checked first)
+            or `/problems/sample-not-available` (this gateway can't take the sample). Nothing was created.
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -720,11 +737,6 @@ components:
       headers:
         Retry-After:
           schema: { type: integer }
-      content:
-        application/problem+json:
-          schema: { $ref: '#/components/schemas/Problem' }
-    GatewayNotConnected:
-      description: No gateway is connected (`/problems/gateway-not-connected`). The detail points to Admin → Gateways.
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
