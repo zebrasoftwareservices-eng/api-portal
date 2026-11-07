@@ -63,7 +63,7 @@ export function requireGateway(
     throw new Problem(
       409,
       'gateway-not-connected',
-      'No gateway is connected. Go to Admin → Gateways to connect one.',
+      'No gateway is connected. An admin can connect one in Admin → Gateways. Nothing was created.',
     );
   if (!gateway.adapter) throw storedTokenUnavailable();
   return gateway as LoadedGateway & { adapter: GatewayAdapter };
@@ -85,28 +85,33 @@ export function storedTokenUnavailable() {
   );
 }
 export function normalizeUrl(value: string, field: string) {
+  let url: URL;
   try {
-    const url = new URL(value);
-    if (
-      !['http:', 'https:'].includes(url.protocol) ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash
-    )
-      throw new Error();
-    return (url.origin + url.pathname).replace(/\/+$/, '');
+    url = new URL(value);
   } catch {
-    throw invalidUrl(field);
+    throw invalidUrl(
+      field,
+      'Enter a URL that starts with http:// or https://.',
+    );
   }
+  if (!['http:', 'https:'].includes(url.protocol))
+    throw invalidUrl(
+      field,
+      'Enter a URL that starts with http:// or https://.',
+    );
+  if (url.username || url.password || url.search || url.hash)
+    throw invalidUrl(
+      field,
+      'Remove the username, password, query or fragment from this URL.',
+    );
+  return (url.origin + url.pathname).replace(/\/+$/, '');
 }
-function invalidUrl(field: string) {
+function invalidUrl(
+  field: string,
+  message = "The portal doesn't connect to link-local or cloud metadata addresses. Enter a different address.",
+) {
   return new Problem(400, 'validation', 'Check the connection URLs.', [
-    {
-      pointer: '/' + field,
-      message:
-        'Use an HTTP or HTTPS URL without credentials, a query or a fragment, and with no link-local or metadata address.',
-    },
+    { pointer: '/' + field, message },
   ]);
 }
 const blocked = new BlockList();

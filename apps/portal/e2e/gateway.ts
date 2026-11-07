@@ -220,12 +220,15 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
     '-e',
     `
     import { connect, instanceSettings } from './packages/db/dist/index.js';
-    import { KongAdapter } from './packages/adapter-kong/dist/index.js';
+    import { loadConfig } from './apps/server/dist/config.js';
+    import { gatewayConnection } from './apps/server/dist/gateway-connection.js';
     import { reconcile } from './apps/server/dist/reconcile.js';
     const { db, client } = connect(process.env.DATABASE_URL);
     try {
       const [instance] = await db.select().from(instanceSettings);
-      await reconcile(db, new KongAdapter({ adminUrl: process.env.KONG_ADMIN_URL, instanceId: instance.instanceId, adminToken: process.env.KONG_ADMIN_TOKEN }), { warn() {} });
+      const log = { warn() {}, error() {} };
+      const connection = gatewayConnection(db, loadConfig(), instance.instanceId, log);
+      await reconcile(db, connection, log);
     } finally { await client.end(); }
   `,
   );

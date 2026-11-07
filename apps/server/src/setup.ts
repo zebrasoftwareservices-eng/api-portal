@@ -41,7 +41,7 @@ export async function createFirstAdmin(
       throw new Problem(
         409,
         'setup-complete',
-        'An administrator already exists. Sign in to continue.',
+        "The first admin has already been created. A portal has only one first admin, so this one wasn't created.",
       );
     if (
       expectedToken &&
@@ -55,7 +55,7 @@ export async function createFirstAdmin(
       throw new Problem(
         403,
         'setup-token-invalid',
-        "The setup token is missing or incorrect. Use the token from this server's startup log.",
+        'The setup token is missing or wrong. No admin was created.',
       );
     const email = values.email.toLowerCase();
     const [existing] = await tx
@@ -67,22 +67,26 @@ export async function createFirstAdmin(
         400,
         'validation',
         'This email already belongs to a user. Use another email.',
-        [{ pointer: '/email', message: 'This email is already in use.' }],
+        [
+          {
+            pointer: '/email',
+            message:
+              'An account with this email already exists. Use a different email.',
+          },
+        ],
       );
     const id = uuidv7();
     const password = await (await auth.$context).password.hash(values.password);
     await tx
       .insert(user)
       .values({ id, email, name: values.name, role: 'admin' });
-    await tx
-      .insert(account)
-      .values({
-        id: uuidv7(),
-        accountId: id,
-        providerId: 'credential',
-        userId: id,
-        password,
-      });
+    await tx.insert(account).values({
+      id: uuidv7(),
+      accountId: id,
+      providerId: 'credential',
+      userId: id,
+      password,
+    });
     return { id, email, name: values.name, role: 'admin' as const };
   });
 }

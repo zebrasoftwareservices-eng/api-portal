@@ -96,9 +96,9 @@ export function problemHandler(app: FastifyInstance) {
               'gateway-keys-missing': "Some keys won't work on this Kong",
               'gateway-disabled': 'Gateway disabled',
               'gateway-not-connected': 'No gateway connected',
-              'setup-complete': 'Setup is already complete',
-              'setup-token-invalid': 'Setup token refused',
-              'sample-not-available': 'The sample API is not available',
+              'setup-complete': 'This portal already has an admin',
+              'setup-token-invalid': 'Setup token not accepted',
+              'sample-not-available': "The sample isn't available here",
               'gateway-service-has-acl':
                 'Another ACL plugin applies to this service',
               'gateway-service-already-linked':
