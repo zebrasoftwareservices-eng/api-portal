@@ -30,12 +30,16 @@ export async function seedSample(
     {
       name: 'key-auth',
       service: { name: 'portal-sample' },
-      config: { key_names: ['apikey'] },
+      config: { key_names: ['apikey'], hide_credentials: true },
       tags,
     },
   );
   const service = await adapter.getService('portal-sample');
   if (!service) throw new Error('Seed service missing');
+  // Existing installs need subscription memberships before the first allow ACL.
+  // Startup reconcile protects existing rows after backfilling them.
+  const existing = await db.select({ id: apis.id }).from(apis);
+  if (existing.length === 0) await adapter.protectService({ id: service.id });
   const document = parse(
     await readFile(
       new URL('../seed/sample-api.openapi.yaml', import.meta.url),
