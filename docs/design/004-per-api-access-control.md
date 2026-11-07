@@ -64,9 +64,11 @@ dialog, values kept and **Try again** available. A retry succeeds with the same 
 │ APIs / Orders API                                                            │
 │ Orders API  [v2.3.0]                                        [Get an API key] │
 │ Base URL  http://localhost:8000/orders  [Copy]                               │
-│ ⓘ To try a request, paste a key from an app that includes this API into the  │  changed
-│   apikey field under Authentication, choose an operation and select Send.    │
-│   If you get a 403, select Get an API key to create an app that includes it. │
+│ ⓘ To try a request, go to Authentication and paste a key from an app that    │  changed
+│   includes this API into the Value field. If you see Select Auth Type        │
+│   instead, open it and choose this API's key scheme first. Then choose an    │
+│   operation and select Send. If you get a 403, select Get an API key to      │
+│   create an app that includes it.                                            │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │ ┌───────────────┐ ┌──────────────────────┐ ┌───────────────────────────────┐ │
 │ │ Scalar sidebar│ │ GET /get  [Send]     │ │ Response            403       │ │
@@ -85,9 +87,9 @@ dialog, values kept and **Try again** available. A retry succeeds with the same 
 │ Base URL                          │
 │ http://localhost:8000/orders [⧉]  │
 │ [      Get an API key       ]     │
-│ ⓘ To try a request, paste a key   │  wraps to about 7 lines
-│   from an app that includes this  │
-│   API into the apikey field …     │
+│ ⓘ To try a request, go to         │  wraps to about 11 lines
+│   Authentication and paste a key  │
+│   from an app that includes …     │
 ├───────────────────────────────────┤
 │ Scalar (its own mobile layout)    │
 │ Response  403                     │
@@ -250,19 +252,24 @@ The field error is static, because `linkedApiSlug` in the list may be stale. `Pr
 ### 4.4 Portal copy
 | Where | Replaces | Text |
 | --- | --- | --- |
-| API reference info line | "To try a request, paste your API key…" | ⓘ To try a request, paste a key from an app that includes this API into the apikey field under Authentication, choose an operation and select Send. If you get a 403, select Get an API key to create an app that includes it. |
+| API reference info line | "To try a request, paste your API key…" | ⓘ To try a request, go to Authentication and paste a key from an app that includes this API into the Value field. If you see Select Auth Type instead, open it and choose this API's key scheme first. Then choose an operation and select Send. If you get a 403, select Get an API key to create an app that includes it. |
 | Create app, under the legend | New | This app's keys work only on the APIs you choose here. To use another API later, create another app. |
 | Kong service hint, `keyAuth` true | New | Publishing limits this service to apps that include this API. Other Kong consumers lose access until you add them to its group, and Kong stops forwarding API keys to the upstream. See the upgrade notes. |
 | Warning, `keyAuth` false | "Key-auth isn't enabled… Kong won't check them…" | ⚠ This API will be public. Key-auth isn't enabled on this service, so anyone can call it without a key. To require keys, enable the key-auth plugin on the service in Kong, then select Refresh list. |
 | Warning, `linkedApiSlug` set | "This service already serves /apis/{slug}." | ⚠ This service already serves /apis/{linkedApiSlug}. A Kong service can serve only one published API, so this import will be refused. Choose another one. |
+
+The info line names Scalar's **Value** field because that is where the key goes: `apikey` is only the
+content of the **Name** row, and it changes with the document. **Select Auth Type** is what Scalar shows
+when the document sets `security` per operation and has none at the top level (JSO-281). The line doesn't
+name the scheme, because each document names its own.
 
 The hint doesn't print the `portal-svc-<serviceId>` group name: names are derived inside the Kong
 adapter (ADR 0005, decision 9), and the frontend shouldn't derive them too. The upgrade notes
 (JSO-265) explain how to add a consumer.
 
 ## 5. Accessibility (WCAG 2.2 AA)
-- **Keyboard, Flow A:** breadcrumb → **Copy** → **Get an API key** → Scalar (auth input, **Send**). The
-  response scroller in Scalar is focusable (`tabindex="0"`), so arrow keys reach the end of long
+- **Keyboard, Flow A:** breadcrumb → **Copy** → **Get an API key** → Scalar (**Select Auth Type** if it
+  shows, **Value** input, **Send**). The response scroller in Scalar is focusable (`tabindex="0"`), so arrow keys reach the end of long
   lines, and it has its own copy button. Shift+Tab back to **Get an API key**, or reach it from the page top.
 - **Keyboard, Flow D:** refused submit → focus on the Kong service select → choose another service →
   Tab through to **Import and publish**. The alert and field error are visible at the same time.
