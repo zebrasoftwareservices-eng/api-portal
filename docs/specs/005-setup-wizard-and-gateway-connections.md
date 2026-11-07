@@ -1,7 +1,7 @@
 ---
 id: 005
 title: First-run setup and gateway connections
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-234
@@ -454,7 +454,14 @@ The conformance suite gains `checkConnection` cases for a healthy gateway and a 
 - [ ] [qa] CI: fresh-install path first, then environment path for the existing smoke and e2e suites, and confirm the demo smoke is unaffected.
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/005-*.md`
+Full design: [docs/design/005-setup-wizard-and-gateway-connections.md](../design/005-setup-wizard-and-gateway-connections.md). It adds no new tokens.
+
+- **Screens:** `/setup` (first admin, with the setup token only when required), `/setup/gateway` (connect, then the sample choice on the bundled Kong) and `/admin/gateways` (one connection as a card, or the add form when there's none). A new `AdminNav` makes Gateways findable. The import, Create app and New key screens gain the disabled and not-connected states.
+- **A passed Test says "Nothing has been saved yet."** Save is never blocked on Test, because the server runs the same checks. What saving changes in Kong stays visible next to the button.
+- **Every criterion 4 case has fixed copy, a named field and a closing line** saying what didn't change. The design lists every server `title` and `detail`, including the setup token's log line.
+- **No step count in the wizard.** `SetupStatus` can't say whether a gateway step follows.
+- **No dead controls.** An environment-managed gateway shows an explanation and no actions.
+- **Follow-ups:** JSO-365 (frontend additions the task list doesn't name, including `create-app.tsx` and `app-detail.tsx` treating every 409 as one case) and JSO-366 (no defined response when a stored token can't be decrypted).
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
