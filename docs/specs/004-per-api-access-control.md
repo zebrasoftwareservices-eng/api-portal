@@ -1,7 +1,7 @@
 ---
 id: 004
 title: Per-API access control on Kong
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-06
 linear: JSO-233
@@ -392,12 +392,12 @@ go slightly beyond it. They're tracked in JSO-276:
 
 ## Test report  _(qa-tester)_
 
-QA rerun after backend review fixes: 2026-11-06 (application commit `4e97c56`, dispatch base `ac63502`). Real Kong 3.9 and Postgres 17 run in Testcontainers; browser and startup/outage journeys run against the built Docker Compose quickstart. Tests change no application code.
+QA rerun after the approved JSO-277/JSO-281 fixes: 2026-11-07 (dispatch base `c2737c1`; backend fix `939beaf`, frontend fix `4683804`). Real Kong 3.9 and Postgres 17 run in Testcontainers; browser and startup/outage journeys run against the built Docker Compose quickstart. Tests change no application code.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
 | AC 1 — subscribed A succeeds, unsubscribed B is refused | `packages/adapter-kong/src/conformance.test.ts`, “AC 1/3/4” | PASS: 200 on A, 403 on B; missing, unknown and revoked keys return 401. |
-| AC 2 — try-it shows the 403, exact title and next step; upstream 403 stays unchanged | `apps/portal/e2e/journeys.ts`, “AC 2”; `apps/server/src/app.test.ts`, “rewrites only gateway ACL 403s” | PASS against real Kong in Scalar for JSON, XML, plain text and HTML operations, asserting Scalar actually forwards the declared Accept header and renders the response title and next-step problem body; actual body scroller exceeds 400px at 1280/1920 and 280px at 375, with a visible Body region. The browser fixture waits for publication visibility because of JSO-277. |
+| AC 2 — try-it shows the 403, exact title and next step; upstream 403 stays unchanged | `apps/portal/e2e/journeys.ts`, “AC 2”; `apps/server/src/app.test.ts`, “rewrites only gateway ACL 403s” | PASS against real Kong in Scalar for JSON, XML, plain text and HTML operations, asserting Scalar actually forwards the declared Accept header and renders the response title and next-step problem body; actual body scroller exceeds 400px at 1280/1920 and 280px at 375, with a visible Body region. The JSON fixture has operation-level security and a scheme named `key`: the test follows Select Auth Type → key → Value before sending. A warm catalog accepts each newly published target on the first proxy request, without the old 30-second polling workaround (JSO-277). |
 | AC 3 — unmanaged key-auth refuses portal keys, operator keys and public traffic preserved | `packages/adapter-kong/src/conformance.test.ts`, “AC 1/3/4”, “AC 3: route-only”, “AC 3/4: global” | PASS: service, route-only and global key-auth; public sibling remains open; operator consumer succeeds on unmanaged service. |
 | AC 4 — header and query key hidden; consumer identity retained | `packages/adapter-kong/src/conformance.test.ts`, “AC 1/3/4”, “AC 3/4: global” | PASS: echo contains neither key; `X-Consumer-Custom-Id` matches app; global key-auth unchanged outside managed services. |
 | AC 5 — legacy keys upgrade without interruption and restart converges | `packages/adapter-kong/src/conformance.test.ts`, “AC 5/7” and “JSO-286”; `apps/portal/e2e/gateway.ts`, “sample seed converges”; `apps/server/src/app.test.ts`, reconcile policy assertion | PASS under the documented review ruling: uninterrupted subscribed traffic returns 200 during upgrade; B becomes 403; a fresh adapter makes no repairs. Real server restart preserves complete sample service, route and plugin IDs/configuration, ignoring `created_at` and `updated_at`. The 501-consumer / 1,002-membership case exercises paged ACL reads. Single-node Kong only. |
@@ -409,31 +409,32 @@ QA rerun after backend review fixes: 2026-11-06 (application commit `4e97c56`, d
 
 Validation for this rerun (supersedes earlier QA results):
 
-- `pnpm lint` and `pnpm typecheck`: **PASS**. Standalone strict TypeScript checking of both edited Playwright files also passes.
-- `pnpm test --force`: **PASS, 147 tests** (69 portal, 39 Kong adapter, 38 server, 1 database); all 12 workspace tasks execute without cache. The count includes the explicitly expected-failure regression for the unfixed minor JSO-277.
-- `pnpm test:e2e`: **PASS, 24/24 ordinary passes in 2.7 minutes**, no browser expected failures. Includes four negotiated response formats, 1280/1920/375px body-width checks, repeated import-refusal focus, gateway outage and startup/reconcile recovery.
-- `node deploy/quickstart-smoke.mjs`: **PASS, 125.5 seconds**, including image builds, Compose startup and seeded home page on a new Compose stack.
+- `pnpm lint` and `pnpm typecheck`: **PASS**. Standalone strict TypeScript checking of the journey and gateway Playwright files also passes.
+- `pnpm test --force`: **PASS, 148 ordinary passes** (70 portal, 39 Kong adapter, 38 server, 1 database); all 12 workspace tasks execute without cache. No skipped or expected-failure tests remain.
+- `pnpm test:e2e`: **PASS, 24/24 ordinary passes in 1.1 minutes**, no browser expected failures. Includes four negotiated response formats, 1280/1920/375px body-width checks, repeated import-refusal focus, gateway outage and startup/reconcile recovery.
+- `node deploy/quickstart-smoke.mjs`: **PASS, 98.7 seconds**, including image builds, Compose startup and seeded home page against the worktree Compose stack (cached image layers and existing volumes; no volume reset).
 - `node deploy/smoke.mjs`: **PASS** (signup, app/key creation, real Kong auth, try-it, one-time key and revocation). `node deploy/outage-smoke.mjs`: **PASS** (Kong outage returns 503 with no partial app, retry creates one consumer/key, server outage shows the error page and recovers).
-- Failure paths cover invalid input, missing permission, real session expiry before creating an app (no consumer/grant/key side effects), duplicate requests, refused imports, unreachable gateway, grant timeout and compensation. This rerun adds real-browser negotiated-format refusal cases and verifies upstream 403 pass-through for each.
-- Local evidence: `/tmp/004-qa3-{lint,typecheck,test,e2e-types,e2e,quickstart,smoke,outage}.log`.
+- Failure paths cover invalid input, missing permission, real session expiry before creating an app (no consumer/grant/key side effects), duplicate requests, refused imports, unreachable gateway, grant timeout and compensation. This rerun adds operation-level security/Value-field recovery and removes publication-cache polling; all four negotiated-format refusals retain upstream 403 pass-through checks. Existing invalid-input, session, permission, timeout and compensation tests pass without modification.
+- Local evidence: `/tmp/004-qa4-{lint,typecheck,test,e2e-types,e2e,quickstart,smoke,outage}.log`.
 
 Known limitations and flakiness:
 
-- JSO-277 remains a deterministic `it.fails` regression: a warm proxy catalog cache rejects newly published targets for up to 30 seconds. Browser fixtures poll publication visibility before checking access responses.
-- Per the tech-lead's AC 5 ruling, removed the JSO-282 timestamp expected-failure test and strengthened the ordinary restart check from IDs alone to complete object configuration, excluding both timestamp fields. JSO-282 stays Backlog pending Elango's interpretation of literal AC 5 wording; this is not an application fix.
-- Existing minor issues JSO-281, JSO-283 and JSO-284 remain Backlog. No claim is made that they are fixed.
+- JSO-277 now passes as an ordinary server regression, including unpublished and external target failure paths; browser coverage warms the catalog before publishing and checks the first proxy request without retries.
+- Per the tech-lead's AC 5 ruling, the ordinary restart check compares complete object configuration, excluding both timestamp fields. JSO-282 stays Backlog pending Elango's interpretation of literal AC 5 wording; this is not an application fix.
+- Existing minor issues JSO-282, JSO-283, JSO-284 and JSO-292 remain Backlog. No claim is made that they are fixed.
+- The first browser attempt exposed incorrect locators in the new test (a hidden input remains mounted; the option name includes its Delete button), which were corrected without application changes. An immediate rerun then exhausted the existing 60/minute proxy budget and returned 429s; `/tmp/004-qa4-e2e-rate-limit-attempt.log` preserves that evidence. The final full run starts after a server restart clears that in-memory budget; repeated runs need a fresh rate window or server restart.
 - Kong propagation is asynchronous; tests poll observable responses. The existing six-second production membership settle wait remains real. Multi-node Kong remains untested.
 
-Disposition: **uat**. All ten criteria have passing automated coverage under the documented AC 5 timestamp ruling. No new bug or open blocker/major Bug issue was found; both blocking Code Review fixes are independently verified and await tech-lead closure on re-review. The five known minor Backlog bugs remain open.
+Disposition: **uat**. All ten criteria have passing automated coverage under the documented AC 5 timestamp ruling. No new bug or open blocker/major Bug issue was found; JSO-277 and JSO-281 are independently verified and closed. Four known minor Backlog bugs remain open; prior Code Review findings JSO-286/287 are already Done.
 
-Bug retest audit: queried all direct Bug children of JSO-233 without a limit: **eight issues, `truncated: false`, `hasMore: false`**, and none In Review. JSO-278/279/280 remain Done; the five minor issues remain Backlog. JSO-286/287 are Code Review findings in In Review: QA verifies their automated regressions, with finding closure reserved to the tech lead on re-review. Existing QA task issues JSO-268–JSO-274 were already Done and remain Done; JSO-252 was explicitly reopened for this rerun.
+Bug retest audit: queried all direct Bug children of JSO-233 without a limit: **nine issues, `truncated: false`, `hasMore: false`**. The two In Review issues, JSO-277 and JSO-281, pass independent regression tests and move to Done; JSO-278/279/280 remain Done. JSO-282/283/284/292 remain Backlog (all minor). Existing QA task issues JSO-268–JSO-274 were already Done and remain Done; JSO-252 was explicitly reopened for this rerun.
 
 ### Bugs
-- [ ] JSO-277 Newly published APIs are rejected by try-it until its 30-second catalog cache expires (minor)
+- [x] JSO-277 Newly published APIs are rejected by try-it until its 30-second catalog cache expires (minor)
 - [x] JSO-278 Admin service-refusal focus assertion intermittently fails under test load (minor)
 - [x] JSO-279 Try-it response body is about 116px wide on desktop, so the 403 message can't be read (major)
 - [x] JSO-280 After an import refusal, focus stays on the alert instead of the Kong service field (minor)
-- [ ] JSO-281 API reference info line points to an apikey field that isn't there when security is set per operation (minor)
+- [x] JSO-281 API reference info line points to an apikey field that isn't there when security is set per operation (minor)
 - [ ] JSO-282 Restarting the server resets `created_at` on the sample's Kong objects (minor)
 - [ ] JSO-283 Keyboard users can't scroll Scalar's response body to read the end of the 403 message (minor)
 - [ ] JSO-284 Kong service hint says "See the upgrade notes" but gives no link to them (minor)

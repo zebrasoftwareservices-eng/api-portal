@@ -197,6 +197,13 @@ for (const mediaType of [
           })
         ).ok(),
       ).toBe(true);
+      expect(
+        (
+          await admin.get(
+            '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get',
+          )
+        ).status(),
+      ).toBe(401);
       const imported = await admin.post('/api/v1/admin/apis', {
         data: {
           slug: path,
@@ -205,9 +212,21 @@ for (const mediaType of [
             content: JSON.stringify({
               openapi: '3.1.0',
               info: { title: path, version: '1' },
+              ...(mediaType === 'application/json'
+                ? {
+                    components: {
+                      securitySchemes: {
+                        key: { type: 'apiKey', in: 'header', name: 'apikey' },
+                      },
+                    },
+                  }
+                : {}),
               paths: {
                 '/get': {
                   get: {
+                    ...(mediaType === 'application/json'
+                      ? { security: [{ key: [] }] }
+                      : {}),
                     responses: {
                       '200': {
                         description: 'Echo',
@@ -254,21 +273,41 @@ for (const mediaType of [
           { timeout: 15000 },
         )
         .toBe(403);
-      // JSO-277: publication can precede proxy catalog-cache expiry by 30s.
-      await expect
-        .poll(
-          async () =>
-            (
-              await context.request.get(
-                '/api/v1/try-it?scalar_url=' +
-                  encodeURIComponent(`http://localhost:8000/${path}/get`),
-                { headers: { apikey: credential.key } },
-              )
-            ).status(),
-          { timeout: 35000, intervals: [1000] },
-        )
-        .toBe(403);
+      // JSO-277: one request must refresh a warm catalog on a target miss.
+      expect(
+        (
+          await context.request.get(
+            '/api/v1/try-it?scalar_url=' +
+              encodeURIComponent(`http://localhost:8000/${path}/get`),
+            { headers: { apikey: credential.key } },
+          )
+        ).status(),
+      ).toBe(403);
       await page.goto(`/apis/${path}`);
+      if (mediaType === 'application/json') {
+        // JSO-281: operation-level security initially has no selected scheme.
+        await expect(page.locator('main .alert')).toContainText(
+          'If you see Select Auth Type',
+        );
+        const selector = page.getByRole('button', {
+          name: 'Select Auth Type',
+          exact: true,
+        });
+        await expect(selector).toBeVisible();
+        await expect(
+          page.getByPlaceholder('QUxMIFlPVVIgQkFTRSBBUkUgQkVMT05HIFRPIFVT'),
+        ).toBeHidden();
+        await selector.click();
+        await page
+          .getByRole('option', { name: 'key Delete key', exact: true })
+          .click();
+        const value = page
+          .getByRole('region', { name: 'Authentication', exact: true })
+          .getByRole('textbox', { name: 'Value', exact: true });
+        await expect(value).toBeVisible();
+        await value.fill(credential.key);
+        await expect(value).toHaveValue(credential.key);
+      }
       await page
         .getByRole('button', { name: /Test Request/ })
         .first()
