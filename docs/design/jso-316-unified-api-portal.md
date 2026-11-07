@@ -325,7 +325,7 @@ Pending or denied access appears as a text badge beside the access summary.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ Your apps / Create app                                          │
+│ My apps / Create app                                            │
 │ Create app                                                      │
 │ An app owns access and credentials for one integration.         │
 │                                                                  │
@@ -366,7 +366,7 @@ action; never retry app creation and risk a duplicate.
 ```
 1280 px
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ Your apps / Fulfillment worker                                            │
+│ My apps / Fulfillment worker                                              │
 │ Fulfillment worker                                     [Create credential]│
 │ Sends packed-order updates.                              Updated 7 Nov 2026 │
 │                                                                            │

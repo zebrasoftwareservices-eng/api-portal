@@ -1,7 +1,7 @@
 ---
 id: 019
 title: Unified portal — developer journey
-status: designed # draft → ready → designed → building → testing → uat → review → approved → done
+status: building # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-316
@@ -425,7 +425,27 @@ Accepted limits, with no change here:
 
 ## UX _(ui-designer)_
 
-Summary + link to `docs/design/NNN-*.md`
+Full design: [`docs/design/019-unified-portal-developer-journey.md`](../design/019-unified-portal-developer-journey.md).
+No new routes, tokens or shared components.
+
+- **API page:** while the check runs, the action area shows a placeholder that holds its space and
+  isn't a link. The action then appears without moving focus. A failed check shows a warning message
+  below the base URL with **Try again**, which reads **Checking…** during a retry and keeps focus. Only
+  a successful retry moves focus to the action.
+- **My apps:** the table keeps its four columns from 768 px, and each app is a card below that. The
+  access label reads "● Has access to {API title}", with the existing highlight tint. Cards have one
+  link, **Open app**.
+- **App page:** each APIs row has one link, **Try this API**, in place of the title link and "View
+  reference".
+- **Mobile menu:** **Close menu** moves above the links, so the order on screen matches the focus order
+  that starts on it. The menu stays the existing centred dialog, not the north star's side sheet.
+- **Long names:** names and titles wrap and are never truncated. The access action is at most 320 px
+  wide at 1280 px.
+- **Screen readers:** one live region stays mounted for the check's result, and repeated links carry
+  hidden context, such as "Try this API: Orders API".
+
+Known gap: the server's 403 detail still says "Select Get an API key on this page", even when the page
+shows another action. It needs a server change, so it's tracked as a follow-up in JSO-397.
 
 ## Build notes _(backend-developer, frontend-developer)_
 
