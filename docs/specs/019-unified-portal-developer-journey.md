@@ -407,15 +407,15 @@ Accepted limits, with no change here:
 
 ### Tasks
 
-- [ ] [frontend] JSO-382 `lib/access.ts` and `quietApi`: add the `Access` type, `accessFromApps`, `checkAccess`, `accessAction` and `recoverySentence` from the design, with unit tests for every table row, each failure response and each criterion 7 sentence.
-- [ ] [frontend] JSO-383 `components/api-access.tsx`: build the provider and its three readers, with the 10-second abort, stale-attempt guard, retry state and focus move after a successful retry, plus component tests with fake timers.
-- [ ] [frontend] JSO-384 API page: wrap the non-demo branch in the provider with `Reference` as stable `children`, replace the fixed action and 403 sentence, and update `api-page.test.tsx`.
-- [ ] [frontend] JSO-385 Auth links: add `signInLink` and `signUpLink` to `lib/navigation.ts`, use them in `AuthForm`, and update `navigation.test.ts` and `auth-form.test.tsx`.
-- [ ] [frontend] JSO-386 Create app: focus the app name on mount when `slug` is set, and rename the breadcrumb to My apps.
-- [ ] [frontend] JSO-387 Header: rename Dashboard to My apps, make APIs current on `/apis/{slug}`, and focus **Close menu** on open, with a new `header.test.tsx`.
-- [ ] [frontend] JSO-388 My apps naming and label: rename the heading, page title, loading heading and caption, read `?api=`, and show the text label on apps with access in the Name cell, with a new `dashboard.test.tsx`.
-- [ ] [frontend] JSO-389 My apps cards: add the card list and the 768 px switch in `packages/ui/src/styles.css`, and wrap long names and action labels so nothing overflows at 375 or 640 px.
-- [ ] [frontend] JSO-390 App page: rename the breadcrumb to My apps and add **Try this API** to every APIs row, leaving the **Try your key** card as it is, and update `app-detail.test.tsx`.
+- [x] [frontend] JSO-382 `lib/access.ts` and `quietApi`: add the `Access` type, `accessFromApps`, `checkAccess`, `accessAction` and `recoverySentence` from the design, with unit tests for every table row, each failure response and each criterion 7 sentence.
+- [x] [frontend] JSO-383 `components/api-access.tsx`: build the provider and its three readers, with the 10-second abort, stale-attempt guard, retry state and focus move after a successful retry, plus component tests with fake timers.
+- [x] [frontend] JSO-384 API page: wrap the non-demo branch in the provider with `Reference` as stable `children`, replace the fixed action and 403 sentence, and update `api-page.test.tsx`.
+- [x] [frontend] JSO-385 Auth links: add `signInLink` and `signUpLink` to `lib/navigation.ts`, use them in `AuthForm`, and update `navigation.test.ts` and `auth-form.test.tsx`.
+- [x] [frontend] JSO-386 Create app: focus the app name on mount when `slug` is set, and rename the breadcrumb to My apps.
+- [x] [frontend] JSO-387 Header: rename Dashboard to My apps, make APIs current on `/apis/{slug}`, and focus **Close menu** on open, with a new `header.test.tsx`.
+- [x] [frontend] JSO-388 My apps naming and label: rename the heading, page title, loading heading and caption, read `?api=`, and show the text label on apps with access in the Name cell, with a new `dashboard.test.tsx`.
+- [x] [frontend] JSO-389 My apps cards: add the card list and the 768 px switch in `packages/ui/src/styles.css`, and wrap long names and action labels so nothing overflows at 375 or 640 px.
+- [x] [frontend] JSO-390 App page: rename the breadcrumb to My apps and add **Try this API** to every APIs row, leaving the **Try your key** card as it is, and update `app-detail.test.tsx`.
 - [ ] [qa] JSO-391 AC 1, 2: e2e navigation for visitor, developer and admin at 1280 px, including `aria-current`, naming and page titles, and mobile menu focus and Escape at 375 px.
 - [ ] [qa] JSO-392 AC 3: e2e for all four sign-up and sign-in paths from an API page and the direct `/dashboard/apps/new?api={slug}` visit, asserting the checked API and focus.
 - [ ] [qa] JSO-393 AC 4, 7: e2e for one and two apps with access, including revoked keys, an 80-character name at 375 px, the highlight and its absence, an unknown `?api=`, and the 403 sentence for each row.
@@ -448,6 +448,19 @@ Known gap: the server's 403 detail still says "Select Get an API key on this pag
 shows another action. It needs a server change, so it's tracked as a follow-up in JSO-397.
 
 ## Build notes _(backend-developer, frontend-developer)_
+
+- 2026-11-07 — Frontend (JSO-357), implementation commit `36f6aa2`: completed JSO-382–JSO-390.
+  Added access-aware API actions and exact recovery copy using the quiet generated client, a
+  10-second abort, stale-result protection, inline retry and focus recovery. The server-created
+  reference remains stable during access updates; the demo never mounts the check. Updated auth
+  continuation links, My apps naming and access labels, mobile cards, menu focus and API row links.
+- Validation: `pnpm lint` and `pnpm typecheck` passed; `NODE_OPTIONS=--no-experimental-webstorage pnpm test` passed (117 portal tests; unchanged server, database and gateway results reused Turbo's
+  cache). Tests needed local socket access outside the sandbox. This machine runs Node 26; the
+  flag lets jsdom provide browser storage instead of Node's incompatible storage globals.
+- QA: the component tests cover timeout/late results, Strict Mode cleanup, retry focus (including
+  401), unchanged reference rendering/input, app preselection focus, menu trapping and both app
+  layouts. The real Scalar input, browser widths/zoom and demo network assertions remain the
+  assigned JSO-391–JSO-396 e2e tasks. Existing follow-up JSO-397 remains unchanged.
 
 ## Test report _(qa-tester)_
 
