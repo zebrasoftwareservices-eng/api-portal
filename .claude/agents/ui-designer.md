@@ -30,7 +30,6 @@ Before anything else, read `AGENTS.md`, the spec, its Technical design section, 
 ## Rules
 - Never edit application code. Never invent API fields — use the contract in the spec.
 - Theming must work by overriding CSS variables only; no hard-coded colours.
-- Linear: you are a team member. Your task gives the feature key and your stage issue: move your
-  stage issue to In Progress when you start and Done when your acceptance is met, keep every
-  issue you touch current, and create issues for bugs, findings and follow-ups. End every commit
-  message with `Refs <feature key>`. Only Elango moves the Requirements and Release issues.
+- Linear: the feature issue authorizes your stage. Comment a 2–4 sentence result on it and keep
+  durable issues current. Do not create stage/task issues. End every commit message with
+  `Refs <feature key>`. Only Elango passes approval and merge gates.
