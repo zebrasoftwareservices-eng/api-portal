@@ -1,6 +1,6 @@
 ---
 id: 012
-title: API versions and changelog, spec linting, search and agent-ready docs
+title: API versions and changelog, and spec linting
 status: draft   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
@@ -8,11 +8,11 @@ linear: JSO-240
 linear_stages:     # stage issues — filled by linear-init
 ---
 
-# 012 — Docs that keep up: versions, changelog, linting, search and agent-ready pages
+# 012 — API versions, changelog and spec linting
 
 ## Summary
-Admins can publish a new version of an API with a changelog, bad specs are stopped at import,
-and developers and AI agents can find any endpoint by search, as Markdown or through `/llms.txt`.
+Admins can publish a new version of an API with a changelog, and specs that would break the
+rendered docs or the try-it panel are stopped at import.
 
 ## Problem
 Today an API in the portal has exactly one OpenAPI document. When the team ships v2, the admin
@@ -20,101 +20,109 @@ can only replace v1 or import v2 as a second API, and since spec 004 the second 
 refused: ADR 0005 allows only one published API per Kong service, because a Kong ACL can't tell
 two APIs on the same service apart. Developers can't see what changed between versions or keep
 reading the version they integrated against. The import checks only that a document is valid
-OpenAPI 3.x, so specs with missing descriptions, broken examples or duplicate operation IDs get
-published and make the docs worse. There's no search, so a developer who knows a path like
-`/orders/{id}` has to browse every API to find it. AI coding agents, which developers
-increasingly point at docs, get HTML built for browsers instead of text they can read.
+OpenAPI 3.x, so specs with unresolved references, duplicate operation IDs or undeclared path
+parameters get published and produce broken reference pages and try-it calls.
 
 We'll know it's solved when importing v2 of an API shows a version switcher and a changelog
-entry on the same API, a spec with a lint error is refused with its rule and location, search
-finds an endpoint by its path, and `/llms.txt` lists every API.
+entry on the same API, and a spec with a lint error is refused with its rule and location.
+
+Split from the original 012 (Elango, 2026-11-08): search moved to spec 020, agent-ready docs
+(Markdown pages, `/llms.txt`, per-version spec downloads, code samples) moved to spec 021.
+This spec ships first; 021's per-version downloads need it.
 
 ## Users
-- **Portal admin / platform engineer:** imports specs and publishes new versions.
-- **API consumer (developer):** reads the reference, switches versions, reads the changelog, searches.
-- **AI agent:** reads the portal through `/llms.txt`, Markdown pages and spec downloads.
+- **Portal admin / platform engineer:** imports specs, publishes new versions, configures the
+  lint ruleset.
+- **API consumer (developer):** reads the reference, switches versions, reads the changelog.
 
 ## User stories
 - As a portal admin, I want to import a new version of an API I already published, so that
   developers get the new docs without the API being split into two.
 - As a portal admin, I want to write release notes for a version and have the portal summarise
   what changed, so that the changelog is useful without a lot of writing.
-- As a portal admin, I want an import with spec errors refused with the rule and location, so
-  that I can fix the spec before bad docs reach developers.
-- As a portal admin, I want lint warnings shown but not blocking, so that I can publish now and
-  improve the spec later.
+- As a portal admin, I want an import that would break the docs or try-it refused with the rule
+  and location, so that I can fix the spec before bad docs reach developers.
+- As a portal admin, I want other lint findings shown as warnings but not blocking, so that I
+  can publish now and improve the spec later.
+- As a platform engineer, I want to replace the portal's ruleset with my company's own Spectral
+  ruleset file through configuration, so that the portal enforces our API style guide.
 - As a developer, I want to switch between versions of an API and read its changelog, so that
   I can read the docs for the version I use and plan my upgrade.
-- As a developer, I want to search for an API or an endpoint by name or path, so that I can
-  find it without browsing every API.
-- As a developer, I want code samples in the languages I use, so that I can copy a working call.
-- As an AI agent, I want `/llms.txt`, a Markdown version of each page and the raw spec for each
-  version, so that I can read the portal without parsing HTML.
 
 ## Acceptance criteria
 QA runs these against the Compose stack with a real Kong.
+
+**Lint ruleset (decided by Elango).** The portal ships its own Spectral ruleset based on
+`spectral:oas`. Only problems that break the rendered docs or the try-it panel are errors —
+for example an invalid OpenAPI document, an unresolved `$ref`, a duplicate `operationId`, or a
+path parameter that isn't declared. Every other rule is a warning. The tech lead fixes the exact
+rule list in the technical design. An operator can replace the ruleset with their own Spectral
+ruleset file through configuration (an environment variable pointing at a mounted file).
 
 1. **Given** a published API at version `1.0.0` linked to a Kong service **When** an admin
    imports a valid OpenAPI document with `info.version` `2.0.0` as a new version of that API
    **Then** the API's reference page shows a version switcher listing `2.0.0` (selected, marked
    latest) and `1.0.0`; choosing `1.0.0` shows the v1 reference at its own stable URL; the API
    still has one catalog entry and the same Kong service link.
-2. **Given** v1 has `GET /orders` and `GET /orders/{id}`, and v2 removes `GET /orders` and adds
+2. **Given** a published API with versions `1.0.0` and then `2.0.0` **When** an admin uploads
+   `1.1.0` as a new version **Then** `1.1.0`, the most recently uploaded version, becomes the
+   latest version and the default the reference page opens on; `2.0.0` and `1.0.0` stay
+   reachable through the switcher.
+3. **Given** v1 has `GET /orders` and `GET /orders/{id}`, and v2 removes `GET /orders` and adds
    `POST /orders` **When** the admin imports v2 with the release note "Orders can now be created"
    **Then** the API's changelog shows a `2.0.0` entry with the import date, the admin's note, and
    a generated summary listing `POST /orders` as added and `GET /orders` as removed (breaking).
-3. **Given** a published API at `2.0.0` **When** an admin imports another document as a new
+4. **Given** a published API at `2.0.0` **When** an admin imports another document as a new
    version with `info.version` `2.0.0` **Then** the import is refused with a problem+json
    response saying that version already exists, and the published `2.0.0` is unchanged.
-4. **Given** an OpenAPI document that breaks a ruleset rule at error severity (for example two
-   operations with the same `operationId`) **When** an admin imports it, as a new API or as a new
-   version **Then** the import is refused with a 422 problem+json and the admin UI shows, for
-   each error, the rule name, its message and the location (JSON pointer and line number);
-   nothing is stored and existing versions are unchanged.
-5. **Given** an OpenAPI document with no lint errors but at least one warning (for example an
-   operation without a description) **When** an admin imports it **Then** it is published and
-   the admin sees each warning with its rule name, message and location.
-6. **Given** published APIs including one with the path `/orders/{id}` **When** a visitor
-   searches the portal for `orders/{id}` or for the API's title **Then** results include that
-   endpoint (method, path and API name) linking to the operation in the latest version's
-   reference, and the API linking to its reference page.
-7. **Given** a search term that matches nothing, or matches only an API the visitor isn't allowed
-   to see under the catalog visibility rules **When** the visitor searches **Then** they see an
-   empty-results state and the hidden API doesn't appear.
-8. **Given** published APIs **When** an anonymous client requests `GET /llms.txt` **Then** it
-   gets `text/plain` in the llms.txt format listing every API the anonymous visitor can see, each
-   with its title, one-line description, a link to its Markdown reference and a link to download
-   the latest spec; APIs the anonymous visitor can't see aren't listed.
-9. **Given** an API with versions `1.0.0` and `2.0.0` **When** a client requests the Markdown
-   version of its reference page, and the spec download for each version **Then** the Markdown
-   lists every operation of the latest version with method, path, summary, parameters and
-   response codes; each download returns the document exactly as imported for that version; a
-   download for a version that doesn't exist returns 404 problem+json.
-10. **Given** any operation in the API reference **When** a developer opens its code samples
-    **Then** they can choose at least curl, JavaScript and Python, and each sample uses the
-    operation's method, the gateway URL and path, and the API's key header.
+5. **Given** the default ruleset and an OpenAPI document with an error-severity problem (each
+   case tested separately: two operations with the same `operationId`; a `$ref` that doesn't
+   resolve; a path `/orders/{id}` with no `id` parameter declared) **When** an admin imports it,
+   as a new API or as a new version **Then** the import is refused with a 422 problem+json and
+   the admin UI shows, for each error, the rule name, its message and the location (JSON pointer
+   and line number); nothing is stored and existing versions are unchanged.
+6. **Given** the default ruleset and an OpenAPI document with no errors but at least one warning
+   (for example an operation without a description, or no `info.contact`) **When** an admin
+   imports it **Then** it is published and the admin sees each warning with its rule name,
+   message and location.
+7. **Given** the operator has configured the portal to use their own Spectral ruleset file, in
+   which `operation-description` is an error **When** an admin imports a document with an
+   operation that has no description **Then** the import is refused with a 422 problem+json
+   naming `operation-description`; and a document that breaks only a rule of the portal's
+   default ruleset that the operator's file doesn't contain is published.
+8. **Given** the ruleset configuration points at a file that doesn't exist or isn't a valid
+   Spectral ruleset **When** the server starts **Then** it reports an error naming the file and
+   the problem (in the log and the health check) and never silently falls back to the default
+   ruleset; with no ruleset configured, as in the quickstart, the default ruleset is used.
 
 ## Out of scope
-- **Searching docs pages and articles.** Those arrive with spec 014. Search should index them
-  once 014 ships, but that is 014's or a follow-up's work.
+- **Search.** Moved to spec 020.
+- **Markdown pages, `/llms.txt`, spec downloads and code samples.** Moved to spec 021.
 - **Per-version gateway routing.** All versions of an API share one Kong service and route; the
   portal documents versions, it doesn't route `/v1` and `/v2` traffic or create Kong objects per
   version. Subscriptions and keys stay per API, not per version.
 - **Deprecation and sunset dates, and deleting or unpublishing a version.** Cut to keep scope small.
-- **Custom Spectral rulesets edited in the admin UI.** One built-in ruleset ships; see Open questions.
+- **Editing lint rules in the admin UI.** Operators replace the ruleset through configuration only.
 - **Field-level or schema-level diffs.** The generated summary covers added, removed and
   changed operations only.
-- **AI or semantic search, an MCP server per API.** On the roadmap as later work (product brief).
-- **Search inside request and response schemas.**
+- **Syncing specs from GitHub or another Git tool.** Not on the roadmap; see Open questions.
 
 ## Open questions
-- [ ] **Split into several specs?** This is more than one pull request. Proposed order:
-  012a versions, changelog and linting (Done-when items 1–2) first; 012b search; 012c
-  agent-ready Markdown, `/llms.txt`, spec downloads and code samples. Needs new roadmap
-  numbers. — Elango
-- [ ] Which ruleset: Spectral's built-in `spectral:oas` as is, or with some rules raised or
-  lowered (which rules are errors)? Can an operator replace it with their own ruleset file
-  through configuration? — tech-lead, then Elango
+- [x] ~~Split into several specs?~~ Yes (Elango): 012 versions, changelog and linting; 020
+  search; 021 agent-ready docs.
+- [x] ~~Which ruleset, and can an operator replace it?~~ Decided (Elango): a portal-tuned
+  ruleset based on `spectral:oas` where only problems that break the docs or try-it are errors,
+  everything else a warning; the operator can replace it with their own ruleset file through
+  configuration. The tech lead fixes the exact rule list and the configuration variable name.
+- [x] ~~Latest version for manual upload?~~ Decided (Elango): the most recently uploaded
+  version becomes the latest and default (criterion 2).
+- [ ] **Uploading an older patch without making it the default.** Should the upload form offer
+  "Don't make this the default version" (for a v1 patch after v2), plus a "Set as latest" action
+  on any version? Recommended: yes to both, in this spec, since without them criterion 2 makes a
+  v1 patch hide v2. — Elango
+- [ ] **What "latest" means when specs sync from GitHub or another Git tool.** Recommended: the
+  version on the default branch, or the newest release tag, decided in a separate follow-up spec
+  because Git sync is not on the roadmap. — Elango
 - [ ] Should linting apply to the sample API seeded by the quickstart, and what happens to
   already-published APIs that would fail the new rules (stay published, shown as warnings)? —
   tech-lead
@@ -122,14 +130,6 @@ QA runs these against the Compose stack with a real Kong.
   example a new required parameter)? — tech-lead
 - [ ] Is "new version" a separate admin action on the API, or does the import form detect an
   existing API linked to the same Kong service and offer to add a version? — ui-designer
-- [ ] Does the latest version mean the most recently imported or the highest semver? Can an
-  admin import an older version (a v1 patch after v2) without it becoming the default? — Elango
-- [ ] Catalog visibility (spec 010) is planned before this spec. If 010 hasn't shipped, are all
-  published APIs public for search and `/llms.txt`? — Elango
-- [ ] Markdown URL convention: `.md` suffix, `Accept: text/markdown`, or both? Should
-  `/llms-full.txt` (every page inlined) be included? — tech-lead
-- [ ] Code samples: does Scalar already give us the languages we need, and which languages
-  beyond curl, JavaScript and Python (Go, Java)? — tech-lead
 
 ---
 <!-- Sections below are filled by later stages. -->
