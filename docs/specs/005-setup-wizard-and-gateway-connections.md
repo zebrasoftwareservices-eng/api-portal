@@ -483,6 +483,12 @@ Full design: [docs/design/005-setup-wizard-and-gateway-connections.md](../design
 - Frontend UAT fixes (JSO-381, JSO-400, JSO-401, JSO-402), commit `bbe60c7`: corrected the Kong guide/repoint/cleanup links to existing headings, suppressed the redundant alert for 400 field errors, gave raw problem titles readable fallback copy (including Revoke), counted and pluralised missing-key warnings/dialogs, and selected loopback field guidance from the submitted URL. All 123 portal tests, `pnpm lint`, `pnpm typecheck` and the full `pnpm test` suite pass with Docker/network access; the initial sandbox run could not bind sockets or reach Docker, and two transient assertions in concurrent backend edits were corrected by their owner before the passing rerun. QA/UAT should verify the three guide links, field focus/value preservation after 400, singular/plural repoint copy, Revoke during an outage, and localhost/IPv4/IPv6 loopback guidance; bug checkboxes remain open for verification.
 
 ## Test report  _(qa-tester)_
+Post-UAT re-test started 2026-11-08 on Node 26.13.0. Added real browser regressions for JSO-398 (sign-in after skipping setup and admin-only environment), help links, inline-only 400 errors and loopback guidance; added `tests/spec005-upgrade.test.ts` for an actual deployed upgrade. The uncached portal (123), server (95), database (2) and demo browser (31) suites pass; Kong adapter and deployed checks are pending. `pnpm lint` and `pnpm typecheck` pass.
+
+There is no remote release tag or GitHub release (`git ls-remote --tags origin`, `gh release list --repo zebrasoftwareservices-eng/api-portal --json tagName,name` both empty), no image publishing workflow, and no local v0.2 image. The coordinator explicitly chose pre-005 `origin/main` (`f52870e857e74ec9705a4dca7f03797eec07e3eb`) as the upgrade baseline. It was exported using `git archive origin/main | tar -x -C /tmp/spec005-upgrade-base`; baseline and branch use distinct `spec005qa-base-*` and `spec005qa-branch-*` image names, project `spec005qaupgrade`, and the same database volume during upgrade. The initial `COMPOSE_PROJECT_NAME=spec005qaretest node deploy/quickstart-smoke.mjs` attempt timed out at 300s during build under concurrent test/build load, before container startup; the separate build and startup re-test is pending. No shared containers, images or caches were deleted.
+
+Previous QA run (retained as the criterion-to-test coverage map; results below are from 2026-11-07 until the deployed re-test completes):
+
 QA run: 2026-11-07, macOS/Node 26.13.0, real PostgreSQL 17 and Kong 3.9. Compose project `spec005qa` is isolated from the pre-existing `portal-postgres-1` container.
 
 | Criterion | Automated coverage | Result |
@@ -519,9 +525,9 @@ No product flakiness observed; Kong configuration propagation uses bounded polli
 - [x] [frontend] Fix JSO-402: the localhost field error reads "Use an address the portal server can reach.", per design §5.2 (minor)
 - [ ] JSO-399 Reloading `/setup/gateway` after saving loses the sample choice (minor)
 - [ ] JSO-400 Raw problem titles shown to users: "validation", "gateway unavailable" (minor)
-- [ ] JSO-401 "1 active keys" in the repoint dialog, and the Test warning has no count (minor)
+- [x] JSO-401 "1 active keys" in the repoint dialog, and the Test warning has no count (minor)
 - [ ] JSO-402 localhost failure message does not say what to enter instead (minor)
-- [ ] JSO-403 Setup token hint does not match the log line (minor)
+- [x] JSO-403 Setup token hint does not match the log line (minor)
 - [ ] JSO-404 Protected-route recipe needs `curl`, which the Kong image lacks (minor)
 - [ ] JSO-405 Import form disappears on first load when Kong is down (minor)
 - [ ] JSO-406 Redundant "Connect a Kong" heading on the wizard gateway step (minor)
