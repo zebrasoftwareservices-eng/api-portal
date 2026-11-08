@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   replace: vi.fn(),
   setReveal: vi.fn(),
+  setUser: vi.fn(),
+  portalUser: undefined as
+    | undefined
+    | { email: string; emailVerified: boolean; verificationRequired: boolean },
 }));
 vi.mock('../lib/client', () => ({
   api: { GET: mocks.get, POST: mocks.post },
@@ -22,7 +26,11 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: mocks.replace }),
 }));
 vi.mock('./providers', () => ({
-  usePortal: () => ({ setReveal: mocks.setReveal }),
+  usePortal: () => ({
+    setReveal: mocks.setReveal,
+    setUser: mocks.setUser,
+    user: mocks.portalUser,
+  }),
 }));
 const api = {
   id: 'api-1',
@@ -34,6 +42,7 @@ const api = {
 describe('create app', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.portalUser = undefined;
     mocks.get.mockResolvedValue({ data: { items: [api] } });
   });
   it('preselects the API, prevents repeat submits, preserves values on 503 and retries the same request', async () => {
@@ -162,4 +171,26 @@ it('moves focus to the heading when an empty API result removes the focused form
   expect(screen.getByLabelText('App name')).toHaveFocus();
   await act(async () => resolve({ data: { items: [] } }));
   expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
+});
+
+it('keeps Create app and get key focusable and prevents creation until email verification', async () => {
+  mocks.get.mockResolvedValue({ data: { items: [api] } });
+  mocks.post.mockClear();
+  mocks.portalUser = {
+    email: 'ana@example.com',
+    emailVerified: false,
+    verificationRequired: true,
+  };
+  const actor = userEvent.setup();
+  render(<CreateApp />);
+  const button = await screen.findByRole('button', {
+    name: 'Create app and get key',
+  });
+  await waitFor(() => expect(button).not.toBeDisabled());
+  expect(button).toHaveAttribute('aria-disabled', 'true');
+  expect(button).toHaveAccessibleDescription(
+    'Verify your email address first. Use the button at the top of the page.',
+  );
+  await actor.click(button);
+  expect(mocks.post).not.toHaveBeenCalled();
 });

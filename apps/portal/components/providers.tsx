@@ -10,9 +10,10 @@ type Reveal = {
 };
 const Context = createContext<{
   user: User | null;
+  setUser: (value: User | null) => void;
   reveal: Reveal | null;
   setReveal: (value: Reveal | null) => void;
-}>({ user: null, reveal: null, setReveal: () => {} });
+}>({ user: null, setUser: () => {}, reveal: null, setReveal: () => {} });
 export function Providers({
   children,
   user,
@@ -20,9 +21,17 @@ export function Providers({
   children: ReactNode;
   user: User | null;
 }) {
+  const [updatedUser, setUser] = useState<User | null | undefined>(undefined);
   const [reveal, setReveal] = useState<Reveal | null>(null);
   return (
-    <Context.Provider value={{ user, reveal, setReveal }}>
+    <Context.Provider
+      value={{
+        user: updatedUser === undefined ? user : updatedUser,
+        setUser,
+        reveal,
+        setReveal,
+      }}
+    >
       {children}
       <Toaster richColors />
     </Context.Provider>

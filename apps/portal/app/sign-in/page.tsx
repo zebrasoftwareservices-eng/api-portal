@@ -6,8 +6,14 @@ export const metadata = { title: 'Sign in' };
 export default async function SignIn({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; reset?: string }>;
 }) {
   if (await currentUser()) redirect('/dashboard');
-  return <AuthForm mode="sign-in" next={(await searchParams).next} />;
+  return (
+    <AuthForm
+      mode="sign-in"
+      next={(await searchParams).next}
+      reset={(await searchParams).reset === '1'}
+    />
+  );
 }

@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   del: vi.fn(),
   setReveal: vi.fn(),
+  setUser: vi.fn(),
+  portalUser: undefined as
+    | undefined
+    | { email: string; emailVerified: boolean; verificationRequired: boolean },
 }));
 vi.mock('../lib/client', () => ({
   api: { GET: mocks.get, POST: mocks.post, DELETE: mocks.del },
@@ -19,7 +23,12 @@ vi.mock('../lib/client', () => ({
   }),
 }));
 vi.mock('./providers', () => ({
-  usePortal: () => ({ setReveal: mocks.setReveal, reveal: null }),
+  usePortal: () => ({
+    setReveal: mocks.setReveal,
+    setUser: mocks.setUser,
+    user: mocks.portalUser,
+    reveal: null,
+  }),
 }));
 const credential = {
   id: 'cred-1',
@@ -38,6 +47,7 @@ const app = {
 describe('app keys', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mocks.portalUser = undefined;
     mocks.get.mockResolvedValue({ data: app });
   });
   it('keeps a key active after a failed revoke and only marks it revoked after retry succeeds', async () => {
@@ -131,3 +141,21 @@ it.each([true, false])(
     );
   },
 );
+
+it('keeps Create key focusable and prevents creation until email verification', async () => {
+  mocks.portalUser = {
+    email: 'ana@example.com',
+    emailVerified: false,
+    verificationRequired: true,
+  };
+  const actor = userEvent.setup();
+  render(<AppDetail appId="app-1" />);
+  const button = await screen.findByRole('button', { name: 'Create key' });
+  await waitFor(() => expect(button).not.toBeDisabled());
+  expect(button).toHaveAttribute('aria-disabled', 'true');
+  expect(button).toHaveAccessibleDescription(
+    'Verify your email address first. Use the button at the top of the page.',
+  );
+  await actor.click(button);
+  expect(mocks.post).not.toHaveBeenCalled();
+});

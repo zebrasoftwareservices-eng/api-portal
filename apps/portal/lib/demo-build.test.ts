@@ -29,6 +29,10 @@ describe('build-time demo switch', () => {
       beforeFiles: [
         '/sign-in',
         '/sign-up',
+        '/profile',
+        '/forgot-password',
+        '/reset-password',
+        '/confirm-email',
         '/dashboard/:path*',
         '/admin/:path*',
       ].map((source) => ({ source, destination: '/quickstart-required' })),
