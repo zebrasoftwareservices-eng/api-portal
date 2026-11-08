@@ -115,7 +115,7 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
     await expect(page.getByLabel('Admin API URL', { exact: true })).toHaveValue(
       'http://user:pw@kong:8001',
     );
-    await expect(page.getByRole('alert')).toHaveCount(0);
+    await expect(page.locator('main').getByRole('alert')).toHaveCount(0);
     await page
       .getByLabel('Admin API URL', { exact: true })
       .fill('http://localhost:1');

@@ -512,6 +512,7 @@ Validation: `pnpm lint` (7 tasks), `pnpm typecheck` (12 tasks), `pnpm test` (258
 No product flakiness observed; Kong configuration propagation uses bounded polling. Test authoring corrections before passing reruns: a historical-schema fixture column, the disabled-state locator, and subscription-before-API teardown order. An accidental concurrent smoke invocation overlapped the browser test's intentional database reset and failed its seeded-sample precondition; the sequential rerun passed. No blocker or major bug is open; ready for UAT with minor JSO-381 outstanding. Historical upgrade validation covers the schema/startup contract rather than traffic through a deployed historical image.
 
 ### Bugs
+- [ ] (Linear issue pending: workspace quota) Newly imported route intermittently returns 404 through try-it after direct Kong is ready (minor).
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [x] JSO-380 Try-it retained saved proxy URLs for 30 seconds (verified by immediate saved-URL regression, Done).
 - [x] JSO-379 Portal component tests use Node storage globals instead of jsdom on Node 25+ (110 component tests pass on Node 26, Done).

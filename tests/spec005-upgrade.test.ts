@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 
@@ -43,8 +43,10 @@ test('AC 8: upgrade pre-005 main preserves the admin, published API and active K
       ['compose', '-p', project, '-f', file, '-f', override, ...args],
       { env, stdio: 'pipe', timeout: 600000 },
     );
+  const buildFlag =
+    process.env.SPEC005_PREBUILT === '1' ? '--no-build' : '--build';
   try {
-    compose(baseCompose, baseOverride, ['up', '--build', '-d', '--wait']);
+    compose(baseCompose, baseOverride, ['up', buildFlag, '-d', '--wait']);
     const catalog = await (await request.get('/api/v1/apis')).json();
     const sample = catalog.items.find(
       (api: { slug: string }) => api.slug === 'sample',
@@ -73,7 +75,68 @@ test('AC 8: upgrade pre-005 main preserves the admin, published API and active K
     console.log(
       'Baseline: seeded admin/gateway/API and active key verified with Kong 200',
     );
-    compose(branchCompose, branchOverride, ['up', '--build', '-d', '--wait']);
+    // JSO-404: execute the guide from the pinned curl image in Kong's namespace.
+    const kongContainer = compose(baseCompose, baseOverride, [
+      'ps',
+      '-q',
+      'kong',
+    ])
+      .toString()
+      .trim();
+    expect(
+      execFileSync('docker', [
+        'exec',
+        kongContainer,
+        'sh',
+        '-c',
+        'command -v curl || true',
+      ])
+        .toString()
+        .trim(),
+    ).toBe('');
+    const guide = readFileSync(resolve('docs/connect-kong.md'), 'utf8');
+    const recipe = guide
+      .split(
+        '```sh\n# Run in the curl container above, or on the Kong host with curl installed.\n',
+      )[1]
+      .split('```')[0]
+      .replace(
+        'PORTAL_SERVER_IP=192.0.2.10/32',
+        'PORTAL_SERVER_IP=127.0.0.1/32',
+      )
+      .replace(
+        "read -r -s -p 'Choose an admin token: ' ADMIN_TOKEN",
+        'ADMIN_TOKEN=qa-docs-recipe-token',
+      );
+    const shell = (input: string) =>
+      execFileSync(
+        'docker',
+        [
+          'run',
+          '--rm',
+          '-i',
+          '--network',
+          `container:${kongContainer}`,
+          '--entrypoint',
+          'sh',
+          'curlimages/curl:8.11.1',
+        ],
+        { input, timeout: 60000 },
+      ).toString();
+    shell('set -eu\n' + recipe);
+    const protectedStatus = (token: string) =>
+      shell(
+        `curl -sS -o /dev/null -w '%{http_code}' -H 'Kong-Admin-Token: ${token}' http://127.0.0.1:8000/admin-api/`,
+      );
+    await expect
+      .poll(() => protectedStatus('qa-docs-recipe-token'), { timeout: 15000 })
+      .toBe('200');
+    expect(protectedStatus('wrong-token')).toBe('401');
+    console.log(
+      'JSO-404: documented curl-container recipe returns 200 with right token and 401 with wrong token',
+    );
+
+    compose(branchCompose, branchOverride, ['up', buildFlag, '-d', '--wait']);
     await expect.poll(traffic, { timeout: 15000 }).toBe(200);
     expect((await request.get(`/api/v1/apps/${app.id}`)).status()).toBe(200);
     await page.goto('/sign-in');
@@ -92,7 +155,7 @@ test('AC 8: upgrade pre-005 main preserves the admin, published API and active K
     expect(
       (
         await page.request.patch(`/api/v1/admin/gateways/${gateway.id}`, {
-          data: { name: 'Upgraded editable gateway' },
+          data: { proxyPublicUrl: 'http://127.0.0.1:8000' },
         })
       ).status(),
     ).toBe(200);

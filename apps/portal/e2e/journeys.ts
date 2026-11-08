@@ -274,15 +274,31 @@ for (const mediaType of [
         )
         .toBe(403);
       // JSO-277: one request must refresh a warm catalog on a target miss.
-      expect(
-        (
-          await context.request.get(
-            '/api/v1/try-it?scalar_url=' +
-              encodeURIComponent(`http://localhost:8000/${path}/get`),
-            { headers: { apikey: credential.key } },
+      const proxyCall = () =>
+        context.request.get(
+          '/api/v1/try-it?scalar_url=' +
+            encodeURIComponent(`http://localhost:8000/${path}/get`),
+          { headers: { apikey: credential.key } },
+        );
+      const firstProxyStatus = (await proxyCall()).status();
+      if (firstProxyStatus !== 403) {
+        // Diagnostic only: retain the first-request assertion below even if retry recovers.
+        const retryStarted = Date.now();
+        let retryCount = 0;
+        await expect
+          .poll(
+            async () => {
+              retryCount++;
+              return (await proxyCall()).status();
+            },
+            { timeout: 15000 },
           )
-        ).status(),
-      ).toBe(403);
+          .toBe(403);
+        console.log(
+          `${mediaType}: initial try-it ${firstProxyStatus}, retry recovered 403 after ${retryCount} requests in ${Date.now() - retryStarted}ms`,
+        );
+      }
+      expect(firstProxyStatus).toBe(403);
       await page.goto(`/apis/${path}`);
       if (mediaType === 'application/json') {
         // JSO-281: operation-level security initially has no selected scheme.
