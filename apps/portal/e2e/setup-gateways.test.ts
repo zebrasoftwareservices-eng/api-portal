@@ -15,7 +15,15 @@ const fresh = {
 const compose = (args: string[], env = fresh) =>
   execFileSync(
     'docker',
-    ['compose', '-f', 'deploy/docker-compose.yml', ...args],
+    [
+      'compose',
+      '-f',
+      'deploy/docker-compose.yml',
+      ...(process.env.SPEC005_COMPOSE_OVERRIDE
+        ? ['-f', process.env.SPEC005_COMPOSE_OVERRIDE]
+        : []),
+      ...args,
+    ],
     { env, stdio: 'pipe', timeout: 180000 },
   );
 test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, first key and disabled gateway journey', async ({

@@ -9,7 +9,15 @@ test('real gateway outage preserves active keys and retries app creation without
   const compose = (...args: string[]) =>
     execFileSync(
       'docker',
-      ['compose', '-f', 'deploy/docker-compose.yml', ...args],
+      [
+        'compose',
+        '-f',
+        'deploy/docker-compose.yml',
+        ...(process.env.SPEC005_COMPOSE_OVERRIDE
+          ? ['-f', process.env.SPEC005_COMPOSE_OVERRIDE]
+          : []),
+        ...args,
+      ],
       { stdio: 'ignore' },
     );
   const signup = await request.post('/api/auth/sign-up/email', {
@@ -81,7 +89,15 @@ test('sample seed converges across server restarts against real Kong', async ({
   const compose = (...args: string[]) =>
     execFileSync(
       'docker',
-      ['compose', '-f', 'deploy/docker-compose.yml', ...args],
+      [
+        'compose',
+        '-f',
+        'deploy/docker-compose.yml',
+        ...(process.env.SPEC005_COMPOSE_OVERRIDE
+          ? ['-f', process.env.SPEC005_COMPOSE_OVERRIDE]
+          : []),
+        ...args,
+      ],
       { encoding: 'utf8' },
     );
   const kong = 'http://localhost:8001';
@@ -152,7 +168,15 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
   const compose = (...args: string[]) =>
     execFileSync(
       'docker',
-      ['compose', '-f', 'deploy/docker-compose.yml', ...args],
+      [
+        'compose',
+        '-f',
+        'deploy/docker-compose.yml',
+        ...(process.env.SPEC005_COMPOSE_OVERRIDE
+          ? ['-f', process.env.SPEC005_COMPOSE_OVERRIDE]
+          : []),
+        ...args,
+      ],
       { encoding: 'utf8' },
     );
   const signup = await request.post('/api/auth/sign-up/email', {
