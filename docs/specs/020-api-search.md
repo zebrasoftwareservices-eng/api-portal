@@ -38,6 +38,11 @@ ever shows up.
 ## Acceptance criteria
 QA runs these against the Compose stack with a real Kong.
 
+**Visibility (decided by Elango).** Search shows exactly what the public catalog shows the
+current visitor, using the same visibility check as the catalog — no separate rules for search.
+Before spec 010 ships that means every published API; when spec 010 ships its visibility rules
+apply to search automatically. An unpublished API never appears.
+
 1. **Given** published APIs including one with the operation `GET /orders/{id}` **When** a
    visitor searches the portal for `orders/{id}` **Then** the results include that endpoint,
    showing method, path and API name, and the result opens that operation in the API's
@@ -49,9 +54,10 @@ QA runs these against the Compose stack with a real Kong.
 3. **Given** an API that has been imported but not published **When** a visitor or a signed-in
    developer searches for its title or one of its paths **Then** it never appears in the results.
 4. **Given** an API the public catalog doesn't show to the current visitor (under the catalog
-   visibility rules in force) **When** that visitor searches for its title or one of its paths
-   **Then** it doesn't appear in the results, and it does appear for a visitor the catalog shows
-   it to.
+   visibility check in force — before spec 010, any published API is shown) **When** that
+   visitor searches for its title or one of its paths **Then** it doesn't appear in the results,
+   and it does appear for a visitor the catalog shows it to; for every visitor, the APIs in
+   search results are a subset of the APIs the catalog lists for them.
 5. **Given** a published API whose spec is replaced, or which gets a new version, so that
    `GET /orders` is removed **When** a visitor searches for `GET /orders` after the import
    finishes **Then** the removed operation is no longer in the results; likewise an API that is
@@ -72,11 +78,13 @@ QA runs these against the Compose stack with a real Kong.
 - **Search inside request and response schemas** (field names, enum values).
 - **AI or semantic search.** On the roadmap as later work (product brief).
 - **Search analytics** (what people searched for, searches with no results).
+- **Search-specific visibility rules.** Search reuses the catalog's visibility check; per-API
+  visibility itself is spec 010's work.
 
 ## Open questions
-- [ ] **Visibility before spec 010 ships.** Recommended: search shows exactly what the public
-  catalog shows, using the same visibility check, so spec 010 applies automatically when it
-  ships; an unpublished API never appears (criteria 3 and 4). — Elango
+- [x] ~~Visibility before spec 010 ships?~~ Decided (Elango): search shows exactly what the
+  public catalog shows, using the same visibility check, so spec 010 applies automatically when
+  it ships; an unpublished API never appears (criteria 3 and 4).
 - [ ] Search engine: PostgreSQL full-text search with trigram matching for paths, or an
   embedded index? It must not add a container to the quickstart. — tech-lead
 - [ ] Is search a box in the site header with a results page, a command palette (⌘K), or both?

@@ -41,10 +41,17 @@ samples.
 ## Acceptance criteria
 QA runs these against the Compose stack with a real Kong.
 
+**Visibility (decided by Elango).** `/llms.txt`, Markdown references and spec downloads show
+exactly what the public catalog shows an anonymous visitor, using the same visibility check as
+the catalog. Before spec 010 ships that means every published API; when spec 010 ships its
+visibility rules apply here automatically. An unpublished API never appears. `/llms.txt` is
+always the anonymous, public-only view: signing in or sending an API key doesn't change it.
+
 1. **Given** published APIs **When** an anonymous client requests `GET /llms.txt` **Then** it
    gets `text/plain` in the llms.txt format listing every API the public catalog shows an
    anonymous visitor, each with its title, one-line description, a link to its Markdown
-   reference and a link to download its latest spec; every link in it returns 200.
+   reference and a link to download its latest spec; every link in it returns 200. A request
+   from a signed-in developer, or one carrying an API key, gets the same content.
 2. **Given** an API that has been imported but not published, and an API the public catalog
    doesn't show an anonymous visitor **When** an anonymous client requests `GET /llms.txt` or
    either API's Markdown reference or spec download **Then** neither API is listed in
@@ -73,21 +80,22 @@ QA runs these against the Compose stack with a real Kong.
 - **Downloading a spec rewritten for the gateway** (server URLs replaced with the Kong URL). The
   download is the document as imported.
 - **Search.** Spec 020.
+- **Signed-in or API-key views of `/llms.txt`.** `/llms.txt` is always the anonymous,
+  public-only view; showing an agent the APIs its developer can see is a possible follow-up.
 
 ## Open questions
-- [ ] **Visibility for `/llms.txt` before spec 010 ships.** Recommended: `/llms.txt`, Markdown
-  pages and spec downloads show exactly what the public catalog shows, using the same visibility
-  check, so spec 010 applies automatically when it ships; an unpublished API never appears
-  (criterion 2). — Elango
-- [ ] Should a signed-in developer's agent see more in `/llms.txt` than an anonymous one (for
-  example through an API key), or is `/llms.txt` always the anonymous view? — Elango
+- [x] ~~Visibility for `/llms.txt` before spec 010 ships?~~ Decided (Elango): `/llms.txt`,
+  Markdown pages and spec downloads show exactly what the public catalog shows, using the same
+  visibility check, so spec 010 applies automatically when it ships; an unpublished API never
+  appears (criterion 2).
+- [x] ~~Should a signed-in developer's agent see more in `/llms.txt`?~~ Decided (Elango): no —
+  `/llms.txt` is always the anonymous, public-only view (criterion 1; listed under Out of scope).
 - [ ] Markdown URL convention: `.md` suffix, `Accept: text/markdown`, or both? Should
   `/llms-full.txt` (every page inlined) be included? — tech-lead
 - [ ] Code samples: does Scalar already give us the languages we need, and which languages
   beyond curl, JavaScript and Python (Go, Java)? — tech-lead
-- [ ] If spec 012 hasn't shipped when this is built, should criterion 4 be reduced to the latest
-  spec download, with per-version downloads added to 012? Recommended: build 021 after 012. —
-  Elango
+- [x] ~~If spec 012 hasn't shipped when this is built, reduce criterion 4?~~ Decided (Elango):
+  build 021 after 012; criterion 4 keeps per-version downloads.
 
 ---
 <!-- Sections below are filled by later stages. -->

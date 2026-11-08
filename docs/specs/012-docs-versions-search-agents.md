@@ -38,6 +38,10 @@ This spec ships first; 021's per-version downloads need it.
 ## User stories
 - As a portal admin, I want to import a new version of an API I already published, so that
   developers get the new docs without the API being split into two.
+- As a portal admin, I want to upload a patch for an older version without making it the
+  default, so that a v1 fix doesn't hide v2 from developers.
+- As a portal admin, I want to set any version as the latest, so that I control which version
+  developers see first.
 - As a portal admin, I want to write release notes for a version and have the portal summarise
   what changed, so that the changelog is useful without a lot of writing.
 - As a portal admin, I want an import that would break the docs or try-it refused with the rule
@@ -67,7 +71,9 @@ ruleset file through configuration (an environment variable pointing at a mounte
 2. **Given** a published API with versions `1.0.0` and then `2.0.0` **When** an admin uploads
    `1.1.0` as a new version **Then** `1.1.0`, the most recently uploaded version, becomes the
    latest version and the default the reference page opens on; `2.0.0` and `1.0.0` stay
-   reachable through the switcher.
+   reachable through the switcher. If instead the admin uploads `1.1.0` with "Don't make this the
+   default version" selected, `1.1.0` is published and listed in the switcher but `2.0.0` stays
+   the latest and the default.
 3. **Given** v1 has `GET /orders` and `GET /orders/{id}`, and v2 removes `GET /orders` and adds
    `POST /orders` **When** the admin imports v2 with the release note "Orders can now be created"
    **Then** the API's changelog shows a `2.0.0` entry with the import date, the admin's note, and
@@ -94,6 +100,12 @@ ruleset file through configuration (an environment variable pointing at a mounte
    Spectral ruleset **When** the server starts **Then** it reports an error naming the file and
    the problem (in the log and the health check) and never silently falls back to the default
    ruleset; with no ruleset configured, as in the quickstart, the default ruleset is used.
+9. **Given** a published API with versions `1.0.0`, `1.1.0` and `2.0.0`, where `1.1.0` is the
+   latest **When** an admin uses "Set as latest" on `2.0.0` **Then** `2.0.0` becomes the latest
+   version and the default the reference page opens on, marked latest in the switcher, and the
+   other versions stay reachable; when a signed-in developer who isn't an admin calls the same
+   action through the API, it is refused with a 403 problem+json and the latest version is
+   unchanged; when it names a version that doesn't exist, it gets a 404 problem+json.
 
 ## Out of scope
 - **Search.** Moved to spec 020.
@@ -105,7 +117,9 @@ ruleset file through configuration (an environment variable pointing at a mounte
 - **Editing lint rules in the admin UI.** Operators replace the ruleset through configuration only.
 - **Field-level or schema-level diffs.** The generated summary covers added, removed and
   changed operations only.
-- **Syncing specs from GitHub or another Git tool.** Not on the roadmap; see Open questions.
+- **Syncing specs from GitHub or another Git tool.** A separate future spec (follow-up, not yet
+  numbered). Decided (Elango): in Git sync, "latest" will mean the version on the default
+  branch or the newest release tag; that spec defines the details.
 
 ## Open questions
 - [x] ~~Split into several specs?~~ Yes (Elango): 012 versions, changelog and linting; 020
@@ -116,13 +130,12 @@ ruleset file through configuration (an environment variable pointing at a mounte
   configuration. The tech lead fixes the exact rule list and the configuration variable name.
 - [x] ~~Latest version for manual upload?~~ Decided (Elango): the most recently uploaded
   version becomes the latest and default (criterion 2).
-- [ ] **Uploading an older patch without making it the default.** Should the upload form offer
-  "Don't make this the default version" (for a v1 patch after v2), plus a "Set as latest" action
-  on any version? Recommended: yes to both, in this spec, since without them criterion 2 makes a
-  v1 patch hide v2. — Elango
-- [ ] **What "latest" means when specs sync from GitHub or another Git tool.** Recommended: the
-  version on the default branch, or the newest release tag, decided in a separate follow-up spec
-  because Git sync is not on the roadmap. — Elango
+- [x] ~~Uploading an older patch without making it the default?~~ Decided (Elango): yes to both,
+  in this spec — the upload form offers "Don't make this the default version" (criterion 2) and
+  any version has a "Set as latest" action (criterion 9).
+- [x] ~~What "latest" means when specs sync from GitHub or another Git tool?~~ Decided (Elango):
+  the version on the default branch, or the newest release tag. Git sync itself is out of scope
+  here and becomes a separate future spec (see Out of scope).
 - [ ] Should linting apply to the sample API seeded by the quickstart, and what happens to
   already-published APIs that would fail the new rules (stay published, shown as warnings)? —
   tech-lead
