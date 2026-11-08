@@ -1,7 +1,7 @@
 ---
 id: 012
 title: API versions and changelog, and spec linting
-status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-240
@@ -148,12 +148,234 @@ ruleset file through configuration (an environment variable pointing at a mounte
 <!-- Sections below are filled by later stages. -->
 
 ## Technical design  _(tech-lead)_
-Components · API contract · Data model · Adapter calls · Risks
+Architecture decision: [ADR 0007](../adr/0007-api-versions-and-spec-linting.md). Contract:
+`apps/server/openapi.yaml` (updated in this stage; validated with `@scalar/openapi-parser` and
+`openapi-typescript`).
+
+### Answers to the tech-lead open questions
+- **Seeded sample and already-published APIs.** The quickstart sample isn't linted at runtime
+  (it's the portal's own file), but a unit test asserts `apps/server/seed/sample-api.openapi.yaml`
+  has zero errors under the default ruleset, so the sample always passes. APIs published before
+  012 become a first version with `lint_warnings = null` ("not linted"): they stay published,
+  aren't re-linted, and show no warnings until a new version is imported.
+- **What is breaking.** Operations are matched on method + path template, with path parameter
+  names ignored (`/orders/{id}` = `/orders/{orderId}`). Breaking: an operation removed; a new
+  required query/header/cookie parameter; an optional parameter that became required; a request
+  body that became required; a documented 2xx response removed; security added to an operation
+  that had none. Not breaking, but listed as changed: a new optional parameter, a parameter
+  removed, other security changes, the operation newly `deprecated`. Description, example and
+  schema changes aren't reported (field-level diffs are out of scope).
+- (The ui-designer question — separate action or detection — is open. The contract supports
+  both: `GatewayService.linkedApiSlug` already tells the import form which API a service belongs
+  to, and the add-version endpoint is separate.)
+
+### Components
+| Component | Change |
+| --- | --- |
+| `packages/db` | New `api_versions` table; `apis` loses its per-document columns and gains `latest_version_id`; migration `0001_api_versions.sql` with backfill. |
+| `apps/server` | `src/lint/` (ruleset loading + Spectral run), `src/changes.ts` (change summary), `src/versions.ts` (add version, set latest, changelog, per-version document routes); `import.ts` refactored so both import paths share parse → lint → validate; `catalog.ts`, `apps.ts`, `seed.ts`, `reconcile.ts`, `proxy.ts` join the latest version; `config.ts` gains `PORTAL_LINT_RULESET`; `/api/v1/health` reports the ruleset. New file `apps/server/rulesets/portal.spectral.yaml`, copied into the image. |
+| `packages/sdk` | Regenerated from the contract. |
+| `apps/portal` | Version switcher on the reference page, versioned reference route, changelog page, admin "Add version" and "Set as latest", lint findings in both import forms, demo data. |
+| `packages/adapter-*` | **No change.** Versions make no gateway calls (ADR 0007 §3). |
+| docs | README/configuration docs: `PORTAL_LINT_RULESET`, the default rule list, how to copy and extend the shipped ruleset; upgrade notes for the migration. |
+
+New dependencies (server only):
+- `@stoplight/spectral-core`, `@stoplight/spectral-rulesets`, `@stoplight/spectral-parsers`,
+  `@stoplight/spectral-ref-resolver` — run Spectral with the `spectral:oas` rules and line numbers.
+- `@stoplight/spectral-ruleset-bundler` — the documented way to load an operator's ruleset file.
+- `semver` — SemVer precedence for version order and the change-summary baseline.
+
+### API contract
+All paths are under `/api`. Admin operations need `role = admin` (401 signed out, 403 otherwise).
+
+| Operation | Method + path | Notes |
+| --- | --- | --- |
+| `importApi` (changed) | `POST /v1/admin/apis` | Now lints. New optional `releaseNote`. Response adds `lintWarnings` and `versions`. New refusals: 422 `/problems/openapi-lint-failed`, 422 `/problems/invalid-api-version`, 503 `/problems/lint-ruleset-unavailable`. |
+| `importApiVersion` (new) | `POST /v1/admin/apis/{slug}/versions` | Body `{ spec: {url}\|{content}, releaseNote?, makeLatest = true }`. 201 `{ api: ApiDetail, version: ChangelogEntry, lintWarnings }`, `Location: /api/v1/apis/{slug}/versions/{version}/openapi.json`. 404 unknown API; 409 `/problems/api-version-exists`; 413; 422 as `importApi`; 503 ruleset unavailable. No gateway call. |
+| `setLatestApiVersion` (new) | `PUT /v1/admin/apis/{slug}/latest-version` | Body `{ version }`. 200 `ApiDetail`. Idempotent. 404 `/problems/not-found` for an unknown API or version. |
+| `getApi` (changed) | `GET /v1/apis/{slug}` | `title`, `version`, `description`, `documentUrl` describe the latest version. Adds `versions: ApiVersionSummary[]` in display order, exactly one `isLatest`. |
+| `getApiDocument` (changed) | `GET /v1/apis/{slug}/openapi.json` | Serves the latest version. |
+| `getApiVersionDocument` (new) | `GET /v1/apis/{slug}/versions/{version}/openapi.json` | Same transformation as today (`servers` replaced, `portalApiKey` added). 404 unknown version. |
+| `getApiChangelog` (new) | `GET /v1/apis/{slug}/changelog` | `{ items: ChangelogEntry[] }`, newest import first. |
+| `getHealth` (changed) | `GET /v1/health` | Adds `lint: { ruleset: default\|custom, path?, status: ok\|error, error? }`; `status: degraded` when the custom ruleset failed. Still 200. |
+| `listApis` | `GET /v1/apis` | Shape unchanged; one entry per API, fields from the latest version. |
+
+Lint findings: `LintFinding { rule, severity: error|warning, message, pointer, line, column,
+source }`. Lines and columns are 1-based (Spectral's are 0-based). `source` is null for the
+imported document and the URL for a finding inside an external `$ref` file. On
+`/problems/openapi-lint-failed` the problem's `errors[]` carries the same fields for every error
+(up to 100) plus `errorCount`; warnings aren't included in a refusal. `lintWarnings` is capped at
+200. Spectral `info` and `hint` findings are reported as `warning`.
+
+`ApiVersionName` = `^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`. The portal URL-encodes it in paths
+(`+` → `%2B`).
+
+### Import pipeline (both import operations)
+1. Read `spec` (URL fetch rules from spec 001 unchanged; 5 MiB cap).
+2. Parse YAML/JSON; keep the original text and note its format (`json` if it starts with `{`).
+3. Require `openapi` 3.0.x/3.1.x (`unsupported-openapi-version`).
+4. Require `info.version` matching `ApiVersionName` (`invalid-api-version`, pointer `/info/version`).
+5. Add-version only: if the API doesn't exist → 404; if the version exists → 409 (cheap pre-check;
+   the unique index is the real guard).
+6. Fail fast if the ruleset failed to load (503).
+7. `prepareRefs` host checks, then bundle external `$ref`s as today, recording every fetched file
+   in a `Map<url, text>`. The bundle step may fail only on **external** references; an unresolved
+   internal `$ref` must reach the linter so it's reported as `invalid-ref` (AC 5).
+8. Lint the **original text** with Spectral, `source` = the document URL (or none for pasted
+   content). Spectral is given a resolver whose `http`/`https` readers serve only from the map in
+   step 7 and never touch the network, so external refs are linted with their own line numbers.
+9. Any error-severity finding → 422 `openapi-lint-failed`, nothing stored.
+10. Run the existing `@scalar/openapi-parser` validation on the bundled document (unchanged
+    `invalid-openapi` behaviour) — the safety net for custom rulesets without `oas3-schema`.
+11. Store (see transactions below) and return warnings.
+
+### Default ruleset (`apps/server/rulesets/portal.spectral.yaml`)
+`extends: [[spectral:oas, recommended]]`, then **every** rule of that set listed with an explicit
+severity so the file reads as the full list. Errors — exactly these:
+
+| Rule | Why it breaks docs or try-it |
+| --- | --- |
+| `oas3-schema` | Not a valid OpenAPI 3.x document; Scalar can't render it reliably. |
+| `invalid-ref` (Spectral core, always error) | Unresolved `$ref`: the reference shows an empty schema or fails. |
+| `operation-operationId-unique` | Duplicate `operationId`: reference anchors and links collide. |
+| `path-params` | Path parameter undeclared, unused or duplicated: try-it can't build the URL. |
+| `path-declarations-must-exist` | Empty `{}` in a path: try-it can't build the URL. |
+| `path-not-include-query` | Query string in a path key: try-it sends a malformed URL. |
+| `operation-parameters` | Same parameter twice on an operation: try-it form is ambiguous. |
+| `oas3-operation-security-defined` | Security references an undefined scheme: try-it can't send the key. |
+
+Every other rule in the set is `warn` (for example `operation-description`, `info-contact`,
+`operation-tags`, `oas3-api-servers`, `oas3-unused-component`, `oas3-valid-media-example`,
+`no-$ref-siblings`). A unit test loads the file through the same loader as an operator file and
+asserts the error set equals the table above.
+
+`PORTAL_LINT_RULESET` (optional, absolute path). Unset → the shipped file. Set → loaded at startup
+with `bundleAndLoadRuleset` using the local file system and a `fetch` that always throws, so
+`extends` may use only `spectral:*` built-ins and local files. Accepts `.yaml`, `.yml`, `.json`.
+Load failure (missing file, parse error, invalid ruleset, network `extends`) → log at `error`
+with the path and reason, `health.lint.status = error`, imports 503; never fall back (AC 8).
+
+### Data model (Drizzle, `packages/db/src/schema.ts`)
+New table `api_versions`:
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | uuid PK | UUIDv7 |
+| `api_id` | uuid not null → `apis.id` on delete cascade | |
+| `version` | text not null | `info.version`; unique with `api_id` |
+| `title` | text not null | `info.title` |
+| `description` | text | `info.description` |
+| `document` | jsonb not null | bundled, validated document (as `apis.document` today) |
+| `source_url` | text | |
+| `source_content` | text | original import text; null for backfilled rows (spec 021 serves it) |
+| `source_format` | text | `json` \| `yaml`, check constraint; null when `source_content` is null |
+| `release_note` | text | ≤ 5000 chars (validated in the handler) |
+| `change_summary` | jsonb | `ChangeSummary` or null |
+| `lint_warnings` | jsonb | `LintFinding[]`; null = not linted (pre-012 rows) |
+| `created_by` | uuid → `user.id` | |
+| `published_at` | timestamptz not null default now() | import date |
+
+Indexes: unique `(api_id, version)`; unique `(api_id, id)` (target of the composite FK).
+
+`apis`: drop `title`, `version`, `description`, `document`, `source_url`; add
+`latest_version_id uuid` with composite FK `(id, latest_version_id) → api_versions(api_id, id)`.
+The column is nullable only so the API row and its first version can be inserted in one
+transaction (insert API → insert version → set pointer); every read inner-joins the latest
+version, so an API without one is never visible.
+
+Migration `0001_api_versions.sql` (generated, then hand-edited, in one transaction):
+create table → `insert into api_versions (id, api_id, version, title, description, document,
+source_url, created_by, published_at) select id, id, version, title, description, document,
+source_url, created_by, published_at from apis` (reusing the API's UUIDv7 as its first version's
+ID) → add and fill `latest_version_id` → add the FK → drop the old columns. A migration test runs
+it on a database with the spec 001/004 shape and a published API with a subscription.
+
+Version order (computed in the server, returned already sorted): if every version name is
+`semver.valid`, sort by `semver.rcompare`; otherwise by `published_at` desc. Change-summary
+baseline: the version just below the new one in that order, computed over the existing versions
+plus the new one, so uploading `1.1.0` after `2.0.0` compares with `1.0.0`, and uploading the
+lowest version gives `changes = null`.
+
+Transactions:
+- Add version: `select … from apis where slug = $1 for update` → re-check version uniqueness →
+  load the baseline document → compute summary → insert (unique violation → 409) → if
+  `makeLatest`, set `latest_version_id`. Linting runs before the transaction.
+- Set latest: `update apis set latest_version_id = v.id from api_versions v where …`; zero rows →
+  404.
+- Import API: as today, plus the version insert and pointer update inside the existing
+  transaction.
+- Seed: upsert the `apis` row by slug, upsert version `1.0.0` on `(api_id, version)` (refreshing
+  its document as today), and set `latest_version_id` only when it's null, so an admin's choice
+  survives restarts.
+
+### Change summary (`src/changes.ts`, pure function, unit-tested)
+`summarise(previous, next) → ChangeSummary`. Both documents are bundled, so only internal refs
+need resolving (`#/components/parameters/*`, `#/components/requestBodies/*`; one level, cycle
+guarded). Effective parameters = path-item parameters overridden by operation parameters on
+`(in, name)`; `in: path` parameters are skipped (covered by the path template). Effective security
+= operation `security` if present, else the root `security`. Reasons and their `breaking` flag as
+in "What is breaking" above; output sorted by path, then method in the order GET, PUT, POST,
+DELETE, OPTIONS, HEAD, PATCH, TRACE. `summary` is the new operation's `summary` (old for removed).
+
+### Adapter calls
+None. All versions share the API's Kong service, route, ACL group (`portal-svc-<serviceId>`) and
+subscriptions (ADR 0005 unchanged). `importApi` still calls `protectService` exactly as today;
+`importApiVersion` and `setLatestApiVersion` never call the adapter, so they work with Kong down.
+The try-it allowlist uses `apis.route_path`, which every version shares, so try-it works on every
+version's page.
+
+### Portal (for the ui-designer and frontend)
+- `/apis/[slug]` — latest version (unchanged URL). `/apis/[slug]/versions/[version]` — stable URL
+  per version (AC 1), fed by `getApiVersionDocument`. `/apis/[slug]/changelog` — `getApiChangelog`.
+  The switcher uses `ApiDetail.versions` as given (order and `isLatest`); it is hidden when there's
+  one version unless the ui-designer decides otherwise.
+- Release notes are plain text: render with preserved line breaks, never as HTML or Markdown.
+- Admin: per-API "Add version" (spec source, release note, "Don't make this the default version"
+  → `makeLatest: false`) and "Set as latest" per version. Both import forms list lint errors from
+  `errors[]` on a 422 and lint warnings from `lintWarnings` on success (rule, message, pointer,
+  line; `source` when not null).
+- Demo mode (ADR 0004): `demoData()` gains one version and one changelog entry; no admin actions.
+
+### Risks and how to test them
+| Risk | Mitigation / test |
+| --- | --- |
+| Spectral packages misbehave in the server's ESM/TypeScript build or the Docker image. | First backend task is a spike: lint the sample in a unit test and in the built image (`docker compose up`) before building on it. |
+| A Spectral upgrade adds error rules and starts refusing imports. | Unit test pins the default error-rule set; pin Spectral minor versions. |
+| Unresolved internal `$ref` fails in the bundle step as `invalid-openapi`, not `invalid-ref` (AC 5). | Bundle fails only on external refs; integration test for the AC 5 `$ref` case asserts rule `invalid-ref`. |
+| Spectral fetches external refs or `extends` itself (SSRF, slow imports). | Resolver serves only already-fetched files; ruleset loader `fetch` throws. Unit tests assert no network call. |
+| Line numbers wrong for external files. | Findings carry `source`; test a URL import with an external file containing an error. |
+| Migration loses data or breaks subscriptions. | Migration test on a populated spec 004 database: same API IDs, documents, subscriptions; catalog unchanged. |
+| Concurrent imports of the same version. | Unique index + 409; integration test with two parallel imports, exactly one 201. |
+| Linting a 5 MiB document is slow. | Integration test: 2 MiB generated document lints in under 10 s; record timing in Build notes. |
+| Bad operator ruleset bricks the portal. | Server still starts and serves docs; health `degraded`; imports 503 (AC 8 tests). |
+| Readers of the dropped `apis` columns missed. | `pnpm typecheck` fails on any leftover use; grep for `apis.title`/`apis.document` in review. |
 
 ### Tasks
-- [ ] [backend] …
-- [ ] [frontend] …
-- [ ] [qa] …
+- [ ] [backend] Spike: add the Spectral dependencies and `semver`; lint the sample document in a unit test and confirm the server image builds and starts with them (record result in Build notes).
+- [ ] [backend] Drizzle schema: `api_versions` table and `apis` changes; migration `0001_api_versions.sql` with backfill; migration test on a populated spec 004 database.
+- [ ] [backend] Regenerate `packages/sdk` from the updated contract.
+- [ ] [backend] `src/lint/`: load the default ruleset file or `PORTAL_LINT_RULESET` (no network, no fallback); run Spectral on original text with the no-network resolver; map findings to `LintFinding` (1-based lines, JSON pointer, `source`, severity mapping, caps 100/200). Add `apps/server/rulesets/portal.spectral.yaml` with the full rule list and copy it into the Docker image.
+- [ ] [backend] Unit tests: default error-rule set equals the design table; sample seed document has zero errors; missing/invalid/network-`extends` ruleset files fail with the path in the message.
+- [ ] [backend] Refactor `importDocument` into the shared pipeline (steps 1–11), including the `invalid-api-version` check and external-only bundle failures.
+- [ ] [backend] `importApi`: write the first version and the latest pointer in its transaction; accept `releaseNote`; return `lintWarnings` and `versions`.
+- [ ] [backend] `src/changes.ts`: `summarise()` with the breaking rules; unit tests for each reason code, path-parameter renames, and `$ref`'d parameters.
+- [ ] [backend] `src/versions.ts`: `importApiVersion`, `setLatestApiVersion`, `getApiChangelog`, `getApiVersionDocument`; version order and baseline selection.
+- [ ] [backend] Update `catalog.ts`, `apps.ts`, `seed.ts`, `reconcile.ts`, `proxy.ts` to read the latest version; seed keeps an admin's latest choice.
+- [ ] [backend] `config.ts` `PORTAL_LINT_RULESET`; startup loads the ruleset without throwing, logs failures; `/api/v1/health` `lint` block and `degraded` status; imports 503 while degraded.
+- [ ] [backend] Docs: README/configuration (`PORTAL_LINT_RULESET`, rule list, extending the shipped file), upgrade notes for the migration, `docs/engineering-conventions.md` if it lists the `apis` shape.
+- [ ] [frontend] Reference page: version switcher from `ApiDetail.versions`, "latest" marker, versioned route `/apis/[slug]/versions/[version]`, 404 for unknown versions.
+- [ ] [frontend] Changelog page `/apis/[slug]/changelog`: version, import date, plain-text note, added/removed/changed with breaking markers; first version shows no summary.
+- [ ] [frontend] Admin: "Add version" form (spec URL/content, release note, "Don't make this the default version"), "Set as latest" per version, 409 version-exists message.
+- [ ] [frontend] Admin: show lint errors (422 `openapi-lint-failed`) and lint warnings (success) in both import forms with rule, message, location; 503 ruleset-unavailable message.
+- [ ] [frontend] Handle `gateway-service-already-linked` per the UX decision (offer to add a version to the linked API).
+- [ ] [frontend] Demo mode: `demoData()` with one version and changelog entry; demo build tests still pass.
+- [ ] [qa] AC 1: import v2 onto a published v1 on the Compose stack; switcher, stable v1 URL, one catalog entry, same Kong service link (Playwright + API).
+- [ ] [qa] AC 2 and AC 9: upload order and `makeLatest: false`; "Set as latest"; 403 for a developer, 404 for an unknown version.
+- [ ] [qa] AC 3: changelog entry for the orders v1 → v2 example (note, date, `POST /orders` added, `GET /orders` removed and breaking).
+- [ ] [qa] AC 4: duplicate version → 409, stored v2 unchanged; parallel duplicate imports → exactly one 201.
+- [ ] [qa] AC 5 and AC 6: each error case (duplicate `operationId`, unresolved `$ref`, undeclared path param) refused with rule, message, pointer and line, for new API and new version; warning case published with warnings shown.
+- [ ] [qa] AC 7 and AC 8: custom ruleset via a mounted file (`operation-description` error); default-only rule passes; missing/invalid file → log + health `degraded`, imports 503, no fallback; quickstart without the variable uses the default.
+- [ ] [qa] Migration: existing published API and subscription survive the upgrade; try-it works on latest and older version pages; `docker compose up` quickstart still green in under five minutes.
 
 ## UX  _(ui-designer)_
 Summary + link to `docs/design/012-*.md`
