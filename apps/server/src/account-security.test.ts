@@ -590,6 +590,37 @@ it('refuses unauthenticated, expired-session and non-admin settings changes and 
   expect((await connection.db.select().from(user))[0]!.name).toBe('Person');
 });
 
+it('expired sessions cannot queue email, change settings or delete an account', async () => {
+  const person = await signup();
+  await connection.db.update(user).set({ role: 'admin' });
+  await connection.db.update(session).set({ expiresAt: new Date(0) });
+  const queuedBefore = queued.length;
+  for (const [method, url, payload] of [
+    ['POST', '/api/v1/me/email', { newEmail: 'replacement@example.com' }],
+    ['DELETE', '/api/v1/me', { password: 'password123' }],
+    ['PUT', '/api/v1/admin/settings/accounts', { requireVerifiedEmail: true }],
+    ['POST', '/api/v1/admin/settings/mail/test', { to: person.email }],
+  ] as const) {
+    const denied = await request(method, url, payload, person.cookie);
+    expect(denied.statusCode).toBe(401);
+    expect(denied.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+  }
+  expect(queued).toHaveLength(queuedBefore);
+  expect(await connection.db.select().from(emailChangeRequests)).toHaveLength(
+    0,
+  );
+  expect((await connection.db.select().from(user))[0]!.email).toBe(
+    person.email,
+  );
+  expect(
+    (await connection.db.select().from(accountSettings))[0]!
+      .requireVerifiedEmail,
+  ).toBe(false);
+  expect(adapter.deleteConsumer).not.toHaveBeenCalled();
+});
+
 it('rejects an already-owned email neutrally and keeps the old address until confirmation', async () => {
   const person = await signup();
   await signup('taken@example.com');
