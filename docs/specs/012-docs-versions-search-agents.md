@@ -1,7 +1,7 @@
 ---
 id: 012
 title: API versions and changelog, and spec linting
-status: draft   # draft → ready → designed → building → testing → uat → review → approved → done
+status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-240
