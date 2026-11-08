@@ -44,7 +44,7 @@ node scripts/factory.mjs next
 | 1      | 019  | unified-portal-developer-journey     | JSO-316 | 003 at testing                         | Unified portal: navigation, API-page access action and responsive My apps        |
 | 2      | 005  | setup-wizard-and-gateway-connections | JSO-234 | 004                                    | First-run setup and gateway connections in the admin UI                          |
 | 2      | 006  | hosted-live-demo                     | JSO-127 | Elango: choose hosting and set secrets | Hosted live demo behind the Vercel portal                                        |
-| 3      | 007  | email-and-account-security           | JSO-235 | —                                      | Email delivery, verification, password reset and two-factor login                |
+| 3      | 007  | email-and-account-security           | JSO-235 | —                                      | Email delivery, verification, password reset and account deletion                |
 | 3      | 008  | teams-and-roles                      | JSO-236 | 007                                    | Teams own apps and keys: invites and roles                                       |
 | 4      | 009  | api-products-and-plans               | JSO-237 | 004, 008                               | API products and free plans with rate limits                                     |
 | 4      | 010  | access-requests-and-visibility       | JSO-238 | 009                                    | Access requests with admin approval, and catalog visibility levels               |
@@ -110,12 +110,12 @@ Already shipped: **v0.1** — spec 001 (Kong quickstart) and spec 002 (static de
 
 ## Sprint 3 · v0.4 — Accounts and teams · 23–27 Nov
 
-**Goal:** real accounts (email, verification, 2FA) and teams that own apps and keys.
+**Goal:** real accounts (email, verification, password reset, deletion) and teams that own apps and keys.
 **Features:** 007 (JSO-235) then 008 (JSO-236) — invites need email, so 007 goes first.
 
 **Demo on Friday**
 
-1. Sign up, verification email arrives (Mailpit locally), password reset works, 2FA asks for a code.
+1. Sign up, verification email arrives (Mailpit locally), password reset works, admin SMTP test email sends.
 2. Invite a teammate by email; they accept and use the team's app; a Read-only member can't touch keys.
 3. Deleting an account or removing a member never breaks the team's keys.
 
@@ -124,11 +124,11 @@ Already shipped: **v0.1** — spec 001 (Kong quickstart) and spec 002 (static de
 | Product manager (Claude) | Account lifecycle flows                              | Team, invite, role flows       |
 | Tech lead (Claude)       | Auth plugins, mail transport                         | Ownership model + migration    |
 | UI designer (Claude)     | Auth screens, profile, emails                        | Team pages, switcher, invite   |
-| Backend (Codex)          | SMTP, verification, 2FA, account deletion            | Teams API, invites, migration  |
-| Frontend (Codex)         | Profile, 2FA setup, reset                            | Team pages and switcher        |
+| Backend (Codex)          | SMTP, verification, account deletion                 | Teams API, invites, migration  |
+| Frontend (Codex)         | Profile, mail settings, reset                        | Team pages and switcher        |
 | QA (Codex)               | e2e through Mailpit                                  | Role and ownership tests       |
 | User-tester (Claude)     | Full account lifecycle                               | Two-browser invite walkthrough |
-| Elango                   | Approve, merge; choose an SMTP provider for the demo | Approve, merge                 |
+| Elango                   | Approve, merge                                       | Approve, merge                 |
 
 ## Sprint 4 · v0.5 — Products, plans and approvals · 30 Nov–4 Dec
 
@@ -244,7 +244,7 @@ Already shipped: **v0.1** — spec 001 (Kong quickstart) and spec 002 (static de
 
 ## After v0.9
 
-Release hardening and launch (v1.0), then: Kong Konnect, APISIX, Envoy Gateway, Azure APIM and Apigee adapters;
+Release hardening and launch (v1.0), then: two-factor login with recovery codes (moved out of 007; lost factor recovers by email); Kong Konnect, APISIX, Envoy Gateway, Azure APIM and Apigee adapters;
 an MCP server per API product; AI search over docs; widget SDK and page builder; free marketplace listings.
 
 ## Not doing
@@ -257,7 +257,8 @@ Billing and paid plans · multi-tenant hosting · a hosted SaaS · a built-in fo
 | -------------------------------------------------------------------- | -------------- |
 | Catalog, API reference, try-it, sign-up, one-time key, revoke        | v0.1 (shipped) |
 | Gateway connection from the admin UI, working public demo            | Sprint 2       |
-| Email verification, password reset, 2FA, profile, delete account     | Sprint 3       |
+| Email verification, password reset, profile, delete account          | Sprint 3       |
+| Two-factor login and recovery codes                                  | Backlog        |
 | Teams owning keys, invites, roles                                    | Sprint 3       |
 | Products, plan tiers, subscribe, change plan, cancel, regenerate key | Sprint 4       |
 | Approval of access requests, catalog visibility levels               | Sprint 4       |
