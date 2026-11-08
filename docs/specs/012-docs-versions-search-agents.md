@@ -1,7 +1,7 @@
 ---
 id: 012
 title: API versions and changelog, and spec linting
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-240
@@ -378,7 +378,31 @@ version's page.
 - [ ] [qa] Migration: existing published API and subscription survive the upgrade; try-it works on latest and older version pages; `docker compose up` quickstart still green in under five minutes.
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/012-*.md`
+Design: [docs/design/012-docs-versions-search-agents.md](../design/012-docs-versions-search-agents.md).
+No new tokens.
+
+- **Developer pages.** The reference page gets a version row under the title: a
+  `VersionSwitcher` (shadcn DropdownMenu of real links, in `ApiDetail.versions` order, current
+  version checked, **Latest** badge) and a **Changelog** link. With one version the existing
+  `v{version}` badge stays and only **Changelog** is added. `/apis/{slug}/versions/{version}` shows the
+  same header plus the notice "You're reading version 1.0.0. The latest is 2.0.0." with **View latest
+  version**; unknown versions get a "Version not found" page. `/apis/{slug}/changelog` lists entries
+  newest first: version, date, plain-text release note, a **Breaking changes** notice, and
+  Added / Removed / Changed operation lists with **Breaking** badges and reasons.
+- **Admin pages.** New `/admin/apis/{slug}` ("{title} versions"): versions table with **View** and
+  **Set as latest** (no confirmation; idempotent), and an **Add a version** form (file/URL, release
+  note with 5,000-character counter, **Don't make this the default version**, **Publish version**).
+  `/admin/apis` gains a **Manage versions** column, a release-note field, a `LintFindings` list of
+  errors on a 422 (rule, message, line/column, pointer, external source) and a collapsed warnings
+  panel on success, and a page banner plus no-retry 503 message when the operator's ruleset failed to
+  load.
+- **Open question answered (ui-designer):** both. "Add a version" is a separate per-API action — the
+  only place versions are published, with no Kong service, slug or route fields — and the import form
+  keeps detecting a service with `linkedApiSlug`, replacing 004's dead-end warning with a link
+  **Add a version to {title}** (also on the 422 `gateway-service-already-linked` refusal). The import
+  form doesn't switch modes silently.
+- Every state (loading, empty, error, success, no permission, demo), exact copy, keyboard path and
+  focus order, and 375px/1280px layouts are in the design file, §3–§7.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
