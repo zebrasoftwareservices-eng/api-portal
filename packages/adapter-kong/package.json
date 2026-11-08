@@ -20,5 +20,8 @@
   },
   "devDependencies": {
     "testcontainers": "^11.8.1"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }

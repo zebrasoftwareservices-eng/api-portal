@@ -22,5 +22,9 @@
   "devDependencies": {
     "drizzle-kit": "^0.31.6",
     "@testcontainers/postgresql": "^11.8.1"
-  }
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ]
 }
