@@ -243,10 +243,10 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
     '--input-type=module',
     '-e',
     `
-    import { connect, instanceSettings } from './packages/db/dist/index.js';
-    import { loadConfig } from './apps/server/dist/config.js';
-    import { gatewayConnection } from './apps/server/dist/gateway-connection.js';
-    import { reconcile } from './apps/server/dist/reconcile.js';
+    import { connect, instanceSettings } from '@portal/db';
+    import { loadConfig } from './dist/config.js';
+    import { gatewayConnection } from './dist/gateway-connection.js';
+    import { reconcile } from './dist/reconcile.js';
     const { db, client } = connect(process.env.DATABASE_URL);
     try {
       const [instance] = await db.select().from(instanceSettings);

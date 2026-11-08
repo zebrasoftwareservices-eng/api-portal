@@ -16,16 +16,17 @@ test('AC 8: upgrade pre-005 main preserves the admin, published API and active K
     'Export the coordinator-approved origin/main baseline first',
   ).toBeTruthy();
   const scratch = mkdtempSync(join(tmpdir(), 'spec005-upgrade-'));
-  const project = 'spec005qaupgrade';
+  const project = process.env.SPEC005_UPGRADE_PROJECT ?? 'spec005qaupgrade';
+  const imagePrefix = process.env.SPEC005_UPGRADE_IMAGE_PREFIX ?? 'spec005qa';
   const baseOverride = join(scratch, 'base.yml');
   const branchOverride = join(scratch, 'branch.yml');
   writeFileSync(
     baseOverride,
-    'services:\n  server:\n    image: spec005qa-base-server\n  portal:\n    image: spec005qa-base-web\n',
+    `services:\n  server:\n    image: ${imagePrefix}-base-server\n  portal:\n    image: ${imagePrefix}-base-web\n`,
   );
   writeFileSync(
     branchOverride,
-    'services:\n  server:\n    image: spec005qa-branch-server\n  portal:\n    image: spec005qa-branch-web\n',
+    `services:\n  server:\n    image: ${imagePrefix}-branch-server\n  portal:\n    image: ${imagePrefix}-branch-web\n`,
   );
   const baseCompose = resolve(baseline!, 'deploy/docker-compose.yml');
   const branchCompose = resolve('deploy/docker-compose.yml');

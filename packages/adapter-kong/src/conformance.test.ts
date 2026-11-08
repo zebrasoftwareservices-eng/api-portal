@@ -831,8 +831,14 @@ it('AC 7(e): two real Kongs expose missing consumers and new credentials work af
     await expect
       .poll(() => traffic(nextProxy, newKey), { timeout: 15000 })
       .toBe(200);
-    expect(await traffic(nextProxy, oldKey)).toBe(401);
-    expect(await traffic(proxy, oldKey)).toBe(200);
+    // Assert each final dataplane outcome independently: readiness of one key
+    // request does not establish the result of a later independent request.
+    await expect
+      .poll(() => traffic(nextProxy, oldKey), { timeout: 15000 })
+      .toBe(401);
+    await expect
+      .poll(() => traffic(proxy, oldKey), { timeout: 15000 })
+      .toBe(200);
   } finally {
     await adapter.deleteConsumer(app);
     await second.stop();

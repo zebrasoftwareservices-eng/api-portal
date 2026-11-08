@@ -337,3 +337,104 @@ test('JSO-398: admin-only environment install signs in to the missing gateway st
     });
   }
 });
+
+// Known minor findings remain executable until their UI fixes land. Playwright
+// reports an unexpected pass when a fix makes one of these expectations succeed.
+test('JSO-399: reloading the saved gateway retains the sample choice', async ({
+  page,
+}) => {
+  test.setTimeout(180000);
+  compose(['down', '-v']);
+  try {
+    compose(['up', '-d', '--wait'], {
+      ...fresh,
+      ADMIN_EMAIL: 'admin@example.com',
+      ADMIN_PASSWORD: 'change-me-now',
+    });
+    await page.goto('/sign-in');
+    await page.getByLabel('Email', { exact: true }).fill('admin@example.com');
+    await page.getByLabel('Password', { exact: true }).fill('change-me-now');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page).toHaveURL(/\/setup\/gateway$/);
+    await page.getByRole('button', { name: 'Save connection' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Add the sample API?' }),
+    ).toBeVisible();
+    await page.reload();
+    test.fail(true, 'JSO-399: reload currently loses the sample panel');
+    await expect(
+      page.getByRole('heading', { name: 'Add the sample API?' }),
+    ).toBeVisible();
+  } finally {
+    compose(['down', '-v']);
+    compose(['up', '-d', '--wait'], {
+      ...fresh,
+      ADMIN_EMAIL: 'admin@example.com',
+      ADMIN_PASSWORD: 'change-me-now',
+      KONG_ADMIN_URL: 'http://kong:8001',
+      SEED_SAMPLE: 'true',
+    });
+  }
+});
+
+test('JSO-405: first-load gateway outage retains import source fields', async ({
+  page,
+}) => {
+  test.setTimeout(60000);
+  await page.goto('/sign-in');
+  await page.getByLabel('Email', { exact: true }).fill('admin@example.com');
+  await page.getByLabel('Password', { exact: true }).fill('change-me-now');
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page).not.toHaveURL(/\/sign-in/);
+  compose(['stop', 'kong']);
+  try {
+    await page.goto('/admin/apis');
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'Gateway unavailable' }),
+    ).toBeVisible();
+    test.fail(true, 'JSO-405: first-load outage currently removes the form');
+    await expect(
+      page.getByLabel('OpenAPI file', { exact: true }),
+    ).toBeAttached();
+  } finally {
+    compose(['start', '--wait', 'kong']);
+  }
+});
+
+test('JSO-406: gateway wizard has a single connection heading', async ({
+  page,
+}) => {
+  test.setTimeout(180000);
+  compose(['down', '-v']);
+  try {
+    compose(['up', '-d', '--wait'], {
+      ...fresh,
+      ADMIN_EMAIL: 'admin@example.com',
+      ADMIN_PASSWORD: 'change-me-now',
+    });
+    await page.goto('/sign-in');
+    await page.getByLabel('Email', { exact: true }).fill('admin@example.com');
+    await page.getByLabel('Password', { exact: true }).fill('change-me-now');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page).toHaveURL(/\/setup\/gateway$/);
+    await expect(
+      page.getByRole('heading', { name: 'Connect your Kong', exact: true }),
+    ).toBeVisible();
+    test.fail(
+      true,
+      'JSO-406: the empty gateway state repeats the connection heading',
+    );
+    await expect(
+      page.getByRole('heading', { name: 'Connect a Kong', exact: true }),
+    ).toHaveCount(0);
+  } finally {
+    compose(['down', '-v']);
+    compose(['up', '-d', '--wait'], {
+      ...fresh,
+      ADMIN_EMAIL: 'admin@example.com',
+      ADMIN_PASSWORD: 'change-me-now',
+      KONG_ADMIN_URL: 'http://kong:8001',
+      SEED_SAMPLE: 'true',
+    });
+  }
+});
