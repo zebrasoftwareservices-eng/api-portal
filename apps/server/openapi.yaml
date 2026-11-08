@@ -11,9 +11,24 @@ info:
 
     - Base path: every operation is served under `/api` (the portal's Next.js app rewrites
       `/api/*` to the server so browser calls are same-origin and use the session cookie).
-    - Authentication: Better Auth owns `/api/auth/*` (email + password sign-up, sign-in and
-      sign-out; session cookie). Those routes are not described here. Operations marked
-      `sessionCookie` need a signed-in user; `/v1/admin/*` also needs `role = admin`.
+    - Authentication: Better Auth owns `/api/auth/*` (session cookie). Those routes are not
+      described here; the portal uses `sign-up/email`, `sign-in/email`, `sign-out`, `get-session`,
+      `send-verification-email`, `verify-email`, `request-password-reset`, `reset-password`
+      (GET with a token, and POST) and `change-password`. The server puts per-address limits in
+      front of three of them (spec 007, ADR 0007). Over a limit the response is a 429
+      `/problems/rate-limited` with `Retry-After` (seconds), before Better Auth is called:
+      - `sign-in/email`: failed sign-ins per email address (default 10 in 15 minutes). A wrong
+        current password on `change-password` or `DELETE /v1/me` counts as a failed sign-in.
+      - `request-password-reset`: requests per email address, whether or not it has an account
+        (default 3 per hour).
+      - `send-verification-email`: requests per account, shared with `POST /v1/me/email`
+        (default 3 per hour). The email sent at sign-up doesn't count.
+      `forget-password` (Better Auth's old name for `request-password-reset`) answers 404, and
+      `change-password` always revokes the user's other sessions, as does a password reset.
+      Better Auth's `change-email` and `delete-user` are disabled; the portal's own
+      `/v1/me/email` and `DELETE /v1/me` replace them.
+      Operations marked `sessionCookie` need a signed-in user; `/v1/admin/*` also needs
+      `role = admin`.
     - Errors are RFC 9457 `application/problem+json` with a relative `type` URI such as
       `/problems/gateway-unavailable`.
     - IDs are UUIDv7. Timestamps are UTC ISO 8601 (`date-time`).
@@ -119,6 +134,142 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/User' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [me]
+      operationId: updateMe
+      summary: Change the signed-in user's name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMeRequest' }
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      tags: [me]
+      operationId: deleteMe
+      summary: Delete the signed-in user's account, its apps and their keys
+      description: |
+        Spec 007 AC 9. Checks in this order: password (403 `/problems/invalid-password`, counted
+        as a failed sign-in), last admin (409 `/problems/last-admin`), then a gateway health check
+        (503 `/problems/gateway-unavailable`, nothing deleted). It then deletes each app's Kong
+        consumer (with its keys and ACL memberships) and that app's rows, one app at a time, and
+        finally the user with their sessions. If Kong fails part way, apps already removed stay
+        removed (their keys no longer work), the account and the remaining apps stay, and the
+        call returns 503 so a retry finishes the job. On success the session cookie is cleared and
+        the email address can sign up again as a new account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeleteMeRequest' }
+      responses:
+        '204':
+          description: Account deleted and signed out
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: Expires the session cookie
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403':
+          description: The password is wrong (`/problems/invalid-password`). Nothing was deleted.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: This is the only admin (`/problems/last-admin`); another admin must exist first.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { $ref: '#/components/responses/GatewayRejected' }
+        '503':
+          description: |
+            Kong's Admin API is unreachable (`/problems/gateway-unavailable`, `detail` says the
+            account was not deleted). Includes `Retry-After: 5`.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/me/email:
+    post:
+      tags: [me]
+      operationId: requestEmailChange
+      summary: Start changing the signed-in user's email address
+      description: |
+        Spec 007 AC 7. Sends a confirmation link to `newEmail` and records it as `pendingEmail`.
+        The account keeps its current address, and signs in with it, until the link is opened.
+        A new request replaces any pending one (the old link stops working). Counts against the
+        per-account verification email limit.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailChangeRequest' }
+      responses:
+        '202':
+          description: Confirmation email queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: |
+            `/problems/email-unavailable`: the address belongs to another account or is the
+            current one. `detail` says only that the address can't be used.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/me/email/confirm:
+    post:
+      tags: [me]
+      operationId: confirmEmailChange
+      summary: Confirm an email change with the token from the emailed link
+      description: |
+        No session needed: the link may be opened on another device. On success the account's
+        email becomes the new address, verified, and sign-in works only with it. Single use.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              additionalProperties: false
+              properties:
+                token: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        '200':
+          description: Email changed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400':
+          description: |
+            `/problems/link-expired`: the token is unknown, used, replaced or more than 24 hours
+            old. Nothing changed.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: The address was taken by another account meanwhile (`/problems/email-unavailable`). Nothing changed.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /v1/apps:
     get:
@@ -166,6 +317,7 @@ paths:
               schema: { $ref: '#/components/schemas/CreateAppResponse' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/EmailNotVerified' }
         '404':
           description: One of `apiIds` is not a published API
           content:
@@ -210,6 +362,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/IssuedCredential' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/EmailNotVerified' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: The app already has 5 active keys (`/problems/credential-limit`)
@@ -323,6 +476,152 @@ paths:
               schema: { $ref: '#/components/schemas/Problem' }
         '502': { $ref: '#/components/responses/GatewayRejected' }
         '503': { $ref: '#/components/responses/GatewayUnavailable' }
+
+  /v1/admin/settings/mail:
+    get:
+      tags: [admin]
+      operationId: getMailSettings
+      summary: How the portal sends email
+      description: |
+        `source` says which settings are in use: `saved` (admin UI, these win), `environment`
+        (the `SMTP_*` variables, used while nothing is saved) or `none`. The SMTP password is never
+        returned; `hasPassword` says whether one is stored.
+      responses:
+        '200':
+          description: Mail settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MailSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [admin]
+      operationId: saveMailSettings
+      summary: Save SMTP settings; from now on they win over the environment
+      description: |
+        Doesn't contact the SMTP server; use the test action for that. The password is encrypted
+        at rest (AES-256-GCM with `PORTAL_ENCRYPTION_KEY`). Omit `password` to keep the stored one;
+        send `null` to remove it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveMailSettingsRequest' }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MailSettings' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [admin]
+      operationId: deleteMailSettings
+      summary: Remove the saved SMTP settings and go back to the environment ones
+      responses:
+        '200':
+          description: Removed; the response shows what is now in use
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MailSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: |
+            "Require a verified email" is on and the environment has no SMTP settings, so removing
+            these would leave no way to send mail (`/problems/mail-required`).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/admin/settings/mail/test:
+    post:
+      tags: [admin]
+      operationId: sendTestEmail
+      summary: Send a test email with the settings in use
+      description: |
+        Sends synchronously and gives up after 15 seconds. Error `detail`s are fixed copy and
+        never include the SMTP server's reply, the username or the password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to]
+              additionalProperties: false
+              properties:
+                to: { type: string, format: email, maxLength: 254 }
+      responses:
+        '200':
+          description: The SMTP server accepted the message
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [to, source]
+                properties:
+                  to: { type: string, format: email }
+                  source: { type: string, enum: [saved, environment] }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: No SMTP settings are saved or set in the environment (`/problems/mail-not-configured`)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: |
+            The SMTP server didn't take the message. `type` is one of
+            `/problems/smtp-unreachable` (DNS, connection, TLS or timeout),
+            `/problems/smtp-auth-failed` (the server rejected the username or password),
+            `/problems/smtp-rejected` (connected and signed in, but the sender or recipient was refused).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/admin/settings/accounts:
+    get:
+      tags: [admin]
+      operationId: getAccountSettings
+      summary: Email verification requirement and rate limits
+      responses:
+        '200':
+          description: Account settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [admin]
+      operationId: saveAccountSettings
+      summary: Change the verification requirement and rate limits
+      description: Takes effect on the next request, without a restart. Send the whole object.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveAccountSettingsRequest' }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AccountSettings' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: |
+            Turning on `requireVerifiedEmail` with no SMTP settings saved or in the environment
+            (`/problems/mail-not-configured`). Nothing was saved.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /v1/try-it:
     parameters:
@@ -484,6 +783,14 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+    EmailNotVerified:
+      description: |
+        The admin requires a verified email and the user hasn't verified theirs
+        (`/problems/email-not-verified`). Nothing was created, in Kong or the portal. The UI offers
+        to resend the verification email (`POST /api/auth/send-verification-email`).
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     TryItNotAllowed:
       description: Missing `scalar_url`, or it isn't under a published API's base URL (`/problems/try-it-target-not-allowed`)
       content:
@@ -564,12 +871,133 @@ components:
 
     User:
       type: object
-      required: [id, email, name, role]
+      required: [id, email, name, role, emailVerified, pendingEmail, verificationRequired]
       properties:
         id: { type: string, format: uuid }
-        email: { type: string, format: email }
+        email: { type: string, format: email, description: The address the account signs in with }
         name: { type: string }
         role: { type: string, enum: [developer, admin] }
+        emailVerified: { type: boolean }
+        pendingEmail:
+          type: [string, 'null']
+          format: email
+          description: New address waiting for its confirmation link, if an email change is in progress and its link hasn't expired
+        verificationRequired:
+          type: boolean
+          description: The admin's "Require a verified email" setting. With `emailVerified` false, creating apps and keys is refused.
+
+    UpdateMeRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100, description: Trimmed before saving }
+
+    EmailChangeRequest:
+      type: object
+      required: [newEmail]
+      additionalProperties: false
+      properties:
+        newEmail: { type: string, format: email, maxLength: 254, description: Trimmed and lower-cased }
+
+    DeleteMeRequest:
+      type: object
+      required: [password]
+      additionalProperties: false
+      properties:
+        password: { type: string, minLength: 1, maxLength: 128 }
+
+    SmtpSecurity:
+      type: string
+      enum: [none, starttls, tls]
+      description: '`none`: plain SMTP. `starttls`: upgrade with STARTTLS, required (usually port 587). `tls`: TLS from the start (usually port 465).'
+
+    SmtpSettingsView:
+      type: object
+      required: [host, port, security, username, hasPassword, senderName, senderAddress]
+      properties:
+        host: { type: string }
+        port: { type: integer }
+        security: { $ref: '#/components/schemas/SmtpSecurity' }
+        username: { type: [string, 'null'] }
+        hasPassword: { type: boolean }
+        senderName: { type: string }
+        senderAddress: { type: string, format: email }
+
+    MailSettings:
+      type: object
+      required: [source, saved, environment]
+      properties:
+        source: { type: string, enum: [saved, environment, none], description: Which settings portal email uses now }
+        saved:
+          description: Settings saved in the admin UI, or null
+          oneOf:
+            - $ref: '#/components/schemas/SmtpSettingsView'
+            - type: 'null'
+        updatedAt: { type: [string, 'null'], format: date-time }
+        environment:
+          description: Settings from `SMTP_*` environment variables, or null when `SMTP_HOST` or `SMTP_SENDER_ADDRESS` is unset. Read-only.
+          oneOf:
+            - $ref: '#/components/schemas/SmtpSettingsView'
+            - type: 'null'
+
+    SaveMailSettingsRequest:
+      type: object
+      required: [host, port, security, senderName, senderAddress]
+      additionalProperties: false
+      properties:
+        host: { type: string, minLength: 1, maxLength: 253 }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        security: { $ref: '#/components/schemas/SmtpSecurity' }
+        username: { type: [string, 'null'], maxLength: 254 }
+        password:
+          type: [string, 'null']
+          maxLength: 1024
+          writeOnly: true
+          description: Omit to keep the stored password; null removes it. Never returned.
+        senderName: { type: string, minLength: 1, maxLength: 100 }
+        senderAddress: { type: string, format: email, maxLength: 254 }
+
+    RateLimit:
+      type: object
+      required: [max, windowMinutes]
+      additionalProperties: false
+      properties:
+        max: { type: integer, minimum: 1, maximum: 1000 }
+        windowMinutes: { type: integer, minimum: 1, maximum: 1440 }
+
+    AccountRateLimits:
+      type: object
+      required: [signInFailures, passwordResetEmails, verificationEmails]
+      additionalProperties: false
+      properties:
+        signInFailures:
+          allOf: [{ $ref: '#/components/schemas/RateLimit' }]
+          description: Failed sign-ins per email address. Default 10 in 15 minutes.
+        passwordResetEmails:
+          allOf: [{ $ref: '#/components/schemas/RateLimit' }]
+          description: Password reset requests per email address. Default 3 in 60 minutes.
+        verificationEmails:
+          allOf: [{ $ref: '#/components/schemas/RateLimit' }]
+          description: Verification email resends and email change requests per account. Default 3 in 60 minutes.
+
+    SaveAccountSettingsRequest:
+      type: object
+      required: [requireVerifiedEmail, rateLimits]
+      additionalProperties: false
+      properties:
+        requireVerifiedEmail: { type: boolean }
+        rateLimits: { $ref: '#/components/schemas/AccountRateLimits' }
+
+    AccountSettings:
+      allOf:
+        - $ref: '#/components/schemas/SaveAccountSettingsRequest'
+        - type: object
+          required: [mailConfigured]
+          properties:
+            mailConfigured:
+              type: boolean
+              description: SMTP settings are saved or set in the environment. `requireVerifiedEmail` can't be turned on without them.
 
     ApiSummary:
       type: object
@@ -664,7 +1092,7 @@ components:
               id: { type: string }
               name: { type: [string, 'null'] }
               paths: { type: array, items: { type: string } }
-        keyAuth: { type: boolean, description: True if an enabled key-auth plugin applies to the service, one of its routes, or globally }
+        keyAuth: { type: boolean, description: 'True if an enabled key-auth plugin applies to the service, one of its routes, or globally' }
         linkedApiSlug: { type: [string, 'null'], description: Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`. }
 
     CreateAppRequest:
