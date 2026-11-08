@@ -1,0 +1,93 @@
+# SPDX-License-Identifier: Apache-2.0
+name: portal-hosted
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+services:
+  postgres:
+    image: ${PORTAL_POSTGRES_IMAGE:-postgres:17-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: ${PORTAL_POSTGRES_PASSWORD:?PORTAL_POSTGRES_PASSWORD is required}
+      POSTGRES_DB: portal
+    volumes:
+      - portal-postgres-data:/var/lib/postgresql/data
+    networks:
+      - database
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U portal -d portal]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *default-logging
+
+  httpbin:
+    image: ${HTTPBIN_IMAGE:-mccutchen/go-httpbin:v2.15.0}
+    restart: unless-stopped
+    networks:
+      kong-edge:
+        aliases:
+          - httpbin
+    logging: *default-logging
+
+  server:
+    image: ${PORTAL_SERVER_IMAGE:-portal-server:hosted}
+    build:
+      context: ../..
+      dockerfile: apps/server/Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://portal:${PORTAL_POSTGRES_PASSWORD:?PORTAL_POSTGRES_PASSWORD is required}@postgres:5432/portal
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET is required}
+      PORTAL_ENCRYPTION_KEY: ${PORTAL_ENCRYPTION_KEY:?PORTAL_ENCRYPTION_KEY is required}
+      PORTAL_PROXY_HOST: caddy
+      PORTAL_PUBLIC_URL: ${PORTAL_PUBLIC_URL:?PORTAL_PUBLIC_URL is required}
+      BETTER_AUTH_TRUSTED_ORIGINS: ${BETTER_AUTH_TRUSTED_ORIGINS:-}
+      KONG_ADMIN_URL: ${KONG_ADMIN_URL:?KONG_ADMIN_URL is required}
+      KONG_ADMIN_TOKEN: ${KONG_ADMIN_TOKEN:?KONG_ADMIN_TOKEN is required}
+      KONG_PROXY_INTERNAL_URL: ${KONG_PROXY_INTERNAL_URL:?KONG_PROXY_INTERNAL_URL is required}
+      KONG_PROXY_PUBLIC_URL: ${KONG_PROXY_PUBLIC_URL:?KONG_PROXY_PUBLIC_URL is required}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-zebrasoftwareservices@gmail.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      SEED_SAMPLE: 'true'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      httpbin:
+        condition: service_started
+    networks:
+      database:
+      edge:
+        aliases:
+          - portal-server
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://localhost:4000/api/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 6s
+      retries: 30
+    logging: *default-logging
+
+networks:
+  database:
+    internal: true
+  edge:
+    name: portal-edge
+    external: true
+  kong-edge:
+    name: apigw_edge
+    external: true
+
+volumes:
+  portal-postgres-data:

@@ -102,7 +102,7 @@ test('019 AC1: visitor, developer and admin navigation, current page and My apps
             ? 'Admin'
             : 'APIs',
       );
-      await expect(page.locator('header')).not.toContainText('Dashboard');
+      await expect(page.getByRole('banner')).not.toContainText('Dashboard');
       if (path === '/dashboard') {
         await expect(
           page.getByRole('heading', { name: 'My apps', exact: true }),
