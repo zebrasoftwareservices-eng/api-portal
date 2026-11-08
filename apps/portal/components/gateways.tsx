@@ -324,7 +324,11 @@ export function GatewayCard({
                   objects stay in Kong, including its consumers, keys and ACLs,
                   so traffic through Kong doesn't change. To remove them, follow
                   the{' '}
-                  <a href={`${KONG_ADMIN_DOCS}#cleanup-steps`}>cleanup steps</a>
+                  <a
+                    href={`${KONG_ADMIN_DOCS}#clean-up-this-portals-objects-after-removal`}
+                  >
+                    cleanup steps
+                  </a>
                   .
                 </p>
               )}
@@ -442,7 +446,12 @@ export function Gateways({ setup = false }: { setup?: boolean }) {
         <div ref={status} role="status" tabIndex={-1} className="alert success">
           ✓ Gateway removed. Its stored token is deleted, and the portal's
           objects stay in Kong. To remove them, follow the{' '}
-          <a href={`${KONG_ADMIN_DOCS}#cleanup-steps`}>cleanup steps</a>.
+          <a
+            href={`${KONG_ADMIN_DOCS}#clean-up-this-portals-objects-after-removal`}
+          >
+            cleanup steps
+          </a>
+          .
         </div>
       )}
       {resource.loading && !resource.data ? (

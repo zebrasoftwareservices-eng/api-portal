@@ -8,7 +8,7 @@ import type { Gateway, GatewayUrls, Problem } from '../lib/types';
 import { Field, focusInvalid } from './field';
 import { ProblemAlert } from './problem-alert';
 export const KONG_ADMIN_DOCS =
-  'https://github.com/zebrasoftwareservices-eng/api-portal/blob/main/docs/reaching-the-kong-admin-api.md';
+  'https://github.com/zebrasoftwareservices-eng/api-portal/blob/main/docs/connect-kong.md';
 export function normaliseGatewayUrl(value: string) {
   try {
     const url = new URL(value.trim());
@@ -17,12 +17,23 @@ export function normaliseGatewayUrl(value: string) {
     return value.trim();
   }
 }
-export function gatewayFieldErrors(problem: Problem): Record<string, string> {
+export function gatewayFieldErrors(
+  problem: Problem,
+  adminUrl?: string,
+): Record<string, string> {
+  let loopback = false;
+  try {
+    loopback = ['localhost', '127.0.0.1', '[::1]'].includes(
+      new URL(adminUrl || '').hostname,
+    );
+  } catch {
+    // Invalid URLs are handled by field validation.
+  }
   const code = problem.type.split('/').pop();
   const cases: Record<string, [string, string]> = {
     'gateway-unreachable': [
       'adminUrl',
-      problem.detail?.includes('localhost')
+      loopback || problem.detail?.includes('localhost')
         ? 'Use an address the portal server can reach.'
         : 'Check this address.',
     ],
@@ -86,7 +97,7 @@ export function GatewayChanges({
         <p>
           APIs already published stay linked to the services on the current
           Kong. Read{' '}
-          <a href={`${KONG_ADMIN_DOCS}#changing-kong`}>
+          <a href={`${KONG_ADMIN_DOCS}#edit-disable-repoint-or-remove`}>
             what changing Kong does and doesn't move
           </a>
           .
@@ -233,8 +244,13 @@ export function GatewayForm({
       return;
     }
     setConfirm(undefined);
-    setProblem(error);
-    setErrors(gatewayFieldErrors(error));
+    const fieldErrors = gatewayFieldErrors(error, values.adminUrl);
+    setProblem(
+      error.status === 400 && Object.keys(fieldErrors).length
+        ? undefined
+        : error,
+    );
+    setErrors(fieldErrors);
     if (
       error.status === 404 ||
       error.type.endsWith('/gateway-exists') ||
@@ -402,7 +418,11 @@ export function GatewayForm({
             <div id="gateway-warnings">
               {tested.warnings.map((w) => (
                 <p className="alert warning" key={w.code}>
-                  ⚠ {w.message}
+                  ⚠ {w.affectedKeys} active{' '}
+                  {w.affectedKeys === 1 ? 'key has' : 'keys have'} no consumer
+                  on this Kong, so{' '}
+                  {w.affectedKeys === 1 ? "it won't" : "they won't"} work there.
+                  Saving asks you to confirm.
                 </p>
               ))}
             </div>
@@ -481,10 +501,12 @@ export function GatewayForm({
             <AlertDialog.Description asChild>
               <div className="stack">
                 <p>
-                  {confirm?.affectedKeys} active keys have no consumer on this
-                  Kong, so they won't work there. The portal stores only each
-                  key's last four characters, so it can't recreate them.
-                  Developers will need new keys.
+                  {confirm?.affectedKeys} active{' '}
+                  {confirm?.affectedKeys === 1 ? 'key has' : 'keys have'} no
+                  consumer on this Kong, so{' '}
+                  {confirm?.affectedKeys === 1 ? "it won't" : "they won't"} work
+                  there. The portal stores only each key's last four characters,
+                  so it can't recreate them. Developers will need new keys.
                 </p>
                 <p>
                   Those keys keep working on your current Kong until you remove

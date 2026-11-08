@@ -6,6 +6,7 @@ import {
   GatewayForm,
   gatewayFieldErrors,
   normaliseGatewayUrl,
+  KONG_ADMIN_DOCS,
 } from './gateway-form';
 import type { Gateway } from '../lib/types';
 const mocks = vi.hoisted(() => ({
@@ -191,6 +192,127 @@ describe('gateway connection form', () => {
       ),
     ).toEqual([field]);
   });
+  it('links help and repoint guidance to the existing Kong guide', async () => {
+    mount(true);
+    expect(
+      screen.getByRole('link', { name: 'Reaching the Kong Admin API' }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/zebrasoftwareservices-eng/api-portal/blob/main/docs/connect-kong.md',
+    );
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Admin API URL'), '/changed');
+    expect(
+      screen.getByRole('link', {
+        name: "what changing Kong does and doesn't move",
+      }),
+    ).toHaveAttribute(
+      'href',
+      `${KONG_ADMIN_DOCS}#edit-disable-repoint-or-remove`,
+    );
+  });
+  it.each(['Test connection', 'Save connection'])(
+    'shows only field errors for a 400 on %s',
+    async (action) => {
+      mocks.post.mockResolvedValue({
+        error: {
+          type: '/problems/validation',
+          title: 'validation',
+          status: 400,
+          detail: 'Check the connection URLs.',
+          errors: [
+            {
+              pointer: '/adminUrl',
+              message:
+                'Remove the username, password, query or fragment from this URL.',
+            },
+          ],
+        },
+        response: new Response(null, { status: 400 }),
+      });
+      mount();
+      const user = userEvent.setup();
+      await user.type(
+        screen.getByLabelText('Admin API token (optional)'),
+        'keep-this-token',
+      );
+      await user.click(screen.getByRole('button', { name: action }));
+      await waitFor(() =>
+        expect(screen.getByLabelText('Admin API URL')).toHaveFocus(),
+      );
+      expect(screen.getByText(/Remove the username/)).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.queryByText('validation')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Try again' }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Admin API token (optional)')).toHaveValue(
+        'keep-this-token',
+      );
+    },
+  );
+  it.each([1, 3])(
+    'counts and pluralises %i missing keys in Test and Save',
+    async (count) => {
+      mocks.post.mockResolvedValue({
+        data: {
+          version: '3.9',
+          warnings: [
+            {
+              code: 'active-keys-missing',
+              affectedKeys: count,
+              message: 'Old server wording without a count.',
+            },
+          ],
+        },
+      });
+      mocks.patch.mockResolvedValue({
+        error: {
+          type: '/problems/gateway-keys-missing',
+          title: 'Some keys will not work',
+          status: 409,
+          affectedKeys: count,
+        },
+        response: new Response(null, { status: 409 }),
+      });
+      mount(true);
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText('Admin API URL'), '/changed');
+      await user.type(
+        screen.getByLabelText('Admin API token (optional)'),
+        'replacement',
+      );
+      await user.click(screen.getByRole('button', { name: 'Test connection' }));
+      const sentence = `${count} active ${count === 1 ? 'key has' : 'keys have'} no consumer on this Kong, so ${count === 1 ? "it won't" : "they won't"} work there.`;
+      expect(
+        await screen.findByText(/Saving asks you to confirm/),
+      ).toHaveTextContent(`${sentence} Saving asks you to confirm.`);
+      expect(screen.queryByText(/Old server wording/)).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Save connection' }));
+      expect(await screen.findByRole('alertdialog')).toHaveTextContent(
+        sentence,
+      );
+    },
+  );
+  it.each([
+    'http://localhost:8001',
+    'http://127.0.0.1:8001',
+    'http://[::1]:8001',
+  ])(
+    'gives reachable-address guidance for %s without relying on server detail',
+    (url) => {
+      expect(
+        gatewayFieldErrors(
+          {
+            type: '/problems/gateway-unreachable',
+            title: 'unreachable',
+            status: 422,
+          },
+          url,
+        ),
+      ).toEqual({ adminUrl: 'Use an address the portal server can reach.' });
+    },
+  );
   it('compares normalized origins and paths', () => {
     expect(normaliseGatewayUrl('HTTP://KONG:80/admin/')).toBe(
       normaliseGatewayUrl('http://kong/admin'),

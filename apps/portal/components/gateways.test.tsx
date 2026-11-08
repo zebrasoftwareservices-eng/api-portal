@@ -121,6 +121,10 @@ describe('gateway management', () => {
     render(<GatewayCard gateway={gateway} onChanged={mocks.changed} />);
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(screen.getByRole('link', { name: 'cleanup steps' })).toHaveAttribute(
+      'href',
+      'https://github.com/zebrasoftwareservices-eng/api-portal/blob/main/docs/connect-kong.md#clean-up-this-portals-objects-after-removal',
+    );
     await user.click(screen.getByRole('button', { name: 'Remove gateway' }));
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent(

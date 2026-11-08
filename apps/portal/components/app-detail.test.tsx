@@ -46,7 +46,7 @@ describe('app keys', () => {
       .mockResolvedValueOnce({
         error: {
           type: '/problems/gateway-unavailable',
-          title: 'Gateway unavailable',
+          title: 'gateway unavailable',
           status: 503,
         },
         response: new Response(null, { status: 503 }),
@@ -63,6 +63,12 @@ describe('app keys', () => {
     );
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       'the key is still active',
+    );
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      '⚠ Gateway unavailable',
+    );
+    expect(within(dialog).getByRole('alert')).not.toHaveTextContent(
+      '⚠ gateway unavailable',
     );
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(screen.getByText('● Active')).toBeInTheDocument();
