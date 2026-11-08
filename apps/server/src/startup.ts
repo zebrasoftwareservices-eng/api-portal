@@ -87,7 +87,8 @@ export async function start(config: Config) {
           { singletonKey: 'gateway-reconcile' },
         ),
     });
-    if (setupToken) app.log.info(`First-run setup token: ${setupToken}`);
+    if (setupToken)
+      app.log.info(`Setup token for the first admin: ${setupToken}`);
     const connection = gatewayConnection(
       db,
       config,

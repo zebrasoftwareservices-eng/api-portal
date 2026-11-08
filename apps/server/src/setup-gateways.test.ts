@@ -872,8 +872,13 @@ it.each([401, 404, 503])(
             ? 'gateway-not-kong'
             : 'gateway-unreachable'),
     );
-    if (status === 503)
-      expect(response.json().detail).toContain('resolved from the server');
+    if (status === 503) {
+      expect(response.json().detail).toContain(
+        'resolved from the portal server',
+      );
+      expect(response.json().detail).toContain('http://kong:8001');
+      expect(response.json().detail).not.toContain('that Kong is running');
+    }
   },
 );
 

@@ -201,13 +201,20 @@ it('generates a new production setup token on each start until an admin exists',
   const first = mocks.createApp.mock.calls.at(-1)![0].setupToken;
   expect(first).toMatch(/^[a-f0-9]{64}$/);
   expect(mocks.log.info).toHaveBeenCalledWith(
-    `First-run setup token: ${first}`,
+    `Setup token for the first admin: ${first}`,
   );
   await start(config);
   expect(mocks.createApp.mock.calls.at(-1)![0].setupToken).not.toBe(first);
+  expect(mocks.log.info).toHaveBeenLastCalledWith(
+    `Setup token for the first admin: ${mocks.createApp.mock.calls.at(-1)![0].setupToken}`,
+  );
   mocks.adminExists.mockResolvedValue(true);
+  mocks.log.info.mockClear();
   await start(config);
   expect(mocks.createApp.mock.calls.at(-1)![0].setupToken).toBeUndefined();
+  expect(mocks.log.info).not.toHaveBeenCalledWith(
+    expect.stringContaining('Setup token'),
+  );
 });
 it('bootstraps an environment admin through the shared atomic creator', async () => {
   mocks.adminExists.mockResolvedValueOnce(false);

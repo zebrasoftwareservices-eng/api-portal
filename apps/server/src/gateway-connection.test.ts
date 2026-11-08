@@ -4,6 +4,7 @@ import type { GatewayAdapter } from '@portal/adapter-sdk';
 import {
   checkAddress,
   checkConnection,
+  connectionFailure,
   normalizeUrl,
   resolveToken,
   type GatewayRow,
@@ -92,6 +93,24 @@ it('maps outcomes without exposing adapter data and checks the proxy only after 
       },
       adapter,
     ),
-  ).rejects.toThrow('resolved from the server');
+  ).rejects.toThrow('resolved from the portal server');
   expect(proxy).not.toHaveBeenCalled();
+});
+it.each(['localhost', '127.0.0.1', '[::1]'])(
+  'explains how to replace unreachable loopback address %s',
+  (host) => {
+    expect(
+      connectionFailure('unreachable', `http://${host}:8001`).message,
+    ).toBe(
+      "The portal couldn't reach that address. It's resolved from the portal server, not your machine, so localhost means the server itself. If Kong runs in the same compose network, use its service name, like http://kong:8001.",
+    );
+    expect(connectionFailure('refused', `http://${host}:8001`).message).toBe(
+      'Kong refused the request because the Admin API token is wrong or missing. Check the token and try again.',
+    );
+  },
+);
+it('keeps non-loopback unreachable guidance specific to the Admin API', () => {
+  expect(connectionFailure('unreachable', 'http://kong:8001').message).toBe(
+    "The portal couldn't reach that address. Check the Admin API URL and that Kong is running.",
+  );
 });

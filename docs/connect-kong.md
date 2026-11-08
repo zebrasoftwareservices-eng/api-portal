@@ -32,12 +32,27 @@ startup to create the first admin. Each restart replaces it until an admin exist
 ## Reach the Admin API through a protected route
 
 This recipe adapts [Kong's API loopback guidance](https://developer.konghq.com/gateway/secure-the-admin-api/).
-Apply it from Kong's own host or container, using its loopback Admin API, before
+Apply it from Kong's own network namespace, using its loopback Admin API, before
 you expose the route. Keep the proxy private or firewalled while configuring it:
 the route must never be reachable without all three security plugins.
 
 1. Set `KONG_ADMIN_LISTEN=127.0.0.1:8001` and restart Kong. Its Admin API is now
-   accessible only from the Kong host/container. Run the following commands there.
+   accessible only from Kong's network namespace.
+   On a host install, run the recipe in a shell with `curl` installed. The official
+   Kong container image has no `curl`; for Docker, open a separate curl container
+   that shares Kong's network namespace (replace `your-kong-container` with its
+   name from `docker ps`):
+
+   ```sh
+   docker run --rm -it --network container:your-kong-container \
+     --entrypoint sh curlimages/curl:8.11.1
+   ```
+
+   Paste the recipe below into that interactive shell. Its `127.0.0.1` reaches
+   Kong's loopback Admin API without publishing port 8001 or installing tools in
+   Kong. Keep this shell open until configuration is complete, then run `exit` to
+   remove the curl container.
+
 2. Choose a random admin token and the portal server's source IP as Kong sees it.
    Add trusted operators explicitly. Behind a load balancer, configure Kong's
    trusted proxy and real-IP settings before relying on an IP allowlist.
@@ -46,7 +61,8 @@ the route must never be reachable without all three security plugins.
    from portal discovery and is distinct from the portal's ownership tag.
 
 ```sh
-# Run in the Kong host/container; keep shell tracing off when handling tokens.
+# Run in the curl container above, or on the Kong host with curl installed.
+# Keep shell tracing off when handling tokens.
 ADMIN=http://127.0.0.1:8001
 PORTAL_SERVER_IP=192.0.2.10/32 # Replace with the real source address.
 read -r -s -p 'Choose an admin token: ' ADMIN_TOKEN

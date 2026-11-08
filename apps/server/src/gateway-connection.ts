@@ -193,10 +193,9 @@ export function connectionFailure(
   return new Problem(
     422,
     codes[outcome],
-    connectionDetails[outcome] +
-      (outcome === 'unreachable' && local
-        ? ' This address is resolved from the server, not your machine.'
-        : ''),
+    outcome === 'unreachable' && local
+      ? "The portal couldn't reach that address. It's resolved from the portal server, not your machine, so localhost means the server itself. If Kong runs in the same compose network, use its service name, like http://kong:8001."
+      : connectionDetails[outcome],
   );
 }
 export async function checkConnection(
