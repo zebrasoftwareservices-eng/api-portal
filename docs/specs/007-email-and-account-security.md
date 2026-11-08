@@ -1,11 +1,11 @@
 ---
 id: 007
 title: Email and account security
-status: draft   # draft → ready → designed → building → testing → uat → review → approved → done
+status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
-linear_stages:     # stage issues — filled by linear-init
+linear_stages: 
 ---
 
 # 007 — Email delivery, verification, password reset and account deletion
