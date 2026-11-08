@@ -91,13 +91,33 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
     await expect(
       page.getByRole('link', { name: 'Skip for now.' }),
     ).toBeVisible();
+    await expect(
+      page.getByRole('link', { name: 'Reaching the Kong Admin API' }),
+    ).toHaveAttribute(
+      'href',
+      'https://github.com/zebrasoftwareservices-eng/api-portal/blob/main/docs/connect-kong.md',
+    );
+    await page
+      .getByLabel('Admin API URL', { exact: true })
+      .fill('http://user:pw@kong:8001');
+    await page.getByRole('button', { name: 'Test connection' }).click();
+    await expect(
+      page.getByLabel('Admin API URL', { exact: true }),
+    ).toBeFocused();
+    await expect(page.getByLabel('Admin API URL', { exact: true })).toHaveValue(
+      'http://user:pw@kong:8001',
+    );
+    await expect(page.getByRole('alert')).toHaveCount(0);
     await page
       .getByLabel('Admin API URL', { exact: true })
       .fill('http://localhost:1');
     await page.getByRole('button', { name: 'Test connection' }).click();
     await expect(
       page.getByRole('alert').filter({ hasText: /couldn.t|can.t|disabled/i }),
-    ).toContainText('server');
+    ).toContainText('use its service name, like http://kong:8001');
+    await expect(
+      page.getByText('Use an address the portal server can reach.'),
+    ).toBeVisible();
     await page
       .getByLabel('Admin API URL', { exact: true })
       .fill('http://kong:8001');
