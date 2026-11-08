@@ -79,7 +79,18 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
     await expect(
       page.getByRole('link', { name: 'Go to Gateways' }),
     ).toBeVisible();
-    await page.goto('/setup/gateway');
+    // JSO-398: Better Auth's real sign-in response has no portal role.
+    await page.context().clearCookies();
+    await page.goto('/sign-in');
+    await page.getByLabel('Email', { exact: true }).fill('wizard@example.com');
+    await page
+      .getByLabel('Password', { exact: true })
+      .fill('wizard-password-123');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page).toHaveURL(/\/setup\/gateway$/);
+    await expect(
+      page.getByRole('link', { name: 'Skip for now.' }),
+    ).toBeVisible();
     await page
       .getByLabel('Admin API URL', { exact: true })
       .fill('http://localhost:1');
@@ -256,6 +267,37 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
     ).toBeVisible();
     await page.goto('/setup');
     await expect(page).not.toHaveURL(/\/setup$/);
+  } finally {
+    compose(['down', '-v']);
+    compose(['up', '-d', '--wait'], {
+      ...fresh,
+      ADMIN_EMAIL: 'admin@example.com',
+      ADMIN_PASSWORD: 'change-me-now',
+      KONG_ADMIN_URL: 'http://kong:8001',
+      SEED_SAMPLE: 'true',
+    });
+  }
+});
+
+test('JSO-398: admin-only environment install signs in to the missing gateway step', async ({
+  page,
+}) => {
+  test.setTimeout(180000);
+  compose(['down', '-v']);
+  try {
+    compose(['up', '-d', '--wait'], {
+      ...fresh,
+      ADMIN_EMAIL: 'admin@example.com',
+      ADMIN_PASSWORD: 'change-me-now',
+    });
+    await page.goto('/sign-in');
+    await page.getByLabel('Email', { exact: true }).fill('admin@example.com');
+    await page.getByLabel('Password', { exact: true }).fill('change-me-now');
+    await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page).toHaveURL(/\/setup\/gateway$/);
+    await expect(
+      page.getByRole('link', { name: 'Skip for now.' }),
+    ).toBeVisible();
   } finally {
     compose(['down', '-v']);
     compose(['up', '-d', '--wait'], {
