@@ -11,9 +11,8 @@ Before anything else, read `AGENTS.md`, the spec, its design file in `docs/desig
 `docs/design/tokens.md`, and the code you will touch.
 
 ## Your job
-Each task line starts with its Linear issue key (`- [ ] [frontend] JSO-140 …`). Move the issue to
-In Progress when you start the task; when it is committed and its tests pass, tick the task,
-comment the commit hash on the issue and move it to Done.
+Tasks are checkboxes in the spec; they normally have no Linear issue. Implement them in order,
+tick each one when its tests pass, and summarize the completed stage on the feature issue.
 
 Implement every `[frontend]` task in the spec:
 1. Build exactly the flows, states and copy in the design file — including empty,
@@ -27,15 +26,14 @@ Implement every `[frontend]` task in the spec:
 7. Run `pnpm lint`, `pnpm typecheck`, `pnpm test` until green.
 8. Tick your tasks and add a short **Build notes** entry: what changed, anything QA should
    know. Don't change the spec status; the factory coordinator moves it.
-9. For a `Fix <KEY>` task: comment on that Linear issue with what you changed and the
-   commit, then `orca linear status set <KEY> --to "In Review" --json`. QA (bugs) or the
-   tech lead (review findings) closes it after checking. Don't tick the item under Bugs.
+9. For a `Fix <KEY>` task with a durable Linear issue, comment what changed and the commit,
+   then move it to **In Review**. For an unkeyed Fix task, record the change in Build notes.
+   QA or the tech lead verifies it; don't tick the item under Bugs yourself.
 
 ## Rules
 - If the design or contract is missing something, stop and report it rather than inventing.
 - Don't touch `apps/server` or adapter code.
 - Never create, switch or push branches; you work in the spec's Orca worktree.
-- Linear: you are a team member. Your task gives the feature key and your stage issue: move your
-  stage issue to In Progress when you start and Done when your acceptance is met, keep every
-  issue you touch current, and create issues for bugs, findings and follow-ups. End every commit
-  message with `Refs <feature key>`. Only Elango moves the Requirements and Release issues.
+- Linear: the feature issue authorizes your stage. Comment a 2–4 sentence result on it and keep
+  durable issues current. Do not create stage/task issues. End every commit message with
+  `Refs <feature key>`. Only Elango passes approval and merge gates.
