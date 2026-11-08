@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -394,13 +394,14 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [x] [frontend] Profile page: name, email with verified badge and pending-change state, change email (409 and 429 states), `/confirm-email` page, change password (wrong current password and 429 states, "other sessions signed out" note), delete account with password confirmation and the `invalid-password`, `last-admin` and `gateway-unavailable` states.
 - [x] [frontend] Admin mail settings page: source banner ("environment settings in use", read-only environment values), form with write-only password, save, remove saved settings, and a test email with the three SMTP error states and no password echoed.
 - [x] [frontend] Admin account settings page: "Require a verified email" switch (disabled, with a link to mail settings, when `mailConfigured` is false; handles 409) and the three limits with validation.
-- [ ] [qa] AC 1, 2: quickstart under 5 minutes with Mailpit; sign-up email within 30 s through the environment settings, and the verify link; saved settings win, with a test email through a second Mailpit or a Mailpit SMTP-auth configuration; unreachable host and bad credentials give their errors within 15 s; the password is absent from every API response, the logs and `pgboss.job`.
-- [ ] [qa] AC 3: setting off by default; a pre-upgrade user and the bootstrap admin are verified after migrating a v0.2 database; with it on, an unverified user gets 403 on `POST /v1/apps` and the key route, with no Kong consumer; succeeds after verifying; can't be turned on with no mail.
-- [ ] [qa] AC 4, 5, 6: reset end to end with other sessions signed out; unknown address gives the same response and no email; used and over-one-hour links give the expired state (move the clock or edit `verification.expires_at`) with the password unchanged; change password with right and wrong current password.
-- [ ] [qa] AC 7: name change shows in the header; email change keeps the old address until confirmed, then only the new one signs in; an address that's taken gives 409 with copy that doesn't say why.
-- [ ] [qa] AC 8: 10 failed sign-ins then 429 with `Retry-After`; fourth reset and fourth verification request give 429 with no extra Mailpit message, and the reset page still confirms; an admin change applies to the next request.
-- [ ] [qa] AC 9: two apps with live keys → delete → both keys 401 in Kong, no consumer tagged with those apps, signed out, can't sign in, same address can sign up again; Kong stopped → 503 with keys still working; only admin → 409.
-- [ ] [qa] Playwright journeys for forgot/reset password, profile and admin settings; update existing e2e helpers that sign up and create apps (users are unverified by default but the setting is off, so they should still pass).
+- [ ] [backend] Fix: redact password-reset bearer tokens from request URL paths before logging (major; Linear Bug creation pending due to workspace free issue limit).
+- [x] [qa] AC 1, 2: quickstart under 5 minutes with Mailpit; sign-up email within 30 s through the environment settings, and the verify link; saved settings win, with a test email through a second Mailpit or a Mailpit SMTP-auth configuration; unreachable host and bad credentials give their errors within 15 s; the password is absent from every API response, the logs and `pgboss.job`.
+- [x] [qa] AC 3: setting off by default; a pre-upgrade user and the bootstrap admin are verified after migrating a v0.2 database; with it on, an unverified user gets 403 on `POST /v1/apps` and the key route, with no Kong consumer; succeeds after verifying; can't be turned on with no mail.
+- [x] [qa] AC 4, 5, 6: reset end to end with other sessions signed out; unknown address gives the same response and no email; used and over-one-hour links give the expired state (move the clock or edit `verification.expires_at`) with the password unchanged; change password with right and wrong current password.
+- [x] [qa] AC 7: name change shows in the header; email change keeps the old address until confirmed, then only the new one signs in; an address that's taken gives 409 with copy that doesn't say why.
+- [x] [qa] AC 8: 10 failed sign-ins then 429 with `Retry-After`; fourth reset and fourth verification request give 429 with no extra Mailpit message, and the reset page still confirms; an admin change applies to the next request.
+- [x] [qa] AC 9: two apps with live keys → delete → both keys 401 in Kong, no consumer tagged with those apps, signed out, can't sign in, same address can sign up again; Kong stopped → 503 with keys still working; only admin → 409.
+- [x] [qa] Playwright journeys for forgot/reset password, profile and admin settings; update existing e2e helpers that sign up and create apps (users are unverified by default but the setting is off, so they should still pass).
 
 ## UX  _(ui-designer)_
 Design: [docs/design/007-email-and-account-security.md](../design/007-email-and-account-security.md).
@@ -445,12 +446,73 @@ No new tokens; one shadcn component (`Switch`) and a few small portal components
 - QA: run the full compose/Kong journeys and log/job secret checks from the acceptance criteria. pg-boss 10 exposes deleteAfterSeconds on the constructor rather than send options: archive retention is 3600 seconds, send-email jobs use retentionSeconds 3600 and retries 5/backoff/5 seconds, and archive intervals stay at 60 seconds because shorter intervals disable cron processing. No spec status or approval gate changed.
 
 ## Test report  _(qa-tester)_
-| Criterion | Test file | Result |
+
+QA date: 2026-11-08. Real fresh Compose project `qa007` uses Postgres 17, Kong 3.9 and
+Mailpit v1.27.10, with separate host ports (portal 13000, server 14000, proxy 18000,
+Kong Admin 18001, Mailpit 18025) because another worktree owns the default ports.
+Only tests and this spec changed; application code was not modified.
+
+| Criterion | Automated test file / case | Result |
 | --- | --- | --- |
+| AC 1 — fresh quickstart, environment SMTP, signup delivery within 30 s, verify link/profile and source banner | `apps/portal/e2e/account-security.test.ts`: `007 AC1/3`, `007 admin settings browser`; `deploy/e2e/quickstart.spec.ts` | PASS. Fresh-volume build/start and healthy portal completed within 3m37s; Mailpit is polled with a 30 s deadline. |
+| AC 2 — saved settings precedence/sender, encrypted write-only password, bounded SMTP unreachable/auth errors, no secrets | `apps/portal/e2e/account-security.test.ts`: `007 AC2/8`, `007 security`; `apps/server/src/account-security.test.ts`: encrypted SMTP and queue cases; `apps/server/src/mail/transport.test.ts` | FAIL security: a password-reset bearer token appears in request logs (B1). Real SMTP auth and unreachable-host errors, saved sender precedence, encryption and queue/log SMTP-password checks PASS. |
+| AC 3 — default-off, upgrade/bootstrap verified, UI/API gate and no app writes, succeeds after verification, no-mail refusal | `apps/portal/e2e/account-security.test.ts`: `007 AC1/3`; `apps/server/src/account-security.test.ts`: app/key guards and mail-less prerequisite; `packages/db/src/migrate.test.ts`: v0.2 upgrade | PASS. Real gated creation returns 403 problem+json and no app; verified creation succeeds against Kong. |
+| AC 4 — browser reset, new/old password, other sessions revoked, unknown-address parity/no email | `apps/portal/e2e/account-security.test.ts`: `007 AC4/5/6/7`, `007 AC4/5`; `apps/server/src/account-security.test.ts`: reset revocation and known/unknown parity | Functional lifecycle PASS; confidentiality FAIL (B1). Unknown-address Compose parity and no-mail check PASS. |
+| AC 5 — single-use/over-one-hour reset rejected, expired screen/recovery link, password unchanged | `apps/portal/e2e/account-security.test.ts`: `007 AC4/5/6/7`, `007 AC4/5`; `apps/server/src/account-security.test.ts`: expired reset/password unchanged; `apps/portal/components/account-security.test.tsx`: INVALID_TOKEN | PASS in Compose/browser and Postgres integration: over-one-hour and reused links are refused with password unchanged. |
+| AC 6 — correct/wrong current password and other-session revocation | `apps/portal/e2e/account-security.test.ts`: `007 AC4/5/6/7`; `apps/server/src/account-security.test.ts`: forced revokeOtherSessions | PASS. Real browser wrong-password refusal, subsequent valid change, old password failure and remote-session 401. |
+| AC 7 — name in header, pending old email retained, confirmed new address sign-in, neutral taken-address refusal | `apps/portal/e2e/account-security.test.ts`: `007 AC4/5/6/7`; `apps/server/src/account-security.test.ts`: neutral taken-address response and expired/replaced/reused/concurrently taken tokens | PASS. Browser name/menu, old-address retention and new-only sign-in; integration covers duplicate and token races. |
+| AC 8 — default 10 failures, fourth reset/verification 429, Retry-After, no extra email, reset confirmation, live admin changes | `apps/portal/e2e/account-security.test.ts`: `007 AC2/8`, `007 admin settings browser`; `apps/server/src/account-security.test.ts`: unknown reset counting, concurrent requests and live limits; `apps/server/src/mail/transport.test.ts`: Retry-After boundary | PASS. Exactly 3 reset and 4 verification emails (signup + 3 resends) reach Mailpit; fourth requests are refused, and live UI/API changes apply without restart. |
+| AC 9 — two keys revoked/consumers removed, account/session gone, address reusable, Admin API outage retains live keys, last admin refused | `apps/portal/e2e/account-security.test.ts`: `007 AC9`; `apps/server/src/account-security.test.ts`: partial-failure retry, late-app sweep, concurrent last-admin deletes | PASS. Both keys 200 before and during Admin listener outage, deletion refused with 503, then deletion 204 and both keys 401 with no tagged consumers. |
+
+### Commands and evidence
+
+- `pnpm lint`: PASS (7 workspace tasks).
+- `pnpm typecheck`: PASS (12 workspace tasks).
+- `pnpm test`: PASS (12 tasks; 66 server, 134 portal, 39 Kong adapter and 2 database tests).
+  Added deterministic Postgres integration cases for >1-hour reset expiry, unknown-address response
+  parity/no enqueue, unauthenticated/non-admin/expired-session refusals, malformed input, neutral
+  duplicate email refusal and old-email retention.
+- Fresh Compose: `PORTAL_PUBLIC_URL=http://localhost:13000 KONG_PROXY_PUBLIC_URL=http://localhost:18000
+  docker compose -p qa007 -f deploy/docker-compose.yml -f /tmp/007-compose.yaml up --build -d --wait`.
+  The override changes only image names and exposed host ports. It does not change service behavior.
+  Seeded catalog and the existing developer first-call/copy/revoke journey pass.
+- Browser command: `PORTAL_PUBLIC_URL=http://localhost:13000 KONG_PROXY_PUBLIC_URL=http://localhost:18000
+  KONG_ADMIN_URL=http://localhost:18001 SERVER_URL=http://localhost:14000 MAILPIT_URL=http://localhost:18025
+  QA_COMPOSE_PROJECT=qa007 QA_COMPOSE_OVERRIDE=/tmp/007-compose.yaml pnpm test:e2e`.
+  Existing gateway tests now honor these optional variables, keeping their default-port behavior.
+- Final full `pnpm test:e2e`: **47 passed, 2 failed (49 total, 2.3m)**. All functional
+  spec 007 journeys passed; the token-log security regression failed as expected. The other
+  failure was the pre-existing Scalar HTML first proxy call returning 404 instead of 403
+  (`apps/portal/e2e/journeys.ts:301`), which passed on the two preceding full runs and then
+  **3/3 clean focused repeats** (`--grep 'real text/html' --repeat-each 3`). This remains
+  intermittent evidence, not a confirmed new account-security defect; retain it for the next QA run.
+  An immediate focused attempt after the full suite hit the intentionally exhausted JSO-169
+  try-it budget (429); restarting the isolated QA server with the same public URLs reset it.
+  No application change or retry setting masks these failures. Initial test-harness failures were corrected: verified profile copy,
+  opening the account menu to inspect the renamed user, and supplying the browser Origin on direct
+  auth POSTs. The default Mailpit listener does not demand authentication; the auth-refusal case
+  starts an additional authenticated SMTP listener inside the Mailpit container and removes it.
+  The final real SMTP auth/unreachable checks each enforced a 15 s deadline; queue-drained
+  Mailpit counts proved no fourth reset or fourth resend was sent.
+- Local evidence: `/tmp/007-compose.log`, `/tmp/007-tests.log`, `/tmp/007-lint-final.log`,
+  `/tmp/007-types-final.log`, `/tmp/007-e2e-final.log`, `/tmp/007-html-clean.log`. The isolated
+  QA stack remains available for reproduction; the original default-port stack was untouched.
+- B1 regression prints a boolean failure only, so its assertion output does not disclose the token.
+  No pre-existing keyed/open bugs were present; the previous Bugs entry was a placeholder.
 
 ### Bugs
-<!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
+
+- [ ] **B1 — Password-reset bearer token is written to server request logs (major, backend).**
+  Sign up, request a reset, read the email from Mailpit and open its link without submitting a
+  password. The Fastify incoming-request record logs `/api/auth/reset-password/<bearer-token>`:
+  query stripping does not redact the token in the path. A log reader can redeem the still-valid
+  token to take over the account. The automated `007 security: opening a reset link never writes
+  the bearer token to server logs` fails (`logs.includes(token)` is true). Expected: no reset,
+  verification or email-change bearer token appears in logs. Do not paste real tokens into reports.
+  **Durable Bug creation attempted:** parent JSO-235, team JSO, label Bug, priority High, title
+  “Bug: password-reset bearer token is written to server request logs”. Linear rejected it with
+  `linear_write_failed: Usage limit exceeded`. Create the issue once capacity returns; the Fix task
+  above remains open and blocks UAT. Feature comment records this pending durable issue.
 
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |

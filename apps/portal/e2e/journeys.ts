@@ -37,7 +37,7 @@ test('developer signs up, copies a one-time key, calls Kong and revokes it', asy
   const { app, credential } = await response.json();
   const consumer = await (
     await context.request.get(
-      `http://localhost:8001/consumers/portal-app-${app.id}`,
+      `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/consumers/portal-app-${app.id}`,
     )
   ).json();
   expect(consumer.tags).toContain(`portal-app-${app.id}`);
@@ -49,7 +49,7 @@ test('developer signs up, copies a one-time key, calls Kong and revokes it', asy
   );
   const keys = await (
     await context.request.get(
-      `http://localhost:8001/consumers/portal-app-${app.id}/key-auth`,
+      `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/consumers/portal-app-${app.id}/key-auth`,
     )
   ).json();
   expect(keys.data).toHaveLength(1);
@@ -82,7 +82,9 @@ test('developer signs up, copies a one-time key, calls Kong and revokes it', asy
   expect(await page.content()).not.toContain(credential.key);
   const target =
     '/api/v1/try-it?scalar_url=' +
-    encodeURIComponent('http://localhost:8000/sample/get');
+    encodeURIComponent(
+      `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/sample/get`,
+    );
   expect((await context.request.get(target)).status()).toBe(401);
   expect(
     (
@@ -95,7 +97,7 @@ test('developer signs up, copies a one-time key, calls Kong and revokes it', asy
     .first()
     .click();
   const send = page.getByRole('button', {
-    name: 'Send get request to http://localhost:8000/sample/get',
+    name: `Send get request to ${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/sample/get`,
     exact: true,
   });
   const unauthorized = page.waitForResponse((r) =>
@@ -178,29 +180,38 @@ for (const mediaType of [
       ).toBe(200);
       expect(
         (
-          await admin.put(`http://localhost:8001/services/${id}`, {
-            data: { name: path, url: 'http://httpbin:8080' },
-          })
+          await admin.put(
+            `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${id}`,
+            {
+              data: { name: path, url: 'http://httpbin:8080' },
+            },
+          )
         ).ok(),
       ).toBe(true);
       expect(
         (
-          await admin.post(`http://localhost:8001/services/${id}/routes`, {
-            data: { paths: [`/${path}`] },
-          })
+          await admin.post(
+            `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${id}/routes`,
+            {
+              data: { paths: [`/${path}`] },
+            },
+          )
         ).ok(),
       ).toBe(true);
       expect(
         (
-          await admin.post(`http://localhost:8001/services/${id}/plugins`, {
-            data: { name: 'key-auth', config: { hide_credentials: false } },
-          })
+          await admin.post(
+            `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${id}/plugins`,
+            {
+              data: { name: 'key-auth', config: { hide_credentials: false } },
+            },
+          )
         ).ok(),
       ).toBe(true);
       expect(
         (
           await admin.get(
-            '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get',
+            `/api/v1/try-it?scalar_url=${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/sample/get`,
           )
         ).status(),
       ).toBe(401);
@@ -266,9 +277,12 @@ for (const mediaType of [
         .poll(
           async () =>
             (
-              await context.request.get(`http://localhost:8000/${path}/get`, {
-                headers: { apikey: credential.key },
-              })
+              await context.request.get(
+                `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/${path}/get`,
+                {
+                  headers: { apikey: credential.key },
+                },
+              )
             ).status(),
           { timeout: 15000 },
         )
@@ -278,7 +292,9 @@ for (const mediaType of [
         (
           await context.request.get(
             '/api/v1/try-it?scalar_url=' +
-              encodeURIComponent(`http://localhost:8000/${path}/get`),
+              encodeURIComponent(
+                `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/${path}/get`,
+              ),
             { headers: { apikey: credential.key } },
           )
         ).status(),
@@ -321,7 +337,7 @@ for (const mediaType of [
       );
       await page
         .getByRole('button', {
-          name: `Send get request to http://localhost:8000/${path}/get`,
+          name: `Send get request to ${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/${path}/get`,
           exact: true,
         })
         .click();
@@ -357,7 +373,7 @@ for (const mediaType of [
       expect(
         (
           await admin.post(
-            `http://localhost:8001/consumers/portal-app-${app.id}/acls`,
+            `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/consumers/portal-app-${app.id}/acls`,
             { data: { group: `portal-svc-${id}` } },
           )
         ).ok(),
@@ -367,7 +383,7 @@ for (const mediaType of [
           async () =>
             (
               await context.request.get(
-                `http://localhost:8000/${path}/status/403`,
+                `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/${path}/status/403`,
                 { headers: { apikey: credential.key } },
               )
             ).status(),
@@ -376,7 +392,9 @@ for (const mediaType of [
         .toBe(403);
       const upstream = await context.request.get(
         '/api/v1/try-it?scalar_url=' +
-          encodeURIComponent(`http://localhost:8000/${path}/status/403`),
+          encodeURIComponent(
+            `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/${path}/status/403`,
+          ),
         { headers: { apikey: credential.key } },
       );
       expect(upstream.status()).toBe(403);
@@ -406,15 +424,18 @@ test('admin imports files and URLs and rejects invalid files without publication
     const id = crypto.randomUUID();
     expect(
       (
-        await context.request.put(`http://localhost:8001/services/${id}`, {
-          data: { name: `qa-import-${id}`, url: 'http://httpbin:8080' },
-        })
+        await context.request.put(
+          `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${id}`,
+          {
+            data: { name: `qa-import-${id}`, url: 'http://httpbin:8080' },
+          },
+        )
       ).ok(),
     ).toBe(true);
     expect(
       (
         await context.request.post(
-          `http://localhost:8001/services/${id}/routes`,
+          `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${id}/routes`,
           {
             data: { paths: [`/qa-${id}`] },
           },
@@ -554,7 +575,7 @@ test('JSO-186: reference and try-it only contact the portal origin on localhost'
   );
   await page
     .getByRole('button', {
-      name: 'Send get request to http://localhost:8000/sample/get',
+      name: `Send get request to ${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/sample/get`,
       exact: true,
     })
     .click();
@@ -685,7 +706,7 @@ for (const conflict of ['already-linked', 'has-acl'] as const) {
       expect(
         (
           await context.request.put(
-            `http://localhost:8001/services/${serviceId}`,
+            `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${serviceId}`,
             {
               data: { name: `qa-acl-${serviceId}`, url: 'http://httpbin:8080' },
             },
@@ -695,7 +716,7 @@ for (const conflict of ['already-linked', 'has-acl'] as const) {
       expect(
         (
           await context.request.post(
-            `http://localhost:8001/services/${serviceId}/routes`,
+            `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${serviceId}/routes`,
             {
               data: { paths: [`/qa-acl-${serviceId}`] },
             },
@@ -705,7 +726,7 @@ for (const conflict of ['already-linked', 'has-acl'] as const) {
       expect(
         (
           await context.request.post(
-            `http://localhost:8001/services/${serviceId}/plugins`,
+            `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${serviceId}/plugins`,
             {
               data: { name: 'acl', config: { allow: ['operator'] } },
             },
@@ -758,3 +779,6 @@ for (const conflict of ['already-linked', 'has-acl'] as const) {
     }
   });
 }
+
+// Spec 007 Compose-backed account lifecycle.
+import './account-security.test';

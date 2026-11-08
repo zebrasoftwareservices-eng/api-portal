@@ -509,3 +509,131 @@ it('encrypts queue links and drops stale verification and replaced email jobs', 
     },
   });
 });
+
+it('rejects expired reset links without changing the password and gives unknown addresses the same confirmation', async () => {
+  const person = await signup();
+  const known = await request('POST', '/api/auth/request-password-reset', {
+    email: person.email,
+    redirectTo: '/reset-password',
+  });
+  const token = new URL(queued.at(-1)!.link).pathname.split('/').pop();
+  const count = queued.length;
+  const unknown = await request('POST', '/api/auth/request-password-reset', {
+    email: 'unknown@example.com',
+    redirectTo: '/reset-password',
+  });
+  expect(unknown.statusCode).toBe(known.statusCode);
+  expect(unknown.json()).toEqual(known.json());
+  expect(queued).toHaveLength(count);
+  await connection.client`update verification set expires_at = now() - interval '2 hours'`;
+  const expired = await request('POST', '/api/auth/reset-password', {
+    token,
+    newPassword: 'replacement123',
+  });
+  expect(expired.statusCode).toBe(400);
+  expect(expired.json().code).toBe('INVALID_TOKEN');
+  expect(
+    (
+      await request('POST', '/api/auth/sign-in/email', {
+        email: person.email,
+        password: 'password123',
+      })
+    ).statusCode,
+  ).toBe(200);
+  expect(
+    (
+      await request('POST', '/api/auth/sign-in/email', {
+        email: person.email,
+        password: 'replacement123',
+      })
+    ).statusCode,
+  ).toBe(401);
+});
+
+it('refuses unauthenticated, expired-session and non-admin settings changes and malformed profile input', async () => {
+  for (const url of [
+    '/api/v1/me',
+    '/api/v1/admin/settings/mail',
+    '/api/v1/admin/settings/accounts',
+  ]) {
+    expect((await request('GET', url)).statusCode).toBe(401);
+  }
+  const person = await signup();
+  for (const url of [
+    '/api/v1/admin/settings/mail',
+    '/api/v1/admin/settings/accounts',
+  ]) {
+    expect(
+      (await request('GET', url, undefined, person.cookie)).statusCode,
+    ).toBe(403);
+    expect((await request('PUT', url, {}, person.cookie)).statusCode).toBe(403);
+  }
+  expect(
+    (await request('PATCH', '/api/v1/me', { name: '' }, person.cookie))
+      .statusCode,
+  ).toBe(400);
+  expect(
+    (
+      await request(
+        'POST',
+        '/api/v1/me/email',
+        { newEmail: 'not-email' },
+        person.cookie,
+      )
+    ).statusCode,
+  ).toBe(400);
+  await connection.db.update(session).set({ expiresAt: new Date(0) });
+  expect(
+    (await request('PATCH', '/api/v1/me', { name: 'Changed' }, person.cookie))
+      .statusCode,
+  ).toBe(401);
+  expect((await connection.db.select().from(user))[0]!.name).toBe('Person');
+});
+
+it('rejects an already-owned email neutrally and keeps the old address until confirmation', async () => {
+  const person = await signup();
+  await signup('taken@example.com');
+  const taken = await request(
+    'POST',
+    '/api/v1/me/email',
+    { newEmail: 'taken@example.com' },
+    person.cookie,
+  );
+  const same = await request(
+    'POST',
+    '/api/v1/me/email',
+    { newEmail: person.email },
+    person.cookie,
+  );
+  expect(taken.statusCode).toBe(409);
+  expect(taken.json()).toEqual(same.json());
+  expect(
+    (
+      await request(
+        'POST',
+        '/api/v1/me/email',
+        { newEmail: 'pending@example.com' },
+        person.cookie,
+      )
+    ).statusCode,
+  ).toBe(202);
+  expect(
+    (await request('GET', '/api/v1/me', undefined, person.cookie)).json(),
+  ).toMatchObject({ email: person.email, pendingEmail: 'pending@example.com' });
+  expect(
+    (
+      await request('POST', '/api/auth/sign-in/email', {
+        email: person.email,
+        password: 'password123',
+      })
+    ).statusCode,
+  ).toBe(200);
+  expect(
+    (
+      await request('POST', '/api/auth/sign-in/email', {
+        email: 'pending@example.com',
+        password: 'password123',
+      })
+    ).statusCode,
+  ).toBe(401);
+});

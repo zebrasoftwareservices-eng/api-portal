@@ -9,7 +9,18 @@ test('real gateway outage preserves active keys and retries app creation without
   const compose = (...args: string[]) =>
     execFileSync(
       'docker',
-      ['compose', '-f', 'deploy/docker-compose.yml', ...args],
+      [
+        'compose',
+        ...(process.env.QA_COMPOSE_PROJECT
+          ? ['-p', process.env.QA_COMPOSE_PROJECT]
+          : []),
+        '-f',
+        'deploy/docker-compose.yml',
+        ...(process.env.QA_COMPOSE_OVERRIDE
+          ? ['-f', process.env.QA_COMPOSE_OVERRIDE]
+          : []),
+        ...args,
+      ],
       { stdio: 'ignore' },
     );
   const signup = await request.post('/api/auth/sign-up/email', {
@@ -51,13 +62,13 @@ test('real gateway outage preserves active keys and retries app creation without
   const created = await retry.json();
   const consumers = await (
     await request.get(
-      `http://localhost:8001/consumers?tags=portal-app-${created.app.id}`,
+      `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/consumers?tags=portal-app-${created.app.id}`,
     )
   ).json();
   expect(consumers.data).toHaveLength(1);
   const keys = await (
     await request.get(
-      `http://localhost:8001/consumers/portal-app-${created.app.id}/key-auth`,
+      `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/consumers/portal-app-${created.app.id}/key-auth`,
     )
   ).json();
   expect(keys.data).toHaveLength(1);
@@ -67,9 +78,12 @@ test('real gateway outage preserves active keys and retries app creation without
   expect((await request.delete(revokeUrl)).status()).toBe(204);
   expect(
     (
-      await request.get('http://localhost:8000/sample/get', {
-        headers: { apikey: credential.key },
-      })
+      await request.get(
+        `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/sample/get`,
+        {
+          headers: { apikey: credential.key },
+        },
+      )
     ).status(),
   ).toBe(401);
 });
@@ -81,10 +95,21 @@ test('sample seed converges across server restarts against real Kong', async ({
   const compose = (...args: string[]) =>
     execFileSync(
       'docker',
-      ['compose', '-f', 'deploy/docker-compose.yml', ...args],
+      [
+        'compose',
+        ...(process.env.QA_COMPOSE_PROJECT
+          ? ['-p', process.env.QA_COMPOSE_PROJECT]
+          : []),
+        '-f',
+        'deploy/docker-compose.yml',
+        ...(process.env.QA_COMPOSE_OVERRIDE
+          ? ['-f', process.env.QA_COMPOSE_OVERRIDE]
+          : []),
+        ...args,
+      ],
       { encoding: 'utf8' },
     );
-  const kong = 'http://localhost:8001';
+  const kong = `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}`;
   const snapshot = async () => {
     const service = await (
       await request.get(`${kong}/services/portal-sample`)
@@ -125,7 +150,9 @@ test('sample seed converges across server restarts against real Kong', async ({
       async () => {
         try {
           return (
-            await request.get('http://localhost:4000/api/v1/health')
+            await request.get(
+              `${process.env.SERVER_URL ?? 'http://localhost:4000'}/api/v1/health`,
+            )
           ).status();
         } catch {
           return 0;
@@ -152,7 +179,18 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
   const compose = (...args: string[]) =>
     execFileSync(
       'docker',
-      ['compose', '-f', 'deploy/docker-compose.yml', ...args],
+      [
+        'compose',
+        ...(process.env.QA_COMPOSE_PROJECT
+          ? ['-p', process.env.QA_COMPOSE_PROJECT]
+          : []),
+        '-f',
+        'deploy/docker-compose.yml',
+        ...(process.env.QA_COMPOSE_OVERRIDE
+          ? ['-f', process.env.QA_COMPOSE_OVERRIDE]
+          : []),
+        ...args,
+      ],
       { encoding: 'utf8' },
     );
   const signup = await request.post('/api/auth/sign-up/email', {
@@ -173,12 +211,14 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
   const { app, credential } = await created.json();
   const before = await (await request.get(`/api/v1/apps/${app.id}`)).json();
   const service = await (
-    await request.get('http://localhost:8001/services/portal-sample')
+    await request.get(
+      `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/portal-sample`,
+    )
   ).json();
   expect(
     (
       await request.delete(
-        `http://localhost:8001/consumers/portal-app-${app.id}/acls/portal-svc-${service.id}`,
+        `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/consumers/portal-app-${app.id}/acls/portal-svc-${service.id}`,
       )
     ).ok(),
   ).toBe(true);
@@ -233,9 +273,12 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
     .poll(
       async () =>
         (
-          await request.get('http://localhost:8000/sample/get', {
-            headers: { apikey: credential.key },
-          })
+          await request.get(
+            `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/sample/get`,
+            {
+              headers: { apikey: credential.key },
+            },
+          )
         ).status(),
       { timeout: 15000 },
     )
@@ -246,7 +289,7 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
   const groups = (
     await (
       await request.get(
-        `http://localhost:8001/consumers/portal-app-${app.id}/acls`,
+        `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/consumers/portal-app-${app.id}/acls`,
       )
     ).json()
   ).data;
@@ -265,7 +308,19 @@ test('JSO-169: public ingress cannot rotate a client rate-limit budget with forg
   // in-memory buckets so this assertion starts with exactly 60 available calls.
   execFileSync(
     'docker',
-    ['compose', '-f', 'deploy/docker-compose.yml', 'restart', 'server'],
+    [
+      'compose',
+      ...(process.env.QA_COMPOSE_PROJECT
+        ? ['-p', process.env.QA_COMPOSE_PROJECT]
+        : []),
+      '-f',
+      'deploy/docker-compose.yml',
+      ...(process.env.QA_COMPOSE_OVERRIDE
+        ? ['-f', process.env.QA_COMPOSE_OVERRIDE]
+        : []),
+      'restart',
+      'server',
+    ],
     { stdio: 'ignore' },
   );
   await expect
