@@ -480,6 +480,8 @@ Full design: [docs/design/005-setup-wizard-and-gateway-connections.md](../design
 - Frontend validation: `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed (the full suite needs Docker/network access outside the restricted sandbox); portal suite has 110 passing tests covering setup, connection checks, token semantics, missing-key confirmation, disable/remove refusals, sample eligibility, import states and developer messages. QA should verify keyboard/focus and responsive flows against a running portal, plus each real Kong failure case. JSO-379 fixes the Node 25+ test storage globals by using Vitest's jsdom realm.
 - Frontend UAT fix (JSO-398): sign-in now reads the portal role from `/v1/me` through the SDK because Better Auth's sign-in response omits it, then sends admins without a gateway or explicit `next` to `/setup/gateway`, including admin-only installs. Regression tests use a sign-in response without a role and cover absent/present gateways, developer landing and explicit continuations; `pnpm lint`, `pnpm typecheck` and `pnpm test` pass (112 portal tests; unchanged integration suites cached). QA/UAT should recheck sign-in after skipping setup and on an admin-only install; the bug remains open for verification.
 
+- Frontend UAT fixes (JSO-381, JSO-400, JSO-401, JSO-402), commit `bbe60c7`: corrected the Kong guide/repoint/cleanup links to existing headings, suppressed the redundant alert for 400 field errors, gave raw problem titles readable fallback copy (including Revoke), counted and pluralised missing-key warnings/dialogs, and selected loopback field guidance from the submitted URL. All 123 portal tests, `pnpm lint`, `pnpm typecheck` and the full `pnpm test` suite pass with Docker/network access; the initial sandbox run could not bind sockets or reach Docker, and two transient assertions in concurrent backend edits were corrected by their owner before the passing rerun. QA/UAT should verify the three guide links, field focus/value preservation after 400, singular/plural repoint copy, Revoke during an outage, and localhost/IPv4/IPv6 loopback guidance; bug checkboxes remain open for verification.
+
 ## Test report  _(qa-tester)_
 QA run: 2026-11-07, macOS/Node 26.13.0, real PostgreSQL 17 and Kong 3.9. Compose project `spec005qa` is isolated from the pre-existing `portal-postgres-1` container.
 
@@ -511,10 +513,10 @@ No product flakiness observed; Kong configuration propagation uses bounded polli
 - [ ] JSO-381 Gateway help links point to a nonexistent Kong Admin API guide (minor).
 - [ ] JSO-398 Admin with no gateway lands on the dashboard after sign-in, not the wizard (major)
 - [x] [frontend] Fix JSO-398: send an admin with no gateway and no `next` to `/setup/gateway` after sign-in, including on an admin-only install (major)
-- [ ] [frontend] Fix JSO-381: gateway help links point to `docs/connect-kong.md` and sections that exist (minor)
-- [ ] [frontend] Fix JSO-400: a 400 with field errors shows only the field errors, and no raw problem title reaches the user, including in the Revoke dialog (minor)
-- [ ] [frontend] Fix JSO-401: the repoint dialog pluralises the key count, and the Test warning shows `affectedKeys` with the design §5.3 wording (minor)
-- [ ] [frontend] Fix JSO-402: the localhost field error reads "Use an address the portal server can reach.", per design §5.2 (minor)
+- [x] [frontend] Fix JSO-381: gateway help links point to `docs/connect-kong.md` and sections that exist (minor)
+- [x] [frontend] Fix JSO-400: a 400 with field errors shows only the field errors, and no raw problem title reaches the user, including in the Revoke dialog (minor)
+- [x] [frontend] Fix JSO-401: the repoint dialog pluralises the key count, and the Test warning shows `affectedKeys` with the design §5.3 wording (minor)
+- [x] [frontend] Fix JSO-402: the localhost field error reads "Use an address the portal server can reach.", per design §5.2 (minor)
 - [ ] JSO-399 Reloading `/setup/gateway` after saving loses the sample choice (minor)
 - [ ] JSO-400 Raw problem titles shown to users: "validation", "gateway unavailable" (minor)
 - [ ] JSO-401 "1 active keys" in the repoint dialog, and the Test warning has no count (minor)
