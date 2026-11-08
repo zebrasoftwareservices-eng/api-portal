@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -403,7 +403,31 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [ ] [qa] Playwright journeys for forgot/reset password, profile and admin settings; update existing e2e helpers that sign up and create apps (users are unverified by default but the setting is off, so they should still pass).
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/007-*.md`
+Design: [docs/design/007-email-and-account-security.md](../design/007-email-and-account-security.md).
+No new tokens; one shadcn component (`Switch`) and a few small portal components (`PasswordInput`,
+`ResendVerification`, `SecretReplacementField`, `AdminNav`).
+
+- **Auth pages:** sign-in gains **Forgot password?**, a reset-success alert and a rate-limit message
+  that uses `Retry-After`. The new `/forgot-password` shows the same "Check your email" view after a 200
+  and after a 429. `/reset-password` has one new-password field and an expired view with **Send a new
+  link**. `/confirm-email` needs a click on **Confirm new email**, so mail scanners can't use the token.
+  Tokens are removed from the address bar once they're read.
+- **Profile (`/profile`, linked from the header account menu):** separate cards for name, email
+  (Verified or Not verified badge, resend, pending change), password (other sessions signed out) and
+  delete account. Deleting uses a dialog that confirms with the password and names the apps and keys
+  that go. Every refusal says what didn't change.
+- **Verification gate:** a warning banner on My apps pages only when the admin requires
+  verification. Create app and Create key are `aria-disabled` with a visible reason. A 403
+  `email-not-verified` shows a `ProblemAlert` with a resend action.
+- **Admin:** `AdminNav` (APIs · Mail · Accounts). Mail settings show a banner for the source in use
+  (saved, environment with its values read-only, or none), a write-only password field, a test email
+  with a separate message for each SMTP error, and a remove action that handles `mail-required`. Account
+  settings have the **Require a verified email** switch, disabled with a link to Mail when no mail is
+  configured, and the three limits.
+- **Copy:** exact `title` and `detail` strings for every new problem type (design §5.2), which the
+  backend's `problem.ts` should use, and the four email templates (§6).
+- Accessibility (focus moves to result views and alerts, a safe default focus in the delete dialog,
+  `autocomplete` values, no per-second announcements) and the 375px and 1280px layouts are in §7–§8.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
