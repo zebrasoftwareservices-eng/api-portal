@@ -143,6 +143,7 @@ test('AC 8: upgrade pre-005 main preserves the admin, published API and active K
     await page.getByLabel('Email', { exact: true }).fill('admin@example.com');
     await page.getByLabel('Password', { exact: true }).fill('change-me-now');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(page).toHaveURL(/\/(dashboard|admin\/apis)$/);
     await expect(page).not.toHaveURL(/\/setup/);
     await page.goto('/admin/gateways');
     await expect(
