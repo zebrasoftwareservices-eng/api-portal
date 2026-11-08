@@ -440,6 +440,9 @@ The conformance suite gains `checkConnection` cases for a healthy gateway and a 
 - [x] [backend] JSO-326 New docs page on reaching the Kong Admin API: same-network option, the protected-route recipe, the warning not to expose the default compose file, tag-based cleanup including the `hide_credentials` caveat, and what repointing does and doesn't move.
 - [x] [backend] JSO-327 Update `apps/server/src/*.test.ts` and `deploy/*.mjs` for the new options, and run the existing suites on the environment path so they keep their seeded sample.
 - [x] [backend] Fix JSO-380: try-it applies saved proxy URLs on the next request (2293bf4). QA closes the bug.
+- [ ] [backend] Fix JSO-402: the unreachable-address detail for localhost says what to enter instead, per design §5.2, and drops "check that Kong is running" (minor)
+- [ ] [backend] Fix JSO-403: the setup token log line reads `Setup token for the first admin: <token>`, per design §5.1, so the form hint matches (minor)
+- [ ] [backend] Fix JSO-404: the protected-route recipe in `docs/connect-kong.md` runs on the official Kong image, which has no `curl` (minor)
 - [x] [frontend] JSO-328 `middleware.ts`: send every page to `/setup` until an admin exists, cache the answer once false, pass public pages through when the server is down, and keep demo builds unaffected.
 - [x] [frontend] JSO-329 `/setup`: first admin form, the setup token field when `setupTokenRequired`, refusal messages, and sign-in on success.
 - [x] [frontend] JSO-367 `/setup/gateway` and post-sign-in landing: pre-filled bundled values, Test, what the portal will change in this Kong, skip, and the sample opt-in only when `sampleAvailable`, showing the message if the sample call returns `gateway-disabled`.
@@ -506,6 +509,10 @@ No product flakiness observed; Kong configuration propagation uses bounded polli
 - [ ] JSO-381 Gateway help links point to a nonexistent Kong Admin API guide (minor).
 - [ ] JSO-398 Admin with no gateway lands on the dashboard after sign-in, not the wizard (major)
 - [x] [frontend] Fix JSO-398: send an admin with no gateway and no `next` to `/setup/gateway` after sign-in, including on an admin-only install (major)
+- [ ] [frontend] Fix JSO-381: gateway help links point to `docs/connect-kong.md` and sections that exist (minor)
+- [ ] [frontend] Fix JSO-400: a 400 with field errors shows only the field errors, and no raw problem title reaches the user, including in the Revoke dialog (minor)
+- [ ] [frontend] Fix JSO-401: the repoint dialog pluralises the key count, and the Test warning shows `affectedKeys` with the design §5.3 wording (minor)
+- [ ] [frontend] Fix JSO-402: the localhost field error reads "Use an address the portal server can reach.", per design §5.2 (minor)
 - [ ] JSO-399 Reloading `/setup/gateway` after saving loses the sample choice (minor)
 - [ ] JSO-400 Raw problem titles shown to users: "validation", "gateway unavailable" (minor)
 - [ ] JSO-401 "1 active keys" in the repoint dialog, and the Test warning has no count (minor)
