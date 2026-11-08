@@ -150,6 +150,9 @@ reading every email from Mailpit's API. Wording for screens and emails comes fro
   authenticator and the recovery codes recovers access by email (a link to their verified
   address), so it builds on this spec's mail transport. Making two-factor login mandatory stays
   with spec 015.
+  **Linear issue pending:** "Two-factor login and recovery codes (follow-up to spec 007)":
+  Backlog, label Feature, priority Medium, project API Portal. Linear's free-plan limit
+  rejected it on 2026-11-08; create it once there is room.
 - **Admin tools to manage other people's accounts** (reset someone's password, verify or delete
   another user). These belong with staff roles and the audit log in spec 015.
 - **Passkeys, SMS codes and magic-link sign-in.**
