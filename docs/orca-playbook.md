@@ -59,7 +59,7 @@ node scripts/factory.mjs start JSO-130                          # from a Linear 
 node scripts/factory.mjs start --idea "AWS API Gateway REST adapter"
 ```
 Either way the product manager writes the spec and the coordinator runs
-`node scripts/factory.mjs linear-init <id>` to create the feature's stage issues. You can also
+`node scripts/factory.mjs linear-init <id>` to create the spec's single feature issue. You can also
 write a spec by hand and run `linear-init` yourself.
 
 ## Tracking in Linear
@@ -67,16 +67,16 @@ Project **API Portal** in Linear holds the whole SDLC:
 
 | Linear | What it is | Who moves it |
 | --- | --- | --- |
-| Feature issue (label Feature) | One per spec, in a release milestone (v0.1, v0.2, v0.3) | Coordinator, from the spec status |
-| Stage sub-issues | Requirements → Technical design → UX design → Backend → Frontend → Testing → User testing → Code review → Release | The agent doing the stage: In Progress at start, summary comment, Done at the end. Requirements and Release are yours |
-| Task sub-issues | One per task in the spec, under its stage issue | The developer: In Progress → Done with the commit |
-| Bug sub-issues (label Bug) | Every bug QA or the user-tester finds, priority by severity | Tester creates and closes; developer moves to In Review when fixed |
-| Review sub-issues (label Code Review) | Every blocking review finding | Tech lead creates and closes |
+| Feature issue (label Feature) | One per spec, in a release milestone (v0.1, v0.2, v0.3) | Coordinator, from the spec status; stage summaries are comments |
+| Spec task checkboxes | Every implementation and QA task; no Linear issue per task | The owning worker ticks it and reports the stage summary on the feature |
+| Bug sub-issues (label Bug) | Only durable blocker/major, cross-owner/release, or post-spec bugs | Tester creates and closes; developer moves to In Review when fixed |
+| Review sub-issues (label Code Review) | Only durable blocking findings that outlive the current review loop | Tech lead creates and closes |
 | Follow-ups (Backlog) | Out-of-scope work any agent spots | Whoever found it creates it; you prioritize |
 
-Every agent works in Linear like a team member, so Linear updates as the work happens. The
-coordinator only reconciles: `track sync` fills in anything an agent missed and never moves an
-issue backwards.
+Every agent works in Linear like a team member, so stage summaries and durable issues update as
+the work happens. The coordinator only reconciles the feature issue: `track sync` fills in
+anything an agent missed and never moves an issue backwards. Legacy stage/task issues remain as
+history but are not required or created for new specs.
 
 Feature status: Backlog = spec draft · Todo = approved · In Progress = design, build, test ·
 In Review = code review or waiting to merge · Done = merged.
@@ -84,7 +84,7 @@ In Review = code review or waiting to merge · Done = merged.
 Useful commands:
 ```bash
 node scripts/factory.mjs track 001 sync     # re-sync Linear with the spec (safe any time)
-orca linear issue JSO-117 --children        # the feature and its stages from the terminal
+orca linear issue JSO-117 --comments        # the feature and its stage summaries
 ```
 Linear problems never stop the factory: the coordinator logs a warning and you can re-sync later.
 
@@ -100,8 +100,8 @@ Code and type `/factory 001` (Codex: `$factory 001`).
 After QA's automated tests pass, the **user-tester** (Antigravity) starts the quickstart and uses
 the portal in Orca's built-in browser like a real developer: sign up, read the docs, create an
 app, copy the key, try a call, revoke it. It also checks mobile size, keyboard use, error states
-and console errors, saves screenshots in `docs/uat/<spec-id>/`, and files every problem as a
-Linear bug. You can watch its browser tab in the spec's Orca workspace.
+and console errors, and saves screenshots in `docs/uat/<spec-id>/`. It records every problem in
+the spec and creates Linear bugs only for durable work. You can watch its browser tab in Orca.
 
 ## Deploys (GitHub + Vercel)
 - Repo: private `github.com/zebrasoftwareservices-eng/api-portal`. Orca branches new

@@ -29,9 +29,9 @@ Each feature is one spec file and one Orca worktree (`feat/<linear-key>-<id>-<sl
 
 - Bugs from QA or user testing, or blocking review findings, send it back to `building`; after 3 loops, stop and ask Elango.
 - Code is reviewed by a different model from the one that wrote it.
-- Linear project **API Portal** is the system of record: no work without an issue. Every agent is a
-  Linear team member that moves its own stage and task issues, files bugs, findings and follow-ups,
-  and closes what it verified.
+- Linear project **API Portal** is the system of record: no work without an issue. The feature
+  issue authorizes the whole spec; stage and task detail stays in the spec. Every agent comments
+  its stage result on the feature and keeps durable bugs, findings and follow-ups current.
 - Start with `node scripts/factory.mjs start <id>`; details in `docs/orca-playbook.md`.
 
 ## Definition of Done
@@ -48,5 +48,5 @@ Each feature is one spec file and one Orca worktree (`feat/<linear-key>-<id>-<sl
 - Decisions that last get an ADR.
 - Agents commit inside their worktree and may push their own feature branch and open its PR,
   but never create or switch branches, force-push, push to `main` or merge. Only Elango merges.
-- Every commit ends with `Refs <feature key>`. Only Elango moves the Requirements and Release issues.
+- Every commit ends with `Refs <feature key>`. Only Elango passes approval and merge gates.
 - Open source in public: write specs, ADRs and commits as if contributors will read them.
