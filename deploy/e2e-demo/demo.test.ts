@@ -244,3 +244,30 @@ test('demo API endpoints return 404 even for stale sessions and mutation request
     }
   }
 });
+
+test('019 AC10: demo catalog and API never check app access', async ({
+  page,
+}) => {
+  const appRequests: string[] = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/v1/apps')
+      appRequests.push(request.url());
+  });
+  for (const path of ['/', '/apis/sample']) {
+    await page.goto(path);
+    await expect(
+      page
+        .getByRole('navigation', { name: 'Main navigation', exact: true })
+        .getByRole('link'),
+    ).toHaveText(['APIs', 'Run the quickstart']);
+    await expect(
+      page.getByRole('link', {
+        name: /My apps|Get an API key|Open in |View your apps/,
+      }),
+    ).toHaveCount(0);
+    await expect(page.locator('.access-action')).toHaveCount(0);
+    if (path !== '/')
+      await expect(page.locator('.scalar-api-reference')).toBeVisible();
+  }
+  expect(appRequests).toEqual([]);
+});

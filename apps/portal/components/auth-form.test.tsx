@@ -52,10 +52,7 @@ describe('account forms', () => {
     await user.click(screen.getByRole('button', { name: 'Create account' }));
     expect(
       await screen.findByRole('link', { name: 'Sign in instead' }),
-    ).toHaveAttribute(
-      'href',
-      '/sign-in?next=%2Fdashboard%2Fapps%2Fnew%3Fapi%3Dsample',
-    );
+    ).toHaveAttribute('href', '/sign-in?next=%2Fapis%2Fsample');
     expect(mocks.replace).not.toHaveBeenCalled();
   });
   it.each(['sign-up', 'sign-in'] as const)(

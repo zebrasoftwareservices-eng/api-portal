@@ -101,3 +101,33 @@ describe('app keys', () => {
     expect(mocks.post).not.toHaveBeenCalled();
   });
 });
+
+it.each([true, false])(
+  'offers Try this API for every subscription with active keys=%s',
+  async (active) => {
+    const subscriptions = ['orders', 'returns', 'sample'].map((slug) => ({
+      apiId: slug,
+      slug,
+      title: `${slug} API`,
+    }));
+    mocks.get.mockResolvedValue({
+      data: { ...app, subscriptions, credentials: active ? [credential] : [] },
+    });
+    render(<AppDetail appId="app-1" />);
+    expect(
+      await screen.findByRole('link', { name: 'My apps' }),
+    ).toHaveAttribute('href', '/dashboard');
+    const list = within(screen.getByRole('list'));
+    expect(list.getAllByRole('listitem')).toHaveLength(3);
+    expect(list.getAllByRole('link')).toHaveLength(3);
+    for (const subscription of subscriptions) {
+      expect(
+        list.getByRole('link', { name: `Try this API: ${subscription.title}` }),
+      ).toHaveAttribute('href', `/apis/${subscription.slug}`);
+    }
+    expect(screen.queryByText('View reference')).not.toBeInTheDocument();
+    expect(!!screen.queryByRole('heading', { name: 'Try your key' })).toBe(
+      active,
+    );
+  },
+);

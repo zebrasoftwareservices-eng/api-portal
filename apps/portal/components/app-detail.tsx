@@ -157,7 +157,7 @@ export function AppDetail({ appId }: { appId: string }) {
   return (
     <div className="stack">
       <nav aria-label="Breadcrumb">
-        <a href="/dashboard">Your apps</a> / {app.name}
+        <a href="/dashboard">My apps</a> / {app.name}
       </nav>
       <h1 ref={heading} tabIndex={-1}>
         {app.name}
@@ -192,10 +192,13 @@ export function AppDetail({ appId }: { appId: string }) {
       )}
       <section id="subscriptions">
         <h2>APIs</h2>
-        <ul>
+        <ul className="subscription-list">
           {app.subscriptions.map((s) => (
             <li key={s.apiId}>
-              <a href={`/apis/${s.slug}`}>{s.title}</a> — View reference
+              <span>{s.title}</span>
+              <a className="button secondary" href={`/apis/${s.slug}`}>
+                Try this API<span className="sr-only">: {s.title}</span>
+              </a>
             </li>
           ))}
         </ul>
