@@ -394,7 +394,7 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [x] [frontend] Profile page: name, email with verified badge and pending-change state, change email (409 and 429 states), `/confirm-email` page, change password (wrong current password and 429 states, "other sessions signed out" note), delete account with password confirmation and the `invalid-password`, `last-admin` and `gateway-unavailable` states.
 - [x] [frontend] Admin mail settings page: source banner ("environment settings in use", read-only environment values), form with write-only password, save, remove saved settings, and a test email with the three SMTP error states and no password echoed.
 - [x] [frontend] Admin account settings page: "Require a verified email" switch (disabled, with a link to mail settings, when `mailConfigured` is false; handles 409) and the three limits with validation.
-- [ ] [backend] Fix: redact password-reset bearer tokens from request URL paths before logging (major; Linear Bug creation pending due to workspace free issue limit).
+- [x] [backend] Fix: redact password-reset bearer tokens from request URL paths before logging (major; Linear Bug creation pending due to workspace free issue limit).
 - [x] [qa] AC 1, 2: quickstart under 5 minutes with Mailpit; sign-up email within 30 s through the environment settings, and the verify link; saved settings win, with a test email through a second Mailpit or a Mailpit SMTP-auth configuration; unreachable host and bad credentials give their errors within 15 s; the password is absent from every API response, the logs and `pgboss.job`.
 - [x] [qa] AC 3: setting off by default; a pre-upgrade user and the bootstrap admin are verified after migrating a v0.2 database; with it on, an unverified user gets 403 on `POST /v1/apps` and the key route, with no Kong consumer; succeeds after verifying; can't be turned on with no mail.
 - [x] [qa] AC 4, 5, 6: reset end to end with other sessions signed out; unknown address gives the same response and no email; used and over-one-hour links give the expired state (move the clock or edit `verification.expires_at`) with the password unchanged; change password with right and wrong current password.
@@ -431,6 +431,12 @@ No new tokens; one shadcn component (`Switch`) and a few small portal components
   `autocomplete` values, no per-second announcements) and the 375px and 1280px layouts are in §7–§8.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Backend B1 fix — 2026-11-08
+- Request logging now replaces the entire suffix after `/api/auth/reset-password/` with `[REDACTED]`, before Pino receives the request URL. Query stripping still protects verification and email-change links; the original URL reaches Better Auth unchanged.
+- Added four request-log regressions covering reset links, encoded/extra path segments, verification tokens and email-change tokens. They inspect actual Fastify incoming/completed log records and check that the auth handler still receives the original path.
+- Validation: `pnpm lint` (7 tasks), `pnpm typecheck` (12 tasks), and `pnpm test` (12 tasks, including 70 server tests) pass. The focused `review-fixes.test.ts` suite passes all 7 tests. Full tests required Docker access outside the sandbox; the initial sandbox-only attempt could not connect to the container runtime.
+- QA must rerun the existing Compose/browser token-log regression before closing B1; its Bugs checkbox is intentionally left open. B1 still has no durable key because Linear rejected creation at its free issue limit; the existing pending-issue record remains applicable. No spec status or approval gate changed.
 
 ### Frontend — 2026-11-08
 - Implemented forgot/reset password, explicit email confirmation, profile editing and password-confirmed account deletion, with the designed refusal states and token removal from the address bar. The header now exposes Profile and reflects name changes immediately.

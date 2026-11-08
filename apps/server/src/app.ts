@@ -71,7 +71,14 @@ export async function createApp(options: AppOptions) {
             serializers: {
               req: (request: { method: string; url: string }) => ({
                 method: request.method,
-                url: request.url.split('?')[0],
+                // Better Auth reset links carry the bearer token in the path.
+                // Redact the entire suffix, including malformed extra segments.
+                url: request.url
+                  .split('?')[0]!
+                  .replace(
+                    /^(\/api\/auth\/reset-password)\/.*/,
+                    '$1/[REDACTED]',
+                  ),
               }),
             },
           },

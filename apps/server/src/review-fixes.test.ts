@@ -56,6 +56,71 @@ describe('trusted portal rate limiting', () => {
 });
 
 describe('unexpected error diagnostics', () => {
+  it.each([
+    [
+      '/api/auth/reset-password/path-bearer-secret?callbackURL=/reset-password',
+      '/api/auth/reset-password/[REDACTED]',
+    ],
+    [
+      '/api/auth/reset-password/encoded%2Fbearer-secret/extra',
+      '/api/auth/reset-password/[REDACTED]',
+    ],
+    [
+      '/api/auth/verify-email?token=verification-bearer-secret',
+      '/api/auth/verify-email',
+    ],
+    [
+      '/api/v1/me/email/confirm?token=email-change-bearer-secret',
+      '/api/v1/me/email/confirm',
+    ],
+  ])(
+    'keeps bearer tokens out of request logs for %s',
+    async (url, loggedUrl) => {
+      const { createApp } = await import('./app.js');
+      const { loadConfig } = await import('./config.js');
+      const logs: string[] = [];
+      const handler = vi.fn(
+        async (_request: Request) => new Response(null, { status: 204 }),
+      );
+      const { app } = await createApp({
+        db: {} as Database,
+        config: loadConfig(),
+        adapter: {} as import('@portal/adapter-sdk').GatewayAdapter,
+        gatewayId: 'test',
+        auth: { handler } as unknown as import('./auth.js').Auth,
+        logger: {
+          stream: {
+            write: (line: string) => {
+              logs.push(line);
+            },
+          },
+        },
+      });
+      try {
+        await app.inject({ url });
+        const entries = logs.map((line) => JSON.parse(line));
+        expect(
+          entries.find((entry) => entry.msg === 'incoming request')?.req,
+        ).toEqual({
+          method: 'GET',
+          url: loggedUrl,
+        });
+        expect(entries.some((entry) => entry.msg === 'request completed')).toBe(
+          true,
+        );
+        expect(logs.join('').includes('bearer-secret')).toBe(false);
+        if (url.startsWith('/api/auth/')) {
+          // Logging must not alter the token delivered to Better Auth.
+          expect(new URL(handler.mock.calls[0]![0].url).pathname).toBe(
+            url.split('?')[0],
+          );
+        }
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
   it('logs the error message, stack and request id without returning details or logging keys', async () => {
     const { createApp } = await import('./app.js');
     const { loadConfig } = await import('./config.js');
