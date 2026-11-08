@@ -1,7 +1,7 @@
 ---
 id: 005
 title: First-run setup and gateway connections
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-234
@@ -424,6 +424,7 @@ The conformance suite gains `checkConnection` cases for a healthy gateway and a 
 | A disable lands during an import or sample | The re-read under the shared lock, with the save holding the exclusive lock. Test: a disable during a slow import waits for it, and an import or sample that takes the lock after the disable is refused with no Kong write. |
 
 ### Tasks
+- [ ] [backend] Fix (Linear issue pending: workspace quota): restore quiet cold Compose build/start below five minutes (branch 372.45s; main 280.20s).
 - [x] [backend] JSO-312 `packages/db`: migration and schema for `managed_by`, `enabled`, the singleton index and the changed foreign keys, with an upgrade test from a v0.2 row and revoked credentials.
 - [x] [backend] JSO-313 Regenerate `packages/sdk` from the updated `openapi.yaml` first, because CI's check job fails until it matches.
 - [x] [backend] JSO-314 `config.ts`: optional admin and `KONG_ADMIN_URL`, empty string means unset, `SEED_SAMPLE` defaults to false, `PORTAL_BUNDLED_KONG_ADMIN_URL`, and a clear failure when only one admin variable is set.
@@ -487,7 +488,7 @@ QA re-test: **2026-11-08**, macOS/Node 26.13.0, real PostgreSQL 17 and Kong 3.9.
 
 | Criterion | Automated coverage | Result |
 | --- | --- | --- |
-| 1 — empty install, redirects, signup gate, five-minute startup | `deploy/quickstart-smoke.mjs`; `apps/portal/e2e/setup-gateways.test.ts`; `apps/server/src/setup-gateways.test.ts` | Fresh-volume startup from newly built images reached `/setup` in **20.1s**; signup/Kong-empty/browser checks pass. Quiet no-cache build plus setup: **372.45s — fails the 300s rule**; initial concurrent build also exceeded 300s. Baseline comparison pending. Previous QA fresh build/start: 220.2s |
+| 1 — empty install, redirects, signup gate, five-minute startup | `deploy/quickstart-smoke.mjs`; `apps/portal/e2e/setup-gateways.test.ts`; `apps/server/src/setup-gateways.test.ts` | Fresh-volume startup from newly built images reached `/setup` in **20.1s**; signup/Kong-empty/browser checks pass. Quiet no-cache build plus setup: **372.45s — fails the 300s rule**; initial concurrent build also exceeded 300s. Baseline is **280.20s (pass)**; branch timing is a **blocker**. Previous QA fresh build/start: 220.2s |
 | 2 — atomic first admin, session, skip, production token lifecycle | `apps/server/src/setup-gateways.test.ts`; `apps/server/src/startup.test.ts`; `apps/portal/components/setup-form.test.tsx`; `apps/portal/e2e/setup-gateways.test.ts` | API/component tests pass, including concurrent duplicate submissions and missing/wrong/expired token; browser checks pass |
 | 3 — live connection, encrypted/redacted token, singleton, defaults and warning | `apps/server/src/setup-gateways.test.ts`; `apps/portal/components/gateway-form.test.tsx`; `apps/portal/e2e/setup-gateways.test.ts` | API/component tests pass; browser checks pass |
 | 4 — unreachable/timeout, 401/403, non-Kong, DB-less, proxy, malformed URLs, failed saves preserve connection | `apps/server/src/setup-gateways.test.ts`; `packages/adapter-kong/src/connection.test.ts`; `packages/adapter-kong/src/conformance.test.ts`; `apps/portal/components/gateway-form.test.tsx` | Pass, including real DB-less Kong and fixed responses without token/body leakage |
@@ -503,9 +504,26 @@ QA re-test: **2026-11-08**, macOS/Node 26.13.0, real PostgreSQL 17 and Kong 3.9.
 
 Validation: `pnpm lint` (7 tasks), `pnpm typecheck` (12 tasks), `pnpm test` (**275 tests: 95 server, 123 portal, 55 Kong adapter, 2 database**), `pnpm test:e2e` (**26 cases**, 2.1m), and `pnpm test:e2e:demo` (**31 cases**) pass. Added real browser regressions for signing back in after skipping setup and an admin-only install (JSO-398), correct help links, inline-only 400 errors with preserved value/focus, and actionable loopback guidance. Missing permissions, expired sessions, malformed inputs, duplicate requests, gateway outages and failed mutations remain covered by the mapped suites. First-call/revoke smoke and both outage smoke cases pass.
 
-The initial uncached full suite had two adapter timeouts during concurrent image builds (global key-auth request and DB-less container `/status` startup). After builds ended, all **55 adapter tests passed uncached** in 99.9s; the full command also passes. Test-authoring corrections: scoped the no-form-alert check to `main` to exclude Next's route announcer, and waited for completed sign-in before navigating in the upgrade test. Neither correction changes product assertions. The quiet no-cache branch run took **337.91s to build and 372.45s through fresh `/setup`**, with setup/health checks passing after the timing limit. The original 300s concurrent build timeout and the 20.1s prebuilt fresh-volume startup are separate results. The coordinator requested the same baseline measurement before determining whether this is a branch regression or a pre-existing quickstart blocker; that comparison is pending.
+The initial uncached full suite had two adapter timeouts during concurrent image builds (global key-auth request and DB-less container `/status` startup). After builds ended, all **55 adapter tests passed uncached** in 99.9s; the full command also passes. Test-authoring corrections: scoped the no-form-alert check to `main` to exclude Next's route announcer, and waited for completed sign-in before navigating in the upgrade test. Neither correction changes product assertions. The quiet no-cache branch run took **337.91s to build and 372.45s through fresh `/setup`**, with setup/health checks passing after the timing limit. The original 300s concurrent build timeout and the 20.1s prebuilt fresh-volume startup are separate results. The same baseline measurement completed in **239.67s to build and 280.20s to the seeded home**. Per the coordinator’s explicit benchmark rule, main passes and this branch fails, so the quickstart issue is a **branch blocker**, with a backend Fix task and `status: building`; UAT is blocked. These are one measurement per revision, and the underlying cause is not established.
 
-**Quiet quickstart timing:** no containers were running before the run, and no other QA builds or suites ran concurrently. Docker: 8 CPUs, 4,106,539,008 bytes of memory. Both application images were rebuilt with `--no-cache`; Node base and Postgres/Kong/httpbin images remained cached (no shared cache/image deletion). One Python monotonic timer covered `docker compose -p spec005qacoldb2ef -f deploy/docker-compose.yml -f /tmp/spec005-branch-images.yml build --no-cache` followed by the unchanged fresh setup assertions from `deploy/quickstart-smoke.mjs`, with only unique image-name overrides and the environment-path second half omitted. That check performs fresh `up --build -d --wait`, setup redirect, empty catalog/gateway/Kong and signup refusal. Evidence: `/tmp/spec005-cold.log`, `/tmp/spec005-cold-result.json`, `/tmp/spec005-cold-before-containers.log` (empty), `/tmp/spec005-cold-host.log`. Baseline no-cache comparison is pending; pre-005 main has no setup screen, so its equivalent endpoint is its seeded home page.
+**Quiet quickstart timing:** no containers were running before the run, and no other QA builds or suites ran concurrently. Docker: 8 CPUs, 4,106,539,008 bytes of memory. Both application images were rebuilt with `--no-cache`; Node base and Postgres/Kong/httpbin images remained cached (no shared cache/image deletion). One Python monotonic timer covered `docker compose -p spec005qacoldb2ef -f deploy/docker-compose.yml -f /tmp/spec005-branch-images.yml build --no-cache` followed by the unchanged fresh setup assertions from `deploy/quickstart-smoke.mjs`, with only unique image-name overrides and the environment-path second half omitted. That check performs fresh `up --build -d --wait`, setup redirect, empty catalog/gateway/Kong and signup refusal. Evidence: `/tmp/spec005-cold.log`, `/tmp/spec005-cold-result.json`, `/tmp/spec005-cold-before-containers.log` (empty), `/tmp/spec005-cold-host.log`. The baseline was then measured alone using `docker compose -p spec005qabasecoldb2ef -f /tmp/spec005-upgrade-base/deploy/docker-compose.yml -f /tmp/spec005-base-images.yml build --no-cache`, followed by its original `up --build -d --wait` and seeded-home assertions. Pre-005 main has no setup screen, so its equivalent ready endpoint is its seeded home page. Same resources, cached base/service images, fresh volumes and empty initial container inventory; baseline images use the separate `spec005qa-base-*` tags. Baseline evidence: `/tmp/spec005-base-cold.log`, `/tmp/spec005-base-cold-result.json` and `/tmp/spec005-base-cold-before-containers.log` (empty).
+
+| Quiet cold phase (seconds) | Branch | Pre-005 main |
+| --- | ---: | ---: |
+| Node base metadata; base/service image downloads | 2.7; none | 1.1; none |
+| pnpm fetch | 33.0 | 39.9 |
+| Workspace offline install | 12.0 | 4.5 |
+| Server production dependency install/relink | 179.8 | 66.7 |
+| Next build (compile, types, page generation) | 177.0 | 128.9 |
+| Server TypeScript build | 51.2 | 42.6 |
+| Server runtime node_modules copy | 19.7 | 27.6 |
+| Server image export | 34.4 | 41.3 |
+| Portal image export | 7.9 | 5.4 |
+| **Build wall time** | **337.91** | **239.67** |
+| Fresh `up --build`, health and page checks | 34.54 | 40.53 |
+| **Total to ready portal** | **372.45 — FAIL** | **280.20 — PASS** |
+
+BuildKit stages overlap, so phase durations do not add to total wall time; snapshot/materialization and Compose overhead are included in wall time. Dockerfiles and dependency lockfile are identical across the revisions. The branch is 92.25s slower in this comparison; dependency relinking and Next build are the largest observed differences, not a proven diagnosis. Both environments’ functional assertions pass after startup. Filing the blocker also hit the workspace issue quota; the coordinator will add its key and the corresponding task key. No timing assertion was weakened. All QA projects/volumes and the four uniquely named application images are removed after testing; shared images/caches remain untouched.
 
 **Actual deployed upgrade:** no remote tags or GitHub releases exist (`git ls-remote --tags origin` and `gh release list --repo zebrasoftwareservices-eng/api-portal --json tagName,name` both returned empty); there is no image publishing workflow or versioned local v0.2 image. The coordinator explicitly selected pre-005 `origin/main` **`f52870e857e74ec9705a4dca7f03797eec07e3eb`** as the intended baseline, since spec 005 is part of v0.2 itself. Commands run:
 
@@ -524,6 +542,7 @@ Each image override changes only the server/portal image names to `spec005qa-bas
 Reproduction: run the fresh isolated Compose suite; in `apps/portal/e2e/journeys.ts` the Scalar text/plain case warms the proxy catalog, imports a real route, creates a sample-only app, waits for direct Kong 403, then requests that new route through try-it once. Expected 403, intermittent actual 404. Evidence: `/tmp/spec005-e2e.log` (first failure), `/tmp/spec005-e2e-retry.log` (26 pass), `/tmp/spec005-proxy-repeat-clean.log` and `/tmp/spec005-proxy-repeat-clean2.log` (ten pass), `/tmp/spec005-kong-retry.log`, `/tmp/spec005-upgrade-retry.log`, `/tmp/spec005-images.log`. Filing the minor Bug under JSO-234 failed with `linear_write_failed: Usage limit exceeded`; the coordinator authorized the pending-key line below and will file it after quota is freed. **This minor error-status recurrence does not block UAT**; it remains open and is not represented as fixed.
 
 ### Bugs
+- [ ] (Linear issue pending: workspace quota) Quiet cold Compose quickstart takes 372.45s on this branch while pre-005 main takes 280.20s (blocker).
 - [ ] (Linear issue pending: workspace quota) Newly imported route intermittently returns 404 through try-it after direct Kong is ready (minor).
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [x] JSO-380 Try-it retained saved proxy URLs for 30 seconds (verified by immediate saved-URL regression, Done).
