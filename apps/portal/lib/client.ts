@@ -5,12 +5,13 @@ import { createAuthClient } from 'better-auth/react';
 import { toast } from 'sonner';
 import type { Problem } from './types';
 export const auth = createAuthClient();
-export const api = createClient({
-  baseUrl:
-    typeof window === 'undefined'
-      ? 'http://localhost:3000/api'
-      : `${window.location.origin}/api`,
-});
+const baseUrl =
+  typeof window === 'undefined'
+    ? 'http://localhost:3000/api'
+    : `${window.location.origin}/api`;
+export const api = createClient({ baseUrl });
+// Only the API page's access check bypasses global redirects and toasts.
+export const quietApi = createClient({ baseUrl });
 api.use({
   onResponse({ response, schemaPath }) {
     if (response.status === 401 && schemaPath !== '/v1/me') {

@@ -21,3 +21,27 @@ export function keyDestination(slug: string, signedIn: boolean) {
   const next = `/dashboard/apps/new?api=${encodeURIComponent(slug)}`;
   return signedIn ? next : `/sign-up?next=${encodeURIComponent(next)}`;
 }
+
+export function signInLink(next?: string) {
+  if (!next) return '/sign-in';
+  const url = new URL(safeNext(next), 'https://portal.invalid');
+  const slug = url.searchParams.get('api');
+  const destination =
+    url.pathname === '/dashboard/apps/new' && slug
+      ? `/apis/${encodeURIComponent(slug)}`
+      : safeNext(next);
+  return `/sign-in?next=${encodeURIComponent(destination)}`;
+}
+export function signUpLink(next?: string) {
+  if (!next) return '/sign-up';
+  const safe = safeNext(next);
+  const match = /^\/apis\/([^/?#]+)$/.exec(safe);
+  if (match?.[1]) {
+    try {
+      return keyDestination(decodeURIComponent(match[1]), false);
+    } catch {
+      // Keep a malformed encoded path safe without inventing an API slug.
+    }
+  }
+  return `/sign-up?next=${encodeURIComponent(safe)}`;
+}

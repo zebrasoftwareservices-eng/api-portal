@@ -10,10 +10,10 @@
 //   node scripts/factory.mjs start <id> | --idea "<text>" | <KEY-123> [--dry-run]
 //                                                         new Orca worktree + coordinator agent
 //   node scripts/factory.mjs resume <id> [--dry-run]      restart a stopped coordinator in the spec's worktree
-//   node scripts/factory.mjs linear-init <id>             create the spec's Linear feature + stage issues
-//   node scripts/factory.mjs linear-tasks <id>            create a Linear issue for every task in the spec's task list
+//   node scripts/factory.mjs linear-init <id>             create the spec's single Linear feature issue
+//   node scripts/factory.mjs linear-tasks <id>            legacy no-op; tasks stay in the spec
 //   node scripts/factory.mjs track <id> sync              move Linear issues to match the spec status
-//   node scripts/factory.mjs track <id> start <stage> [--agent claude|codex]
+//   node scripts/factory.mjs track <id> start <stage> [--agent claude|codex|antigravity]
 //   node scripts/factory.mjs track <id> note <stage|feature> < summary.txt
 //   node scripts/factory.mjs track <id> gate
 //
@@ -56,8 +56,6 @@ const OWNERSHIP = {
   'qa-tester': "test files (**/*.test.ts, apps/portal/e2e/, tests/) and the spec's Test report and Bugs sections. Do not fix application code.",
   'user-tester': "docs/uat/ (screenshots and notes) and the spec's User testing and Bugs sections. Do not edit application code or tests.",
 };
-const TASK_STAGE = { backend: 'backend', frontend: 'frontend', qa: 'test' };
-
 // ---------- helpers ----------
 const rel = (p) => relative(ROOT, p);
 function die(msg) {
@@ -196,31 +194,6 @@ const TARGET_RANK = { backlog: 0, todo: 1, started: 2, review: 3, done: 4, cance
 function parentTarget(status) {
   return { draft: 'backlog', ready: 'todo', designed: 'started', building: 'started', testing: 'started', uat: 'started', review: 'review', approved: 'review', done: 'done' }[status];
 }
-function stageTargets(spec) {
-  const at = STATUSES.indexOf(spec.status);
-  const past = (s) => at > STATUSES.indexOf(s);
-  const has = (o) => spec.tasks.some((t) => t.owner === o);
-  const allDone = (o) => has(o) && spec.tasks.filter((t) => t.owner === o).every((t) => t.done);
-  const t = {};
-  t.requirements = spec.status === 'draft' ? 'todo' : 'done';
-  if (past('ready')) t.design = 'done';
-  else if (spec.status === 'ready') t.design = 'todo';
-  if (past('designed')) t.ux = has('frontend') ? 'done' : 'canceled';
-  else if (spec.status === 'designed') t.ux = 'todo';
-  for (const o of ['backend', 'frontend']) {
-    if (past('building')) t[o] = has(o) ? 'done' : 'canceled';
-    else if (spec.status === 'building') t[o] = allDone(o) ? 'done' : 'todo';
-  }
-  if (past('testing')) t.test = 'done';
-  else if (spec.status === 'testing') t.test = 'todo';
-  if (past('uat')) t.uat = 'done';
-  else if (spec.status === 'uat') t.uat = 'todo';
-  if (past('review')) t.review = 'done';
-  else if (spec.status === 'review') t.review = 'todo';
-  if (spec.status === 'approved') t.release = 'todo';
-  if (spec.status === 'done') t.release = 'done';
-  return t;
-}
 function needLinear(spec) {
   if (!LINEAR) return 'Linear tracking is off (factory.config.json → linear.enabled).';
   if (!spec.linear) return `${spec.rel} has no Linear issue yet. Run: node scripts/factory.mjs linear-init ${spec.id}`;
@@ -241,29 +214,12 @@ function moveForward(key, target, knownState) {
 function sync(spec) {
   const why = needLinear(spec);
   if (why) return [why];
-  const children = orcaLinear(['list-issues', '--parent-id', spec.linear, '--include-archived']);
-  if (!children.ok) return [`Linear not reachable, nothing synced (${children.error}). Re-run: node scripts/factory.mjs track ${spec.id} sync`];
-  const states = Object.fromEntries(children.result.issues.map((i) => [i.identifier, i.state]));
   const log = [];
   const pt = moveForward(spec.linear, parentTarget(spec.status));
   if (pt) log.push(pt);
-  for (const [stage, target] of Object.entries(stageTargets(spec))) {
-    const key = spec.stages[stage];
-    if (!key) continue;
-    const m = moveForward(key, target, states[key]);
-    if (m) log.push(m);
-  }
-  // Task issues: a ticked task is Done (developers normally move them; this catches misses).
-  const keyed = spec.tasks.filter((t) => t.key && t.done);
-  for (const stage of [...new Set(keyed.map((t) => TASK_STAGE[t.owner]))]) {
-    const parent = spec.stages[stage];
-    if (!parent) continue;
-    const kids = orcaLinear(['list-issues', '--parent-id', parent, '--include-archived']);
-    const ks = kids.ok ? Object.fromEntries(kids.result.issues.map((i) => [i.identifier, i.state])) : {};
-    for (const t of keyed.filter((x) => TASK_STAGE[x.owner] === stage)) {
-      const m = moveForward(t.key, 'done', ks[t.key]);
-      if (m) log.push(m);
-    }
+  if (spec.status === 'done') {
+    const detached = orcaLinear(['save-issue', spec.linear, '--project', 'null']);
+    log.push(detached.ok ? `${spec.linear}: removed from active project for auto-archive` : `${spec.linear}: could not clear project (${detached.error})`);
   }
   return log.length ? log : ['Linear already matches the spec.'];
 }
@@ -280,7 +236,6 @@ function track(args) {
     warn(why);
     return;
   }
-  const issueFor = (stage) => (stage === 'feature' ? spec.linear : spec.stages[stage]);
   let log = [];
   switch (action) {
     case 'sync':
@@ -288,30 +243,27 @@ function track(args) {
       break;
     case 'start': {
       if (!STAGE_KEYS.includes(target)) die(`stage must be one of: ${STAGE_KEYS.join(', ')}`);
-      const key = issueFor(target);
-      if (!key) {
-        warn(`no Linear issue for stage ${target}`);
-        break;
-      }
+      const key = spec.linear;
       const stage = STAGES.find((s) => s.key === target);
-      const who = agent === 'codex' ? 'Codex' : agent === 'claude' ? 'Claude Code' : agent || 'an agent';
+      const who = (agent && LINEAR?.agentLabels?.[agent]) || agent || 'an agent';
       const m = moveForward(key, 'started');
       if (m) log.push(m);
-      const c = orcaLinear(['comment', 'add', key, '--body', `▶ Started: ${stage.role || 'Elango'} on ${who} (spec status: ${spec.status}).`]);
-      log.push(c.ok ? `${key}: start comment posted` : `${key}: ${c.error}`);
+      const c = orcaLinear(['comment', 'add', key, '--body', `▶ **${stage.title} started:** ${stage.role || 'Elango'} on ${who} (spec status: ${spec.status}).`]);
+      log.push(c.ok ? `${key}: ${target} start comment posted` : `${key}: ${c.error}`);
       log.push(...sync(spec));
       break;
     }
     case 'note': {
       if (target !== 'feature' && !STAGE_KEYS.includes(target)) die(`stage must be feature or one of: ${STAGE_KEYS.join(', ')}`);
-      const key = issueFor(target);
+      const key = spec.linear;
       const summary = readStdin();
-      if (!key || !summary) {
-        warn(!key ? `no Linear issue for ${target}` : 'no summary on stdin');
+      if (!summary) {
+        warn('no summary on stdin');
         break;
       }
       const commits = commitsOnBranch();
-      const body = `${summary}\n\n_Spec status: ${spec.status}._${commits ? `\n\nLatest commits on the branch:\n\`\`\`\n${commits}\n\`\`\`` : ''}`;
+      const label = target === 'feature' ? 'Feature update' : STAGES.find((s) => s.key === target).title;
+      const body = `✅ **${label}:** ${summary}\n\n_Spec status: ${spec.status}._${commits ? `\n\nLatest commits on the branch:\n\`\`\`\n${commits}\n\`\`\`` : ''}`;
       const c = orcaLinear(['comment', 'add', key, '--body-file', '-'], body);
       log.push(c.ok ? `${key}: note posted` : `${key}: ${c.error}`);
       break;
@@ -322,7 +274,7 @@ function track(args) {
         log.push('No gate on this spec right now.');
         break;
       }
-      const key = (p.gate.kind === 'approve-spec' && spec.stages.requirements) || (p.gate.kind === 'merge' && spec.stages.release) || spec.linear;
+      const key = spec.linear;
       const c = orcaLinear(['comment', 'add', key, '--body', `⏸ Waiting for Elango (${p.gate.kind}): ${p.gate.message}`]);
       log.push(c.ok ? `${key}: gate comment posted` : `${key}: ${c.error}`);
       log.push(...sync(spec));
@@ -337,70 +289,23 @@ function linearInit(spec) {
   if (!LINEAR) die('Linear tracking is off (factory.config.json → linear.enabled).');
   const base = ['--team', LINEAR.team, '--project', LINEAR.project];
   if (!spec.linear) {
-    const body = `**Spec:** \`${spec.rel}\` (source of truth — this issue mirrors its status)\n\n${spec.summary}\n\nEach SDLC stage is a sub-issue. The factory coordinator in Orca moves them and comments after every stage.`;
+    const body = `**Spec:** \`${spec.rel}\` (source of truth — this issue mirrors its status)\n\n${spec.summary}\n\nThis single feature issue authorizes all SDLC stages and tasks in the spec. Coordinators and workers post stage summaries here. Create child issues only for durable blocker/major, cross-owner/release, or post-spec work.`;
     const r = orcaLinear(['create', '--title', `${spec.id} — ${spec.title}`, ...base, '--label', 'Feature', '--assignee', 'me', '--state', S().backlog, '--body-file', '-'], body);
     const key = r.ok && identifierOf(r.result);
     if (!key) die(`could not create the feature issue: ${r.error || 'no identifier returned'}`);
     setFrontmatter(spec, 'linear', key);
     spec.linear = key;
     console.log(`feature ${key}`);
+  } else {
+    console.log(`feature ${spec.linear} already linked`);
   }
-  for (const stage of STAGES) {
-    if (spec.stages[stage.key]) continue;
-    const agent = stage.role ? config.roles[stage.role]?.agent : null;
-    const labels = [...stage.labels, ...(agent && LINEAR.agentLabels?.[agent] ? [LINEAR.agentLabels[agent]] : [])];
-    const body = stage.human
-      ? `**Owner:** Elango (human gate) for \`${spec.rel}\`.`
-      : `**Role:** ${stage.role} · **Agent:** ${LINEAR.agentLabels?.[agent] || agent}\n\nStage of \`${spec.rel}\`. The coordinator moves this issue and comments when the stage ends.`;
-    const argv = ['create', '--title', `${spec.id} · ${stage.title}`, ...base, '--parent', spec.linear, '--state', stage.key === 'requirements' && spec.status === 'draft' ? S().todo : S().backlog, '--body-file', '-'];
-    for (const l of labels) argv.push('--label', l);
-    if (stage.human) argv.push('--assignee', 'me');
-    const r = orcaLinear(argv, body);
-    const key = r.ok && identifierOf(r.result);
-    if (!key) {
-      warn(`could not create the ${stage.key} issue: ${r.error || 'no identifier returned'}`);
-      continue;
-    }
-    spec.stages[stage.key] = key;
-    console.log(`${stage.key} ${key}`);
-  }
-  setFrontmatter(spec, 'linear_stages', STAGE_KEYS.filter((k) => spec.stages[k]).map((k) => `${k}=${spec.stages[k]}`).join(' '));
   for (const l of sync(loadSpec(spec.path))) console.log(l);
 }
 
 function linearTasks(spec) {
   const why = needLinear(spec);
   if (why) die(why);
-  let text = spec.text;
-  let made = 0;
-  for (const t of spec.tasks) {
-    if (t.key || /^Fix\b/i.test(t.text)) continue;
-    const stage = TASK_STAGE[t.owner];
-    const parent = spec.stages[stage];
-    if (!parent) {
-      warn(`no ${stage} stage issue; run linear-init ${spec.id} first`);
-      continue;
-    }
-    const role = STAGES.find((x) => x.key === stage).role;
-    const agent = config.roles[role]?.agent;
-    const plain = t.text.replace(/[`*_]/g, '').replace(/\s+/g, ' ').trim();
-    const title = `${spec.id} · ${plain.length > 100 ? `${plain.slice(0, 97).replace(/\s+\S*$/, '')}…` : plain}`;
-    const labels = [...(t.owner === 'qa' ? ['Testing'] : ['Development', t.owner === 'backend' ? 'Backend' : 'Frontend']), ...(LINEAR.agentLabels?.[agent] ? [LINEAR.agentLabels[agent]] : [])];
-    const argv = ['create', '--title', title, '--team', LINEAR.team, '--project', LINEAR.project, '--parent', parent, '--state', t.done ? S().done : S().todo, '--body-file', '-'];
-    for (const l of labels) argv.push('--label', l);
-    const r = orcaLinear(argv, `**Task** from \`${spec.rel}\` (${t.owner}, ${role} on ${LINEAR.agentLabels?.[agent] || agent}):\n\n${t.text}`);
-    const key = r.ok && identifierOf(r.result);
-    if (!key) {
-      warn(`could not create an issue for "${plain.slice(0, 60)}": ${r.error || 'no identifier returned'}`);
-      continue;
-    }
-    const keyed = t.line.replace(`[${t.owner}] ${t.text}`, `[${t.owner}] ${key} ${t.text}`);
-    text = text.replace(t.line, keyed);
-    made++;
-    console.log(`${key}  [${t.owner}] ${plain.slice(0, 70)}`);
-  }
-  if (made) writeFileSync(spec.path, text);
-  console.log(made ? `${made} task issue(s) created; keys written into ${spec.rel}.` : 'Every task already has a Linear issue.');
+  console.log(`Lean Linear mode: ${spec.tasks.length} task(s) remain checkboxes in ${spec.rel}; no task issues created.`);
 }
 
 // ---------- role jobs ----------
@@ -430,11 +335,11 @@ function jobFor(role, spec, opts = {}) {
     case 'tech-lead':
       if (opts.mode === 'review' || (!opts.mode && spec?.status === 'review'))
         return {
-          change: 'Review this branch against the spec (mode 2 in your role file): run git diff main...HEAD, pnpm lint, pnpm typecheck and pnpm test, then write blocking and suggestion findings with file:line in the Review section. For each blocking finding create a Linear sub-issue labelled Code Review and add a `- [ ] [backend] Fix <KEY>: …` or `- [ ] [frontend] Fix <KEY>: …` task. Set status: approved if nothing is blocking, otherwise status: building.',
-          acceptance: 'The Review section is filled, every blocking finding has a Linear issue and a Fix task, and status is approved or building.',
+          change: 'Review this branch against the spec (mode 2 in your role file): run git diff main...HEAD, pnpm lint, pnpm typecheck and pnpm test, then write blocking and suggestion findings with file:line in the Review section. Add an unkeyed Fix task for each blocking finding. Create a Code Review issue only if the finding needs another owner/release or will remain after this review. Set status: approved if nothing is blocking, otherwise status: building.',
+          acceptance: 'The Review section is filled, every blocking finding has a Fix task, durable findings have Linear issues, and status is approved or building.',
         };
       return {
-        change: `Write the Technical design section (components, API contract, data model, adapter calls, risks) and the task list tagged [backend], [frontend] and [qa]. Update apps/server/openapi.yaml and add an ADR if the design makes a lasting choice. Then set status: designed and run \`node scripts/factory.mjs linear-tasks ${spec?.id ?? '<id>'}\` to create a Linear issue for every task.`,
+        change: 'Write the Technical design section (components, API contract, data model, adapter calls, risks) and the task list tagged [backend], [frontend] and [qa]. Update apps/server/openapi.yaml and add an ADR if the design makes a lasting choice. Then set status: designed. Tasks stay in the spec; do not create task issues.',
         acceptance: 'Technical design and tasks are filled in and status is designed.',
       };
     case 'ui-designer':
@@ -447,20 +352,20 @@ function jobFor(role, spec, opts = {}) {
       const owner = role.split('-')[0];
       return {
         target: `every unchecked [${owner}] task`,
-        change: 'Implement those tasks with tests. Each task line starts with its Linear issue key: move that issue to In Progress when you start the task; when it is committed and its tests pass, tick the task, comment the commit on the issue and move it to Done. For a Fix task, comment on its bug or review issue with what changed and move it to In Review. Add a Build notes entry.',
+        change: 'Implement those spec tasks with tests and tick each completed checkbox. Add a Build notes entry. For a keyed durable Fix task, comment on its bug/review issue with what changed and move it to In Review; unkeyed fixes stay in the spec.',
         constraints: "Match the API contract in the spec's Technical design. Do not change the spec status; the coordinator moves it.",
         acceptance: `pnpm lint, pnpm typecheck and pnpm test pass, and every [${owner}] task is ticked.`,
       };
     }
     case 'qa-tester':
       return {
-        change: 'Map every acceptance criterion to an automated test, add failure-path tests, run the full suite and the docker compose quickstart, and fill the Test report. Re-test every Linear bug in In Review: verified → Done and tick it under Bugs; still broken → comment and move it back to In Progress. For each new bug create a Linear sub-issue labelled Bug, list it under Bugs as `- [ ] <KEY> summary (severity)`, and for blockers and majors add a `- [ ] [backend] Fix <KEY>: …` or `- [ ] [frontend] Fix <KEY>: …` task. Set status: uat if no blocker or major bug is open, otherwise status: building.',
-        acceptance: 'The Test report covers every acceptance criterion, every bug has a Linear issue, and status is uat or building.',
+        change: 'Map every acceptance criterion to an automated test, add failure-path tests, run the full suite and the docker compose quickstart, and fill the Test report. Re-test every open bug in the spec. Record every new bug in the spec; create a Bug issue only for blocker/major, cross-owner/release, or post-spec work. Add a Fix task for blockers and majors. Set status: uat if none remain open, otherwise status: building.',
+        acceptance: 'The Test report covers every acceptance criterion, durable bugs have Linear issues, all findings are in the spec, and status is uat or building.',
       };
     case 'user-tester':
       return {
-        change: "Test the running portal in Orca's built-in browser the way a real developer would, following the user stories and acceptance criteria (see your role file for the full checklist). Start the quickstart if it isn't running. Re-test every bug in In Review: verified → Done and tick it under Bugs; still broken → comment and move it back to In Progress. Every new problem gets a Linear sub-issue labelled Bug with steps, expected, actual and a screenshot path under docs/uat/, listed under Bugs; blockers and majors also get a Fix task. Fill the spec's User testing section. Set status: review if no blocker or major is open, otherwise status: building.",
-        acceptance: 'Every user story was walked in the browser with evidence in docs/uat/, every problem has a Linear issue, and status is review or building.',
+        change: "Test the running portal in Orca's built-in browser the way a real developer would, following the user stories and acceptance criteria (see your role file for the full checklist). Start the quickstart if it isn't running. Re-test every open bug in the spec. Record every new problem with evidence under docs/uat/; create a Bug issue only for blocker/major, cross-owner/release, or post-spec work. Fill User testing and set status: review if no blocker or major is open, otherwise building.",
+        acceptance: 'Every user story was walked in the browser with evidence in docs/uat/, all problems are recorded, durable work has a Linear issue, and status is review or building.',
       };
     default:
       die(`unknown role "${role}". Roles: ${ROLES.join(', ')}`);
@@ -478,14 +383,13 @@ function workerSpec(role, spec, job, stageKey) {
     `Observable acceptance: ${job.acceptance}`,
   ];
   if (spec?.linear && LINEAR) {
-    const own = stageKey && spec.stages[stageKey];
     lines.push(
       [
-        `Linear: you are a team member in project "${LINEAR.project}" (team ${LINEAR.team}); the feature is ${spec.linear}${own ? ` and your stage issue is ${own}` : ''}.`,
-        own ? `When you start, move ${own} to In Progress and comment that you picked it up. When you finish, comment a 2-4 sentence summary on ${own}; move it to Done if your acceptance is met, otherwise leave it In Progress and say why.` : '',
-        'Keep every issue you touch current: move task issues as you work them, and create an issue for every bug, review finding or out-of-scope follow-up you find (follow-ups go to Backlog with no parent).',
+        `Linear: you are a team member in project "${LINEAR.project}" (team ${LINEAR.team}); the feature issue is ${spec.linear} and authorizes this stage.`,
+        `When you finish, comment a 2-4 sentence ${stageKey || 'feature'} summary on ${spec.linear}. Tasks and transient findings stay in the spec; do not create stage/task issues.`,
+        'Keep durable issues current. Create one only for blocker/major work, a different owner or release, work that remains after the spec, or an out-of-scope follow-up (follow-ups go to Backlog with no parent).',
         `End every commit message with "Refs ${spec.linear}".`,
-        `Commands: \`orca linear status set <KEY> --to "<State>" --json\`, \`orca linear comment add <KEY> --body-file - --json\`, \`orca linear create --title "…" --parent ${spec.linear} --team ${LINEAR.team} --project "${LINEAR.project}" --label <Label> --body-file - --json\`. States: ${Object.values(LINEAR.states).join(', ')}.`,
+        `Commands: \`orca linear status set <KEY> --to "<State>" --json\`, \`orca linear comment add ${spec.linear} --body-file - --json\`, \`orca linear create --title "…" --parent ${spec.linear} --team ${LINEAR.team} --label <Label> --body-file - --json\`. States: ${Object.values(LINEAR.states).join(', ')}.`,
       ].filter(Boolean).join(' '),
     );
   }
@@ -507,18 +411,14 @@ function plan(spec, intake) {
     out.stage = 'new-spec';
     out.workers.push(worker('product-manager', null, 'new spec', intake));
     out.expectStatus = ['draft'];
-    out.note = `After this worker, run \`node scripts/factory.mjs status --json\` to find the new spec id${LINEAR ? ', then `node scripts/factory.mjs linear-init <id>` to create its Linear issues' : ''}. Its next stage is Elango's approval gate.`;
+    out.note = `After this worker, run \`node scripts/factory.mjs status --json\` to find the new spec id${LINEAR ? ', then `node scripts/factory.mjs linear-init <id>` to create its feature issue' : ''}. Its next stage is Elango's approval gate.`;
     return out;
   }
   out.spec = { id: spec.id, path: spec.rel, title: spec.title, status: spec.status };
   if (LINEAR) {
     if (!spec.linear) out.linear = { missing: true, fix: `node scripts/factory.mjs linear-init ${spec.id}` };
     else {
-      const untracked = spec.tasks.filter((t) => !t.key && !/^Fix\b/i.test(t.text)).length;
-      const missingStages = STAGE_KEYS.filter((k) => !spec.stages[k]);
-      out.linear = { feature: spec.linear, stages: spec.stages };
-      if (missingStages.length) Object.assign(out.linear, { missingStages, fix: `node scripts/factory.mjs linear-init ${spec.id}` });
-      else if (untracked) Object.assign(out.linear, { untrackedTasks: untracked, fix: `node scripts/factory.mjs linear-tasks ${spec.id}` });
+      out.linear = { feature: spec.linear, legacyStages: spec.stages };
     }
   }
   const open = (o) => spec.tasks.filter((t) => t.owner === o && !t.done);
@@ -815,7 +715,7 @@ switch (cmd) {
       if (p.action) console.log(`action: set status ${p.action.setStatus} — ${p.action.reason}`);
       for (const w of p.workers) console.log(`\n--- worker: ${w.role} on ${w.agent}${w.stageKey ? ` (stage ${w.stageKey})` : ''} ---\n${w.spec}`);
       if (p.note) console.log(`\nnote: ${p.note}`);
-      if (p.linear?.fix) console.log(`\nlinear: ${p.linear.missing ? 'no issues yet' : p.linear.missingStages ? `missing stage issues (${p.linear.missingStages.join(', ')})` : `${p.linear.untrackedTasks} task(s) without a Linear issue`} — run ${p.linear.fix}`);
+      if (p.linear?.fix) console.log(`\nlinear: no feature issue yet — run ${p.linear.fix}`);
     }
     break;
   }

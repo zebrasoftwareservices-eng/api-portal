@@ -156,3 +156,35 @@ describe('create app', () => {
     expect(screen.getByLabelText('App name')).toHaveValue('Bot');
   });
 });
+
+it('focuses the preselected app name once and leaves focus there when APIs load', async () => {
+  let resolve!: (value: unknown) => void;
+  mocks.get.mockImplementation(
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  render(<CreateApp slug="sample" />);
+  expect(screen.getByLabelText('App name')).toHaveFocus();
+  await act(async () => resolve({ data: { items: [api] } }));
+  expect(screen.getByRole('checkbox')).toBeChecked();
+  expect(screen.getByLabelText('App name')).toHaveFocus();
+  expect(screen.getByRole('link', { name: 'My apps' })).toHaveAttribute(
+    'href',
+    '/dashboard',
+  );
+});
+it('moves focus to the heading when an empty API result removes the focused form', async () => {
+  let resolve!: (value: unknown) => void;
+  mocks.get.mockImplementation(
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  render(<CreateApp slug="sample" />);
+  expect(screen.getByLabelText('App name')).toHaveFocus();
+  await act(async () => resolve({ data: { items: [] } }));
+  expect(screen.getByRole('heading', { level: 1 })).toHaveFocus();
+});

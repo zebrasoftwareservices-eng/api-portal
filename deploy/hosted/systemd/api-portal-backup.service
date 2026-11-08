@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Back up the hosted API Portal database
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/api-portal/deploy/hosted/backup.sh
+User=root
+UMask=0077
+

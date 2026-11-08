@@ -70,12 +70,16 @@ Integration tests require a running Docker daemon.
 
 ## Hosted demo
 
-The Vercel deployment shows the seeded sample API catalog and a read-only reference.
-Sign-up, API keys, try-it and admin need the local quickstart above.
-Demo mode is baked in at build time: `PORTAL_DEMO_MODE=on`, or `VERCEL=1`
-with no `SERVER_URL`, enables it. Set `SERVER_URL` when deploying a real portal
-on Vercel to keep live features enabled. Ordinary local and Compose builds stay live,
-even when the server is unreachable. Changing mode or the seed requires a rebuild.
+The public Vercel deployment is backed by the live control plane and sample Kong gateway,
+so visitors can sign up, create an app, receive a key once and call the sample API. Its
+Hostinger deployment, reset, backup and recovery runbook is in
+[`deploy/hosted/README.md`](deploy/hosted/README.md).
+
+Static demo mode remains available for tests and documentation-only deployments. It is baked
+in at build time: `PORTAL_DEMO_MODE=on`, or `VERCEL=1` with no `SERVER_URL`, enables it. Set
+`SERVER_URL` when deploying a real portal on Vercel to keep live features enabled. Ordinary
+local and Compose builds stay live even when the server is unreachable. Changing mode or the
+seed requires a rebuild.
 
 ## Goals
 

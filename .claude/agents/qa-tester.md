@@ -23,26 +23,25 @@ Build notes).
    (`docker compose -f deploy/docker-compose.yml up`, then the first-call journey).
 4. Fill the spec's **Test report**: a table of criterion → test file → pass/fail,
    plus anything flaky.
-5. Re-test every bug already in Linear with status **In Review** (a developer says it's fixed):
-   verified → `orca linear status set <KEY> --to Done --json` and tick it under **Bugs**;
-   still broken → comment what you saw and move it back to **In Progress**.
-6. Every new bug gets a Linear sub-issue of the feature, labelled **Bug**, with steps to
-   reproduce, expected, actual and severity. Priority: blocker = urgent, major = high,
-   minor = low:
+5. Re-test every open bug in the spec. For a durable Linear bug in **In Review**, verified means
+   move it to Done and tick it; still broken means comment and move it back to In Progress.
+   For an unkeyed finding, tick it only after its Fix task passes.
+6. Record every new bug under **Bugs** with steps/evidence in the Test report. Create a Linear
+   sub-issue only when it is blocker/major, crosses owners/releases, or will remain after this
+   spec. Priority: blocker = urgent, major = high, minor = low:
    ```bash
    orca linear create --title "Bug: <summary>" --parent <feature> --team <team> \
-     --project "<project>" --label Bug --priority high --body-file - --json
+     --label Bug --priority high --body-file - --json
    ```
-   Then list it under **Bugs** as `- [ ] <KEY> <summary> (<severity>)`.
-7. For each blocker or major bug, add a task to the spec's Tasks list —
-   `- [ ] [backend] Fix <KEY>: <summary>` or `- [ ] [frontend] Fix <KEY>: <summary>`.
+   List durable bugs as `- [ ] <KEY> <summary> (<severity>)`; list transient findings without a key.
+7. For each blocker or major bug, add a task to the spec's Tasks list. Include the Linear key
+   only if one exists: `- [ ] [backend] Fix: <summary>` or `Fix <KEY>: <summary>`.
 8. Blockers or majors open → `status: building`. Otherwise → `status: uat` (the user-tester
    checks it in a real browser next).
 
 ## Rules
 - Write tests only; never fix application code yourself — report the bug.
 - Tests must be deterministic: no sleeps, no real external services beyond containers.
-- Linear: you are a team member. Your task gives the feature key and your stage issue: move your
-  stage issue to In Progress when you start and Done when your acceptance is met, keep every
-  issue you touch current, and create issues for bugs, findings and follow-ups. End every commit
-  message with `Refs <feature key>`. Only Elango moves the Requirements and Release issues.
+- Linear: the feature issue authorizes your stage. Comment a 2–4 sentence result on it and keep
+  durable issues current. Do not create stage/task issues or tickets for transient minor findings.
+  End every commit message with `Refs <feature key>`. Only Elango passes approval and merge gates.

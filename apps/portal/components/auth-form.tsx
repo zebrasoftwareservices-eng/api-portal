@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Card, Input } from '@portal/ui';
 import { api, auth } from '../lib/client';
-import { safeNext } from '../lib/navigation';
+import { safeNext, signInLink, signUpLink } from '../lib/navigation';
 import { Field, focusInvalid } from './field';
 export function AuthForm({
   mode,
@@ -44,7 +44,7 @@ export function AuthForm({
       result.password = 'Use 128 characters or fewer.';
     return result;
   }
-  const link = `/${signup ? 'sign-in' : 'sign-up'}${next ? `?next=${encodeURIComponent(safeNext(next))}` : ''}`;
+  const link = signup ? signInLink(next) : signUpLink(next);
   return (
     <Card className="auth stack">
       <h1>{signup ? 'Create your developer account' : 'Sign in'}</h1>

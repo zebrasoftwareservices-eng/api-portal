@@ -4,8 +4,7 @@ title: <short feature name>
 status: draft   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: YYYY-MM-DD
-linear:            # feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init NNN`
-linear_stages:     # stage issues — filled by linear-init
+linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init NNN`
 ---
 
 # NNN — <Feature name>
@@ -53,7 +52,8 @@ Summary + link to `docs/design/NNN-*.md`
 | --- | --- | --- |
 
 ### Bugs
-<!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
+<!-- Track every finding here. Add a JSO key only for a durable blocker/major, cross-owner/release item, or work that remains after this spec. -->
+<!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [ ] …
 
 ## User testing  _(user-tester)_

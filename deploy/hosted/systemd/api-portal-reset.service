@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=Reset public API Portal demo developer data
+Requires=docker.service
+After=docker.service api-portal-backup.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/api-portal/deploy/hosted/reset-demo.sh
+User=root
+UMask=0077
+

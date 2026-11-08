@@ -5,15 +5,19 @@ Orca **worker**, in that spec's own worktree, on the agent `factory.config.json`
 
 | Role | Agent | Subscription it uses |
 | --- | --- | --- |
-| Coordinator, product-manager, tech-lead, ui-designer, user-tester | Claude Code | Claude Pro |
+| Coordinator, product-manager, tech-lead, ui-designer | Claude Code | Claude Pro |
 | backend-developer, frontend-developer, qa-tester | Codex | ChatGPT Pro |
+| user-tester | Antigravity (Gemini 3.8 Flash, High) | Google account (Antigravity Starter quota) |
 
-Claude does the thinking and reviewing; Codex does the high-volume building and testing.
+Claude does the thinking and reviewing; Codex does the high-volume building and testing;
+Antigravity drives the browser for real-user testing, which keeps those long sessions off the
+Claude allowance.
 Code is always reviewed by a different model from the one that wrote it.
-Change any role's agent in `factory.config.json` (`"claude"` or `"codex"`), for example
+Change any role's agent in `factory.config.json` (`"claude"`, `"codex"` or `"antigravity"`), for example
 when one subscription hits its usage limit. Add `"model"` and `"effort"` to a role to pin them.
 The Codex roles are pinned to `gpt-6.1-sol`, the Codex coding model on ChatGPT Pro
-(see *When a worker fails*).
+(see *When a worker fails*). The user-tester is pinned to `gemini-3.8-flash-high`; run
+`agy models` to see the models your Google account offers.
 
 ## One-time setup
 1. Open Orca, then in a terminal run:
@@ -55,7 +59,7 @@ node scripts/factory.mjs start JSO-130                          # from a Linear 
 node scripts/factory.mjs start --idea "AWS API Gateway REST adapter"
 ```
 Either way the product manager writes the spec and the coordinator runs
-`node scripts/factory.mjs linear-init <id>` to create the feature's stage issues. You can also
+`node scripts/factory.mjs linear-init <id>` to create the spec's single feature issue. You can also
 write a spec by hand and run `linear-init` yourself.
 
 ## Tracking in Linear
@@ -63,16 +67,16 @@ Project **API Portal** in Linear holds the whole SDLC:
 
 | Linear | What it is | Who moves it |
 | --- | --- | --- |
-| Feature issue (label Feature) | One per spec, in a release milestone (v0.1, v0.2, v0.3) | Coordinator, from the spec status |
-| Stage sub-issues | Requirements → Technical design → UX design → Backend → Frontend → Testing → User testing → Code review → Release | The agent doing the stage: In Progress at start, summary comment, Done at the end. Requirements and Release are yours |
-| Task sub-issues | One per task in the spec, under its stage issue | The developer: In Progress → Done with the commit |
-| Bug sub-issues (label Bug) | Every bug QA or the user-tester finds, priority by severity | Tester creates and closes; developer moves to In Review when fixed |
-| Review sub-issues (label Code Review) | Every blocking review finding | Tech lead creates and closes |
+| Feature issue (label Feature) | One per spec, in a release milestone (v0.1, v0.2, v0.3) | Coordinator, from the spec status; stage summaries are comments |
+| Spec task checkboxes | Every implementation and QA task; no Linear issue per task | The owning worker ticks it and reports the stage summary on the feature |
+| Bug sub-issues (label Bug) | Only durable blocker/major, cross-owner/release, or post-spec bugs | Tester creates and closes; developer moves to In Review when fixed |
+| Review sub-issues (label Code Review) | Only durable blocking findings that outlive the current review loop | Tech lead creates and closes |
 | Follow-ups (Backlog) | Out-of-scope work any agent spots | Whoever found it creates it; you prioritize |
 
-Every agent works in Linear like a team member, so Linear updates as the work happens. The
-coordinator only reconciles: `track sync` fills in anything an agent missed and never moves an
-issue backwards.
+Every agent works in Linear like a team member, so stage summaries and durable issues update as
+the work happens. The coordinator only reconciles the feature issue: `track sync` fills in
+anything an agent missed and never moves an issue backwards. Legacy stage/task issues remain as
+history but are not required or created for new specs.
 
 Feature status: Backlog = spec draft · Todo = approved · In Progress = design, build, test ·
 In Review = code review or waiting to merge · Done = merged.
@@ -80,7 +84,7 @@ In Review = code review or waiting to merge · Done = merged.
 Useful commands:
 ```bash
 node scripts/factory.mjs track 001 sync     # re-sync Linear with the spec (safe any time)
-orca linear issue JSO-117 --children        # the feature and its stages from the terminal
+orca linear issue JSO-117 --comments        # the feature and its stage summaries
 ```
 Linear problems never stop the factory: the coordinator logs a warning and you can re-sync later.
 
@@ -93,11 +97,11 @@ Resume after a stop (gate, limit, restart): open the spec's worktree in Orca, st
 Code and type `/factory 001` (Codex: `$factory 001`).
 
 ## Real-user testing in the browser
-After QA's automated tests pass, the **user-tester** (Claude Code) starts the quickstart and uses
+After QA's automated tests pass, the **user-tester** (Antigravity) starts the quickstart and uses
 the portal in Orca's built-in browser like a real developer: sign up, read the docs, create an
 app, copy the key, try a call, revoke it. It also checks mobile size, keyboard use, error states
-and console errors, saves screenshots in `docs/uat/<spec-id>/`, and files every problem as a
-Linear bug. You can watch its browser tab in the spec's Orca workspace.
+and console errors, and saves screenshots in `docs/uat/<spec-id>/`. It records every problem in
+the spec and creates Linear bugs only for durable work. You can watch its browser tab in Orca.
 
 ## Deploys (GitHub + Vercel)
 - Repo: private `github.com/zebrasoftwareservices-eng/api-portal`. Orca branches new
@@ -134,7 +138,7 @@ Paste it into any agent tab in that worktree (Orca: new tab → Claude Code or C
 | designed | ui-designer: UX (skipped if no UI tasks) | Claude | status: building |
 | building | backend + frontend in parallel once the monorepo exists | Codex | all build tasks ticked → testing |
 | testing | qa-tester: automated tests | Codex | status: uat (or back to building) |
-| uat | user-tester: real-user testing in Orca's browser | Claude | status: review (or back to building) |
+| uat | user-tester: real-user testing in Orca's browser | Antigravity | status: review (or back to building) |
 | review | tech-lead: code review | Claude | status: approved (or back to building) |
 | approved | **Elango merges** | — | status: done |
 
@@ -150,6 +154,10 @@ Open the worker's terminal in Orca to read its error, or run
   coordinator: "Stop the failed worker, run `git merge main --no-edit`, and continue."
 - **Usage limit reached** — switch that role's `agent` to the other subscription in
   `factory.config.json`, commit, and tell the coordinator the same.
+- **Antigravity stops with `RESOURCE_EXHAUSTED`, a 429 or a quota message** — the Google
+  account's Antigravity quota is used up (the Starter quota resets weekly). Set the user-tester
+  back to `"agent": "claude"` and delete its `"model"` line in `factory.config.json`, commit on
+  `main`, and tell the coordinator the same.
 - **Tab says "Action Required" or "Would you like to make the following edits?"** — the worker
   is waiting for your approval because it was started in Ask mode. Approve it (press `y`), then
   type `/permissions` in that tab and pick **Approve for me**; it applies from the agent's next
@@ -178,7 +186,7 @@ Role instructions live in `factory/roles/*.md`. After editing one, run
 ## Files Orca and the agents read
 - `orca.yaml` — setup script for each new worktree (`pnpm install` once `package.json` exists)
 - `.worktreeinclude` — gitignored files (`.env`) copied into new worktrees
-- `AGENTS.md` — shared instructions (Codex reads it; `CLAUDE.md` imports it)
+- `AGENTS.md` — shared instructions (Codex and Antigravity read it; `CLAUDE.md` imports it)
 - `factory/roles/` — the seven roles (source); `.claude/agents/`, `.codex/agents/` are generated
 - `.agents/skills/factory/` — the coordinator skill (copied to `.claude/skills/factory/`)
 - `factory/claude-settings.json` — Claude Code permissions (copied to `.claude/settings.json`)

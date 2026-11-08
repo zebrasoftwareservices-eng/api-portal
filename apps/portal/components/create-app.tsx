@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, EmptyState, Input, PageHeader, Textarea } from '@portal/ui';
 import { api, networkProblem, retrySeconds } from '../lib/client';
@@ -24,6 +24,18 @@ export function CreateApp({ slug }: { slug?: string }) {
   const [retry, setRetry] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const form = useRef<HTMLFormElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
+  const page = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (slug) nameInput.current?.focus();
+  }, [slug]);
+  const restoreFocus = useRef(false);
+  useLayoutEffect(() => {
+    if (restoreFocus.current && !loading && data?.items.length === 0) {
+      page.current?.querySelector('h1')?.focus();
+      restoreFocus.current = false;
+    }
+  }, [data, loading]);
   useEffect(() => {
     if (!data) return;
     const wasInitialized = initialized.current;
@@ -107,12 +119,12 @@ export function CreateApp({ slug }: { slug?: string }) {
     }
   }
   return (
-    <div className="stack form">
+    <div className="stack form" ref={page}>
       <PageHeader
         title="Create an app"
         description="You'll get an API key as soon as it's created."
         breadcrumb={[
-          { label: 'Your apps', href: '/dashboard' },
+          { label: 'My apps', href: '/dashboard' },
           { label: 'New app' },
         ]}
       />
@@ -170,6 +182,11 @@ export function CreateApp({ slug }: { slug?: string }) {
               >
                 {(props) => (
                   <Input
+                    ref={(node) => {
+                      if (!node && document.activeElement === nameInput.current)
+                        restoreFocus.current = true;
+                      nameInput.current = node;
+                    }}
                     {...props}
                     required
                     autoComplete="off"
