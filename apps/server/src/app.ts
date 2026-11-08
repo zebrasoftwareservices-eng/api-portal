@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+import { registerAccount } from './account.js';
+import { registerAdminSettings } from './admin-settings.js';
+import { limitedAuth } from './auth-limits.js';
+import { mailQueue, type EnqueueMail } from './mail/queue.js';
 import { portalProxy } from './trusted-proxy.js';
 import Fastify, { type FastifyServerOptions } from 'fastify';
 import {
@@ -8,7 +12,7 @@ import {
 import type { Database } from '@portal/db';
 import type { GatewayAdapter } from '@portal/adapter-sdk';
 import type { Config } from './config.js';
-import { createAuth, headersFor, requireUser, type Auth } from './auth.js';
+import { createAuth, headersFor, type Auth } from './auth.js';
 import { problemHandler } from './problem.js';
 import { registerCatalog } from './catalog.js';
 import { registerImport } from './import.js';
@@ -20,12 +24,14 @@ export interface AppOptions {
   adapter: GatewayAdapter;
   gatewayId: string;
   auth?: Auth;
+  enqueueMail?: EnqueueMail;
   logger?: FastifyServerOptions['logger'];
   proxyFetch?: typeof fetch;
 }
 export async function createApp(options: AppOptions) {
   const { db, config, adapter, gatewayId } = options;
-  const auth = options.auth ?? createAuth(db, config);
+  const enqueue = options.enqueueMail ?? mailQueue(config);
+  const auth = options.auth ?? createAuth(db, config, enqueue);
   const proxy = portalProxy(config.PORTAL_PROXY_HOST);
   const app = Fastify({
     trustProxy: proxy.trust,
@@ -47,6 +53,16 @@ export async function createApp(options: AppOptions) {
                 'req.headers.authorization',
                 'req.headers.cookie',
                 '*.password',
+                'newPassword',
+                'currentPassword',
+                'token',
+                'smtpPassword',
+                '*.newPassword',
+                '*.currentPassword',
+                '*.token',
+                '*.smtpPassword',
+                '*.passwordCiphertext',
+                '*.link',
                 '*.key',
                 '*.apikey',
               ],
@@ -69,15 +85,17 @@ export async function createApp(options: AppOptions) {
     url: '/api/auth/*',
     handler: async (request, reply) => {
       const url = new URL(request.url, config.PORTAL_PUBLIC_URL);
-      const response = await auth.handler(
-        new Request(url, {
-          method: request.method,
-          headers: headersFor(request),
-          body:
-            request.body === undefined
-              ? undefined
-              : JSON.stringify(request.body),
-        }),
+      const response = await limitedAuth(db, auth, request, reply, () =>
+        auth.handler(
+          new Request(url, {
+            method: request.method,
+            headers: headersFor(request),
+            body:
+              request.body === undefined
+                ? undefined
+                : JSON.stringify(request.body),
+          }),
+        ),
       );
       const cookies = response.headers.getSetCookie();
       for (const [name, value] of response.headers)
@@ -86,10 +104,8 @@ export async function createApp(options: AppOptions) {
       return reply.code(response.status).send(await response.text());
     },
   });
-  app.get('/api/v1/me', async (request) => {
-    const user = await requireUser(auth, request);
-    return { id: user.id, email: user.email, name: user.name, role: user.role };
-  });
+  registerAccount(app, db, auth, adapter, config, enqueue);
+  registerAdminSettings(app, db, auth, config);
   app.get('/api/v1/health', async () => {
     const health = await adapter.health();
     return {

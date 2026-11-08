@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { FastifyInstance } from 'fastify';
+import { securityCopy } from './security-problems.js';
 import { ZodError } from 'zod';
 import {
   GatewayRejectedError,
@@ -77,6 +78,12 @@ export function problemHandler(app: FastifyInstance) {
         title:
           (
             {
+              ...Object.fromEntries(
+                Object.entries(securityCopy).map(([key, copy]) => [
+                  key,
+                  copy[0],
+                ]),
+              ),
               'gateway-service-has-acl':
                 'Another ACL plugin applies to this service',
               'gateway-service-already-linked':

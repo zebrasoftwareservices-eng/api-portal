@@ -50,6 +50,10 @@ services:
       retries: 30
   httpbin:
     image: mccutchen/go-httpbin:v2.15.0
+  mailpit:
+    image: axllent/mailpit:v1.27.10
+    ports:
+      - '127.0.0.1:8025:8025'
   server:
     image: portal-server
     build:
@@ -67,6 +71,13 @@ services:
       KONG_ADMIN_TOKEN: ${KONG_ADMIN_TOKEN:-}
       KONG_PROXY_INTERNAL_URL: http://kong:8000
       KONG_PROXY_PUBLIC_URL: ${KONG_PROXY_PUBLIC_URL:-http://localhost:8000}
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURITY: ${SMTP_SECURITY:-none}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_SENDER_NAME: ${SMTP_SENDER_NAME:-Developer Portal}
+      SMTP_SENDER_ADDRESS: ${SMTP_SENDER_ADDRESS:-noreply@example.com}
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me-now}
       SEED_SAMPLE: ${SEED_SAMPLE:-true}

@@ -9,11 +9,13 @@ import {
   apis,
   credentials,
   gatewayConsumers,
+  user as users,
   type Database,
 } from '@portal/db';
 import type { GatewayAdapter } from '@portal/adapter-sdk';
 import { requireUser, type Auth } from './auth.js';
 import { Problem, notFound } from './problem.js';
+import { requireVerified } from './verified.js';
 import { generateKey } from './crypto.js';
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 const createSchema = z.strictObject({
@@ -95,6 +97,7 @@ export function registerApps(
   });
   server.post('/api/v1/apps', async (request, reply) => {
     const user = await requireUser(auth, request);
+    await requireVerified(db, user);
     const input = createSchema.parse(request.body);
     const appId = uuidv7(),
       id = uuidv7(),
@@ -102,6 +105,12 @@ export function registerApps(
     let gatewayAttempted = false;
     try {
       const result = await db.transaction(async (tx) => {
+        const [owner] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, user.id))
+          .for('key share');
+        if (!owner) throw notFound();
         // Serialize names before gateway writes, including simultaneous identical submissions.
         await tx.execute(
           sql`select pg_advisory_xact_lock(hashtextextended(${user.id + ':' + input.name},0))`,
@@ -194,6 +203,7 @@ export function registerApps(
   });
   server.post('/api/v1/apps/:appId/credentials', async (request, reply) => {
     const user = await requireUser(auth, request);
+    await requireVerified(db, user);
     const { appId } = appParams.parse(request.params);
     const id = uuidv7(),
       key = generateKey();

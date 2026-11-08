@@ -9,6 +9,8 @@ import {
   check,
   uniqueIndex,
   index,
+  integer,
+  boolean,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { user } from './auth-schema.js';
@@ -56,7 +58,9 @@ export const apis = pgTable(
     routePath: text('route_path').notNull(),
     document: jsonb('document').$type<Record<string, unknown>>().notNull(),
     sourceUrl: text('source_url'),
-    createdBy: uuid('created_by').references(() => user.id),
+    createdBy: uuid('created_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
     publishedAt: time('published_at').notNull().defaultNow(),
     createdAt: created(),
     updatedAt: updated(),
@@ -126,5 +130,90 @@ export const credentials = pgTable(
   (t) => [
     check('credential_status_check', sql`${t.status} in ('active','revoked')`),
     index('credential_app_status_idx').on(t.appId, t.status),
+  ],
+);
+
+export const mailSettings = pgTable(
+  'mail_settings',
+  {
+    id: smallint('id').primaryKey().default(1),
+    host: text('host').notNull(),
+    port: integer('port').notNull(),
+    security: text('security').notNull(),
+    username: text('username'),
+    passwordCiphertext: text('password_ciphertext'),
+    senderName: text('sender_name').notNull(),
+    senderAddress: text('sender_address').notNull(),
+    updatedBy: uuid('updated_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    updatedAt: updated(),
+  },
+  (t) => [
+    check('mail_singleton', sql`${t.id} = 1`),
+    check('mail_port', sql`${t.port} between 1 and 65535`),
+    check('mail_security', sql`${t.security} in ('none','starttls','tls')`),
+  ],
+);
+export const accountSettings = pgTable(
+  'account_settings',
+  {
+    id: smallint('id').primaryKey().default(1),
+    requireVerifiedEmail: boolean('require_verified_email')
+      .notNull()
+      .default(false),
+    signInFailureMax: integer('sign_in_failure_max').notNull().default(10),
+    signInFailureWindowMinutes: integer('sign_in_failure_window_minutes')
+      .notNull()
+      .default(15),
+    resetEmailMax: integer('reset_email_max').notNull().default(3),
+    resetEmailWindowMinutes: integer('reset_email_window_minutes')
+      .notNull()
+      .default(60),
+    verificationEmailMax: integer('verification_email_max')
+      .notNull()
+      .default(3),
+    verificationEmailWindowMinutes: integer('verification_email_window_minutes')
+      .notNull()
+      .default(60),
+    updatedAt: updated(),
+  },
+  (t) => [
+    check('accounts_singleton', sql`${t.id} = 1`),
+    ...[t.signInFailureMax, t.resetEmailMax, t.verificationEmailMax].map(
+      (c, i) => check(`account_max_${i}`, sql`${c} between 1 and 1000`),
+    ),
+    ...[
+      t.signInFailureWindowMinutes,
+      t.resetEmailWindowMinutes,
+      t.verificationEmailWindowMinutes,
+    ].map((c, i) => check(`account_window_${i}`, sql`${c} between 1 and 1440`)),
+  ],
+);
+export const emailChangeRequests = pgTable('email_change_requests', {
+  id: uuid('id').primaryKey(),
+  userId: uuid('user_id')
+    .notNull()
+    .unique()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  newEmail: text('new_email').notNull(),
+  tokenHash: text('token_hash').notNull().unique(),
+  expiresAt: time('expires_at').notNull(),
+  createdAt: created(),
+});
+export const rateLimitHits = pgTable(
+  'rate_limit_hits',
+  {
+    id: uuid('id').primaryKey(),
+    bucket: text('bucket').notNull(),
+    subjectHash: text('subject_hash').notNull(),
+    createdAt: created(),
+  },
+  (t) => [
+    check(
+      'rate_bucket',
+      sql`${t.bucket} in ('sign-in-failure','password-reset','verification-email')`,
+    ),
+    index('rate_limit_window_idx').on(t.bucket, t.subjectHash, t.createdAt),
   ],
 );
