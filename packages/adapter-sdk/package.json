@@ -25,8 +25,5 @@
   },
   "peerDependencies": {
     "vitest": "^3.2.4"
-  },
-  "files": [
-    "dist"
-  ]
+  }
 }

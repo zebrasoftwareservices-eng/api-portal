@@ -1,8 +1,3 @@
 packages:
   - apps/*
   - packages/*
-
-# Deploy the server from the locked production graph, including workspace packages.
-injectWorkspacePackages: true
-syncInjectedDepsAfterScripts:
-  - build
