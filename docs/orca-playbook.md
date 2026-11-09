@@ -137,6 +137,21 @@ of the main journey. On a retest it walks only the failed rows. Screenshots go i
    (the coordinator prints the exact `gh pr create` command), merge, then run
    `node scripts/factory.mjs set-status 001 done`.
 
+## Grok beside the factory
+Grok researches once before a spec exists, and reviews the board when you ask. Claude still
+designs and reviews. Codex still builds and tests. The coordinator does not launch Grok.
+
+```bash
+node scripts/factory.mjs prompt researcher --idea "AWS API Gateway REST adapter"
+node scripts/factory.mjs prompt researcher --linear JSO-130
+node scripts/factory.mjs prompt researcher --board
+```
+
+Paste the prompt into Grok. The brief lands in `docs/research/` (see `docs/research/README.md`).
+Start the factory after the brief exists. The product manager reads it and writes the spec.
+A board review is one page. Follow-ups stay in the spec. Run it when you ask, or once on a
+weekday while a Grok session is open.
+
 ## Play one role by hand
 ```bash
 node scripts/factory.mjs prompt qa-tester 001     # prints a self-contained task prompt

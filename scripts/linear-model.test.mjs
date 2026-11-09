@@ -265,3 +265,46 @@ test('factory linear commands update the spec and do not call Linear for spec-on
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+function factory(args) {
+  return spawnSync(process.execPath, [join(ROOT, 'scripts/factory.mjs'), ...args], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  });
+}
+
+test('the researcher stays beside the factory loop', () => {
+  const board = factory(['prompt', 'researcher', '--board']);
+  assert.equal(board.status, 0, board.stderr);
+  assert.match(board.stdout, /docs\/research\/board-\d{4}-\d{2}-\d{2}\.md/);
+  assert.match(board.stdout, /linear read/);
+  assert.match(board.stdout, /follow-up/);
+  assert.equal(board.stdout.includes('set status:'), false);
+
+  const research = factory(['prompt', 'researcher', '--idea', 'AWS API Gateway REST adapter']);
+  assert.equal(research.status, 0, research.stderr);
+  assert.match(research.stdout, /docs\/research\/aws-api-gateway-rest-adapter\.md/);
+  assert.match(research.stdout, /Stop before a spec exists/);
+
+  const missing = factory(['prompt', 'researcher']);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /--board/);
+
+  const planned = factory(['plan', '006', '--json']);
+  assert.equal(planned.status, 0, planned.stderr);
+  const body = JSON.parse(planned.stdout);
+  assert.deepEqual(
+    body.workers.map((worker) => worker.role),
+    ['tech-lead'],
+  );
+
+  const intake = factory(['plan', '--idea', 'AWS API Gateway REST adapter', '--json', '--allow-parallel-claude']);
+  assert.equal(intake.status, 0, intake.stderr);
+  const idea = JSON.parse(intake.stdout);
+  assert.deepEqual(
+    idea.workers.map((worker) => worker.role),
+    ['product-manager'],
+  );
+  assert.match(idea.workers[0].spec, /docs\/research\/aws-api-gateway-rest-adapter\.md/);
+  assert.match(idea.note, /Do not launch the researcher/);
+});

@@ -100,6 +100,9 @@ Nothing else will wake you, so wait for the delegation you just started, then co
   `linear bug`. `linear issue` creates a child only for blocker/major work, a different owner
   or release, or something that remains after the spec. Follow-ups stay in the spec. A minor
   finding or a review suggestion gets no Fix task and does not return the spec to building.
+- The researcher is Grok and sits beside this loop. Do not start that role as a worker.
+  A brief in `docs/research/` is evidence for the product manager. Elango runs a board review
+  with `node scripts/factory.mjs prompt researcher --board`.
 - One spec at a time may be in `ready`, `designed`, or `review`. If the plan returns
   `claude-busy`, stop and tell Elango. Do not start that Claude worker.
 - If the Free-plan limit rejects a durable issue, `linear issue` records it under Deferred Linear

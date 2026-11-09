@@ -42,7 +42,8 @@ deploy/              docker-compose.yml, helm/
 docs/specs           Feature specs — the factory's work orders
 docs/adr             Architecture decision records
 docs/design          UX flows, screen specs, tokens
-factory/roles        The seven role definitions (source for .claude/agents and .codex/agents)
+docs/research        Grok briefs and board reviews, beside the factory loop
+factory/roles        Role definitions (source for .claude/agents and .codex/agents)
 scripts/factory.mjs  Factory runner (status, plan, prompts, start)
 ```
 
@@ -140,5 +141,10 @@ To run it, start the coordinator with the `factory` skill (Claude Code: `/factor
 Codex: `$factory 001`). It asks `node scripts/factory.mjs plan <id> --json` what comes next,
 starts each role as a supervised Orca worker, and posts the stage summary after every stage.
 To play one role by hand, run `node scripts/factory.mjs prompt <role> <id>` and paste the output into any agent.
+
+Grok sits beside that loop as the researcher. Before a spec, it writes one brief in
+`docs/research/`. When you ask, it reviews the open specs and records real follow-ups there.
+It is not a stage, and the coordinator does not launch it.
+`node scripts/factory.mjs prompt researcher --idea "<text>"`, `--linear <KEY>`, or `--board`.
 
 Never mark your own work approved, and never pass one of Elango's two gates.

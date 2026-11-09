@@ -38,6 +38,9 @@ rate-limit buckets shared across live runs), and JSO-410 (portal unit tests on N
   the spec and does not stop the factory.
 - `node scripts/factory.mjs start` refuses another feature while a spec is in `ready`,
   `designed`, or `review`. `--allow-parallel-claude` is the explicit override.
+- Grok sits beside the loop as the researcher. One pass writes a brief in `docs/research/`
+  before a spec exists. A separate pass reviews the open specs and records follow-ups in the
+  spec. The coordinator does not launch it. Claude and Codex keep their stages.
 - Parallel checkouts run Compose through `node scripts/worktree-compose.mjs`, which gives each
   checkout its own project name, image tags, and host ports. The documented
   `docker compose -f deploy/docker-compose.yml up` command is unchanged.
@@ -45,7 +48,7 @@ rate-limit buckets shared across live runs), and JSO-410 (portal unit tests on N
   Production does not register that route and refuses the token. Portal unit tests pass
   `--no-experimental-webstorage` on Node 25+.
 
-Who approves a spec and who merges are unchanged. Which subscription plays a role is unchanged.
+Who approves a spec and who merges are unchanged. Which subscription plays a role inside the spec loop is unchanged.
 
 ## Consequences
 

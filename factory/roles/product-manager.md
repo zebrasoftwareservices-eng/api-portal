@@ -16,7 +16,8 @@ and the Summary plus Out of scope of other specs. Do not open `docs/specs/log/` 
 Turn a request into a spec the rest of the team can build without asking questions.
 
 1. Restate the problem in one sentence: who has it and why it matters.
-2. Write the spec at `docs/specs/NNN-<slug>.md` from the template (next free number).
+2. If `docs/research/<slug>.md` or `docs/research/<KEY>.md` exists, read it and keep its sources.
+   Write the spec at `docs/specs/NNN-<slug>.md` from the template (next free number).
 3. Fill only these sections: Summary, Problem, Users, User stories, Acceptance criteria,
    Out of scope, Open questions. Leave the other role sections empty.
 4. Acceptance criteria are Given/When/Then, each one independently testable by QA.
