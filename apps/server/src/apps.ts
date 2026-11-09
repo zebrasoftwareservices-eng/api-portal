@@ -7,6 +7,7 @@ import {
   apps,
   subscriptions,
   apis,
+  apiVersions,
   credentials,
   gatewayConsumers,
   type Database,
@@ -44,9 +45,10 @@ function credentialView(c: typeof credentials.$inferSelect) {
 async function view(db: Database | Tx, app: typeof apps.$inferSelect) {
   const [subs, keys] = await Promise.all([
     db
-      .select({ apiId: apis.id, slug: apis.slug, title: apis.title })
+      .select({ apiId: apis.id, slug: apis.slug, title: apiVersions.title })
       .from(subscriptions)
       .innerJoin(apis, eq(subscriptions.apiId, apis.id))
+      .innerJoin(apiVersions, eq(apis.latestVersionId, apiVersions.id))
       .where(eq(subscriptions.appId, app.id)),
     db
       .select()

@@ -16,6 +16,7 @@ export class Problem extends Error {
       activeKeys?: number;
       affectedKeys?: number;
     },
+    readonly errorCount?: number,
   ) {
     super(detail);
   }
@@ -109,6 +110,7 @@ export function problemHandler(app: FastifyInstance) {
         detail: p.message,
         instance: req.url.split('?')[0],
         ...(p.errors ? { errors: p.errors } : {}),
+        ...(p.errorCount === undefined ? {} : { errorCount: p.errorCount }),
         ...p.fields,
       });
   });

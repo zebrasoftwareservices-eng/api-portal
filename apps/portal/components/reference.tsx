@@ -30,20 +30,36 @@ export class ReferenceBoundary extends Component<
     );
   }
 }
-export function Reference({ documentUrl }: { documentUrl: string }) {
+export function Reference({
+  documentUrl,
+  slug,
+  version,
+}: {
+  documentUrl: string;
+  slug?: string;
+  version?: string;
+}) {
   const [attempt, setAttempt] = useState(0);
   const document = useResource(() =>
-    api.GET('/v1/apis/{slug}/openapi.json', {
-      params: {
-        path: { slug: decodeURIComponent(documentUrl.split('/').at(-2) || '') },
-      },
-    }),
+    version && slug
+      ? api.GET('/v1/apis/{slug}/versions/{version}/openapi.json', {
+          params: { path: { slug, version } },
+        })
+      : api.GET('/v1/apis/{slug}/openapi.json', {
+          params: {
+            path: {
+              slug: decodeURIComponent(documentUrl.split('/').at(-2) || ''),
+            },
+          },
+        }),
   );
   if (document.loading) return <p role="status">Loading API reference…</p>;
   if (document.error)
     return (
       <div role="alert" className="alert error">
-        The API reference didn&apos;t load.{' '}
+        {version
+          ? `We couldn't load the reference for version ${version}. Try again in a moment.`
+          : "The API reference didn't load."}{' '}
         <Button onClick={document.reload}>Try again</Button>
       </div>
     );

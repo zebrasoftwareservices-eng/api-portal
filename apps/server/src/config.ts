@@ -18,6 +18,7 @@ const envSchema = z.object({
       'Must encode 32 bytes',
     )
     .default(DEV_ENCRYPTION_KEY),
+  PORTAL_LINT_RULESET: z.string().optional(),
   PORTAL_PROXY_HOST: z.string().min(1).default('localhost'),
   PORTAL_PUBLIC_URL: z.url().default('http://localhost:3000'),
   KONG_ADMIN_URL: z.url().optional(),

@@ -2,7 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
 import { uuidv7 } from 'uuidv7';
-import { apis } from '@portal/db';
+import { apis, apiVersions } from '@portal/db';
 import { eq } from 'drizzle-orm';
 import type { DbConnection } from './gateway-connection.js';
 import { KongAdapter } from '@portal/adapter-kong';
@@ -53,18 +53,46 @@ export async function seedSample(
       'utf8',
     ),
   ) as Record<string, unknown>;
-  const values = {
-    title: 'Sample HTTP API',
-    version: '1.0.0',
-    description: 'A small HTTP API for trying your portal API key.',
-    gatewayId,
-    gatewayServiceId: service.id,
-    gatewayServiceName: service.name,
-    routePath: '/sample',
-    document,
-  };
-  await db
-    .insert(apis)
-    .values({ id: uuidv7(), slug: 'sample', ...values })
-    .onConflictDoNothing();
+  await db.transaction(async (tx) => {
+    const [api] = await tx
+      .insert(apis)
+      .values({
+        id: uuidv7(),
+        slug: 'sample',
+        gatewayId,
+        gatewayServiceId: service.id,
+        gatewayServiceName: service.name,
+        routePath: '/sample',
+      })
+      .onConflictDoUpdate({
+        target: apis.slug,
+        set: {
+          gatewayServiceId: service.id,
+          gatewayServiceName: service.name,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    if (!api) throw new Error('Seed API missing');
+    const [version] = await tx
+      .insert(apiVersions)
+      .values({
+        id: uuidv7(),
+        apiId: api.id,
+        version: '1.0.0',
+        title: 'Sample HTTP API',
+        description: 'A small HTTP API for trying your portal API key.',
+        document,
+      })
+      .onConflictDoUpdate({
+        target: [apiVersions.apiId, apiVersions.version],
+        set: { document },
+      })
+      .returning();
+    if (!api.latestVersionId && version)
+      await tx
+        .update(apis)
+        .set({ latestVersionId: version.id })
+        .where(eq(apis.id, api.id));
+  });
 }

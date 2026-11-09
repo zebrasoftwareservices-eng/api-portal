@@ -411,7 +411,7 @@ export async function registerGateways(
         const sample = (await publishedApis(db)).find(
           (row) => row.api.slug === 'sample',
         );
-        return reply.code(201).send(apiDetail(sample!));
+        return reply.code(201).send(await apiDetail(db, sample!));
       },
     );
   });

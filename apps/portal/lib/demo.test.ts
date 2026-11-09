@@ -28,8 +28,24 @@ it('derives the catalog from the inlined seed without invented fields', async ()
   vi.stubEnv('PORTAL_DEMO_SAMPLE_API', JSON.stringify(document));
   const data = demoData();
   expect(data.document).toEqual(document);
+  expect(data.changelog).toEqual([
+    {
+      version: data.api.version,
+      publishedAt: data.api.versions[0]!.publishedAt,
+      releaseNote: 'First release of the sample API.',
+      changes: null,
+    },
+  ]);
   expect(data.api).toEqual({
     slug: 'sample',
+    versions: [
+      {
+        version: data.api.version,
+        isLatest: true,
+        publishedAt: '2026-11-08T00:00:00Z',
+        documentUrl: `/api/v1/apis/sample/versions/${encodeURIComponent(data.api.version)}/openapi.json`,
+      },
+    ],
     ...data.document.info,
     gatewayBaseUrl: data.document.servers[0]!.url,
   });

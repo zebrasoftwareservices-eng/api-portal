@@ -107,13 +107,58 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Published OpenAPI document, ready for the API reference
-         * @description The stored, validated document, with two changes made when it is served:
+         * OpenAPI document of the latest version, ready for the API reference
+         * @description The latest version's stored, validated document, with two changes made when it is served:
          *     `servers` is replaced by a single entry with the API's public gateway base URL, and
          *     if the document has no `apiKey` security scheme, a `portalApiKey` scheme
          *     (`in: header`, `name: apikey`, Kong's default) is added and applied at the top level.
          */
         get: operations["getApiDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apis/{slug}/versions/{version}/openapi.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * OpenAPI document of one version, ready for the API reference
+         * @description Same transformation as `getApiDocument` (servers replaced, `portalApiKey` added when
+         *     needed). Every version shares the API's gateway base URL: the portal documents versions,
+         *     it doesn't route them (spec 012, out of scope).
+         */
+        get: operations["getApiVersionDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apis/{slug}/changelog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The API's changelog, one entry per version
+         * @description Newest import first. Each entry's `changes` was computed once, when that version was
+         *     imported, against the version just below it in the version order (see
+         *     `ApiDetail.versions`); it never changes afterwards, including when the latest version
+         *     changes.
+         */
+        get: operations["getApiChangelog"];
         put?: never;
         post?: never;
         delete?: never;
@@ -261,10 +306,15 @@ export interface paths {
         put?: never;
         /**
          * Import an OpenAPI 3.x document, link it to a Kong service and publish it
-         * @description Validates the document (OpenAPI 3.0 or 3.1 only; Swagger 2.0 is rejected) and
-         *     bundles external `$ref`s. On success the API is published to the public catalog.
-         *     On a validation failure nothing is stored, and the response `detail` names the
-         *     first error (spec 001 AC 4).
+         * @description Validates the document (OpenAPI 3.0 or 3.1 only; Swagger 2.0 is rejected), lints it
+         *     with the active Spectral ruleset (spec 012, ADR 0007) and bundles external `$ref`s. On
+         *     success the API is published to the public catalog with the document as its first and
+         *     latest version. On a validation or lint error nothing is stored. Lint warnings don't
+         *     block; they are returned in `lintWarnings`.
+         *
+         *     If the service is already linked to a published API, the refusal
+         *     (`/problems/gateway-service-already-linked`) names that API; publish the document as a
+         *     new version of it with `POST /v1/admin/apis/{slug}/versions` instead.
          *
          *     Publishing applies access control to the linked service (ADR 0005): an `allow` ACL for
          *     the service's portal group, and `hide_credentials` on its key-auth plugins. Existing keys
@@ -277,6 +327,55 @@ export interface paths {
          *     (spec 005 AC 7(b)).
          */
         post: operations["importApi"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/apis/{slug}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish a new version of an existing API
+         * @description Validates and lints the document exactly like `importApi`, computes the change summary
+         *     against the previous version (see `ChangelogEntry`), and stores the version. No gateway
+         *     call is made: every version shares the API's Kong service and route, and access is per
+         *     API, so this works while Kong is unreachable.
+         *
+         *     With `makeLatest` true (the default) the new version becomes the latest, even when its
+         *     number is lower than the current latest (spec 012 AC 2). With `makeLatest` false it is
+         *     published and listed, and the latest is unchanged. On any refusal nothing is stored.
+         */
+        post: operations["importApiVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/apis/{slug}/latest-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Make an existing version the latest
+         * @description "Set as latest" (spec 012 AC 9). Idempotent: naming the current latest returns 200 and
+         *     changes nothing. The catalog title and description follow the latest version's `info`.
+         *     No gateway call is made. Changelog entries are not recomputed.
+         */
+        put: operations["setLatestApiVersion"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -443,18 +542,45 @@ export interface components {
             activeKeys?: number;
             /** @description With `/problems/gateway-keys-missing`: active keys with no consumer on the new Kong */
             affectedKeys?: number;
-            /** @description Field or document errors. For `/problems/invalid-openapi`, only the first error is returned. */
+            /**
+             * @description Field or document errors. For `/problems/invalid-openapi`, only the first error is
+             *     returned. For `/problems/openapi-lint-failed`, every error-severity finding up to 100;
+             *     `errorCount` holds the full number.
+             */
             errors?: {
                 /** @description JSON Pointer into the request body or the OpenAPI document, e.g. /paths/~1pets/get/responses */
                 pointer?: string;
                 message: string;
+                /** @description Lint findings only. The Spectral rule name, e.g. operation-operationId-unique */
+                rule?: string;
+                /** @description Lint findings only. 1-based line in `source` */
+                line?: number;
+                /** @description Lint findings only. 1-based column in `source` */
+                column?: number;
+                /** @description Lint findings only. URL of the external file the finding is in; null for the imported document itself */
+                source?: string | null;
             }[];
+            /** @description Only on `/problems/openapi-lint-failed`: total number of error findings */
+            errorCount?: number;
         };
         Slug: string;
         Health: {
             /** @enum {string} */
-            status: "ok";
+            status: "ok" | "degraded";
             version: string;
+            lint: {
+                /** @enum {string} */
+                ruleset: "default" | "custom";
+                /** @description The configured ruleset file (custom only) */
+                path?: string;
+                /** @enum {string} */
+                status: "ok" | "error";
+                /**
+                 * @description Why the custom ruleset failed to load, naming the file. Present only when status is error.
+                 * @example /etc/portal/ruleset.yaml: file not found
+                 */
+                error?: string;
+            };
             gateway: null | {
                 /** @enum {string} */
                 kind: "kong";
@@ -574,22 +700,35 @@ export interface components {
             /** Format: uuid */
             id: string;
             slug: components["schemas"]["Slug"];
+            /** @description The latest version's info.title */
             title: string;
-            /** @description OpenAPI info.version */
+            /** @description The latest version's info.version */
             version: string;
-            /** @description OpenAPI info.description (Markdown) */
+            /** @description The latest version's info.description (Markdown) */
             description?: string | null;
             /**
              * Format: uri
              * @example http://localhost:8000/sample
              */
             gatewayBaseUrl: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the API's first version was published
+             */
             publishedAt: string;
         };
         ApiDetail: components["schemas"]["ApiSummary"] & {
-            /** @example /api/v1/apis/sample/openapi.json */
+            /**
+             * @description The latest version's document
+             * @example /api/v1/apis/sample/openapi.json
+             */
             documentUrl: string;
+            /**
+             * @description Every version, in version order: highest first by semantic-version precedence when
+             *     every version name is a valid SemVer 2.0 string, otherwise newest import first.
+             *     Exactly one has `isLatest` true.
+             */
+            versions: components["schemas"]["ApiVersionSummary"][];
             gatewayService: {
                 id: string;
                 name: string;
@@ -598,6 +737,109 @@ export interface components {
         ImportedApi: components["schemas"]["ApiDetail"] & {
             /** @description Published, but the admin should know this. Empty when there is nothing to report. */
             warnings: components["schemas"]["ImportWarning"][];
+            /** @description Non-blocking lint findings, in document order, up to 200. Empty when there are none. */
+            lintWarnings: components["schemas"]["LintFinding"][];
+        };
+        /**
+         * @description The document's `info.version`. Restricted so it can be used in URLs: starts with a letter
+         *     or digit, then letters, digits, `.`, `_`, `-` or `+`, at most 64 characters.
+         * @example 2.0.0
+         * @example 2024-06-01
+         * @example v2
+         */
+        ApiVersionName: string;
+        ApiVersionSummary: {
+            version: components["schemas"]["ApiVersionName"];
+            isLatest: boolean;
+            /**
+             * Format: date-time
+             * @description When this version was imported
+             */
+            publishedAt: string;
+            /** @example /api/v1/apis/orders/versions/1.0.0/openapi.json */
+            documentUrl: string;
+        };
+        ImportedApiVersion: {
+            api: components["schemas"]["ApiDetail"];
+            version: components["schemas"]["ChangelogEntry"];
+            /** @description Non-blocking lint findings, in document order, up to 200. Empty when there are none. */
+            lintWarnings: components["schemas"]["LintFinding"][];
+        };
+        LintFinding: {
+            /** @example operation-description */
+            rule: string;
+            /**
+             * @description Spectral info and hint findings are reported as warning
+             * @enum {string}
+             */
+            severity: "error" | "warning";
+            message: string;
+            /**
+             * @description JSON Pointer into the document
+             * @example /paths/~1orders/get
+             */
+            pointer: string;
+            line: number;
+            column: number;
+            /** @description URL of the external file the finding is in; null for the imported document itself */
+            source?: string | null;
+        };
+        ChangelogEntry: {
+            version: components["schemas"]["ApiVersionName"];
+            /**
+             * Format: date-time
+             * @description The import date
+             */
+            publishedAt: string;
+            /** @description The admin's note, plain text (rendered without HTML) */
+            releaseNote: string | null;
+            /** @description Null for the first version, or when no version sorted below this one at import time. */
+            changes: null | components["schemas"]["ChangeSummary"];
+        };
+        ChangeSummary: {
+            comparedTo: components["schemas"]["ApiVersionName"];
+            added: components["schemas"]["OperationChange"][];
+            /** @description Every removed operation is breaking. */
+            removed: components["schemas"]["OperationChange"][];
+            changed: components["schemas"]["OperationChange"][];
+            /** @description True if any removed or changed operation is breaking */
+            breaking: boolean;
+        };
+        OperationChange: {
+            /** @enum {string} */
+            method: "GET" | "PUT" | "POST" | "DELETE" | "OPTIONS" | "HEAD" | "PATCH" | "TRACE";
+            /** @example /orders/{id} */
+            path: string;
+            summary?: string | null;
+            breaking: boolean;
+            /** @description Empty for added operations; `operation-removed` for removed ones. */
+            reasons: {
+                /** @enum {string} */
+                code: "operation-removed" | "required-parameter-added" | "parameter-became-required" | "request-body-became-required" | "success-response-removed" | "parameter-removed" | "optional-parameter-added" | "security-changed" | "deprecated";
+                /** @example New required query parameter `status` */
+                message: string;
+            }[];
+        };
+        ImportApiVersionRequest: {
+            spec: components["schemas"]["SpecSource"];
+            /** @description Plain text shown in the changelog */
+            releaseNote?: string;
+            /**
+             * @description False for "Don't make this the default version"
+             * @default true
+             */
+            makeLatest: boolean;
+        };
+        SetLatestVersionRequest: {
+            version: components["schemas"]["ApiVersionName"];
+        };
+        /** @description Exactly one of `url` or `content` */
+        SpecSource: {
+            /** Format: uri */
+            url: string;
+        } | {
+            /** @description OpenAPI document as YAML or JSON text (5 MiB max) */
+            content: string;
         };
         ImportWarning: {
             /**
@@ -609,14 +851,9 @@ export interface components {
             message: string;
         };
         ImportApiRequest: {
-            /** @description Exactly one of `url` or `content` */
-            spec: {
-                /** Format: uri */
-                url: string;
-            } | {
-                /** @description OpenAPI document as YAML or JSON text (5 MiB max) */
-                content: string;
-            };
+            spec: components["schemas"]["SpecSource"];
+            /** @description Plain text shown in the changelog for the first version */
+            releaseNote?: string;
             /** @description Kong service ID or name, from GET /v1/admin/gateway/services */
             gatewayServiceId: string;
             /** @description Defaults to a slug of info.title */
@@ -634,7 +871,7 @@ export interface components {
             }[];
             /** @description True if an enabled key-auth plugin applies to the service */
             keyAuth: boolean;
-            /** @description Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`. */
+            /** @description Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`; add a version to that API instead (`importApiVersion`). */
             linkedApiSlug?: string | null;
         };
         CreateAppRequest: {
@@ -839,6 +1076,8 @@ export interface components {
         Slug: components["schemas"]["Slug"];
         AppId: string;
         CredentialId: string;
+        /** @description A version's `info.version`, URL-encoded (`+` becomes `%2B`) */
+        Version: components["schemas"]["ApiVersionName"];
         GatewayId: string;
     };
     requestBodies: never;
@@ -858,7 +1097,10 @@ export interface operations {
         responses: {
             /**
              * @description Server is up, with or without a gateway. `gateway` is null when none is connected;
-             *     otherwise `gateway.reachable` reports Kong's Admin API.
+             *     otherwise `gateway.reachable` reports Kong's Admin API. `status` is `degraded`
+             *     when the operator's lint ruleset (`PORTAL_LINT_RULESET`) failed to load; `lint.error`
+             *     names the file and the problem, and imports answer 503 until it is fixed and the server
+             *     restarted. The status code stays 200 so the published docs keep being served.
              */
             200: {
                 headers: {
@@ -1000,6 +1242,58 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: unknown;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getApiVersionDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+                /** @description A version's `info.version`, URL-encoded (`+` becomes `%2B`) */
+                version: components["parameters"]["Version"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OpenAPI 3.x document as JSON */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getApiChangelog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Changelog entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ChangelogEntry"][];
                     };
                 };
             };
@@ -1279,8 +1573,12 @@ export interface operations {
             };
             /**
              * @description The document cannot be published. `type` is one of
+             *     `/problems/openapi-lint-failed` (one or more error-severity lint findings; `errors`
+             *     lists each with `rule`, `message`, `pointer`, `line` and `column`, up to 100),
              *     `/problems/invalid-openapi` (parse or schema error; `errors[0]` is the first one),
              *     `/problems/unsupported-openapi-version` (not 3.0.x or 3.1.x),
+             *     `/problems/invalid-api-version` (`info.version` is missing or doesn't match
+             *     `ApiVersionName`; it is used in URLs),
              *     `/problems/spec-url-unreachable` (fetching `spec.url` failed or timed out after 10 s),
              *     `/problems/gateway-service-not-found`,
              *     `/problems/gateway-service-has-no-route` (no route with a path, and no `routePath` given),
@@ -1299,7 +1597,134 @@ export interface operations {
                 };
             };
             502: components["responses"]["GatewayRejected"];
-            503: components["responses"]["GatewayUnavailable"];
+            /**
+             * @description `/problems/gateway-unavailable` (see `GatewayUnavailable`), or
+             *     `/problems/lint-ruleset-unavailable`: the operator's ruleset failed to load at startup,
+             *     so nothing can be imported until it is fixed and the server restarted. The portal never
+             *     falls back to the default ruleset.
+             */
+            503: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    importApiVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportApiVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Version published */
+            201: {
+                headers: {
+                    /** @description /api/v1/apis/{slug}/versions/{version}/openapi.json */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportedApiVersion"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description The API already has a version with this `info.version` (`/problems/api-version-exists`;
+             *     `detail` names it). The published version is unchanged.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Document larger than 5 MiB (`/problems/document-too-large`) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description The document cannot be published: `/problems/openapi-lint-failed`,
+             *     `/problems/invalid-openapi`, `/problems/unsupported-openapi-version`,
+             *     `/problems/invalid-api-version` or `/problems/spec-url-unreachable`, as for `importApi`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `/problems/lint-ruleset-unavailable` (see `importApi`) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setLatestApiVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetLatestVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description The API, with its new latest version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such API, or it has no version with that name (`/problems/not-found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listGateways: {

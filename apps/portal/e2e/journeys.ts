@@ -470,7 +470,8 @@ test('admin imports files and URLs and rejects invalid files without publication
       (await (await context.request.get('/api/v1/apis')).json()).items,
     ).toHaveLength(before);
   }
-  // JSO-160: a missing top-level info must name the actual schema error.
+  // Spec 012 validates info.version before lint/schema validation (pipeline step 4).
+  // Missing info must still fail closed with an actionable version location.
   for (const version of ['3.0.3', '3.1.0']) {
     for (const format of ['json', 'yaml']) {
       const content =
@@ -494,12 +495,11 @@ test('admin imports files and URLs and rejects invalid files without publication
         'application/problem+json',
       );
       const detail =
-        "Invalid OpenAPI document: must have required property 'info' at /";
+        'info.version must be a URL-safe version name of 1–64 characters.';
       expect(await response.json()).toMatchObject({
+        type: '/problems/invalid-api-version',
         detail,
-        errors: [
-          { message: "must have required property 'info'", pointer: '' },
-        ],
+        errors: [{ message: 'Invalid API version', pointer: '/info/version' }],
       });
       await expect(page.getByText(detail, { exact: true })).toBeVisible();
       await expect(

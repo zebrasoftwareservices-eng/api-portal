@@ -19,6 +19,7 @@ import {
   gateways,
   user,
   apis,
+  apiVersions,
   apps,
   credentials,
   subscriptions,
@@ -156,13 +157,20 @@ async function publish(gatewayId: string) {
     id,
     gatewayId,
     slug: 'pets',
-    title: 'Pets',
-    version: '1',
     gatewayServiceId: 'service',
     gatewayServiceName: 'pets',
     routePath: '/pets',
-    document: JSON.parse(document),
   });
+  await db.db
+    .insert(apiVersions)
+    .values({
+      id,
+      apiId: id,
+      title: 'Pets',
+      version: '1',
+      document: JSON.parse(document),
+    });
+  await db.db.update(apis).set({ latestVersionId: id }).where(eq(apis.id, id));
   return id;
 }
 beforeAll(async () => {

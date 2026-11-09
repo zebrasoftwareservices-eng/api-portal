@@ -166,3 +166,4 @@ export function StatusBadge({ status }: { status: 'active' | 'revoked' }) {
     </Badge>
   );
 }
+export { VersionSwitcher } from './version-switcher';

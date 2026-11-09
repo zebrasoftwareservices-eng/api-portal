@@ -1,6 +1,6 @@
 # Roadmap — sprint plan
 
-Last updated: 2026-11-07 · Owner: Elango · Linear project: **API Portal** (one milestone per sprint)
+Last updated: 2026-11-08 · Owner: Elango · Linear project: **API Portal** (one milestone per sprint)
 
 ## What this plan rests on
 
@@ -49,13 +49,18 @@ node scripts/factory.mjs next
 | 4      | 009  | api-products-and-plans               | JSO-237 | 004, 008                               | API products and free plans with rate limits                                     |
 | 4      | 010  | access-requests-and-visibility       | JSO-238 | 009                                    | Access requests with admin approval, and catalog visibility levels               |
 | 5      | 011  | usage-and-insights                   | JSO-239 | 009                                    | Usage meter per app and admin insights                                           |
-| 5      | 012  | docs-versions-search-agents          | JSO-240 | —                                      | API versions and changelog, spec linting, search and agent-ready docs            |
+| 5      | 012  | docs-versions-search-agents          | JSO-240 | —                                      | API versions and changelog, and spec linting                                     |
+| 5      | 020  | api-search                           | pending | —                                      | Search across APIs and endpoints                                                 |
+| 5      | 021  | agent-ready-docs                     | pending | 012                                    | Agent-ready docs: Markdown pages, llms.txt, spec downloads and code samples      |
 | 6      | 013  | theme-editor                         | JSO-241 | —                                      | Theme editor: logo, colours, fonts and custom CSS                                |
 | 6      | 014  | pages-articles-navigation            | JSO-242 | —                                      | Pages, articles and navigation managed in the admin UI                           |
 | 7      | 015  | portal-governance                    | JSO-243 | 009                                    | Portal governance: staff roles, registration approval, private portal, audit log |
 | 7      | 016  | production-install-helm              | JSO-244 | —                                      | Production install: hardened compose, Helm chart, backups and upgrades           |
 | 8      | 017  | aws-api-gateway-adapter              | JSO-245 | 005, 009                               | AWS API Gateway adapter: API keys and usage plans                                |
 | 8      | 018  | oauth-client-credentials             | JSO-246 | 009                                    | OAuth 2.0 client credentials through an external identity provider               |
+
+Specs 020 and 021 were split out of 012 on 2026-11-08. Their Linear feature issues are pending (the Linear workspace
+is at its free issue limit); put the key in the Linear column once each issue exists, and `start` works as usual.
 
 Already shipped: **v0.1** — spec 001 (Kong quickstart) and spec 002 (static demo mode on Vercel).
 
@@ -154,23 +159,25 @@ Already shipped: **v0.1** — spec 001 (Kong quickstart) and spec 002 (static de
 
 ## Sprint 5 · v0.6 — Developer experience and insights · 7–11 Dec
 
-**Goal:** developers see their usage; docs gain versions, changelog, search and agent-ready pages.
+**Goal:** developers see their usage; docs gain versions, changelog, linting, search and agent-ready pages.
 **Features:** 011 (JSO-239) · 012 (JSO-240).
+**Extra features:** 020 (search, no dependencies) and 021 (agent-ready docs, after 012 because of per-version spec
+downloads), split out of 012. Start them when 011 and 012 reach testing; whatever doesn't fit moves to sprint 6.
 
 **Demo on Friday**
 
 1. After 20 calls, the app's usage bar shows 20 of its quota; the admin sees time to first API call.
 2. Import v2 of an API: version switcher and changelog appear; a spec with a lint error is refused with its location.
-3. Search finds an endpoint by path; `/llms.txt` lists every API.
+3. Search finds an endpoint by path (020); `/llms.txt` lists every API with Markdown and spec links (021).
 
-| Role                     | 011 Usage and insights          | 012 Docs: versions, search, agents   |
+| Role                     | 011 Usage and insights          | 012 Versions, changelog, linting     |
 | ------------------------ | ------------------------------- | ------------------------------------ |
-| Product manager (Claude) | Usage and insight views         | Version, changelog, search flows     |
-| Tech lead (Claude)       | Usage collection ADR            | Version model, search index          |
-| UI designer (Claude)     | Usage bar, insights page        | Switcher, changelog, search          |
-| Backend (Codex)          | Ingestion, aggregation          | Versions, Spectral, search, llms.txt |
-| Frontend (Codex)         | Usage and insights screens      | Switcher, changelog, search UI       |
-| QA (Codex)               | Usage accuracy through Kong     | Import, lint, search tests           |
+| Product manager (Claude) | Usage and insight views         | Version, changelog, lint flows       |
+| Tech lead (Claude)       | Usage collection ADR            | Version model, lint ruleset          |
+| UI designer (Claude)     | Usage bar, insights page        | Switcher, changelog, lint results    |
+| Backend (Codex)          | Ingestion, aggregation          | Versions, changelog diff, Spectral   |
+| Frontend (Codex)         | Usage and insights screens      | Switcher, changelog, lint report     |
+| QA (Codex)               | Usage accuracy through Kong     | Import, version and lint tests       |
 | User-tester (Claude)     | Call in try-it, watch the meter | Browse a new version as a developer  |
 | Elango                   | Approve, merge                  | Approve, merge                       |
 

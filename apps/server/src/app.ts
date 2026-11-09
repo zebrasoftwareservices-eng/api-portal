@@ -11,6 +11,8 @@ import { gatewayConnection, type AdapterFor } from './gateway-connection.js';
 import type { Config } from './config.js';
 import { createAuth, headersFor, requireUser, type Auth } from './auth.js';
 import { problemHandler } from './problem.js';
+import { loadLinter } from './lint/index.js';
+import { registerVersions } from './versions.js';
 import { registerCatalog } from './catalog.js';
 import { registerImport } from './import.js';
 import { registerApps } from './apps.js';
@@ -29,6 +31,7 @@ export interface AppOptions {
 }
 export async function createApp(options: AppOptions) {
   const { db, config } = options;
+  const linter = await loadLinter(config.PORTAL_LINT_RULESET);
   const auth = options.auth ?? createAuth(db, config);
   const proxy = portalProxy(config.PORTAL_PROXY_HOST);
   const app = Fastify({
@@ -68,6 +71,8 @@ export async function createApp(options: AppOptions) {
             },
           },
   });
+  if (linter.health.status === 'error')
+    app.log.error({ lint: linter.health }, 'Lint ruleset unavailable');
   const [instance] = await db.select().from(instanceSettings).limit(1);
   if (!instance) throw new Error('Instance missing');
   const connection = gatewayConnection(
@@ -113,7 +118,8 @@ export async function createApp(options: AppOptions) {
       ? await gateway.adapter.health()
       : { reachable: false };
     return {
-      status: 'ok',
+      status: linter.health.status === 'error' ? 'degraded' : 'ok',
+      lint: linter.health,
       version: '0.1.0',
       gateway: gateway
         ? {
@@ -142,7 +148,8 @@ export async function createApp(options: AppOptions) {
     options.enqueueReconcile ?? (async () => {}),
   );
   registerCatalog(app, db);
-  registerImport(app, db, auth, connection);
+  registerImport(app, db, auth, connection, linter);
+  registerVersions(app, db, auth, linter);
   registerApps(app, db, auth, connection);
   await registerProxy(app, db, connection.adapterFor, options.proxyFetch);
   return { app, auth };

@@ -127,7 +127,7 @@ describe('admin import', () => {
       detail:
         'This Kong service already serves /apis/orders. A Kong service can serve only one published API, because access is granted per service.',
       field:
-        'This service already serves a published API. Choose another service.',
+        'This service already serves a published API. Choose another service, or add a version to that API.',
     },
   ])(
     'keeps values and focuses the service for $type, then clears the refusal on selection',
@@ -253,7 +253,7 @@ describe('admin import', () => {
     await screen.findByRole('option', { name: /sample-svc/ });
     await user.selectOptions(screen.getByLabelText('Kong service'), 'svc');
     expect(screen.getByText(/This service already serves/)).toHaveTextContent(
-      '⚠ This service already serves /apis/orders. A Kong service can serve only one published API, so this import will be refused. Choose another one.',
+      '⚠ This service already serves /apis/orders. To publish a new version of that API, add a version to it instead.',
     );
     expect(
       screen.queryByText(/This API will be public/),
@@ -450,4 +450,71 @@ describe('admin import', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Routes: /one, /two, /three.')).toBeInTheDocument();
   });
+});
+
+it('shows lint locations in the original import form and keeps source values', async () => {
+  mockServices([service]);
+  const user = userEvent.setup();
+  mocks.post.mockResolvedValue({
+    error: {
+      type: '/problems/openapi-lint-failed',
+      title: 'Lint failed',
+      status: 422,
+      errorCount: 1,
+      errors: [
+        {
+          rule: 'path-params',
+          message: 'Declare id',
+          pointer: '/paths/~1orders~1{id}',
+          line: 7,
+          column: 3,
+        },
+      ],
+    },
+    response: new Response(null, { status: 422 }),
+  });
+  render(<AdminApis />);
+  await fillUrlImport(user);
+  await user.click(screen.getByRole('button', { name: 'Import and publish' }));
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('1 error stops this document');
+  expect(alert).toHaveTextContent('path-params');
+  expect(alert).toHaveTextContent('Line 7, column 3');
+  expect(alert).toHaveTextContent('/paths/~1orders~1{id}');
+  expect(alert).toHaveFocus();
+  expect(screen.getByLabelText('Document URL')).toHaveValue(
+    'https://example.com/openapi.yaml',
+  );
+});
+it('offers a URL-preserving link to add a version to an already linked service', async () => {
+  mockServices([{ ...service, linkedApiSlug: 'orders' }]);
+  const user = userEvent.setup();
+  render(<AdminApis />);
+  await fillUrlImport(user);
+  expect(
+    screen.getByRole('link', { name: 'Add a version to /apis/orders' }),
+  ).toHaveAttribute(
+    'href',
+    '/admin/apis/orders?url=https%3A%2F%2Fexample.com%2Fopenapi.yaml#add-version',
+  );
+});
+it('shows the ruleset banner and refuses retry for ruleset failures', async () => {
+  mockServices([service]);
+  const user = userEvent.setup();
+  mocks.post.mockResolvedValue({
+    error: {
+      type: '/problems/lint-ruleset-unavailable',
+      status: 503,
+      title: 'Unavailable',
+      detail: '/rules.yaml missing',
+    },
+    response: new Response(null, { status: 503 }),
+  });
+  render(<AdminApis />);
+  await fillUrlImport(user);
+  await user.click(screen.getByRole('button', { name: 'Import and publish' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Imports are paused',
+  );
+  expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
 });

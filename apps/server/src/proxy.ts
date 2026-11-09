@@ -111,7 +111,7 @@ export async function registerProxy(
           'content-type',
           'content-length',
         ]);
-        const components = target.row.api.document.components as
+        const components = target.row.version.document.components as
           | {
               securitySchemes?: Record<
                 string,

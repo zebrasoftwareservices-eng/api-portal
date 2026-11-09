@@ -26,6 +26,7 @@ import { dirname, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { migrate } from '@portal/db';
 import { KongAdapter } from '@portal/adapter-kong';
+import { loadLinter, lintDocument } from './dist/lint/index.js';
 
 assert.equal(process.getuid(), 1000, 'Runtime uses the unprivileged node user');
 assert.equal(typeof migrate, 'function', 'Database package resolves');
@@ -33,6 +34,10 @@ assert.equal(typeof KongAdapter, 'function', 'Gateway package resolves');
 await access('dist/main.js');
 const seed = parse(await readFile('seed/sample-api.openapi.yaml', 'utf8'));
 assert.equal(seed.info.title, 'Sample HTTP API', 'Original seed is packaged');
+const linter = await loadLinter();
+assert.equal(linter.health.status, 'ok', JSON.stringify(linter.health));
+await lintDocument(linter, await readFile('seed/sample-api.openapi.yaml', 'utf8'));
+console.log('PASS: packaged Spectral loader and ruleset lint seed without network access');
 const require = createRequire(import.meta.url);
 const dbDirectory = dirname(require.resolve('@portal/db'));
 const journal = JSON.parse(await readFile(resolve(dbDirectory, '../migrations/meta/_journal.json'), 'utf8'));

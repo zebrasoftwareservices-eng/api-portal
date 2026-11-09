@@ -21,6 +21,8 @@ info:
     - IDs are UUIDv7. Timestamps are UTC ISO 8601 (`date-time`).
     - Secrets are never returned, except a new API key, exactly once, in the response that
       creates it.
+    - An API has one or more versions (spec 012, ADR 0007). Exactly one is the latest; the
+      unversioned catalog paths serve it. Versions are named by the document's `info.version`.
 servers:
   - url: /api
 tags:
@@ -52,7 +54,10 @@ paths:
         '200':
           description: |
             Server is up, with or without a gateway. `gateway` is null when none is connected;
-            otherwise `gateway.reachable` reports Kong's Admin API.
+            otherwise `gateway.reachable` reports Kong's Admin API. `status` is `degraded`
+            when the operator's lint ruleset (`PORTAL_LINT_RULESET`) failed to load; `lint.error`
+            names the file and the problem, and imports answer 503 until it is fixed and the server
+            restarted. The status code stays 200 so the published docs keep being served.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Health' }
@@ -151,9 +156,9 @@ paths:
     get:
       tags: [catalog]
       operationId: getApiDocument
-      summary: Published OpenAPI document, ready for the API reference
+      summary: OpenAPI document of the latest version, ready for the API reference
       description: |
-        The stored, validated document, with two changes made when it is served:
+        The latest version's stored, validated document, with two changes made when it is served:
         `servers` is replaced by a single entry with the API's public gateway base URL, and
         if the document has no `apiKey` security scheme, a `portalApiKey` scheme
         (`in: header`, `name: apikey`, Kong's default) is added and applied at the top level.
@@ -168,6 +173,56 @@ paths:
               schema:
                 type: object
                 additionalProperties: true
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/apis/{slug}/versions/{version}/openapi.json:
+    get:
+      tags: [catalog]
+      operationId: getApiVersionDocument
+      summary: OpenAPI document of one version, ready for the API reference
+      description: |
+        Same transformation as `getApiDocument` (servers replaced, `portalApiKey` added when
+        needed). Every version shares the API's gateway base URL: the portal documents versions,
+        it doesn't route them (spec 012, out of scope).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/Version'
+      responses:
+        '200':
+          description: OpenAPI 3.x document as JSON
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/apis/{slug}/changelog:
+    get:
+      tags: [catalog]
+      operationId: getApiChangelog
+      summary: The API's changelog, one entry per version
+      description: |
+        Newest import first. Each entry's `changes` was computed once, when that version was
+        imported, against the version just below it in the version order (see
+        `ApiDetail.versions`); it never changes afterwards, including when the latest version
+        changes.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: Changelog entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ChangelogEntry' }
         '404': { $ref: '#/components/responses/NotFound' }
 
   /v1/me:
@@ -351,10 +406,15 @@ paths:
       operationId: importApi
       summary: Import an OpenAPI 3.x document, link it to a Kong service and publish it
       description: |
-        Validates the document (OpenAPI 3.0 or 3.1 only; Swagger 2.0 is rejected) and
-        bundles external `$ref`s. On success the API is published to the public catalog.
-        On a validation failure nothing is stored, and the response `detail` names the
-        first error (spec 001 AC 4).
+        Validates the document (OpenAPI 3.0 or 3.1 only; Swagger 2.0 is rejected), lints it
+        with the active Spectral ruleset (spec 012, ADR 0007) and bundles external `$ref`s. On
+        success the API is published to the public catalog with the document as its first and
+        latest version. On a validation or lint error nothing is stored. Lint warnings don't
+        block; they are returned in `lintWarnings`.
+
+        If the service is already linked to a published API, the refusal
+        (`/problems/gateway-service-already-linked`) names that API; publish the document as a
+        new version of it with `POST /v1/admin/apis/{slug}/versions` instead.
 
         Publishing applies access control to the linked service (ADR 0005): an `allow` ACL for
         the service's portal group, and `hide_credentials` on its key-auth plugins. Existing keys
@@ -399,8 +459,12 @@ paths:
         '422':
           description: |
             The document cannot be published. `type` is one of
+            `/problems/openapi-lint-failed` (one or more error-severity lint findings; `errors`
+            lists each with `rule`, `message`, `pointer`, `line` and `column`, up to 100),
             `/problems/invalid-openapi` (parse or schema error; `errors[0]` is the first one),
             `/problems/unsupported-openapi-version` (not 3.0.x or 3.1.x),
+            `/problems/invalid-api-version` (`info.version` is missing or doesn't match
+            `ApiVersionName`; it is used in URLs),
             `/problems/spec-url-unreachable` (fetching `spec.url` failed or timed out after 10 s),
             `/problems/gateway-service-not-found`,
             `/problems/gateway-service-has-no-route` (no route with a path, and no `routePath` given),
@@ -413,7 +477,110 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
         '502': { $ref: '#/components/responses/GatewayRejected' }
-        '503': { $ref: '#/components/responses/GatewayUnavailable' }
+        '503':
+          description: |
+            `/problems/gateway-unavailable` (see `GatewayUnavailable`), or
+            `/problems/lint-ruleset-unavailable`: the operator's ruleset failed to load at startup,
+            so nothing can be imported until it is fixed and the server restarted. The portal never
+            falls back to the default ruleset.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/admin/apis/{slug}/versions:
+    post:
+      tags: [admin]
+      operationId: importApiVersion
+      summary: Publish a new version of an existing API
+      description: |
+        Validates and lints the document exactly like `importApi`, computes the change summary
+        against the previous version (see `ChangelogEntry`), and stores the version. No gateway
+        call is made: every version shares the API's Kong service and route, and access is per
+        API, so this works while Kong is unreachable.
+
+        With `makeLatest` true (the default) the new version becomes the latest, even when its
+        number is lower than the current latest (spec 012 AC 2). With `makeLatest` false it is
+        published and listed, and the latest is unchanged. On any refusal nothing is stored.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ImportApiVersionRequest' }
+      responses:
+        '201':
+          description: Version published
+          headers:
+            Location:
+              schema: { type: string }
+              description: /api/v1/apis/{slug}/versions/{version}/openapi.json
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ImportedApiVersion' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            The API already has a version with this `info.version` (`/problems/api-version-exists`;
+            `detail` names it). The published version is unchanged.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '413':
+          description: Document larger than 5 MiB (`/problems/document-too-large`)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: |
+            The document cannot be published: `/problems/openapi-lint-failed`,
+            `/problems/invalid-openapi`, `/problems/unsupported-openapi-version`,
+            `/problems/invalid-api-version` or `/problems/spec-url-unreachable`, as for `importApi`.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '503':
+          description: '`/problems/lint-ruleset-unavailable` (see `importApi`)'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/admin/apis/{slug}/latest-version:
+    put:
+      tags: [admin]
+      operationId: setLatestApiVersion
+      summary: Make an existing version the latest
+      description: |
+        "Set as latest" (spec 012 AC 9). Idempotent: naming the current latest returns 200 and
+        changes nothing. The catalog title and description follow the latest version's `info`.
+        No gateway call is made. Changelog entries are not recomputed.
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetLatestVersionRequest' }
+      responses:
+        '200':
+          description: The API, with its new latest version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: No such API, or it has no version with that name (`/problems/not-found`)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /v1/admin/gateways:
     get:
@@ -712,6 +879,12 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    Version:
+      name: version
+      in: path
+      required: true
+      description: A version's `info.version`, URL-encoded (`+` becomes `%2B`)
+      schema: { $ref: '#/components/schemas/ApiVersionName' }
     GatewayId:
       name: gatewayId
       in: path
@@ -825,13 +998,21 @@ components:
         affectedKeys: { type: integer, description: 'With `/problems/gateway-keys-missing`: active keys with no consumer on the new Kong' }
         errors:
           type: array
-          description: Field or document errors. For `/problems/invalid-openapi`, only the first error is returned.
+          description: |
+            Field or document errors. For `/problems/invalid-openapi`, only the first error is
+            returned. For `/problems/openapi-lint-failed`, every error-severity finding up to 100;
+            `errorCount` holds the full number.
           items:
             type: object
             required: [message]
             properties:
               pointer: { type: string, description: 'JSON Pointer into the request body or the OpenAPI document, e.g. /paths/~1pets/get/responses' }
               message: { type: string }
+              rule: { type: string, description: 'Lint findings only. The Spectral rule name, e.g. operation-operationId-unique' }
+              line: { type: integer, minimum: 1, description: Lint findings only. 1-based line in `source` }
+              column: { type: integer, minimum: 1, description: Lint findings only. 1-based column in `source` }
+              source: { type: [string, 'null'], description: Lint findings only. URL of the external file the finding is in; null for the imported document itself }
+        errorCount: { type: integer, description: 'Only on `/problems/openapi-lint-failed`: total number of error findings' }
 
     Slug:
       type: string
@@ -841,10 +1022,21 @@ components:
 
     Health:
       type: object
-      required: [status, version, gateway]
+      required: [status, version, gateway, lint]
       properties:
-        status: { type: string, enum: [ok] }
+        status: { type: string, enum: [ok, degraded] }
         version: { type: string }
+        lint:
+          type: object
+          required: [ruleset, status]
+          properties:
+            ruleset: { type: string, enum: [default, custom] }
+            path: { type: string, description: The configured ruleset file (custom only) }
+            status: { type: string, enum: [ok, error] }
+            error:
+              type: string
+              description: Why the custom ruleset failed to load, naming the file. Present only when status is error.
+              examples: ['/etc/portal/ruleset.yaml: file not found']
         gateway:
           oneOf:
             - type: 'null'
@@ -990,19 +1182,26 @@ components:
       properties:
         id: { type: string, format: uuid }
         slug: { $ref: '#/components/schemas/Slug' }
-        title: { type: string }
-        version: { type: string, description: OpenAPI info.version }
-        description: { type: [string, 'null'], description: OpenAPI info.description (Markdown) }
+        title: { type: string, description: The latest version's info.title }
+        version: { type: string, description: The latest version's info.version }
+        description: { type: [string, 'null'], description: The latest version's info.description (Markdown) }
         gatewayBaseUrl: { type: string, format: uri, examples: ['http://localhost:8000/sample'] }
-        publishedAt: { type: string, format: date-time }
+        publishedAt: { type: string, format: date-time, description: When the API's first version was published }
 
     ApiDetail:
       allOf:
         - $ref: '#/components/schemas/ApiSummary'
         - type: object
-          required: [documentUrl, gatewayService]
+          required: [documentUrl, gatewayService, versions]
           properties:
-            documentUrl: { type: string, examples: ['/api/v1/apis/sample/openapi.json'] }
+            documentUrl: { type: string, description: The latest version's document, examples: ['/api/v1/apis/sample/openapi.json'] }
+            versions:
+              type: array
+              description: |
+                Every version, in version order: highest first by semantic-version precedence when
+                every version name is a valid SemVer 2.0 string, otherwise newest import first.
+                Exactly one has `isLatest` true.
+              items: { $ref: '#/components/schemas/ApiVersionSummary' }
             gatewayService:
               type: object
               required: [id, name]
@@ -1014,12 +1213,144 @@ components:
       allOf:
         - $ref: '#/components/schemas/ApiDetail'
         - type: object
-          required: [warnings]
+          required: [warnings, lintWarnings]
           properties:
             warnings:
               type: array
               description: Published, but the admin should know this. Empty when there is nothing to report.
               items: { $ref: '#/components/schemas/ImportWarning' }
+            lintWarnings:
+              type: array
+              description: Non-blocking lint findings, in document order, up to 200. Empty when there are none.
+              items: { $ref: '#/components/schemas/LintFinding' }
+
+    ApiVersionName:
+      type: string
+      description: |
+        The document's `info.version`. Restricted so it can be used in URLs: starts with a letter
+        or digit, then letters, digits, `.`, `_`, `-` or `+`, at most 64 characters.
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$'
+      examples: ['2.0.0', '2024-06-01', 'v2']
+
+    ApiVersionSummary:
+      type: object
+      required: [version, isLatest, publishedAt, documentUrl]
+      properties:
+        version: { $ref: '#/components/schemas/ApiVersionName' }
+        isLatest: { type: boolean }
+        publishedAt: { type: string, format: date-time, description: When this version was imported }
+        documentUrl: { type: string, examples: ['/api/v1/apis/orders/versions/1.0.0/openapi.json'] }
+
+    ImportedApiVersion:
+      type: object
+      required: [api, version, lintWarnings]
+      properties:
+        api: { $ref: '#/components/schemas/ApiDetail' }
+        version: { $ref: '#/components/schemas/ChangelogEntry' }
+        lintWarnings:
+          type: array
+          description: Non-blocking lint findings, in document order, up to 200. Empty when there are none.
+          items: { $ref: '#/components/schemas/LintFinding' }
+
+    LintFinding:
+      type: object
+      required: [rule, severity, message, pointer, line, column]
+      properties:
+        rule: { type: string, examples: ['operation-description'] }
+        severity: { type: string, enum: [error, warning], description: Spectral info and hint findings are reported as warning }
+        message: { type: string }
+        pointer: { type: string, description: JSON Pointer into the document, examples: ['/paths/~1orders/get'] }
+        line: { type: integer, minimum: 1 }
+        column: { type: integer, minimum: 1 }
+        source: { type: [string, 'null'], description: URL of the external file the finding is in; null for the imported document itself }
+
+    ChangelogEntry:
+      type: object
+      required: [version, publishedAt, releaseNote, changes]
+      properties:
+        version: { $ref: '#/components/schemas/ApiVersionName' }
+        publishedAt: { type: string, format: date-time, description: The import date }
+        releaseNote: { type: [string, 'null'], description: 'The admin''s note, plain text (rendered without HTML)' }
+        changes:
+          description: Null for the first version, or when no version sorted below this one at import time.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/ChangeSummary'
+
+    ChangeSummary:
+      type: object
+      required: [comparedTo, added, removed, changed, breaking]
+      properties:
+        comparedTo: { $ref: '#/components/schemas/ApiVersionName' }
+        added: { type: array, items: { $ref: '#/components/schemas/OperationChange' } }
+        removed:
+          type: array
+          description: Every removed operation is breaking.
+          items: { $ref: '#/components/schemas/OperationChange' }
+        changed: { type: array, items: { $ref: '#/components/schemas/OperationChange' } }
+        breaking: { type: boolean, description: True if any removed or changed operation is breaking }
+
+    OperationChange:
+      type: object
+      required: [method, path, breaking, reasons]
+      properties:
+        method: { type: string, enum: [GET, PUT, POST, DELETE, OPTIONS, HEAD, PATCH, TRACE] }
+        path: { type: string, examples: ['/orders/{id}'] }
+        summary: { type: [string, 'null'] }
+        breaking: { type: boolean }
+        reasons:
+          type: array
+          description: Empty for added operations; `operation-removed` for removed ones.
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code:
+                type: string
+                enum:
+                  - operation-removed
+                  - required-parameter-added
+                  - parameter-became-required
+                  - request-body-became-required
+                  - success-response-removed
+                  - parameter-removed
+                  - optional-parameter-added
+                  - security-changed
+                  - deprecated
+              message: { type: string, examples: ['New required query parameter `status`'] }
+
+    ImportApiVersionRequest:
+      type: object
+      required: [spec]
+      additionalProperties: false
+      properties:
+        spec: { $ref: '#/components/schemas/SpecSource' }
+        releaseNote: { type: string, maxLength: 5000, description: Plain text shown in the changelog }
+        makeLatest:
+          type: boolean
+          default: true
+          description: False for "Don't make this the default version"
+
+    SetLatestVersionRequest:
+      type: object
+      required: [version]
+      additionalProperties: false
+      properties:
+        version: { $ref: '#/components/schemas/ApiVersionName' }
+
+    SpecSource:
+      description: Exactly one of `url` or `content`
+      oneOf:
+        - type: object
+          required: [url]
+          additionalProperties: false
+          properties:
+            url: { type: string, format: uri, pattern: '^https?://' }
+        - type: object
+          required: [content]
+          additionalProperties: false
+          properties:
+            content: { type: string, maxLength: 5242880, description: OpenAPI document as YAML or JSON text (5 MiB max) }
 
     ImportWarning:
       type: object
@@ -1038,19 +1369,8 @@ components:
       required: [spec, gatewayServiceId]
       additionalProperties: false
       properties:
-        spec:
-          description: Exactly one of `url` or `content`
-          oneOf:
-            - type: object
-              required: [url]
-              additionalProperties: false
-              properties:
-                url: { type: string, format: uri, pattern: '^https?://' }
-            - type: object
-              required: [content]
-              additionalProperties: false
-              properties:
-                content: { type: string, maxLength: 5242880, description: OpenAPI document as YAML or JSON text (5 MiB max) }
+        spec: { $ref: '#/components/schemas/SpecSource' }
+        releaseNote: { type: string, maxLength: 5000, description: Plain text shown in the changelog for the first version }
         gatewayServiceId:
           type: string
           description: Kong service ID or name, from GET /v1/admin/gateway/services
@@ -1078,7 +1398,9 @@ components:
               name: { type: [string, 'null'] }
               paths: { type: array, items: { type: string } }
         keyAuth: { type: boolean, description: True if an enabled key-auth plugin applies to the service, one of its routes, or globally }
-        linkedApiSlug: { type: [string, 'null'], description: Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`. }
+        linkedApiSlug:
+          type: [string, 'null']
+          description: Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`; add a version to that API instead (`importApiVersion`).
 
     CreateAppRequest:
       type: object

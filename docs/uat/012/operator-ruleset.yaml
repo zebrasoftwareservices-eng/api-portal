@@ -1,0 +1,7 @@
+rules:
+  operation-description:
+    severity: error
+    given: "$.paths[*][get,post,put,patch,delete]"
+    then:
+      field: description
+      function: truthy

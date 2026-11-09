@@ -1,0 +1,93 @@
+# Spec 012 user acceptance testing — 2026-11-09
+
+Outcome: **review** after the build-loop-2 browser re-check below. All eight user stories pass across the original UAT and re-check; both original findings are verified fixed. No application code or automated tests were changed.
+
+## Environment and method
+
+- Fresh standard Compose project (`portal`), real Kong 3.9 and PostgreSQL 17, local evaluation credentials and synthetic developer data only. Docker was empty before startup. `docker compose -f deploy/docker-compose.yml up -d --wait` completed in **15.20 seconds** using existing production images; this is startup timing, not an uncached build measurement.
+- Orca tab `a9a5fabb-658c-484e-b754-fca2f391f656`, `http://localhost:3000`. Snapshot → UI action → snapshot, with keyboard Enter/Tab/Escape and arrow navigation; browser actions and findings are preserved in `browser-log.jsonl`.
+- Desktop 1280×900; mobile 390×844 with touch emulation reapplied after navigation. Scale 3 was attempted per the role checklist, but Orca’s screenshots tiled the same page pixels. Those captures were discarded and visual evidence was retaken at scale 1. This was a screenshot-tool limitation, not evidence of portal reflow failure.
+- Some Orca click commands reported success without activating the offscreen submit control. Keyboard focus + Enter reliably submitted; failed stale refs and mismatched text/URL waits in the raw log are automation mistakes, not product failures.
+- The seeded API retained its slug `sample`, Kong service `portal-sample`, base URL and single catalog entry. Version `1.0.1` established the orders GET baseline without replacing seeded `1.0.0`; `2.0.0` removed GET /orders and added POST /orders. Fixtures are in `fixtures/`.
+
+## Journey evidence
+
+| User story / visible criterion | Result and observation | Screenshots |
+| --- | --- | --- |
+| Publish another version on one API (AC1) | PASS for numeric versions: published 1.0.1 then 2.0.0, same service/base URL and one catalog row; latest switcher selected v2. | `02-v2-published.png`, `06-switcher-desktop.png`, `18-linked-service-handoff.png` |
+| Publish an older patch without changing default (AC2) | PASS: checked opt-out on 1.1.0; success said developers still see 2.0.0. Then unchecked/default publication of 1.2.0 became latest. The raw log records both 201 responses and UI/table state; `21` later also shows a non-default success. | `21-custom-replaces-default.png`; `browser-log.jsonl` |
+| Set any version as latest (AC9) | PASS: selected Set 2.0.0 as latest from mobile, focus moved to success status and the Latest badge moved back to v2; public default subsequently showed v2. | `26-switcher-mobile.png`; `browser-log.jsonl` |
+| Write release notes and read generated summary (AC3) | PASS: note “Orders can now be created”, date, compared-with 1.0.1, Added POST /orders, Removed GET /orders, Breaking notice and badge. | `10-changelog-desktop.png`, `09-changelog-mobile.png` |
+| Refuse docs-breaking imports (AC5) | PASS: duplicate operationId, missing internal ref and undeclared id tested individually in both forms; 422 problem+json, rule/message/1-based line/pointer, retained form values and no published bad-version rows. Corrected upload subsequently succeeded. | `13-duplicate-operation-error-mobile.png`, `14-unresolved-ref-error-mobile.png`, `15-parameter-error-mobile.png`, `16-lint-error-desktop.png`, `19-new-api-lint-refused.png` |
+| Show nonblocking warnings (AC6) | PASS: warning-only orders document published; collapsed 10-warning summary expanded by Tab/Enter to rule, message, line and pointer; success and errors are focused. | `02-v2-published.png`, `03-warnings-expanded.png` |
+| Replace company ruleset (AC7) | PASS: mounted `operator-ruleset.yaml`, restarted only this stack’s server; custom-refused lacked descriptions and returned 422 operation-description. custom-allowed supplied descriptions but duplicated operation IDs and published, proving default rules were replaced. | `20-custom-ruleset-refusal.png`, `21-custom-replaces-default.png` |
+| Developer switches versions and reads changelog (AC1/3/9) | **PASS after build-loop-2 re-check; originally FAIL for + versions.** Keyboard menu, Escape focus return, Tab to changelog, Back, stable v1 refresh, noticeable older-version notice, latest link, mobile menu without Scalar clipping and unknown-version recovery worked. Originally, published 1.0.0+build.1 opened Version not found; all three entry points and refresh now pass (see Browser re-check). | `07-older-version-desktop.png`, `08-older-version-mobile.png`, `26-switcher-mobile.png`, `17-plus-version-not-found.png`, `33-unknown-version.png` |
+
+## Other states and recovery
+
+- Empty submit says “Choose an OpenAPI file”; wrong password says “Email or password is incorrect” and valid local login recovers. Upload and linting pending states were observed with controls disabled.
+- Duplicate 2.0.0 returned 409 problem+json and left the table/latest unchanged (`12-duplicate-refused.png`). Original minor copy friction (now fixed): the alert heading displayed “api version exists”; the explanatory sentence is useful. This stays in the spec for the current fix loop.
+- The linked-service import warning explains why to add a version and links to `/admin/apis/sample#add-version`; following it reached the separate version form (`18-linked-service-handoff.png`).
+- Missing ruleset showed path, ENOENT and instructions to fix PORTAL_LINT_RULESET and restart on both admin pages; submit returned 503, no retry button, no new version (`22`–`24`). Invalid mounted YAML similarly showed its path and “Invalid ruleset provided” (`25`). Health reported degraded/lint error and startup logs named the failures; see `missing-ruleset-*` and `invalid-ruleset-*`. The default server configuration was restored successfully afterward.
+- Signed-out admin access redirected to sign-in with `next`; a newly registered developer saw Page not found for admin versions (`27-signed-out-admin.png`, `30-developer-no-permission.png`). Signup, empty app list, selected API subscription, app/key creation and access link “Open in UAT version reader” worked (`28`, `29`, `31`).
+- The new developer’s key worked through Scalar on the stable 1.0.0 reference: GET /get and GET /uuid both returned 200 through the real Kong-backed try-it proxy. UUID screenshot avoids echoing the credential (`32-older-version-try-it-200.png`); keys are redacted in the text log. Latest/older automated call coverage remains in the QA report; this UAT’s real call used the preserved old sample document because synthetic /orders paths are not httpbin routes.
+- Console checks after journeys showed Scalar timing information and no JavaScript errors. Network checks showed successful loads/publications/try-it and expected deliberate 409, 422 and 503 responses. No gateway or session failure was hidden by a demo fallback.
+- Incoming Bugs contained no open items: the pre-hydration defect and QA-only findings were already verified closed. Normal file uploads succeeded here; UAT did not inject a pre-hydration script delay, whose passing deterministic regression is recorded by QA.
+
+## Original finding UAT-012-01 — major, now verified fixed
+
+Published `+` version references cannot be read. Steps: admin opens /admin/apis/sample; uploads fixtures/1.0.0+build.1.json with “Don’t make this the default version” checked; follows the versions-table View link. Publication returns 201 and the table lists 1.0.0+build.1; the link /apis/sample/versions/1.0.0%2Bbuild.1 instead displays **Version not found**, saying the API has no version **1.0.0%2Bbuild.1**. Refresh reproduces at desktop and mobile widths. Expected: the accepted published version loads at the stable URL; `+` is explicitly allowed and requested in UX §9. Evidence: `17-plus-version-not-found.png`, the preceding success/table snapshot and refresh in `browser-log.jsonl`.
+
+Durable Bug creation was attempted under JSO-240 (team JSO, label Bug, priority High, intended state Todo), but Linear returned **Usage limit exceeded — free issue limit**. The intended title is “UAT: published versions containing + open Version not found”; the attempted creation is preserved as history; the fixed and independently verified finding no longer needs a durable fix issue. The same finding and deferred issue details are recorded in the spec and feature summary. Fix task: make accepted encoded version names resolve to the published reference, and retest all three entry points (admin table, switcher, changelog) in the browser.
+
+## Teardown
+
+Completed `docker compose -f deploy/docker-compose.yml down -v`: this UAT’s containers, network and fresh PostgreSQL test volume were removed. `docker ps` was empty afterward; no other worktree’s containers were stopped. The coordinator was notified immediately and confirmed the report may be completed with no further Docker use.
+
+
+## Browser re-check — 2026-11-09, build loop 2
+
+**PASS; status review.** Independently re-tested frontend fix `99986f4` after QA `0a1b097` in Orca's built-in browser, page `2d20312d-cd75-44ae-8f10-eb9a4f52e8fd`. The coordinator explicitly scoped this run to both original findings and a quick smoke of the other stories; the original full operator/configuration, permissions and first-call evidence above stands. Fresh Compose against real Kong/Postgres started in **12.45 seconds** using existing images and a new test database volume.
+
+| Re-check | Observed result | Evidence |
+| --- | --- | --- |
+| UAT-012-01: accepted `+` version, admin-table link and refresh | Published `1.0.0+build.1` with opt-out checked; 2.0.0 stayed latest. Keyboard activation of the table's View link opened `/apis/sample/versions/1.0.0%2Bbuild.1`; refresh retained the decoded title, older notice and Scalar documentation. | `34-recheck-plus-published.png`, `35-recheck-plus-admin-link-refresh.png`; `recheck-browser-log.jsonl` |
+| UAT-012-01: switcher link, mobile | Opened latest version's menu by keyboard, focused the `1.0.0+build.1` item and pressed Enter; correct stable reference rendered at 390×844 with the older notice. | `36-recheck-plus-switcher-mobile.png` |
+| UAT-012-01: changelog link, desktop | Followed Changelog, then View 1.0.0+build.1 reference by keyboard; reference, decoded document version and operations rendered at 1280×900. Network recorded 200 for the encoded reference and its per-version OpenAPI JSON. | `37-recheck-changelog.png`, `38-recheck-plus-changelog-link.png`; browser log |
+| Duplicate heading | Re-uploaded 2.0.0; HTTP 409 problem+json, heading **This version already exists**, corrective info.version instruction, retained input, unchanged versions/latest. Repeated after setting latest to 1.1.0; heading remains correct. | `39-recheck-duplicate-heading-mobile.png` |
+| New-version publication, notes and summary | Published baseline 1.0.1 then 2.0.0, default moved to v2; changelog shows date, “Orders can now be created”, compared with 1.0.1, POST /orders added and GET /orders removed/breaking. Service and base URL stayed portal-sample / localhost:8000/sample. | `37-recheck-changelog.png`; browser log |
+| Non-default patch, warning-only publish and keyboard | Published 1.1.0 with opt-out; success says developers still see 2.0.0. Tab/Enter expanded ten warnings with rule, message, pointer and line. | `40-recheck-warnings.png`; browser log |
+| Set any version latest and public default | Keyboard Set 1.1.0 as latest succeeded (PUT 200), badge moved and public `/apis/sample` opened with Version 1.1.0, Latest. Catalog still contains exactly one API entry. | `42-recheck-latest-default.png`, `43-recheck-single-catalog-entry.png` |
+| Actionable lint refusal and recovery | Duplicate-operation fixture refused with 422, operation-operationId-unique, line 25 / column 24 and JSON pointer, “Nothing was published”; existing five versions remained unchanged. Earlier duplicate refusal recovered by selecting the valid 1.1.0 fixture and publishing successfully. | `41-recheck-lint-refusal.png`; browser log |
+| Operator replacement and failure states | Original full UAT evidence for custom replacement, missing and invalid rulesets remains passing; unchanged by the two frontend fixes and not repeated in this focused re-check. | `20`–`25`, original report above; QA build-loop-2 full run |
+
+No new product problems were found. Browser console contained Scalar timing info and no JavaScript errors; network checks show successful reference/document/publication/default actions and the deliberate 409/422 refusals. The log also includes a tester-entered `/apis` URL returning the expected not-found page; the page's Go to APIs recovery link correctly returns to `/`, the actual catalog route. Relative file upload paths were rejected by Orca before browser input and corrected to absolute paths; offscreen mouse clicks that reported no page change were completed by keyboard focus + Enter. These are tooling/tester recovery, not product defects.
+
+Mobile emulation was reapplied after navigation; screenshots use scale 1 because of the previously documented scale-3 capture limitation. `35` was captured at Orca's default narrow viewport after reload; `38` is the explicit 1280×900 desktop reference capture. The duplicate-heading mobile screenshot was retaken after scrolling so the entire alert is visible. All evidence is synthetic test data; no real credentials were used.
+
+Both original findings remain checked in the spec, with this independent browser verification added. The previously deferred Linear Bug was never created and no durable fix work remains. Earlier pre-hydration and QA-only bugs remain closed under QA's deterministic passing re-test; normal uploads also passed this run.
+
+Teardown: `docker compose -f deploy/docker-compose.yml down -v` removed only this UAT's containers/network/fresh volume; `docker ps` was empty. Docker handback was sent to the coordinator via orchestration ask and acknowledged before report finalization. No further Docker use, application/test edits, approval or merge gate.
+
+
+## Post-main-merge browser smoke — 2026-11-09
+
+**PASS; status review.** This focused pass tested merged build `a081bdf` in Orca's built-in browser (`1e5b3715-188e-49e2-91a6-f2546d1e1a59`) after main's spec 005 integration. The coordinator scoped it to the key 012 journeys plus setup, gateway connections and the import screen; the earlier full eight-story, operator ruleset, permissions and real-call reports above stand. Fresh standard Compose with a new PostgreSQL volume and real Kong started in **18.28 seconds** using the existing production images; this is startup timing, not a cold build.
+
+| Journey | Result / evidence |
+| --- | --- |
+| Fresh setup alongside versions | Created a synthetic admin in `/setup`, tested the prefilled bundled Kong connection, saved it without restart, and published the optional sample API. `44-postmerge-setup-gateway.png`, `45-postmerge-connected-sample-choice.png`. |
+| Gateway admin and import screen | Connected card shows Kong 3.9.4 and the three correct URLs; Edit opens the populated form and Cancel returns to the card. Import lists the linked sample service and explains how to add a version; following its link reaches the version form. `46-postmerge-gateway-connected.png`, `47-postmerge-import-handoff.png`. This is a screen/handoff smoke, not a second full spec 005 UAT. |
+| Add versions and warnings | Uploaded orders baseline 1.0.1 then 2.0.0 with “Orders can now be created”; latest moved to v2, service/base URL stayed the same. Tab/Enter expanded the ten nonblocking warnings with rules and locations. `48-postmerge-v2-published.png`, `49-postmerge-warnings-expanded.png`. |
+| Lint refusal | Duplicate-operation fixture refused; error shows operation-operationId-unique, line 25 / column 24 and pointer, with “Nothing was published”; HTTP 422 problem+json captured. Repeated at 390×844 with readable wrapped details. `50-postmerge-lint-refusal-mobile.png`. |
+| Accepted plus-version link and refresh | Published 1.0.0+build.1 with non-default selected; 2.0.0 stayed latest. Keyboard activation of its admin-table link and refresh retained the decoded title, older notice and rendered Scalar operations. `51-postmerge-plus-reference-mobile.png`. |
+| Version switcher and keyboard/mobile | Enter opens the menu with all four versions, latest badge and changelog; Escape closes it. Later selected 2.0.0 by keyboard from the public 1.0.1 default and reached `/apis/sample/versions/2.0.0`, showing POST /orders and the older notice. `52-postmerge-switcher-mobile.png`; browser log. |
+| Changelog | Release note/date, comparison with 1.0.1, added POST /orders and removed GET /orders with Breaking all present. `53-postmerge-changelog.png`. |
+| Set latest and public default | Keyboard Set 1.0.1 as latest succeeded; public `/apis/sample` selected 1.0.1 Latest. Catalog still shows exactly one API, version 1.0.1 and the original base URL. `54-postmerge-set-latest.png`, `55-postmerge-public-default.png`, `57-postmerge-single-catalog.png`. |
+| Earlier duplicate-copy fix | Re-uploaded 2.0.0: “This version already exists” with corrective info.version instruction; retained file and no extra version. `56-postmerge-duplicate-heading.png`. |
+
+No new findings or open spec 012 blocker/major were found. Existing spec 005 JSO-399/405/406 and the quota-deferred intermittent first-call try-it 404 retain the inherited disposition in the post-merge QA report; this focused smoke neither re-files nor closes them. The setup happy path does not exercise the known reload/outage cases, and no new try-it call was made in this pass.
+
+Evidence: `post-merge-browser-log.jsonl` records actions, snapshots, rendered-page text and console/network samples. Console checks contained only Scalar timing information, no JavaScript errors; recent network samples show successful version/reference loads and the deliberate 422, with no unexpected failures in those samples (the network capture is bounded). Desktop 1280×900 and mobile 390×844 inspected; mobile emulation reapplied after navigation and scale 1 retained for the documented screenshot limitation. Stale element refs during initial setup were corrected using the refreshed tree; no product failure is inferred from them. Screenshot crops for lint/changelog were re-taken after scrolling to show the actual result.
+
+Teardown completed with `docker compose -f deploy/docker-compose.yml down -v`; this run's containers, network and fresh volume were removed and `docker ps -a` was empty. No application code, tests, approval or merge gate changed.
