@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -600,6 +600,8 @@ Only tests and this spec changed; application code was not modified.
   it remains a transient in-spec minor finding with no Linear issue. QA reproduced it on
   2026-11-09 against rebuilt `qa007r3`; automated case `007 U1` fails its final zero-stale-result
   assertion as expected while the preceding successful send and source/removal assertions pass.
+  UAT re-tested it after the review fixes on 2026-11-09 and it remains reproducible; updated
+  evidence: `docs/uat/007/run-2026-11-09-review-retest/04-u1-still-reproducible.png`.
 
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |
@@ -619,6 +621,14 @@ UAT date: 2026-11-09. Full notes and evidence index:
 journey was repeated at 390×844 using Tab, typed keys and Enter only, and Escape safely closed the
 delete dialog. Browser consoles were clean; no unexpected failed requests were observed. One minor
 finding (U1) remains open; there is no blocker or major, so the spec advances to `review`.
+
+Review-fix re-test, 2026-11-09: PASS. In Orca's built-in browser, normal sign-in succeeded; ten
+quick failed attempts for a disposable address returned 401 and the next returned 429 with the
+designed 15-minute message; a subsequent correct sign-in succeeded and the portal remained
+responsive. Admin Accounts, verified Profile, unknown-address reset confirmation and saved SMTP
+test/removal were smoked; U1 remains the only open minor. Evidence:
+`docs/uat/007/run-2026-11-09-review-retest/README.md`. No blocker or major is open, so status is
+`review`.
 
 ## Review  _(tech-lead)_
 First review, on 2026-11-09 at `0deb8a6`. **Result: two blocking findings, so the status goes back to
