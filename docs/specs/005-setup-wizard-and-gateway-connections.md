@@ -703,6 +703,10 @@ first review (`ded8ab9..HEAD`). Outside `docs/`, only the eight B1 files changed
   parent JSO-234) once quota allows. It doesn't block merge. Ruling 2's gate still applies: if CI's
   `compose-smoke` fresh-install step goes over 5 minutes, hold the merge.
 - **Suggestions S1–S5 below stand.** None is blocking.
+- **Deferred follow-ups (Linear quota):** S1 (pin the SSRF-checked address against DNS rebinding) and S4 (Kong
+  adapter `request`/`pages` follow redirects with `Kong-Admin-Token`) are out-of-scope follow-ups. Creating
+  them on 2026-11-08 was refused with `Usage limit exceeded`. When capacity returns, file each as a Backlog
+  issue with no parent, label Code Review and low priority, using the text of S1 and S4 below.
 
 **Review, 2026-11-08: `building`, 1 blocking finding.** Reviewed `git diff origin/main...HEAD` (origin/main is 0 commits ahead). Local checks pass: `pnpm lint` 7/7 tasks, `pnpm typecheck` 12/12 tasks, and `pnpm test` with **322 tests** (95 server, 170 portal, 55 Kong adapter with real Kong, 2 database). The feature code follows the design. All ten criteria are implemented and mapped to passing tests (Test report). Errors are problem+json with fixed `detail` strings. Tokens are encrypted, never returned and covered by the redact paths. The 7(a) token rule, the SSRF block and the exclusive and shared advisory locks match the design. The only blocking finding is the packaging change, which wasn't part of the feature.
 
