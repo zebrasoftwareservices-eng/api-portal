@@ -68,3 +68,26 @@ Mobile emulation was reapplied after navigation; screenshots use scale 1 because
 Both original findings remain checked in the spec, with this independent browser verification added. The previously deferred Linear Bug was never created and no durable fix work remains. Earlier pre-hydration and QA-only bugs remain closed under QA's deterministic passing re-test; normal uploads also passed this run.
 
 Teardown: `docker compose -f deploy/docker-compose.yml down -v` removed only this UAT's containers/network/fresh volume; `docker ps` was empty. Docker handback was sent to the coordinator via orchestration ask and acknowledged before report finalization. No further Docker use, application/test edits, approval or merge gate.
+
+
+## Post-main-merge browser smoke — 2026-11-09
+
+**PASS; status review.** This focused pass tested merged build `a081bdf` in Orca's built-in browser (`1e5b3715-188e-49e2-91a6-f2546d1e1a59`) after main's spec 005 integration. The coordinator scoped it to the key 012 journeys plus setup, gateway connections and the import screen; the earlier full eight-story, operator ruleset, permissions and real-call reports above stand. Fresh standard Compose with a new PostgreSQL volume and real Kong started in **18.28 seconds** using the existing production images; this is startup timing, not a cold build.
+
+| Journey | Result / evidence |
+| --- | --- |
+| Fresh setup alongside versions | Created a synthetic admin in `/setup`, tested the prefilled bundled Kong connection, saved it without restart, and published the optional sample API. `44-postmerge-setup-gateway.png`, `45-postmerge-connected-sample-choice.png`. |
+| Gateway admin and import screen | Connected card shows Kong 3.9.4 and the three correct URLs; Edit opens the populated form and Cancel returns to the card. Import lists the linked sample service and explains how to add a version; following its link reaches the version form. `46-postmerge-gateway-connected.png`, `47-postmerge-import-handoff.png`. This is a screen/handoff smoke, not a second full spec 005 UAT. |
+| Add versions and warnings | Uploaded orders baseline 1.0.1 then 2.0.0 with “Orders can now be created”; latest moved to v2, service/base URL stayed the same. Tab/Enter expanded the ten nonblocking warnings with rules and locations. `48-postmerge-v2-published.png`, `49-postmerge-warnings-expanded.png`. |
+| Lint refusal | Duplicate-operation fixture refused; error shows operation-operationId-unique, line 25 / column 24 and pointer, with “Nothing was published”; HTTP 422 problem+json captured. Repeated at 390×844 with readable wrapped details. `50-postmerge-lint-refusal-mobile.png`. |
+| Accepted plus-version link and refresh | Published 1.0.0+build.1 with non-default selected; 2.0.0 stayed latest. Keyboard activation of its admin-table link and refresh retained the decoded title, older notice and rendered Scalar operations. `51-postmerge-plus-reference-mobile.png`. |
+| Version switcher and keyboard/mobile | Enter opens the menu with all four versions, latest badge and changelog; Escape closes it. Later selected 2.0.0 by keyboard from the public 1.0.1 default and reached `/apis/sample/versions/2.0.0`, showing POST /orders and the older notice. `52-postmerge-switcher-mobile.png`; browser log. |
+| Changelog | Release note/date, comparison with 1.0.1, added POST /orders and removed GET /orders with Breaking all present. `53-postmerge-changelog.png`. |
+| Set latest and public default | Keyboard Set 1.0.1 as latest succeeded; public `/apis/sample` selected 1.0.1 Latest. Catalog still shows exactly one API, version 1.0.1 and the original base URL. `54-postmerge-set-latest.png`, `55-postmerge-public-default.png`, `57-postmerge-single-catalog.png`. |
+| Earlier duplicate-copy fix | Re-uploaded 2.0.0: “This version already exists” with corrective info.version instruction; retained file and no extra version. `56-postmerge-duplicate-heading.png`. |
+
+No new findings or open spec 012 blocker/major were found. Existing spec 005 JSO-399/405/406 and the quota-deferred intermittent first-call try-it 404 retain the inherited disposition in the post-merge QA report; this focused smoke neither re-files nor closes them. The setup happy path does not exercise the known reload/outage cases, and no new try-it call was made in this pass.
+
+Evidence: `post-merge-browser-log.jsonl` records actions, snapshots, rendered-page text and console/network samples. Console checks contained only Scalar timing information, no JavaScript errors; recent network samples show successful version/reference loads and the deliberate 422, with no unexpected failures in those samples (the network capture is bounded). Desktop 1280×900 and mobile 390×844 inspected; mobile emulation reapplied after navigation and scale 1 retained for the documented screenshot limitation. Stale element refs during initial setup were corrected using the refreshed tree; no product failure is inferred from them. Screenshot crops for lint/changelog were re-taken after scrolling to show the actual result.
+
+Teardown completed with `docker compose -f deploy/docker-compose.yml down -v`; this run's containers, network and fresh volume were removed and `docker ps -a` was empty. No application code, tests, approval or merge gate changed.

@@ -1,7 +1,7 @@
 ---
 id: 012
 title: API versions and changelog, and spec linting
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-240
@@ -582,6 +582,13 @@ UAT completed in Orca’s built-in browser on 2026-11-09 against fresh Compose w
 **Outcome: review.** Build-loop-2 UAT re-check on 2026-11-09 independently verifies both original findings fixed in Orca's built-in browser after frontend `99986f4` and QA `0a1b097`: the accepted `1.0.0+build.1` reference works from the admin table, switcher and changelog, including refresh, decoded title, older notice and Scalar document rendering; duplicate refusal now says **This version already exists** with its corrective instruction and HTTP 409. Evidence: `docs/uat/012/34-recheck-plus-published.png` through `43-recheck-single-catalog-entry.png`, `recheck-browser-log.jsonl` and the report's Browser re-check section.
 
 Fresh real-Kong/Postgres Compose started in **12.45 seconds** using existing images. Quick smoke passed new/default publication, non-default patch, release-note operation diff, keyboard warning expansion, lint refusal with location, Set as latest, public default and one catalog entry; desktop 1280×900 and mobile 390×844 were inspected. The original complete operator/custom/missing/invalid ruleset, permissions, signup/app/key and real older-version try-it evidence remains valid under the coordinator's focused re-check scope. Console/network checks found no new product errors; deliberate 409/422 refusals worked. No blocker/major or minor remains open, the deferred Bug was never created and no durable fix remains pending; normal uploads passed, while the earlier hydration and QA-only fixes retain QA's deterministic verification. Compose was torn down with its fresh test volume, Docker was empty and the coordinator acknowledged handback. No application code/tests changed or approval gate passed.
+
+
+### Post-main-merge browser smoke — 2026-11-09
+
+**PASS → review.** Focused Orca browser UAT on merged `a081bdf` against fresh real-Kong/Postgres Compose (18.28 s startup with existing images) passed setup → test/save bundled Kong → publish sample, connected gateway/Edit/Cancel, import's linked-service handoff, version publication, keyboard warning expansion, actionable lint refusal, non-default `+` publication/table link/refresh, mobile version menu, numeric switcher navigation, release-note operation diff, Set as latest/public default and one catalog entry. The duplicate-version heading remains fixed; no new product finding or spec 012 blocker/major is open.
+
+Screenshots `44-postmerge-setup-gateway.png` through `57-postmerge-single-catalog.png` and `post-merge-browser-log.jsonl` are documented in [the post-merge UAT report](../uat/012/README.md#post-main-merge-browser-smoke--2026-11-09). Desktop 1280×900 and mobile 390×844 inspected; console samples have no JavaScript errors and recent network samples show successful loads plus deliberate 422. The earlier complete eight-story/operator/permissions/real-call UAT stands under the coordinator's focused scope; inherited spec 005 JSO-399/405/406 and intermittent try-it 404 are not re-filed, closed or claimed fixed. This screen/handoff smoke did not repeat those reload/outage/try-it cases. Compose containers/network/fresh volume removed and Docker empty; no application or test edits or approval gate passed.
 
 ## Review  _(tech-lead)_
 
