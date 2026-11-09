@@ -37,7 +37,6 @@ export function AdminApis() {
   const [releaseNote, setReleaseNote] = useState('');
   const [slug, setSlug] = useState('');
   const [routePath, setRoute] = useState('');
-
   const [options, setOptions] = useState(false);
   const [search, setSearch] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -110,7 +109,6 @@ export function AdminApis() {
         setOptions(true);
       return;
     }
-
     lock.current = true;
     setPending(true);
     setProblem(undefined);
@@ -193,7 +191,6 @@ export function AdminApis() {
         setReleaseNote('');
         setRoute('');
         setOptions(false);
-
         setErrors({});
         await catalog.reload();
         requestAnimationFrame(() => success.current?.focus());
@@ -288,7 +285,6 @@ export function AdminApis() {
               .join(' ') || undefined
           }
           ref={success}
-
           tabIndex={-1}
         >
           ✓ Published {published.title}. It&apos;s now in the public catalog.{' '}
@@ -389,7 +385,6 @@ export function AdminApis() {
                       key="file"
                       ref={fileInput}
                       type="file"
-
                       accept=".yaml,.yml,.json,application/json,application/yaml"
                       onChange={(e) => chooseFile(e.target.files?.[0])}
                     />
@@ -425,7 +420,6 @@ export function AdminApis() {
                     key="url"
                     type="url"
                     placeholder="https://example.com/openapi.yaml"
-
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                   />
@@ -559,7 +553,6 @@ export function AdminApis() {
                 </a>
               </div>
             )}
-
             <details
               open={options}
               onToggle={(e) => setOptions(e.currentTarget.open)}
@@ -664,7 +657,6 @@ export function AdminApis() {
                 ))}
               </tr>
             </thead>
-
             <tbody>
               {catalog.data.items.map((a) => (
                 <tr

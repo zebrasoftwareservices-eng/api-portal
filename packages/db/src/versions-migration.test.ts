@@ -71,3 +71,59 @@ it('backfills populated spec 004 APIs, preserves subscriptions, and constrains l
     await container.stop();
   }
 });
+
+it('upgrades the recorded main migration journal without replaying 0001', async () => {
+  const { mkdtemp, mkdir, writeFile, copyFile, rm } =
+    await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { drizzle } = await import('drizzle-orm/postgres-js');
+  const { migrate: baselineMigrate } =
+    await import('drizzle-orm/postgres-js/migrator');
+  const { migrate } = await import('./index.js');
+  const folder = await mkdtemp(join(tmpdir(), 'portal-main-migrations-'));
+  const container = await new PostgreSqlContainer('postgres:17-alpine').start();
+  const url = container.getConnectionUri();
+  const { client } = connect(url);
+  try {
+    await mkdir(join(folder, 'meta'));
+    const journal = JSON.parse(
+      await readFile(
+        new URL('../migrations/meta/_journal.json', import.meta.url),
+        'utf8',
+      ),
+    );
+    journal.entries = journal.entries.slice(0, 2);
+    await writeFile(
+      join(folder, 'meta/_journal.json'),
+      JSON.stringify(journal),
+    );
+    for (const { tag } of journal.entries) {
+      await copyFile(
+        new URL(`../migrations/${tag}.sql`, import.meta.url),
+        join(folder, `${tag}.sql`),
+      );
+    }
+    await baselineMigrate(drizzle(client), { migrationsFolder: folder });
+    const originalJournal =
+      await client`select hash,created_at from drizzle.__drizzle_migrations order by id`;
+    await client`insert into gateways (id,name,kind,admin_url,proxy_public_url,proxy_internal_url,managed_by,enabled) values ('019a3cc0-0000-7000-8000-000000000010','default','kong','http://kong','http://kong','http://kong','env',false)`;
+    await client`insert into apis (id,slug,title,version,gateway_id,gateway_service_id,gateway_service_name,route_path,document) values ('019a3cc0-0000-7000-8000-000000000011','main-api','Published on main','1.0.0','019a3cc0-0000-7000-8000-000000000010','svc','main','/main','{"info":{"version":"1.0.0"}}')`;
+    await migrate(url);
+    await migrate(url);
+    const migrated =
+      await client`select hash,created_at from drizzle.__drizzle_migrations order by id`;
+    expect(migrated).toHaveLength(3);
+    expect(migrated.slice(0, 2)).toEqual(originalJournal);
+    expect(
+      await client`select v.title,v.version from apis a join api_versions v on v.id=a.latest_version_id`,
+    ).toEqual([{ title: 'Published on main', version: '1.0.0' }]);
+    expect(await client`select managed_by,enabled from gateways`).toEqual([
+      { managed_by: 'env', enabled: false },
+    ]);
+  } finally {
+    await client.end();
+    await container.stop();
+    await rm(folder, { recursive: true, force: true });
+  }
+});

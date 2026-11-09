@@ -172,7 +172,7 @@ Architecture decision: [ADR 0007](../adr/0007-api-versions-and-spec-linting.md).
 ### Components
 | Component | Change |
 | --- | --- |
-| `packages/db` | New `api_versions` table; `apis` loses its per-document columns and gains `latest_version_id`; migration `0001_api_versions.sql` with backfill. |
+| `packages/db` | New `api_versions` table; `apis` loses its per-document columns and gains `latest_version_id`; migration `0002_api_versions.sql` with backfill. |
 | `apps/server` | `src/lint/` (ruleset loading + Spectral run), `src/changes.ts` (change summary), `src/versions.ts` (add version, set latest, changelog, per-version document routes); `import.ts` refactored so both import paths share parse → lint → validate; `catalog.ts`, `apps.ts`, `seed.ts`, `reconcile.ts`, `proxy.ts` join the latest version; `config.ts` gains `PORTAL_LINT_RULESET`; `/api/v1/health` reports the ruleset. New file `apps/server/rulesets/portal.spectral.yaml`, copied into the image. |
 | `packages/sdk` | Regenerated from the contract. |
 | `apps/portal` | Version switcher on the reference page, versioned reference route, changelog page, admin "Add version" and "Set as latest", lint findings in both import forms, demo data. |
@@ -283,7 +283,7 @@ The column is nullable only so the API row and its first version can be inserted
 transaction (insert API → insert version → set pointer); every read inner-joins the latest
 version, so an API without one is never visible.
 
-Migration `0001_api_versions.sql` (generated, then hand-edited, in one transaction):
+Migration `0002_api_versions.sql` (generated, then hand-edited, in one transaction):
 create table → `insert into api_versions (id, api_id, version, title, description, document,
 source_url, created_by, published_at) select id, id, version, title, description, document,
 source_url, created_by, published_at from apis` (reusing the API's UUIDv7 as its first version's
@@ -352,7 +352,7 @@ version's page.
 
 ### Tasks
 - [x] [backend] Spike: add the Spectral dependencies and `semver`; lint the sample document in a unit test and confirm the server image builds and starts with them (record result in Build notes).
-- [x] [backend] Drizzle schema: `api_versions` table and `apis` changes; migration `0001_api_versions.sql` with backfill; migration test on a populated spec 004 database.
+- [x] [backend] Drizzle schema: `api_versions` table and `apis` changes; migration `0002_api_versions.sql` with backfill; migration test on a populated spec 004 database.
 - [x] [backend] Regenerate `packages/sdk` from the updated contract.
 - [x] [backend] `src/lint/`: load the default ruleset file or `PORTAL_LINT_RULESET` (no network, no fallback); run Spectral on original text with the no-network resolver; map findings to `LintFinding` (1-based lines, JSON pointer, `source`, severity mapping, caps 100/200). Add `apps/server/rulesets/portal.spectral.yaml` with the full rule list and copy it into the Docker image.
 - [x] [backend] Unit tests: default error-rule set equals the design table; sample seed document has zero errors; missing/invalid/network-`extends` ruleset files fail with the path in the message.
@@ -363,7 +363,7 @@ version's page.
 - [x] [backend] Update `catalog.ts`, `apps.ts`, `seed.ts`, `reconcile.ts`, `proxy.ts` to read the latest version; seed keeps an admin's latest choice.
 - [x] [backend] `config.ts` `PORTAL_LINT_RULESET`; startup loads the ruleset without throwing, logs failures; `/api/v1/health` `lint` block and `degraded` status; imports 503 while degraded.
 - [x] [backend] Docs: README/configuration (`PORTAL_LINT_RULESET`, rule list, extending the shipped file), upgrade notes for the migration, `docs/engineering-conventions.md` if it lists the `apis` shape.
-- [ ] [backend] Merge `origin/main` (spec 005, PR #8) into this branch: renumber 012's migration to `0002_api_versions` after `0001_gateway_connections`, regenerate the Drizzle snapshot/journal and the SDK, and combine the conflicting server, contract and portal changes so both specs work; full suite, quickstart and both specs' e2e/upgrade tests green.
+- [x] [backend] Merge `origin/main` (spec 005, PR #8) into this branch: renumber 012's migration to `0002_api_versions` after `0001_gateway_connections`, regenerate the Drizzle snapshot/journal and the SDK, and combine the conflicting server, contract and portal changes so both specs work; full suite, quickstart and both specs' e2e/upgrade tests green.
 - [x] [frontend] Reference page: version switcher from `ApiDetail.versions`, "latest" marker, versioned route `/apis/[slug]/versions/[version]`, 404 for unknown versions.
 - [x] [frontend] Changelog page `/apis/[slug]/changelog`: version, import date, plain-text note, added/removed/changed with breaking markers; first version shows no summary.
 - [x] [frontend] Admin: "Add version" form (spec URL/content, release note, "Don't make this the default version"), "Set as latest" per version, 409 version-exists message.
@@ -409,6 +409,16 @@ No new tokens.
   focus order, and 375px/1280px layouts are in the design file, §3–§7.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Backend main integration — 2026-11-09
+- Merged main at `db80714` (spec 005/PR #8) into this feature branch in signed-off merge `f69cd12`; preserved commit `33516a3` and the Codex user-tester configuration. Combined setup/gateway connections with version routes, lint health and import findings; the import form keeps gateway disabled/disconnected/outage states, release notes, lint findings and version links. Sample publication now returns the asynchronous version-aware API detail, and shared problem responses retain both gateway counts and lint error counts.
+- Kept main's `0001_gateway_connections.sql` and `0001_snapshot.json` unchanged; regenerated `0002_snapshot.json` and the journal with Drizzle, then retained the transactional version backfill in renamed `0002_api_versions.sql`. Regenerated the SDK from the combined OpenAPI contract and updated the README upgrade filename. Drizzle's subsequent generate reports no schema changes.
+- Adapted gateway publication fixtures and version-endpoint runtime injection to the combined schema/connection API. Database regressions cover fresh migration, pre-005 gateway upgrades, populated main schema with subscriptions and gateway settings retained, and a real main migration journal upgraded twice without replaying 0001 or duplicating backfilled versions.
+- Verification: `pnpm lint` (7 tasks) and `pnpm typecheck` (12 tasks) pass. The initial uncached full suite passed 377 tests; after adding the journal regression, `NODE_OPTIONS=--no-experimental-webstorage pnpm test --concurrency=1 -- --maxWorkers=2` passes **378 tests** (192 portal, 127 server, 55 Kong adapter, 4 DB; 12 successful tasks, 6 cached). The new journal regression also passed independently against real PostgreSQL. Host Node 26 uses the existing webstorage workaround; production images use Node 22.
+- Production verification: `COMPOSE_PROJECT_NAME=spec012merge node deploy/quickstart-smoke.mjs` passes in **105.6 s** including the normal cached-layer image build and fresh setup (not a cold benchmark), then verifies the environment-admin/Kong/sample path. `node deploy/server-image-smoke.mjs` and `node deploy/smoke.mjs` pass, covering packaged Spectral/default ruleset/migrations, unprivileged runtime, signup, app/key, real Kong authentication, try-it, one-time reveal and revocation.
+- Combined `COMPOSE_PROJECT_NAME=spec012merge pnpm test:e2e`: **55 successful checks in 4.6 min**, including all eight 012 cases and spec 005's fresh wizard/sample/key/disabled-gateway journey. Three checks reproduce the existing main findings JSO-399/405/406 using their existing `test.fail` annotations; they remain expected failures, not claimed fixes. No new unexpected failures or regressions were found.
+- Real pre-005 baseline `f52870e` → combined application upgrade: `SPEC005_BASELINE_DIR=/tmp/spec012-pre005-baseline SPEC005_UPGRADE_PROJECT=spec012mergeupgrade SPEC005_UPGRADE_IMAGE_PREFIX=spec012mergeupgrade pnpm exec playwright test --config tests/spec005-upgrade.playwright.config.ts` passes **1/1 in 3.1 min**. The same active key returns Kong 200 before/after; developer sessions and the published API survive, admin skips setup, gateway remains editable, and the documented protected-route recipe returns correct-token 200 / wrong-token 401. The separate DB regression verifies main's recorded 0000+0001 journal → 0002 without replaying prior migrations.
+- Cleanup: removed only the owned `spec012merge` and `spec012mergeupgrade` projects/volumes and the four unique upgrade application image tags; mounted-ruleset and Testcontainers fixtures clean themselves up. No spec status or approval gate was changed; no new durable issue was needed. QA/review remains with the coordinator's assigned roles.
 
 ### Frontend UAT fixes — 2026-11-09 (build loop 2)
 - Stable version pages decode the route segment before matching published versions, requesting the document through the SDK, rendering the selected version and generating metadata. Literal `+` stays `+`; malformed escapes return not-found. No server or contract change was needed.

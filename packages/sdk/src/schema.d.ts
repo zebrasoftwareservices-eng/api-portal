@@ -1096,12 +1096,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /**
-             * @description Server is up. `gateway.reachable` reports Kong's Admin API. `status` is `degraded`
+             * @description Server is up, with or without a gateway. `gateway` is null when none is connected;
+             *     otherwise `gateway.reachable` reports Kong's Admin API. `status` is `degraded`
              *     when the operator's lint ruleset (`PORTAL_LINT_RULESET`) failed to load; `lint.error`
              *     names the file and the problem, and imports answer 503 until it is fixed and the server
              *     restarted. The status code stays 200 so the published docs keep being served.
-             *     Server is up, with or without a gateway. `gateway` is null when none is connected;
-             *     otherwise `gateway.reachable` reports Kong's Admin API.
              */
             200: {
                 headers: {
