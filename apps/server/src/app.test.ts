@@ -19,6 +19,9 @@ import {
 } from '@portal/db';
 import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   GatewayUnavailableError,
   GatewayServiceConflictError,
@@ -946,6 +949,183 @@ describe('API versions and changelog', () => {
     expect(getService).not.toHaveBeenCalled();
     expect(adapter.protectService).not.toHaveBeenCalled();
     getService.mockRestore();
+  });
+  it('012 failure paths: invalid bodies, expired admin session and gateway outage leave version state safe', async () => {
+    const before = await connection.db.select().from(apiVersions);
+    for (const payload of [
+      {},
+      { spec: spec('invalid/name') },
+      { spec: spec('valid'), releaseNote: 'x'.repeat(5001) },
+      { spec: spec('valid'), makeLatest: 'false' },
+    ]) {
+      const result = await server.inject({
+        method: 'POST',
+        url: endpoint + '/versions',
+        headers: { cookie },
+        payload,
+      });
+      expect(result.statusCode).toBeGreaterThanOrEqual(400);
+      expect(result.statusCode).toBeLessThan(500);
+      expect(result.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+    }
+    const signed = await server.inject({
+      method: 'POST',
+      url: '/api/auth/sign-up/email',
+      payload: {
+        name: 'Expired version admin',
+        email: 'expired-versions@example.com',
+        password: 'test-password-123',
+      },
+    });
+    expect(signed.statusCode).toBe(200);
+    await connection.db
+      .update(user)
+      .set({ role: 'admin' })
+      .where(eq(user.id, signed.json().user.id));
+    await connection.db
+      .update(session)
+      .set({ expiresAt: new Date(0) })
+      .where(eq(session.userId, signed.json().user.id));
+    const expiredCookie =
+      signed.headers['set-cookie']?.toString().split(';')[0] ?? '';
+    for (const method of ['POST', 'PUT'] as const) {
+      const result = await server.inject({
+        method,
+        url: endpoint + (method === 'POST' ? '/versions' : '/latest-version'),
+        headers: { cookie: expiredCookie },
+        payload:
+          method === 'POST' ? { spec: spec('expired') } : { version: '1.0.0' },
+      });
+      expect(result.statusCode).toBe(401);
+      expect(result.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+    }
+    expect(await connection.db.select().from(apiVersions)).toEqual(before);
+    const outage = vi
+      .spyOn(adapter, 'getService')
+      .mockRejectedValue(new GatewayUnavailableError());
+    try {
+      const result = await publish('outage-qa', { makeLatest: false });
+      expect(result.statusCode, result.body).toBe(201);
+      expect(outage).not.toHaveBeenCalled();
+    } finally {
+      outage.mockRestore();
+    }
+  });
+  it('012 AC7-8: operator replacement reaches HTTP imports; invalid rulesets log and fail closed', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'portal-qa-rules-'));
+    try {
+      for (const mode of ['custom', 'missing', 'invalid']) {
+        const path = join(dir, mode + '.yaml');
+        if (mode === 'custom')
+          await writeFile(
+            path,
+            'extends: []\nrules:\n  operation-description:\n    given: $.paths[*].get\n    severity: error\n    then:\n      field: description\n      function: truthy\n',
+          );
+        if (mode === 'invalid') await writeFile(path, 'rules: [');
+        const entries: string[] = [];
+        const { app } = await createApp({
+          db: connection.db,
+          config: loadConfig({ PORTAL_LINT_RULESET: path }),
+          adapter,
+          gatewayId,
+          auth: createAuth(connection.db, loadConfig({})),
+          logger: {
+            stream: {
+              write: (line: string) => {
+                entries.push(line);
+              },
+            },
+          },
+        });
+        try {
+          for (const target of ['/api/v1/admin/apis', endpoint + '/versions']) {
+            const result = await app.inject({
+              method: 'POST',
+              url: target,
+              headers: { cookie },
+              payload: {
+                spec: spec('operator-' + mode, {
+                  '/orders': {
+                    get: { responses: { '200': { description: 'OK' } } },
+                  },
+                }),
+                ...(target.endsWith('/apis')
+                  ? {
+                      slug: 'operator-' + mode,
+                      gatewayServiceId: 'operator-' + mode,
+                    }
+                  : {}),
+              },
+            });
+            expect(result.statusCode, result.body).toBe(
+              mode === 'custom' ? 422 : 503,
+            );
+            expect(result.headers['content-type']).toContain(
+              'application/problem+json',
+            );
+            if (mode === 'custom')
+              expect(result.json().errors).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    rule: 'operation-description',
+                    message: expect.any(String),
+                    line: 1,
+                    pointer: '/paths/~1orders/get',
+                  }),
+                ]),
+              );
+          }
+          if (mode === 'custom') {
+            // An undeclared path parameter is a portal-default error omitted by the operator file.
+            const result = await app.inject({
+              method: 'POST',
+              url: endpoint + '/versions',
+              headers: { cookie },
+              payload: {
+                spec: spec('operator-replacement', {
+                  '/orders/{id}': {
+                    get: {
+                      description: 'Present',
+                      responses: { '200': { description: 'OK' } },
+                    },
+                  },
+                }),
+                makeLatest: false,
+              },
+            });
+            expect(result.statusCode, result.body).toBe(201);
+            expect(result.json().lintWarnings).toEqual([]);
+          } else {
+            expect((await app.inject('/api/v1/health')).json()).toMatchObject({
+              status: 'degraded',
+              lint: {
+                status: 'error',
+                path,
+                error: expect.stringContaining(path),
+              },
+            });
+            const entry = entries
+              .map((line) => JSON.parse(line))
+              .find((item) => item.msg === 'Lint ruleset unavailable');
+            expect(entry).toMatchObject({
+              level: 50,
+              lint: { path, error: expect.any(String) },
+            });
+            expect((await app.inject('/api/v1/apis/sample')).statusCode).toBe(
+              200,
+            );
+          }
+        } finally {
+          await app.close();
+        }
+      }
+    } finally {
+      await rm(dir, { recursive: true });
+    }
   });
   it('sample seeding retains an administrator latest choice', async () => {
     const seedAdapter = {

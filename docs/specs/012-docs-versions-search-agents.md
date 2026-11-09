@@ -1,7 +1,7 @@
 ---
 id: 012
 title: API versions and changelog, and spec linting
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-240
@@ -444,10 +444,41 @@ No new tokens.
 ## Test report  _(qa-tester)_
 | Criterion | Test file | Result |
 | --- | --- | --- |
+| AC 1: v2 switcher, stable v1, one catalog entry and Kong link | `apps/portal/e2e/versions.test.ts` (real Kong journey); `apps/server/src/app.test.ts`; `apps/portal/components/version-pages.test.tsx`, `versions.test.tsx` | PASS (Compose + automated tests); uploads after hydration. |
+| AC 2: upload order/default and opt-out | `apps/portal/e2e/versions.test.ts`; `apps/server/src/app.test.ts`; `apps/portal/components/versions.test.tsx` | PASS (Compose + automated tests); uploads after hydration. |
+| AC 3: orders added/removed, breaking flag, note and date | `apps/portal/e2e/versions.test.ts`; `apps/server/src/changes.test.ts`, `app.test.ts`; `apps/portal/components/versions.test.tsx` | PASS (Compose + automated tests); uploads after hydration. |
+| AC 4: duplicate 409 preserves v2; concurrent imports exactly one 201 | `apps/portal/e2e/versions.test.ts`; `apps/server/src/app.test.ts` | PASS (Compose + automated tests); uploads after hydration. |
+| AC 5: duplicate operationId, unresolved ref, undeclared parameter individually, both forms, 422 and locations, no writes | `apps/portal/e2e/versions.test.ts` (three separate tests); `apps/server/src/app.test.ts`, `lint/lint.test.ts`; `apps/portal/components/admin-apis.test.tsx`, `versions.test.tsx` | PASS (Compose + automated tests); uploads after hydration. |
+| AC 6: warning-only import succeeds and displays findings | `apps/portal/e2e/versions.test.ts`; `apps/server/src/app.test.ts`; `apps/portal/components/admin-apis.test.tsx`, `versions.test.tsx` | PASS (Compose + automated tests); uploads after hydration. |
+| AC 7: mounted operator ruleset replaces defaults | `apps/portal/e2e/versions.test.ts` (production-image custom ruleset); `apps/server/src/app.test.ts`, `lint/lint.test.ts` | PASS (Compose + automated tests); uploads after hydration. |
+| AC 8: missing/invalid file logs path/reason, degraded health, imports 503, default quickstart | `apps/portal/e2e/versions.test.ts` (production-image missing/invalid rulesets); `apps/server/src/app.test.ts`, `lint/lint.test.ts` | PASS (Compose + automated tests); uploads after hydration. |
+| AC 9: set latest updates reference, developer 403 unchanged, unknown version 404 | `apps/portal/e2e/versions.test.ts`; `apps/server/src/app.test.ts`; `apps/portal/components/versions.test.tsx` | PASS (Compose + automated tests); uploads after hydration. |
+| Upgrade, try-it on latest/older reference, quickstart first call | `packages/db/src/versions-migration.test.ts`; `apps/portal/e2e/versions.test.ts`; `deploy/e2e/quickstart.spec.ts`; `deploy/quickstart-smoke.mjs`, `deploy/smoke.mjs` | PASS: migration, both try-it pages, first-call smoke; quickstart 163.4 s. |
+
+QA run (2026-11-08/09): tests reused from the interrupted QA worker and reviewed/extended with real-stack developer authorization, unknown-version refusal and latest-default assertions. Added HTTP failure paths cover invalid/missing input, overlong notes, invalid version names, expired sessions, duplicate/concurrent requests and gateway outage (version publication deliberately needs no gateway call). The root Playwright command now discovers 50 tests, including seven new version/lint acceptance tests and the additional hydration regression through `deploy/e2e/versions.test.ts`.
+
+- `pnpm lint`: PASS (7 tasks); `pnpm typecheck`: PASS (12 tasks).
+- Lint and operation-diff unit tests: PASS (20 tests).
+- Portal suite: first sandboxed run passed 130/133; three ingress tests could not bind listeners (`listen EPERM`). Re-run with local listener access: PASS, all 133 tests in 21 files (13.90 s); this was an environment restriction, not an application finding.
+- Host Node 26 needs `NODE_OPTIONS=--no-experimental-webstorage` for jsdom storage; CI uses `.nvmrc` Node 22 and does not set this flag. Production Compose also uses Node 22.
+- `NODE_OPTIONS=--no-experimental-webstorage pnpm test --concurrency=1 -- --maxWorkers=1`: PASS, 244 tests (70 server, 133 portal, 39 Kong adapter, 2 DB); 12 Turbo tasks, 10 cached, 32.61 s. The modified server suite ran against real Testcontainers PostgreSQL.
+- `node deploy/quickstart-smoke.mjs`: PASS, **163.4 s**, including image builds, healthy Compose services and seeded portal home (under 300 s). Fresh standard Compose project/volume; Docker image layers were cached where available. Production server/portal use Node 22.
+- `node deploy/smoke.mjs`: PASS, seed → signup → app/key → real Kong 401 without key / 200 with key → try-it → one-time reveal → idempotent revocation / 401.
+- `node deploy/outage-smoke.mjs`: PASS, Kong outage 503/no partial app/retry with one consumer and credential; server outage error page without demo fallback.
+- `pnpm test:e2e`: initial full run **44 passed, 5 failed** (49 tests, 3.1 min). One legacy missing-`info` assertion expected the old schema error; updated it to the approved import-pipeline step 4 (`invalid-api-version`, `/info/version`) without weakening the refusal/no-write checks. Four new journeys exposed the pre-hydration upload bug below. No application code was changed.
+- Targeted re-run `pnpm exec playwright test --config deploy/playwright.config.ts --grep '012|admin imports files'`: **8 passed, 1 failed** (29.3 s). All seven spec 012 acceptance tests and the updated legacy import journey pass; the added hydration regression fails. Post-hydration acceptance flows explicitly wait for page network idle before choosing a file. The other 41 original tests passed in the full run; no unexecuted criteria remain.
+- Re-ran the final hydration regression independently with actual file selection while scripts are held: **FAIL**, publish shows “Choose an OpenAPI file.” and no published-version status. This is reproducible, not a flaky timeout or gateway readiness failure.
+- All Compose test containers, operator-ruleset one-off containers, network and test volume were removed; `docker ps` was empty before the coordinator handed Docker to spec 005. No other worktree's containers were stopped or removed.
+- Open-bug retest: the incoming Bugs section contained only a placeholder, with no concrete open bugs or durable bug keys to retest.
 
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
+- [ ] Pre-hydration version upload loses the chosen file (minor, frontend; stays in this spec, no durable Linear issue).
+  - Repro: sign in as admin; delay `/_next/static/**/*.js*`; open `/admin/apis/sample` at the initial HTML response; select a valid OpenAPI file in the enabled input; release scripts and wait for hydration; click **Publish version**.
+  - Expected: preserve the selected file and publish it, or disable file entry until the event handlers can retain the selection. Actual: the DOM accepts the file but React's file state stays empty; submission says **Choose an OpenAPI file.**, makes no import request and publishes nothing. Re-selecting the file after hydration recovers; no published data is corrupted.
+  - Automated evidence: `apps/portal/e2e/versions.test.ts`, **012 failure path: version upload cannot discard input before hydration**. This final regression selects a real file before hydration and expects a successful publish after scripts resume; it remains intentionally failing for the frontend fix. The initial real browser journey reproduced the same issue without injected delay.
+  - No blocker/major findings or durable bugs exist. Per this dispatch's “none remain open” transition rule, status is **building** until the frontend fixes and QA re-tests this minor finding; QA has not changed application code.
+
 
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |
