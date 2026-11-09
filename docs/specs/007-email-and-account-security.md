@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -395,6 +395,8 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [x] [frontend] Admin mail settings page: source banner ("environment settings in use", read-only environment values), form with write-only password, save, remove saved settings, and a test email with the three SMTP error states and no password echoed.
 - [x] [frontend] Admin account settings page: "Require a verified email" switch (disabled, with a link to mail settings, when `mailConfigured` is false; handles 409) and the three limits with validation.
 - [x] [backend] Fix: redact password-reset bearer tokens from request URL paths before logging (major; Linear Bug creation pending due to workspace free issue limit).
+- [ ] [backend] Fix: normalize `/api/auth/*` paths before applying rate-limit rules, so `/api/auth/sign-in//email` and `/api/auth//sign-in/email` can't skip the sign-in failure limit; add regression tests (Review blocking 1).
+- [ ] [backend] Fix: don't hold a database transaction while calling Better Auth in `limitedAuth`; reserve the hit in a short locked transaction, then call Better Auth; add a test with more parallel sign-ins than the pool size (Review blocking 2).
 - [x] [qa] AC 1, 2: quickstart under 5 minutes with Mailpit; sign-up email within 30 s through the environment settings, and the verify link; saved settings win, with a test email through a second Mailpit or a Mailpit SMTP-auth configuration; unreachable host and bad credentials give their errors within 15 s; the password is absent from every API response, the logs and `pgboss.job`.
 - [x] [qa] AC 3: setting off by default; a pre-upgrade user and the bootstrap admin are verified after migrating a v0.2 database; with it on, an unverified user gets 403 on `POST /v1/apps` and the key route, with no Kong consumer; succeeds after verifying; can't be turned on with no mail.
 - [x] [qa] AC 4, 5, 6: reset end to end with other sessions signed out; unknown address gives the same response and no email; used and over-one-hour links give the expired state (move the clock or edit `verification.expires_at`) with the password unchanged; change password with right and wrong current password.
@@ -558,6 +560,77 @@ delete dialog. Browser consoles were clean; no unexpected failed requests were o
 finding (U1) remains open; there is no blocker or major, so the spec advances to `review`.
 
 ## Review  _(tech-lead)_
+First review, on 2026-11-09 at `0deb8a6`. **Result: two blocking findings, so the status goes back to
+`building`.** Both are in the `/api/auth/*` rate-limit wrapper, and I reproduced both against real
+Postgres. Everything else matches the design, and each acceptance criterion has a passing test.
+
+### Checks
+| Check | Result |
+| --- | --- |
+| `pnpm lint`, `pnpm typecheck` | Pass (7 and 12 tasks) |
+| `pnpm test` | Pass, 12 of 12 tasks. Rerun with no cache for server, db and portal: 71 server, 2 database and 134 portal tests pass |
+| `packages/sdk` against `openapi.yaml` | No drift after regenerating |
+| Contract and data model | `openapi.yaml` paths, error codes and migration `0001` match the Technical design. Problem titles and details come from `security-problems.ts`, with no SMTP reply text, username or password in them |
+| Secrets | SMTP password encrypted and write-only. Mail links encrypted in job payloads. Reset-token path redacted from request logs (B1 fix). Email-change tokens stored only as hashes. HTML email escapes user data |
+| AC coverage | Each of AC 1–9 has automated tests (see Test report); UAT passed every story |
+| Quickstart and `pnpm test:e2e` | Not re-run here. QA's results stand: fresh compose with Mailpit healthy in 109.8 s, and e2e 49 of 49 at `dd768c7`. Only UAT docs changed since then |
+| Code read | Every server, db and mail change in `main...HEAD`, plus the portal's password-recovery, profile and mail-settings components. I skimmed the remaining portal UI and tests |
+
+### Blocking
+1. **Brute force can skip the sign-in limit with a doubled slash** (`apps/server/src/auth-limits.ts:109`,
+   `:131`). The sign-in rule matches the exact string `/api/auth/sign-in/email`. Fastify's
+   `/api/auth/*` route also sends `/api/auth/sign-in//email` and `/api/auth//sign-in/email` to the
+   handler. Better Auth's router (rou3 `splitPath` drops empty segments) treats both as
+   `sign-in/email`. Those requests reach Better Auth without being counted. Reproduced: 13 wrong
+   passwords sent to `/api/auth/sign-in//email` all got 401, with no 429 and no `rate_limit_hits`
+   rows. That defeats AC 8's sign-in limit, and the endpoint needs no sign-in. The other rules match
+   only the last path segment, so `//request-password-reset` is still counted.
+   *Fix:* normalize the path the way Better Auth does (`split('/').filter(Boolean)`, trailing slash
+   dropped) before applying any rule, and match the whole normalized route. If you prefer, refuse
+   non-canonical `/api/auth/*` paths with 404 instead. Add regression tests for the doubled slashes,
+   a trailing slash and the canonical path.
+2. **About ten simultaneous sign-ins deadlock the server's database pool**
+   (`apps/server/src/auth-limits.ts:149`–`163`). `limitedAuth` opens a transaction and holds that
+   connection, plus the advisory lock, while `run()` calls Better Auth. Better Auth runs its own
+   queries on the same `postgres` client (`max: 10`, `packages/db/src/index.ts:10`). Once ten such
+   requests are in flight, every connection is held by a transaction that waits for a free
+   connection, and nothing times out. The same happens with 10 requests for *one* address: nine
+   hold connections while they wait on the advisory lock. Reproduced: 12 parallel wrong-password
+   sign-ins for different addresses never returned within 20 s, and afterwards a plain `select 1`
+   on the pool hung too. Anyone can send these requests unauthenticated, so this takes the whole
+   portal down. The same applies to `request-password-reset`, `send-verification-email` and
+   `change-password`. `checkPassword` and `POST /v1/me/email` (`account.ts`) use only their own
+   transaction, so they're safe.
+   *Fix:* never call `auth.handler` inside the transaction. Check and reserve in a short locked
+   transaction, then commit and call Better Auth outside it. For sign-in, insert the failure hit up
+   front and delete it after a 200 (or clear the address's hits as now). Concurrent attempts then
+   still can't overshoot. Reset and verification already insert before the call. Add an integration
+   test that sends more parallel sign-ins than the pool size and expects them all to finish.
+
+### Suggestions
+Fix these in this loop while the spec is back in `building`, if they're cheap. On re-review I'll
+file a Backlog issue for any that stay open.
+- `apps/server/src/account.ts:305`: confirming an email change deletes `verification` rows where
+  `identifier = <old email>`. Better Auth 1.3.34 never writes those: reset rows are
+  `reset-password:<token>` with `value` = user ID, and verification links are JWTs. So a reset
+  link sent to the old address still works for up to an hour after the change, for whoever controls
+  that mailbox. Delete `identifier like 'reset-password:%' and value = <user id>` instead, and add a
+  test for it.
+- `apps/server/src/account.ts:218`: the "address taken" check runs before the verification-email
+  limit, so a signed-in account can test whether any address has an account, with no limit. Sign-up
+  already reveals this through Better Auth, so this isn't a new exposure. Counting the attempt
+  before the check would still close it here.
+- `apps/server/src/account.ts:108`, `:134`, `:157`: if two admins delete their accounts at the same
+  moment, both pass the first last-admin check and both have their apps removed from Kong. Then the
+  second gets 409 `last-admin` in the final transaction, with its apps and keys already gone while
+  the copy says "Your account was not deleted". This is rare. Taking the `71833004` lock and
+  re-checking before removing apps would make it exact.
+- `apps/server/src/mail/queue.ts:19`: without a shared `PgBoss`, `mailQueue` starts and stops a
+  whole pg-boss instance for every email. Only callers that don't pass `enqueueMail` take this path
+  (tests or embedding). Consider making the enqueue a required argument.
+- **U1** (QA, frontend, `apps/portal/components/mail-settings.tsx`): after removing the saved
+  settings, the old test result still says the saved settings were used. Clear it when `source`
+  changes.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
