@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-name: portal
+# Plain `docker compose up` keeps project "portal" and ports 3000, 4000, 8000, 8001.
+# Parallel worktrees use `node scripts/worktree-compose.mjs` so project, images, and ports differ.
+name: ${COMPOSE_PROJECT_NAME:-portal}
 services:
   postgres:
     image: postgres:17-alpine
@@ -38,8 +40,8 @@ services:
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
     ports:
-      - '8000:8000'
-      - '127.0.0.1:8001:8001'
+      - '${KONG_PROXY_PORT:-8000}:8000'
+      - '127.0.0.1:${KONG_ADMIN_PORT:-8001}:8001'
     depends_on:
       kong-migrations:
         condition: service_completed_successfully
@@ -51,7 +53,7 @@ services:
   httpbin:
     image: mccutchen/go-httpbin:v2.15.0
   server:
-    image: portal-server
+    image: ${PORTAL_SERVER_IMAGE:-portal-server}
     build:
       context: ..
       dockerfile: apps/server/Dockerfile
@@ -63,6 +65,7 @@ services:
       PORTAL_ENCRYPTION_KEY: ${PORTAL_ENCRYPTION_KEY:-AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=}
       PORTAL_PROXY_HOST: portal
       PORTAL_PUBLIC_URL: ${PORTAL_PUBLIC_URL:-http://localhost:3000}
+      PORTAL_RATE_LIMIT_RESET: ${PORTAL_RATE_LIMIT_RESET:-local-rate-limit-reset}
       KONG_ADMIN_URL: ${KONG_ADMIN_URL:-}
       PORTAL_BUNDLED_KONG_ADMIN_URL: http://kong:8001
       KONG_ADMIN_TOKEN: ${KONG_ADMIN_TOKEN:-}
@@ -72,7 +75,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       SEED_SAMPLE: ${SEED_SAMPLE:-false}
     ports:
-      - '127.0.0.1:4000:4000'
+      - '127.0.0.1:${PORTAL_API_PORT:-4000}:4000'
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,7 +95,7 @@ services:
       timeout: 6s
       retries: 30
   portal:
-    image: portal-web
+    image: ${PORTAL_WEB_IMAGE:-portal-web}
     build:
       context: ..
       dockerfile: apps/portal/Dockerfile
@@ -101,7 +104,7 @@ services:
       PORT: '3000'
       HOSTNAME: 0.0.0.0
     ports:
-      - '3000:3000'
+      - '${PORTAL_WEB_PORT:-3000}:3000'
     depends_on:
       server:
         condition: service_healthy
