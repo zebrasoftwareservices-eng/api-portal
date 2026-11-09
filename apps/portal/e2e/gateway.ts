@@ -280,31 +280,53 @@ test('JSO-169: public ingress cannot rotate a client rate-limit budget with forg
       { timeout: 60_000 },
     )
     .toBe(200);
-  const suffix = crypto.randomUUID().replaceAll('-', '');
-  const call = (client: string) =>
-    request.get('/api/v1/try-it', {
-      headers: { 'x-forwarded-for': client },
-    });
-  // Caller-supplied addresses must never determine the budget.
-  const client = `2001:db8:${suffix.slice(0, 4)}:${suffix.slice(4, 8)}::1`;
-  const forged = `2001:db8:${suffix.slice(0, 4)}:${suffix.slice(4, 8)}::2`;
-  for (let i = 0; i < 60; i++) expect((await call(client)).status()).toBe(400);
-  expect((await call(client)).status()).toBe(429);
-  // Same TCP source must retain its exhausted budget regardless of this header.
-  expect((await call(forged)).status()).toBe(429);
-  const spoofedHeaders: Record<string, string>[] = [
-    {},
-    { 'x-forwarded-for': `${forged}, 198.51.100.1` },
-    { 'x-forwarded-for': 'not-an-ip' },
-    {
-      forwarded: 'for=198.51.100.2;proto=https',
-      'x-real-ip': '198.51.100.3',
-      'x-forwarded-for': forged,
-    },
-  ];
-  for (const headers of spoofedHeaders) {
-    expect((await request.get('/api/v1/try-it', { headers })).status()).toBe(
-      429,
+  try {
+    const suffix = crypto.randomUUID().replaceAll('-', '');
+    const call = (client: string) =>
+      request.get('/api/v1/try-it', {
+        headers: { 'x-forwarded-for': client },
+      });
+    // Caller-supplied addresses must never determine the budget.
+    const client = `2001:db8:${suffix.slice(0, 4)}:${suffix.slice(4, 8)}::1`;
+    const forged = `2001:db8:${suffix.slice(0, 4)}:${suffix.slice(4, 8)}::2`;
+    for (let i = 0; i < 60; i++)
+      expect((await call(client)).status()).toBe(400);
+    expect((await call(client)).status()).toBe(429);
+    // Same TCP source must retain its exhausted budget regardless of this header.
+    expect((await call(forged)).status()).toBe(429);
+    const spoofedHeaders: Record<string, string>[] = [
+      {},
+      { 'x-forwarded-for': `${forged}, 198.51.100.1` },
+      { 'x-forwarded-for': 'not-an-ip' },
+      {
+        forwarded: 'for=198.51.100.2;proto=https',
+        'x-real-ip': '198.51.100.3',
+        'x-forwarded-for': forged,
+      },
+    ];
+    for (const headers of spoofedHeaders) {
+      expect((await request.get('/api/v1/try-it', { headers })).status()).toBe(
+        429,
+      );
+    }
+  } finally {
+    // Do not leave the shared browser client's budget exhausted for later tests.
+    execFileSync(
+      'docker',
+      ['compose', '-f', 'deploy/docker-compose.yml', 'restart', 'server'],
+      { stdio: 'ignore' },
     );
+    await expect
+      .poll(
+        async () => {
+          try {
+            return (await request.get('/api/v1/health')).status();
+          } catch {
+            return 0;
+          }
+        },
+        { timeout: 60_000 },
+      )
+      .toBe(200);
   }
 });

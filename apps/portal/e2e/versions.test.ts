@@ -107,6 +107,17 @@ test('012 AC1-4,6,9: real Kong versions, stable references, changelog, defaults 
   });
   expect(app.status(), await app.text()).toBe(201);
   const key = (await app.json()).credential.key;
+  // Kong workers observe a newly created route asynchronously. Prove readiness
+  // before the browser's one-shot request, without hiding a failed try-it call.
+  await expect
+    .poll(async () =>
+      (
+        await context.request.get(`http://localhost:8000/${slug}/get`, {
+          headers: { apikey: key },
+        })
+      ).status(),
+    )
+    .toBe(200);
   for (const route of [`/apis/${slug}`, `/apis/${slug}/versions/1.0.0`]) {
     await page.goto(route);
     await page
@@ -473,6 +484,35 @@ test('012 failure path: version upload cannot discard input before hydration', a
   await context.request.post('/api/auth/sign-in/email', {
     data: { email: 'admin@example.com', password: 'change-me-now' },
   });
+  // Use an isolated API so repeat runs cannot change the seeded sample's
+  // single-version reference layout or title for unrelated browser journeys.
+  const id = crypto.randomUUID();
+  const slug = `hydration-${id}`;
+  expect(
+    (
+      await context.request.put(`http://localhost:8001/services/${id}`, {
+        data: { name: slug, url: 'http://httpbin:8080' },
+      })
+    ).ok(),
+  ).toBe(true);
+  expect(
+    (
+      await context.request.post(
+        `http://localhost:8001/services/${id}/routes`,
+        {
+          data: { paths: [`/${slug}`] },
+        },
+      )
+    ).ok(),
+  ).toBe(true);
+  const imported = await context.request.post('/api/v1/admin/apis', {
+    data: {
+      slug,
+      gatewayServiceId: id,
+      spec: { content: JSON.stringify(document('1.0.0', v1Paths)) },
+    },
+  });
+  expect(imported.status(), await imported.text()).toBe(201);
   let release!: () => void;
   const ready = new Promise<void>((resolve) => {
     release = resolve;
@@ -482,7 +522,7 @@ test('012 failure path: version upload cannot discard input before hydration', a
     await route.continue();
   });
   try {
-    await page.goto('/admin/apis/sample', { waitUntil: 'commit' });
+    await page.goto(`/admin/apis/${slug}`, { waitUntil: 'commit' });
     const input = page.getByLabel('OpenAPI file', { exact: true });
     const enabled = await input.isEnabled();
     const version = `hydration-${crypto.randomUUID()}`;

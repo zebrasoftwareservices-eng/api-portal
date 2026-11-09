@@ -1,7 +1,7 @@
 ---
 id: 012
 title: API versions and changelog, and spec linting
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-240
@@ -477,13 +477,30 @@ QA run (2026-11-08/09): tests reused from the interrupted QA worker and reviewed
 - All Compose test containers, operator-ruleset one-off containers, network and test volume were removed; `docker ps` was empty before the coordinator handed Docker to spec 005. No other worktree's containers were stopped or removed.
 - Open-bug retest: the incoming Bugs section contained only a placeholder, with no concrete open bugs or durable bug keys to retest.
 
+
+### QA re-test — 2026-11-09 (build loop 1)
+- Re-tested frontend fix `e5fc818`: the real Compose Playwright regression **012 failure path: version upload cannot discard input before hydration** passes, selecting an actual file while JavaScript is held and publishing after hydration. Both component regressions (valid selection and oversized selection before hydration) also pass. The sole incoming open bug is verified fixed; the previous criterion-to-test mapping and failure-path coverage above still apply.
+- `pnpm lint`: PASS (7 tasks); `pnpm typecheck`: PASS (12 tasks), including a fresh portal check after QA test edits.
+- Portal tests: PASS, **135 tests in 21 files** (5.26 s). The first sandbox-only attempt had 3 `listen EPERM` ingress failures; the rerun with local listener access passed all tests. Host Node 26 used `NODE_OPTIONS=--no-experimental-webstorage`.
+- `NODE_OPTIONS=--no-experimental-webstorage pnpm test --concurrency=1 -- --maxWorkers=1`: PASS, **246 tests** (135 portal, 70 server, 39 Kong adapter, 2 DB), 12 successful Turbo tasks in 16.81 s. The changed portal suite ran fresh; 11 unchanged tasks reused the earlier validated cache.
+- Fresh `node deploy/quickstart-smoke.mjs`: PASS, **112.1 s**, including production image builds, new volume, healthy real Kong/Postgres/server/portal and seeded catalog. `node deploy/smoke.mjs`: PASS for signup, app/key creation, real Kong 401/200, try-it, one-time key and idempotent revocation.
+- Browser reruns exposed test defects, recorded and fixed within QA ownership: Scalar introduces multiple `main` elements (use portal `#main`); the virtual timeout must start after the apps request is observed; the gateway rate-limit test must clear its exhausted shared budget in `finally`; the hydration regression must use an isolated API so the seeded sample retains its single-version layout; newly created Kong routes need an authenticated readiness check before a one-shot browser call. These are transient test findings, with no application changes or durable Bug issue needed.
+- Initial full browser run: 47 passed / 3 failed (strict locator, clock race and shared rate-limit budget); targeted re-run: all eight 012 tests passed, with two unrelated sample-title failures caused by rerunning after the original hydration test changed the sample default. Fresh full re-run: 49 passed / 1 failed (Kong route propagation, real response `404 no Route matched with those values`); readiness assertion added without weakening the browser's 200 assertion. A further full run passed every 012 test (48/50 total); two badge-layout assertions encountered the extra versions left on the sample by previous hydration runs, confirming the need for an isolated regression fixture.
+- Final clean `pnpm test:e2e`: **PASS, 50/50 tests (1.7 min)**, including all eight spec 012 tests, both latest/older-version try-it requests, mounted custom/missing/invalid rulesets, all access-retry failure cases, and the real pre-hydration upload regression. All observed test failures have deterministic fixes and pass in this full run; no unresolved flaky cases or application findings remain.
+- Teardown: removed only QA's Compose containers, network and PostgreSQL test volume; operator-ruleset containers cleaned up in their tests; `docker ps` was empty. Coordinator notified immediately and handed Docker back to spec 005; no further Docker use by this QA task.
+- Outcome: all criteria retain passing automated coverage, the sole incoming bug is verified fixed, no durable Bug issues are required, and status is **uat** for browser user testing (no approval gate passed).
+
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] Pre-hydration version upload loses the chosen file (minor, frontend; stays in this spec, no durable Linear issue).
+- [x] Pre-hydration version upload loses the chosen file (minor, frontend; stays in this spec, no durable Linear issue).
   - Repro: sign in as admin; delay `/_next/static/**/*.js*`; open `/admin/apis/sample` at the initial HTML response; select a valid OpenAPI file in the enabled input; release scripts and wait for hydration; click **Publish version**.
   - Expected: preserve the selected file and publish it, or disable file entry until the event handlers can retain the selection. Actual: the DOM accepts the file but React's file state stays empty; submission says **Choose an OpenAPI file.**, makes no import request and publishes nothing. Re-selecting the file after hydration recovers; no published data is corrupted.
-  - Automated evidence: `apps/portal/e2e/versions.test.ts`, **012 failure path: version upload cannot discard input before hydration**. This final regression selects a real file before hydration and expects a successful publish after scripts resume; it remains intentionally failing for the frontend fix. The initial real browser journey reproduced the same issue without injected delay.
-  - No blocker/major findings or durable bugs exist. Per this dispatch's “none remain open” transition rule, status is **building** until the frontend fixes and QA re-tests this minor finding; QA has not changed application code.
+  - Automated evidence: `apps/portal/e2e/versions.test.ts`, **012 failure path: version upload cannot discard input before hydration**. This final regression selects a real file before hydration and expects a successful publish after scripts resume; it failed before frontend fix `e5fc818` and now passes in the Compose re-test. The initial real browser journey reproduced the original issue without injected delay.
+  - Verified fixed on 2026-11-09 by the Compose regression and both valid/oversized pre-hydration component regressions. No blocker/major findings or durable bugs exist; QA has not changed application code.
+
+- [x] QA test strict-locator and virtual-clock races (minor, tests only): nested Scalar `main` elements caused strict-mode violations; the timeout sometimes advanced before hydration started the request. Scope to `#main` and wait for the intercepted apps request before advancing time; all six failure cases pass in the final full run.
+- [x] QA shared-fixture isolation (minor, tests only): rate-limit exhaustion returned 429 to later try-it requests, and hydration publication on the sample changed its title/version layout on rerun. Reset the server budget in the rate-limit test's `finally` and publish hydration versions on an isolated API; the final full run passes all badge and version checks.
+- [x] QA Kong route readiness (minor, tests only): a freshly created route returned 404 `no Route matched with those values` before workers observed it. Poll a real authenticated gateway call before the browser journey; the browser still requires 200 on both stable version pages and passes in the full run.
 
 
 ## User testing  _(user-tester)_
