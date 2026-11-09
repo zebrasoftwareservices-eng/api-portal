@@ -632,6 +632,7 @@ Reproduction: run the fresh isolated Compose suite; in `apps/portal/e2e/journeys
 - [x] JSO-404 Protected-route recipe needs `curl`, which the Kong image lacks (minor)
 - [ ] JSO-405 Import form disappears on first load when Kong is down (minor): reproduced 2026-11-08, retest screenshot `14`; retry recovers
 - [x] (Linear issue pending: workspace quota) JSO-405 e2e test asserted the alert before test.fail, failing CI compose-smoke on PR #8 (minor): fixed in d86396a
+- [x] (Linear issue pending: workspace quota) compose-smoke exceeded its 10-minute job limit after PR #8 (minor): limit raised to 20 minutes and expected-failure waits shortened in 7ff553b
 - [ ] JSO-406 Redundant "Connect a Kong" heading on the wizard gateway step (minor): reproduced 2026-11-08, retest screenshot `02`
 
 ## User testing  _(user-tester)_
