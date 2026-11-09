@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type APIRequestContext } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 
 const mailpit = process.env.MAILPIT_URL ?? 'http://localhost:8025';
 const kong = process.env.KONG_ADMIN_URL ?? 'http://localhost:8001';
@@ -28,6 +29,111 @@ const compose = (...args: string[]) =>
     ],
     { encoding: 'utf8' },
   );
+
+test('007 review blockers: noncanonical sign-ins share limits and parallel sign-ins finish', async ({
+  request,
+}) => {
+  const email = `review-path-${randomUUID()}@example.com`;
+  const data = { email, password: 'incorrect-password' };
+  const paths = [
+    '/api/auth/sign-in/email',
+    '/api/auth/sign-in//email',
+    '/api/auth//sign-in/email',
+    '/api/auth/sign-in/email/',
+  ];
+  for (let index = 0; index < 10; index++) {
+    const failed = await request.post(paths[index % paths.length]!, { data });
+    expect(failed.status()).toBe(401);
+  }
+  for (const path of paths) {
+    const blocked = await request.post(path, { data });
+    expect(blocked.status()).toBe(429);
+    expect(blocked.headers()['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(Number(blocked.headers()['retry-after'])).toBeGreaterThan(0);
+  }
+  for (const shared of [true, false]) {
+    const batch = randomUUID();
+    const responses = await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        request.post('/api/auth/sign-in/email', {
+          data: {
+            email: `review-pool-${batch}-${shared ? 0 : index}@example.com`,
+            password: 'incorrect-password',
+          },
+          timeout: 20000,
+        }),
+      ),
+    );
+    expect(responses.filter((r) => r.status() === 401)).toHaveLength(
+      shared ? 10 : 12,
+    );
+    expect(responses.filter((r) => r.status() === 429)).toHaveLength(
+      shared ? 2 : 0,
+    );
+    expect(
+      (await request.get('/api/v1/health', { timeout: 5000 })).status(),
+    ).toBe(200);
+  }
+});
+
+test('007 U1: removing saved SMTP settings clears the saved-source test result', async ({
+  page,
+  context,
+}) => {
+  expect(
+    (
+      await signin(context.request, 'admin@example.com', 'change-me-now')
+    ).status(),
+  ).toBe(200);
+  const saved = {
+    host: 'mailpit',
+    port: 1025,
+    security: 'none',
+    username: '',
+    senderName: 'Security QA',
+    senderAddress: 'qa@example.com',
+  };
+  try {
+    expect(
+      (
+        await context.request.put('/api/v1/admin/settings/mail', {
+          data: saved,
+        })
+      ).status(),
+    ).toBe(200);
+    await page.goto('/admin/settings/mail');
+    await page
+      .getByRole('button', { name: 'Send test email', exact: true })
+      .click();
+    await expect(
+      page.getByText(/Test email sent .* using the saved settings/),
+    ).toBeVisible();
+    await page
+      .getByRole('button', { name: 'Remove saved settings', exact: true })
+      .click();
+    await page
+      .getByRole('button', { name: 'Remove settings', exact: true })
+      .click();
+    await expect(
+      page.getByText("ⓘ Portal email uses the server's environment settings", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    // Known transient minor U1: an unexpected pass means this marker can be removed.
+    // Mark only the final defect assertion, so setup or removal failures remain real failures.
+    test.fail(
+      true,
+      'U1: removing saved settings leaves the old test result visible',
+    );
+    await expect(
+      page.getByText(/Test email sent .* using the saved settings/),
+    ).toHaveCount(0);
+  } finally {
+    await context.request.delete('/api/v1/admin/settings/mail');
+  }
+});
 async function signup(request: APIRequestContext, email: string) {
   const result = await request.post('/api/auth/sign-up/email', {
     data: { email, name: 'Security QA', password },

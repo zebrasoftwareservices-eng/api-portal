@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -462,14 +462,15 @@ No new tokens; one shadcn component (`Switch`) and a few small portal components
 
 ## Test report  _(qa-tester)_
 
-QA date: 2026-11-08. Re-test after backend fix `eb27aea`. Real fresh Compose project `qa007r2` uses Postgres 17, Kong 3.9 and
+QA re-test date: 2026-11-09, after backend review fixes `3ce5597`. The current fresh Compose project
+`qa007r3` uses Postgres 17, Kong 3.9 and
 Mailpit v1.27.10, with separate host ports (portal 13000, server 14000, proxy 18000,
 Kong Admin 18001, Mailpit 18025) because another worktree owns the default ports.
 Only tests and this spec changed; application code was not modified.
 
 | Criterion | Automated test file / case | Result |
 | --- | --- | --- |
-| AC 1 — fresh quickstart, environment SMTP, signup delivery within 30 s, verify link/profile and source banner | `apps/portal/e2e/account-security.test.ts`: `007 AC1/3`, `007 admin settings browser`; `deploy/e2e/quickstart.spec.ts` | PASS. Fresh-volume build/start and healthy portal completed in 109.80 s; Mailpit is polled with a 30 s deadline. |
+| AC 1 — fresh quickstart, environment SMTP, signup delivery within 30 s, verify link/profile and source banner | `apps/portal/e2e/account-security.test.ts`: `007 AC1/3`, `007 admin settings browser`; `deploy/e2e/quickstart.spec.ts` | PASS. Current fresh-volume build/start and healthy portal completed in 249.19 s; Mailpit is polled with a 30 s deadline. |
 | AC 2 — saved settings precedence/sender, encrypted write-only password, bounded SMTP unreachable/auth errors, no secrets | `apps/portal/e2e/account-security.test.ts`: `007 AC2/8`, `007 security`; `apps/server/src/account-security.test.ts`: encrypted SMTP and queue cases; `apps/server/src/mail/transport.test.ts` | PASS. B1 reset-token log regression now passes against the rebuilt server; real SMTP auth/unreachable errors, saved sender precedence, encryption and queue/log SMTP-password checks pass. |
 | AC 3 — default-off, upgrade/bootstrap verified, UI/API gate and no app writes, succeeds after verification, no-mail refusal | `apps/portal/e2e/account-security.test.ts`: `007 AC1/3`; `apps/server/src/account-security.test.ts`: app/key guards and mail-less prerequisite; `packages/db/src/migrate.test.ts`: v0.2 upgrade | PASS. Real gated creation returns 403 problem+json and no app; verified creation succeeds against Kong. |
 | AC 4 — browser reset, new/old password, other sessions revoked, unknown-address parity/no email | `apps/portal/e2e/account-security.test.ts`: `007 AC4/5/6/7`, `007 AC4/5`; `apps/server/src/account-security.test.ts`: reset revocation and known/unknown parity | PASS. Lifecycle, session revocation, unknown-address parity/no mail and reset-token log confidentiality all pass. |
@@ -522,7 +523,58 @@ Only tests and this spec changed; application code was not modified.
   `/tmp/007-qa-retest-compose.log` (rebuild), `/tmp/007-qa-retest-fresh-compose.log` (timed fresh
   quickstart), `/tmp/007-qa-retest-e2e.log` (browser suite). No application code changed.
 
+### Review-fix QA re-test — 2026-11-09
+
+- `pnpm lint`: PASS (7 tasks); `pnpm typecheck`: PASS (12 tasks).
+- `pnpm test --force`: PASS, 12/12 tasks, no cache, 2m26.679s; 81 server,
+  134 portal, 39 Kong adapter and 2 database tests. The first resumed run failed only because
+  the new QA session-preservation assertion used `/v1/me` instead of `/api/v1/me`;
+  the test route was corrected and the complete uncached suite rerun successfully.
+- `pnpm test:e2e`: exit 0, **51 passed (2.1m)** as classified by Playwright: 50 normal
+  passes plus the known U1 expected failure. Every AC 1–9 journey, both review-blocker HTTP
+  regressions, the first-call journey and all Scalar response variants pass. Command:
+  `PORTAL_PUBLIC_URL=http://localhost:13000 KONG_PROXY_PUBLIC_URL=http://localhost:18000
+  KONG_ADMIN_URL=http://localhost:18001 SERVER_URL=http://localhost:14000
+  MAILPIT_URL=http://localhost:18025 QA_COMPOSE_PROJECT=qa007r3
+  QA_COMPOSE_OVERRIDE=/tmp/007-qa-r3-compose.yaml pnpm test:e2e`.
+  No retry was needed and no new intermittent failure was observed in this run.
+- Review blocking 1: PASS in real-Postgres integration for canonical, doubled-slash (both
+  placements) and trailing-slash sign-ins. Each variant consumes the same canonical limiter,
+  and the next request returns 429 problem+json with positive `Retry-After`.
+- Review blocking 2: PASS in real-Postgres integration for 12 simultaneous sign-ins sharing
+  an address and for 12 distinct addresses against the 10-connection pool. Each batch completes
+  within 20 seconds and a subsequent `select 1` succeeds. Added QA coverage for 12 concurrent
+  reset, verification and incorrect change-password requests: exactly 3 email requests are
+  admitted per batch (9 refused), and exactly 10 incorrect changes are admitted (2 refused).
+  The password-change batch preserves the session and original password.
+- Fresh quickstart: PASS, **249.19 seconds**, including `--build`, new `qa007r3` network and
+  database volume, all services healthy. Command:
+  `PORTAL_PUBLIC_URL=http://localhost:13000 KONG_PROXY_PUBLIC_URL=http://localhost:18000
+  /usr/bin/time -p docker compose -p qa007r3 -f deploy/docker-compose.yml
+  -f /tmp/007-qa-r3-compose.yaml up --build -d --wait`.
+  The override changes only image names and exposed host ports. No other stack was modified.
+- Evidence: `/tmp/007-qa-resume-lint.log`, `/tmp/007-qa-resume-types.log`,
+  `/tmp/007-qa-resume-tests.log` (test typo), `/tmp/007-qa-resume-tests-final.log` (full pass),
+  `/tmp/007-qa-resume-compose.log`, `/tmp/007-qa-resume-e2e.log`.
+  Existing commands/evidence above are retained as historical QA runs.
+- B1 re-test: PASS on the rebuilt server; opening the Mailpit reset link does not place its
+  bearer token in request logs. B2/B3 (the two review blockers) are verified fixed below.
+- U1 re-test: still reproducible in the browser. The added `007 U1` regression marks only its
+  final stale-result assertion as an expected failure; setup, test-mail delivery and settings
+  removal must succeed normally. This is an open minor, not an acceptance-criterion failure.
+- No blocker or major remains open, so status is `uat`. The remaining tech-lead suggestions
+  stay in Review for the coordinator/re-review decision; this QA pass does not approve them.
+
 ### Bugs
+
+- [x] **B2 — Noncanonical sign-in paths bypass the failure limit (Review blocking 1, backend).**
+  Fixed in `3ce5597`. QA verified canonical, both doubled-slash placements and trailing-slash
+  paths consume the same limit in Postgres integration and through the Compose portal HTTP
+  routes; each variant returns 429 problem+json with `Retry-After` after the shared budget.
+- [x] **B3 — Concurrent auth requests exhaust the database pool (Review blocking 2, backend).**
+  Fixed in `3ce5597`. QA verified batches larger than the 10-connection pool complete for shared
+  and distinct sign-in addresses, followed by a successful pool query and Compose health check.
+  Added reset, verification and wrong-current-password concurrency coverage also passes.
 
 - [x] **B1 — Password-reset bearer token is written to server request logs (major, backend).**
   Sign up, request a reset, read the email from Mailpit and open its link without submitting a
@@ -545,7 +597,9 @@ Only tests and this spec changed; application code was not modified.
   still says the message used the saved settings. Expected: clear the old result when the effective
   source changes, or update it so the page does not present contradictory current states. Evidence:
   `docs/uat/007/run-2026-11-09-final/23-stale-saved-test-result.png`. This does not block a journey;
-  it remains a transient in-spec minor finding with no Linear issue.
+  it remains a transient in-spec minor finding with no Linear issue. QA reproduced it on
+  2026-11-09 against rebuilt `qa007r3`; automated case `007 U1` fails its final zero-stale-result
+  assertion as expected while the preceding successful send and source/removal assertions pass.
 
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |

@@ -340,6 +340,71 @@ it('serializes concurrent reset requests and expires old hits and email changes'
   await housekeeping(connection.db);
   expect(await connection.db.select().from(rateLimitHits)).toHaveLength(0);
 });
+it.each(['request-password-reset', 'send-verification-email'])(
+  'finishes 12 simultaneous %s requests without exhausting the pool or over-sending',
+  async (route) => {
+    const person = await signup();
+    queued.length = 0;
+    const responses = await Promise.all(
+      Array.from({ length: 12 }, () =>
+        request('POST', `/api/auth/${route}`, {
+          email: person.email,
+          redirectTo: '/reset-password',
+          callbackURL: '/profile',
+        }),
+      ),
+    );
+    expect(responses.filter((r) => r.statusCode === 200)).toHaveLength(3);
+    const refused = responses.filter((r) => r.statusCode === 429);
+    expect(refused).toHaveLength(9);
+    for (const response of refused) {
+      expect(response.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(Number(response.headers['retry-after'])).toBeGreaterThan(0);
+    }
+    expect(queued).toHaveLength(3);
+    expect(await connection.db.select().from(rateLimitHits)).toHaveLength(3);
+    expect(await connection.client`select 1 as alive`).toMatchObject([
+      { alive: 1 },
+    ]);
+  },
+  20000,
+);
+it('finishes 12 simultaneous incorrect password changes and preserves the password and session', async () => {
+  const person = await signup();
+  const responses = await Promise.all(
+    Array.from({ length: 12 }, () =>
+      request(
+        'POST',
+        '/api/auth/change-password',
+        {
+          currentPassword: 'wrong-password',
+          newPassword: 'Must-not-change-123',
+        },
+        person.cookie,
+      ),
+    ),
+  );
+  expect(
+    responses.filter((r) => r.json().code === 'INVALID_PASSWORD'),
+  ).toHaveLength(10);
+  expect(responses.filter((r) => r.statusCode === 429)).toHaveLength(2);
+  expect(await connection.db.select().from(rateLimitHits)).toHaveLength(10);
+  expect(
+    (await request('GET', '/api/v1/me', undefined, person.cookie)).statusCode,
+  ).toBe(200);
+  // Clear the exhausted limiter, then prove no concurrent attempt changed the password.
+  await connection.client`truncate rate_limit_hits`;
+  expect(
+    (
+      await request('POST', '/api/auth/sign-in/email', {
+        email: person.email,
+        password: 'password123',
+      })
+    ).statusCode,
+  ).toBe(200);
+}, 20000);
 it('forces password changes to revoke other sessions and counts incorrect passwords', async () => {
   const person = await signup();
   await request('POST', '/api/auth/sign-in/email', {
