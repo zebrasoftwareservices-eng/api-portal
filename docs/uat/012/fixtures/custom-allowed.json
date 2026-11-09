@@ -1,0 +1,46 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Orders API",
+    "version": "custom-allowed"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000/sample"
+    }
+  ],
+  "paths": {
+    "/orders": {
+      "get": {
+        "operationId": "listOrders",
+        "responses": {
+          "200": {
+            "description": "Orders"
+          }
+        },
+        "description": "User acceptance fixture operation."
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "operationId": "listOrders",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "An order"
+          }
+        },
+        "description": "User acceptance fixture operation."
+      }
+    }
+  }
+}

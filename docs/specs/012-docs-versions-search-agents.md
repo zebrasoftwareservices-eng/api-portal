@@ -1,7 +1,7 @@
 ---
 id: 012
 title: API versions and changelog, and spec linting
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-240
@@ -503,9 +503,30 @@ QA run (2026-11-08/09): tests reused from the interrupted QA worker and reviewed
 - [x] QA Kong route readiness (minor, tests only): a freshly created route returned 404 `no Route matched with those values` before workers observed it. Poll a real authenticated gateway call before the browser journey; the browser still requires 200 on both stable version pages and passes in the full run.
 
 
+- [ ] UAT-012-01 Published versions containing `+` open **Version not found** (major, frontend; durable Bug deferred because Linear rejected creation at its free issue limit).
+  - Repro: publish `docs/uat/012/fixtures/1.0.0+build.1.json` on `/admin/apis/sample` with the non-default checkbox selected; follow **View version 1.0.0+build.1**. The 201-success/table lists the version, but `/apis/sample/versions/1.0.0%2Bbuild.1` says the API has no version `1.0.0%2Bbuild.1`; refresh reproduces at 1280×900 and 390×844.
+  - Expected: a published, accepted version with an allowed `+` name has a working stable reference. Evidence: `docs/uat/012/17-plus-version-not-found.png`, `docs/uat/012/browser-log.jsonl`; full report: `docs/uat/012/README.md`.
+  - Intended Linear issue: **UAT: published versions containing + open Version not found**, parent **JSO-240**, team **JSO**, label **Bug**, priority **High**, state **Todo**. Create once workspace capacity returns; the attempted write returned **Usage limit exceeded**.
+  - [ ] Fix: resolve encoded accepted version names to the published document; browser re-test the admin table, switcher and changelog entry links, including refresh.
+- [ ] Duplicate-version alert heading exposes “api version exists” (minor copy, current frontend loop; no separate issue). Steps: upload 2.0.0 twice on the version form; expected plain-language heading, actual lowercase problem identifier words above a helpful explanation. Evidence: `docs/uat/012/12-duplicate-refused.png` (390×844); refusal itself works and preserves published data.
+
+
 ## User testing  _(user-tester)_
+
+UAT completed in Orca’s built-in browser on 2026-11-09 against fresh Compose with real Kong/Postgres. Startup using existing images took **15.20 seconds**. Desktop 1280×900 and mobile 390×844, keyboard navigation, browser console/network checks, wrong/empty input, duplicate refusal, refresh/back, signed-out and developer permissions, custom/missing/invalid rulesets, signup/app/key and a real older-reference 200 call are recorded in [the UAT report](../uat/012/README.md) and `docs/uat/012/browser-log.jsonl`.
+
 | User story | Result | Screenshot |
 | --- | --- | --- |
+| Admin imports a new version of one API | PASS (numeric versions, single catalog entry/service) | `docs/uat/012/02-v2-published.png` |
+| Admin patches an older version without changing default | PASS (1.1.0 non-default; 1.2.0 default when opt-out cleared) | `docs/uat/012/21-custom-replaces-default.png`; browser log records both patch flows |
+| Admin chooses any version as latest | PASS (set 2.0.0 back to latest, public default updated) | `docs/uat/012/26-switcher-mobile.png`; browser log |
+| Admin writes notes and gets a useful change summary | PASS (note/date, POST added, GET removed/breaking) | `docs/uat/012/10-changelog-desktop.png`, `09-changelog-mobile.png` |
+| Admin gets actionable lint refusals | PASS (all three error cases separately, both forms, no bad rows) | `docs/uat/012/13-duplicate-operation-error-mobile.png`, `14-unresolved-ref-error-mobile.png`, `15-parameter-error-mobile.png`, `19-new-api-lint-refused.png` |
+| Admin can publish warning-only documents | PASS (published, collapsed warning count, keyboard expansion and locations) | `docs/uat/012/03-warnings-expanded.png` |
+| Operator replaces the lint ruleset | PASS (custom error blocks; absent default rule permits; missing/invalid files pause imports) | `docs/uat/012/20-custom-ruleset-refusal.png`, `21-custom-replaces-default.png`, `22-missing-ruleset-banner.png`, `25-invalid-ruleset-banner.png` |
+| Developer switches versions and reads changelog | FAIL for accepted `+` version names; numeric links, older notice, changelog, keyboard and mobile work | `docs/uat/012/17-plus-version-not-found.png`, `08-older-version-mobile.png`, `26-switcher-mobile.png`, `32-older-version-try-it-200.png` |
+
+**Outcome: building.** One major finding and one minor heading-copy issue are open in Bugs. Linear refused the required durable Bug because the workspace hit its free issue limit; its intended title/parent/label/priority are preserved in Bugs and the report for creation when capacity returns. Incoming Bugs had no open items; the previously fixed pre-hydration issue stays closed based on QA’s passing deterministic re-test (normal uploads succeeded during UAT). Scale-3 Orca captures tiled pixels, so those artifacts were discarded and screenshots retaken at scale 1; no portal layout defect was inferred from them. No application code or automated tests changed, and no approval gate was passed.
 
 ## Review  _(tech-lead)_
 

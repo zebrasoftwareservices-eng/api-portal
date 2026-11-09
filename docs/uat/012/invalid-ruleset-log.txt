@@ -1,0 +1,1 @@
+server-1  | {"level":50,"time":1794210079217,"pid":1,"hostname":"04010931d0d3","lint":{"ruleset":"custom","path":"/etc/portal/uat012-invalid.yaml","status":"error","error":"/etc/portal/uat012-invalid.yaml: Invalid ruleset provided"},"msg":"Lint ruleset unavailable"}
