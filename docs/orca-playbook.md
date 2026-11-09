@@ -6,18 +6,17 @@ Orca **worker**, in that spec's own worktree, on the agent `factory.config.json`
 | Role | Agent | Subscription it uses |
 | --- | --- | --- |
 | Coordinator, product-manager, tech-lead, ui-designer | Claude Code | Claude Pro |
-| backend-developer, frontend-developer, qa-tester | Codex | ChatGPT Pro |
-| user-tester | Antigravity (Gemini 3.8 Flash, High) | Google account (Antigravity Starter quota) |
+| backend-developer, frontend-developer, qa-tester, user-tester | Codex | ChatGPT Pro |
 
-Claude does the thinking and reviewing; Codex does the high-volume building and testing;
-Antigravity drives the browser for real-user testing, which keeps those long sessions off the
+Claude does the thinking and reviewing; Codex does the high-volume building and testing,
+including real-user testing in the browser, which keeps those long sessions off the
 Claude allowance.
 Code is always reviewed by a different model from the one that wrote it.
 Change any role's agent in `factory.config.json` (`"claude"`, `"codex"` or `"antigravity"`), for example
 when one subscription hits its usage limit. Add `"model"` and `"effort"` to a role to pin them.
 The Codex roles are pinned to `gpt-6.1-sol`, the Codex coding model on ChatGPT Pro
-(see *When a worker fails*). The user-tester is pinned to `gemini-3.8-flash-high`; run
-`agy models` to see the models your Google account offers.
+(see *When a worker fails*). Antigravity (`"antigravity"`) is still supported if you set it for a role;
+run `agy models` to see the models your Google account offers.
 
 ## One-time setup
 1. Open Orca, then in a terminal run:
@@ -97,7 +96,7 @@ Resume after a stop (gate, limit, restart): open the spec's worktree in Orca, st
 Code and type `/factory 001` (Codex: `$factory 001`).
 
 ## Real-user testing in the browser
-After QA's automated tests pass, the **user-tester** (Antigravity) starts the quickstart and uses
+After QA's automated tests pass, the **user-tester** (Codex) starts the quickstart and uses
 the portal in Orca's built-in browser like a real developer: sign up, read the docs, create an
 app, copy the key, try a call, revoke it. It also checks mobile size, keyboard use, error states
 and console errors, and saves screenshots in `docs/uat/<spec-id>/`. It records every problem in
@@ -138,7 +137,7 @@ Paste it into any agent tab in that worktree (Orca: new tab → Claude Code or C
 | designed | ui-designer: UX (skipped if no UI tasks) | Claude | status: building |
 | building | backend + frontend in parallel once the monorepo exists | Codex | all build tasks ticked → testing |
 | testing | qa-tester: automated tests | Codex | status: uat (or back to building) |
-| uat | user-tester: real-user testing in Orca's browser | Antigravity | status: review (or back to building) |
+| uat | user-tester: real-user testing in Orca's browser | Codex | status: review (or back to building) |
 | review | tech-lead: code review | Claude | status: approved (or back to building) |
 | approved | **Elango merges** | — | status: done |
 
