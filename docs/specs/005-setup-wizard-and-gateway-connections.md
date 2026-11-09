@@ -497,6 +497,8 @@ Full design: [docs/design/005-setup-wizard-and-gateway-connections.md](../design
 
 ## Test report  _(qa-tester)_
 
+**Post-merge JSO-405 test correction, 2026-11-08:** commit `d86396a` moves the expected-failure declaration to the start of the test, before the alert assertion that failed CI compose-smoke on PR #8. All assertions and the Kong stop/start `try/finally` remain intact. `pnpm lint` passes **7/7 tasks** and `pnpm typecheck` passes **12/12 tasks**. Local e2e was **not run**: the coordinator confirmed Docker was in use by spec 012 user testing and explicitly authorized deferring this run. The PR CI `compose-smoke` job runs `setup-gateways.test.ts` and is the verification for this change; its result is pending.
+
 **QA decision: `uat` after the fourth QA pass, 2026-11-08.** No blocker or major remains open. The B1 packaging revert matches `origin/main` for the server Dockerfile, workspace/lockfile settings and all four package manifests; the restored reconcile imports run successfully in the live AC 6 case. Five-minute acceptance follows tech-lead ruling 2: quiet unchanged-branch **103s / 126s** and main **102s / 131s** measurements show no regression; no further cold benchmark was required or run. Historical measurements below are retained as evidence of earlier passes, not measurements of the final reverted packaging.
 
 **Fourth QA pass — B1 revert and asynchronous AC 6 log assertion.** The coordinator narrowed this pass to the packaging revert and the diagnosed test race; the existing acceptance-criterion map and previous upgrade/demo evidence stand. Updated only `apps/portal/e2e/gateway.ts`: poll the existing 30-second server-log view for `gateway unavailable` for at most 30 seconds before checking that the credential key and password are absent. All other assertions remain intact; the live AC 6 case passes in **12.0s**, including the restored `/app/packages/db` and `/app/apps/server` reconcile imports, unchanged database snapshot, repaired ACL membership and Kong 200.
@@ -629,6 +631,7 @@ Reproduction: run the fresh isolated Compose suite; in `apps/portal/e2e/journeys
 - [x] JSO-403 Setup token hint does not match the log line (minor)
 - [x] JSO-404 Protected-route recipe needs `curl`, which the Kong image lacks (minor)
 - [ ] JSO-405 Import form disappears on first load when Kong is down (minor): reproduced 2026-11-08, retest screenshot `14`; retry recovers
+- [x] (Linear issue pending: workspace quota) JSO-405 e2e test asserted the alert before test.fail, failing CI compose-smoke on PR #8 (minor): fixed in d86396a
 - [ ] JSO-406 Redundant "Connect a Kong" heading on the wizard gateway step (minor): reproduced 2026-11-08, retest screenshot `02`
 
 ## User testing  _(user-tester)_
