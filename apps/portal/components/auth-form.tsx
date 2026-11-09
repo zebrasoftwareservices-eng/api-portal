@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Card, Input } from '@portal/ui';
-import { auth } from '../lib/client';
+import { api, auth } from '../lib/client';
 import { safeNext, signInLink, signUpLink } from '../lib/navigation';
 import { Field, focusInvalid } from './field';
 export function AuthForm({
@@ -117,7 +117,17 @@ export function AuthForm({
                     : "We couldn't sign you in. Try again.",
                 );
             } else {
-              router.replace(safeNext(next));
+              let destination = safeNext(next);
+              if (!next && !signup) {
+                // Better Auth's sign-in response omits the portal role.
+                const { data: user } = await api.GET('/v1/me');
+                if (user?.role === 'admin') {
+                  const { data } = await api.GET('/v1/admin/gateways');
+                  if (data && !data.items.length)
+                    destination = '/setup/gateway';
+                }
+              }
+              router.replace(destination);
               router.refresh();
             }
           } catch {

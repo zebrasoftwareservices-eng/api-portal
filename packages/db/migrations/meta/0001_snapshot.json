@@ -1,182 +1,9 @@
 {
-  "id": "4cef553f-aa0d-4b94-990e-86a3b2cd706f",
+  "id": "1dd40975-b13a-488f-a4d8-a336f2fb0d09",
   "prevId": "3ca65ca3-ba0c-46dd-872f-65b8c3361c23",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.api_versions": {
-      "name": "api_versions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "api_id": {
-          "name": "api_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "document": {
-          "name": "document",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_url": {
-          "name": "source_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_content": {
-          "name": "source_content",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_format": {
-          "name": "source_format",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "release_note": {
-          "name": "release_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "change_summary": {
-          "name": "change_summary",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "lint_warnings": {
-          "name": "lint_warnings",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "published_at": {
-          "name": "published_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "api_version_unique": {
-          "name": "api_version_unique",
-          "columns": [
-            {
-              "expression": "api_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "version",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "api_version_id_unique": {
-          "name": "api_version_id_unique",
-          "columns": [
-            {
-              "expression": "api_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "api_versions_api_id_apis_id_fk": {
-          "name": "api_versions_api_id_apis_id_fk",
-          "tableFrom": "api_versions",
-          "tableTo": "apis",
-          "columnsFrom": [
-            "api_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "api_versions_created_by_user_id_fk": {
-          "name": "api_versions_created_by_user_id_fk",
-          "tableFrom": "api_versions",
-          "tableTo": "user",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "api_version_source_format": {
-          "name": "api_version_source_format",
-          "value": "\"api_versions\".\"source_format\" in ('json', 'yaml')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.apis": {
       "name": "apis",
       "schema": "",
@@ -193,9 +20,21 @@
           "primaryKey": false,
           "notNull": true
         },
-        "latest_version_id": {
-          "name": "latest_version_id",
-          "type": "uuid",
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -222,6 +61,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "document": {
+          "name": "document",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_url": {
+          "name": "source_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_by": {
           "name": "created_by",
@@ -290,21 +141,6 @@
             "created_by"
           ],
           "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "api_latest_version_fk": {
-          "name": "api_latest_version_fk",
-          "tableFrom": "apis",
-          "tableTo": "api_versions",
-          "columnsFrom": [
-            "id",
-            "latest_version_id"
-          ],
-          "columnsTo": [
-            "api_id",
             "id"
           ],
           "onDelete": "no action",
@@ -432,7 +268,7 @@
           "name": "gateway_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "kind": {
           "name": "kind",
@@ -514,7 +350,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -522,6 +358,10 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "credential_active_has_gateway": {
+          "name": "credential_active_has_gateway",
+          "value": "\"credentials\".\"status\" <> 'active' or \"credentials\".\"gateway_id\" is not null"
+        },
         "credential_status_check": {
           "name": "credential_status_check",
           "value": "\"credentials\".\"status\" in ('active','revoked')"
@@ -618,7 +458,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -649,6 +489,20 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "managed_by": {
+          "name": "managed_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'admin'"
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
         },
         "admin_url": {
           "name": "admin_url",
@@ -689,7 +543,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "gateway_singleton": {
+          "name": "gateway_singleton",
+          "columns": [
+            {
+              "expression": "(1)",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
@@ -706,6 +576,10 @@
         "gateway_kind_check": {
           "name": "gateway_kind_check",
           "value": "\"gateways\".\"kind\" in ('kong')"
+        },
+        "gateway_managed_by_check": {
+          "name": "gateway_managed_by_check",
+          "value": "\"gateways\".\"managed_by\" in ('admin','env')"
         }
       },
       "isRLSEnabled": false

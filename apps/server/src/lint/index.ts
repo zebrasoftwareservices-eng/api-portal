@@ -131,6 +131,7 @@ export async function lintDocument(
       'openapi-lint-failed',
       'The OpenAPI document has lint errors.',
       errors.slice(0, 100),
+      undefined,
       errors.length,
     );
   return findings.slice(0, 200);

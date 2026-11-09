@@ -5,6 +5,7 @@ import type { Problem } from '../lib/types';
 import { networkProblem } from '../lib/client';
 export function useResource<T>(
   load: () => Promise<{ data?: T; error?: Problem }>,
+  keepDataOnError = false,
 ) {
   const loader = useRef(load);
   loader.current = load;
@@ -18,7 +19,7 @@ export function useResource<T>(
     try {
       const result = await loader.current();
       if (mounted.current) {
-        setData(result.data);
+        if (!result.error || !keepDataOnError) setData(result.data);
         setError(result.error);
       }
     } catch {
@@ -26,7 +27,7 @@ export function useResource<T>(
     } finally {
       if (mounted.current) setLoading(false);
     }
-  }, []);
+  }, [keepDataOnError]);
   useEffect(() => {
     mounted.current = true;
     void reload();

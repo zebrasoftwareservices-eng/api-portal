@@ -33,6 +33,15 @@ import { loadConfig } from './config.js';
 import { seedSample } from './seed.js';
 import { createAuth } from './auth.js';
 import { reconcile } from './reconcile.js';
+import { gatewayConnection } from './gateway-connection.js';
+const runtime = () =>
+  gatewayConnection(
+    connection.db,
+    loadConfig({}),
+    'test',
+    { error: () => {} },
+    () => adapter,
+  );
 let container: StartedPostgreSqlContainer;
 let connection: ReturnType<typeof connect>;
 let server: Awaited<ReturnType<typeof createApp>>['app'];
@@ -60,6 +69,8 @@ const adapter: GatewayAdapter = {
     plans: false,
     usage: false,
   }),
+  checkConnection: async () => ({ outcome: 'ok', version: '3.9.4' }),
+  checkProxy: async () => true,
   health: async () => ({ reachable: true, latencyMs: 1 }),
   listServices: async () => [
     {
@@ -76,6 +87,7 @@ const adapter: GatewayAdapter = {
     keyAuth: true,
   }),
   ensureConsumer: vi.fn(async (app) => {
+    if (owned.has(app.id)) return owned.get(app.id)!;
     const value = {
       id: uuidv7(),
       username: `portal-app-${app.id}`,
@@ -162,8 +174,7 @@ beforeAll(async () => {
   ({ app: server } = await createApp({
     db: connection.db,
     config: loadConfig({ DATABASE_URL: url }),
-    adapter,
-    gatewayId,
+    adapterFor: () => adapter,
     proxyFetch,
     logger: {
       stream: {
@@ -173,6 +184,11 @@ beforeAll(async () => {
       },
     },
   }));
+  await server.inject({
+    method: 'POST',
+    url: '/api/v1/setup/admin',
+    payload: { email: 'bootstrap@example.com', password: 'test-password-123' },
+  });
   const signup = await server.inject({
     method: 'POST',
     url: '/api/auth/sign-up/email',
@@ -703,7 +719,7 @@ info: {}`,
         (c) => c.id !== key.id,
       );
     const warn = vi.fn();
-    await reconcile(connection.db, adapter, { warn });
+    await reconcile(connection.db, runtime(), { warn });
     expect(owned.has(orphan)).toBe(false);
     expect(adapter.applyAccessPolicy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -729,7 +745,7 @@ info: {}`,
       .spyOn(adapter, 'listOwnedConsumers')
       .mockRejectedValueOnce(new GatewayUnavailableError());
     await expect(
-      reconcile(connection.db, adapter, { warn }),
+      reconcile(connection.db, runtime(), { warn }),
     ).rejects.toBeInstanceOf(GatewayUnavailableError);
     expect(await connection.db.select().from(apps)).toEqual(before.apps);
     expect(await connection.db.select().from(credentials)).toEqual(before.keys);
@@ -737,7 +753,7 @@ info: {}`,
       before.subscriptions,
     );
     list.mockRestore();
-    await reconcile(connection.db, adapter, { warn });
+    await reconcile(connection.db, runtime(), { warn });
     expect(adapter.applyAccessPolicy).toHaveBeenLastCalledWith(
       expect.objectContaining({
         apps: expect.arrayContaining(
@@ -762,8 +778,7 @@ info: {}`,
     const { app: fresh } = await createApp({
       db: connection.db,
       config,
-      adapter,
-      gatewayId,
+      adapterFor: () => adapter,
       proxyFetch: fetchGateway,
     });
     const id = uuidv7(),
@@ -1030,8 +1045,7 @@ describe('API versions and changelog', () => {
         const { app } = await createApp({
           db: connection.db,
           config: loadConfig({ PORTAL_LINT_RULESET: path }),
-          adapter,
-          gatewayId,
+          adapterFor: () => adapter,
           auth: createAuth(connection.db, loadConfig({})),
           logger: {
             stream: {
@@ -1273,8 +1287,7 @@ describe('API versions and changelog', () => {
       config: loadConfig({
         PORTAL_LINT_RULESET: '/missing/operator.spectral.yaml',
       }),
-      adapter,
-      gatewayId,
+      adapterFor: () => adapter,
       auth: createAuth(connection.db, loadConfig({})),
       logger: false,
     });

@@ -29,10 +29,25 @@ export function ProblemAlert({
     const timer = setTimeout(() => setRemaining((n) => n - 1), 1000);
     return () => clearTimeout(timer);
   }, [remaining]);
+  const code = problem.type.split('/').pop() || '';
+  const rawTitle =
+    problem.title === code || problem.title === code.replaceAll('-', ' ');
+  const friendlyTitles: Record<string, string> = {
+    validation: 'Check the highlighted fields and try again',
+    'gateway-unavailable': 'Gateway unavailable',
+    'gateway-rejected': 'The gateway rejected the request',
+  };
+  const heading =
+    title ||
+    (rawTitle ? friendlyTitles[code] || 'Something went wrong' : problem.title);
   return (
     <div className="alert error stack" role="alert" tabIndex={-1} ref={ref}>
-      <strong>⚠ {title || problem.title}</strong>
-      <div>{message || problem.detail || problem.title}</div>
+      <strong>⚠ {heading}</strong>
+      <div>
+        {message ||
+          problem.detail ||
+          'Try again, and if the problem continues, tell the portal admin.'}
+      </div>
       {onRetry && (
         <Button
           type="button"

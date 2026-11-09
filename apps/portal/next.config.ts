@@ -16,6 +16,7 @@ export default async function config(): Promise<NextConfig> {
       if (demo)
         return {
           beforeFiles: [
+            '/setup/:path*',
             '/sign-in',
             '/sign-up',
             '/dashboard/:path*',

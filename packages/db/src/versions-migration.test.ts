@@ -23,14 +23,25 @@ it('backfills populated spec 004 APIs, preserves subscriptions, and constrains l
     await client`insert into apis (id,slug,title,version,description,gateway_id,gateway_service_id,gateway_service_name,route_path,document,source_url,created_by) values (${api},'pets','Pets','1.0.0','Preserved',${gateway},'svc','pets','/pets','{"openapi":"3.0.3","info":{"title":"Pets","version":"1.0.0"},"paths":{}}','http://example.test/spec',${owner})`;
     await client`insert into apps (id,owner_id,name) values (${app},${owner},'App')`;
     await client`insert into subscriptions (id,app_id,api_id) values (${sub},${app},${api})`;
+    // Upgrade from main's spec 005 schema, preserving its gateway settings too.
+    await client.unsafe(
+      await readFile(
+        new URL('../migrations/0001_gateway_connections.sql', import.meta.url),
+        'utf8',
+      ),
+    );
+    await client`update gateways set enabled=false, managed_by='env'`;
     await client.begin(async (tx) => {
       await tx.unsafe(
         await readFile(
-          new URL('../migrations/0001_api_versions.sql', import.meta.url),
+          new URL('../migrations/0002_api_versions.sql', import.meta.url),
           'utf8',
         ),
       );
     });
+    expect(await client`select enabled,managed_by from gateways`).toEqual([
+      { enabled: false, managed_by: 'env' },
+    ]);
     const [row] =
       await client`select a.id,a.latest_version_id,v.*,s.id as subscription_id from apis a join api_versions v on a.latest_version_id=v.id join subscriptions s on s.api_id=a.id`;
     expect(row).toMatchObject({

@@ -1,0 +1,44 @@
+{
+  "id": "34082441-e819-4b0b-ab8a-38a0cedd3e76",
+  "ok": true,
+  "result": {
+    "entries": [
+      {
+        "level": "info",
+        "text": "loadDocument: 18 ms"
+      },
+      {
+        "level": "info",
+        "text": "deepClone: 0 ms"
+      },
+      {
+        "level": "info",
+        "text": "initialize: 0 ms"
+      },
+      {
+        "level": "info",
+        "text": "upgrade: 0 ms"
+      },
+      {
+        "level": "info",
+        "text": "bundle: 0 ms"
+      },
+      {
+        "level": "info",
+        "text": "coerceValue: 0 ms"
+      },
+      {
+        "level": "info",
+        "text": "mergeObjects: 0 ms"
+      },
+      {
+        "level": "info",
+        "text": "addDocument: 35 ms"
+      }
+    ],
+    "truncated": false
+  },
+  "_meta": {
+    "runtimeId": "51e7026c-039b-4fc7-9b15-17880aae2ae7"
+  }
+}

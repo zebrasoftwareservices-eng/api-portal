@@ -8,3 +8,7 @@ export type IssuedCredential = components['schemas']['IssuedCredential'];
 export type Problem = components['schemas']['Problem'];
 export type User = components['schemas']['User'];
 export type GatewayService = components['schemas']['GatewayService'];
+
+export type Gateway = components['schemas']['Gateway'];
+export type GatewayUrls = components['schemas']['GatewayUrls'];
+export type Health = components['schemas']['Health'];

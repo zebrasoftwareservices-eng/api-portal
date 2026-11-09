@@ -21,19 +21,29 @@ const envSchema = z.object({
   PORTAL_LINT_RULESET: z.string().optional(),
   PORTAL_PROXY_HOST: z.string().min(1).default('localhost'),
   PORTAL_PUBLIC_URL: z.url().default('http://localhost:3000'),
-  KONG_ADMIN_URL: z.url().default('http://localhost:8001'),
+  KONG_ADMIN_URL: z.url().optional(),
+  PORTAL_BUNDLED_KONG_ADMIN_URL: z.url().optional(),
   KONG_ADMIN_TOKEN: z.string().optional(),
   KONG_PROXY_INTERNAL_URL: z.url().default('http://localhost:8000'),
   KONG_PROXY_PUBLIC_URL: z.url().default('http://localhost:8000'),
-  ADMIN_EMAIL: z.email().default('admin@example.com'),
-  ADMIN_PASSWORD: z.string().min(8).default('change-me-now'),
+  ADMIN_EMAIL: z.email().optional(),
+  ADMIN_PASSWORD: z.string().min(8).optional(),
   SEED_SAMPLE: z
     .enum(['true', 'false'])
-    .default('true')
+    .default('false')
     .transform((v) => v === 'true'),
 });
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
-  const c = envSchema.parse(env);
+  const c = envSchema.parse(
+    Object.fromEntries(
+      Object.entries(env).map(([key, value]) => [
+        key,
+        value === '' ? undefined : value,
+      ]),
+    ),
+  );
+  if (Boolean(c.ADMIN_EMAIL) !== Boolean(c.ADMIN_PASSWORD))
+    throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD must be set together.');
   if (
     c.NODE_ENV === 'production' &&
     (c.BETTER_AUTH_SECRET === DEV_AUTH_SECRET ||

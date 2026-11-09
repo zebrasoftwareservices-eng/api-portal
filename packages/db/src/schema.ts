@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   pgTable,
+  boolean,
   text,
   timestamp,
   uuid,
@@ -33,6 +34,8 @@ export const gateways = pgTable(
     id: uuid('id').primaryKey(),
     name: text('name').notNull().unique(),
     kind: text('kind').notNull(),
+    managedBy: text('managed_by').notNull().default('admin'),
+    enabled: boolean('enabled').notNull().default(true),
     adminUrl: text('admin_url').notNull(),
     adminTokenCiphertext: text('admin_token_ciphertext'),
     proxyPublicUrl: text('proxy_public_url').notNull(),
@@ -40,7 +43,11 @@ export const gateways = pgTable(
     createdAt: created(),
     updatedAt: updated(),
   },
-  (t) => [check('gateway_kind_check', sql`${t.kind} in ('kong')`)],
+  (t) => [
+    check('gateway_kind_check', sql`${t.kind} in ('kong')`),
+    check('gateway_managed_by_check', sql`${t.managedBy} in ('admin','env')`),
+    uniqueIndex('gateway_singleton').on(sql`(1)`),
+  ],
 );
 export const apis = pgTable(
   'apis',
@@ -134,7 +141,7 @@ export const gatewayConsumers = pgTable(
       .references(() => apps.id, { onDelete: 'cascade' }),
     gatewayId: uuid('gateway_id')
       .notNull()
-      .references(() => gateways.id),
+      .references(() => gateways.id, { onDelete: 'cascade' }),
     externalId: text('external_id').notNull(),
     username: text('username').notNull(),
     createdAt: created(),
@@ -148,9 +155,9 @@ export const credentials = pgTable(
     appId: uuid('app_id')
       .notNull()
       .references(() => apps.id, { onDelete: 'cascade' }),
-    gatewayId: uuid('gateway_id')
-      .notNull()
-      .references(() => gateways.id),
+    gatewayId: uuid('gateway_id').references(() => gateways.id, {
+      onDelete: 'set null',
+    }),
     kind: text('kind').notNull().default('api-key'),
     keyHint: text('key_hint').notNull(),
     status: text('status').notNull(),
@@ -158,6 +165,10 @@ export const credentials = pgTable(
     revokedAt: time('revoked_at'),
   },
   (t) => [
+    check(
+      'credential_active_has_gateway',
+      sql`${t.status} <> 'active' or ${t.gatewayId} is not null`,
+    ),
     check('credential_status_check', sql`${t.status} in ('active','revoked')`),
     index('credential_app_status_idx').on(t.appId, t.status),
   ],

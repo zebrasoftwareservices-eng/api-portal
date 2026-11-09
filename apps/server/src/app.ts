@@ -6,7 +6,8 @@ import {
   validatorCompiler,
 } from 'fastify-type-provider-zod';
 import type { Database } from '@portal/db';
-import type { GatewayAdapter } from '@portal/adapter-sdk';
+import { instanceSettings } from '@portal/db';
+import { gatewayConnection, type AdapterFor } from './gateway-connection.js';
 import type { Config } from './config.js';
 import { createAuth, headersFor, requireUser, type Auth } from './auth.js';
 import { problemHandler } from './problem.js';
@@ -15,18 +16,21 @@ import { registerVersions } from './versions.js';
 import { registerCatalog } from './catalog.js';
 import { registerImport } from './import.js';
 import { registerApps } from './apps.js';
+import { registerSetup } from './setup.js';
+import { registerGateways } from './gateways.js';
 import { registerProxy } from './proxy.js';
 export interface AppOptions {
   db: Database;
   config: Config;
-  adapter: GatewayAdapter;
-  gatewayId: string;
+  adapterFor?: AdapterFor;
+  setupToken?: string;
+  enqueueReconcile?: () => Promise<unknown>;
   auth?: Auth;
   logger?: FastifyServerOptions['logger'];
   proxyFetch?: typeof fetch;
 }
 export async function createApp(options: AppOptions) {
-  const { db, config, adapter, gatewayId } = options;
+  const { db, config } = options;
   const linter = await loadLinter(config.PORTAL_LINT_RULESET);
   const auth = options.auth ?? createAuth(db, config);
   const proxy = portalProxy(config.PORTAL_PROXY_HOST);
@@ -46,6 +50,10 @@ export async function createApp(options: AppOptions) {
                 'authorization',
                 'cookie',
                 'password',
+                'setupToken',
+                'adminToken',
+                '*.setupToken',
+                '*.adminToken',
                 'req.headers.apikey',
                 'req.headers.authorization',
                 'req.headers.cookie',
@@ -65,6 +73,15 @@ export async function createApp(options: AppOptions) {
   });
   if (linter.health.status === 'error')
     app.log.error({ lint: linter.health }, 'Lint ruleset unavailable');
+  const [instance] = await db.select().from(instanceSettings).limit(1);
+  if (!instance) throw new Error('Instance missing');
+  const connection = gatewayConnection(
+    db,
+    config,
+    instance.instanceId,
+    app.log,
+    options.adapterFor,
+  );
   app.addHook('onRequest', proxy.refresh);
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -96,22 +113,44 @@ export async function createApp(options: AppOptions) {
     return { id: user.id, email: user.email, name: user.name, role: user.role };
   });
   app.get('/api/v1/health', async () => {
-    const health = await adapter.health();
+    const gateway = await connection.load();
+    const health = gateway?.adapter
+      ? await gateway.adapter.health()
+      : { reachable: false };
     return {
       status: linter.health.status === 'error' ? 'degraded' : 'ok',
       lint: linter.health,
       version: '0.1.0',
-      gateway: {
-        kind: 'kong',
-        reachable: health.reachable,
-        ...(health.version ? { version: health.version } : {}),
-      },
+      gateway: gateway
+        ? {
+            kind: 'kong',
+            reachable: health.reachable,
+            ...('version' in health && health.version
+              ? { version: health.version }
+              : {}),
+          }
+        : null,
     };
   });
+  await registerSetup(
+    app,
+    db,
+    auth,
+    config.NODE_ENV === 'production',
+    options.setupToken,
+  );
+  await registerGateways(
+    app,
+    db,
+    auth,
+    connection,
+    instance.instanceId,
+    options.enqueueReconcile ?? (async () => {}),
+  );
   registerCatalog(app, db);
-  registerImport(app, db, auth, adapter, gatewayId, linter);
+  registerImport(app, db, auth, connection, linter);
   registerVersions(app, db, auth, linter);
-  registerApps(app, db, auth, adapter, gatewayId);
-  await registerProxy(app, db, adapter, options.proxyFetch);
+  registerApps(app, db, auth, connection);
+  await registerProxy(app, db, connection.adapterFor, options.proxyFetch);
   return { app, auth };
 }

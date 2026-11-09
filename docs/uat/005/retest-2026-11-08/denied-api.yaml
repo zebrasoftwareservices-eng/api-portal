@@ -1,0 +1,11 @@
+openapi: 3.0.3
+info:
+  title: UAT Denied API
+  version: 1.0.0
+paths:
+  /get:
+    get:
+      summary: Test a call
+      responses:
+        '200':
+          description: A successful call

@@ -10,6 +10,16 @@ export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const close = useRef<HTMLButtonElement>(null);
+  if (pathname === '/setup')
+    return (
+      <header className="site-header">
+        <div className="header-inner">
+          <a className="brand" href="/">
+            Developer Portal
+          </a>
+        </div>
+      </header>
+    );
   const links = (
     <>
       <a

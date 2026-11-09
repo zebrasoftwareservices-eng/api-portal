@@ -72,6 +72,12 @@ conformance(
   () => adapter,
   instanceId,
   () => ({
+    refused: () =>
+      new KongAdapter({
+        adminUrl: 'http://refused.test',
+        instanceId,
+        fetch: async () => new Response('', { status: 401 }),
+      }),
     serviceId: randomUUID(),
     memberships: async (appId) =>
       (await adapter.request<{
@@ -524,4 +530,317 @@ it('AC 8: partial grant failure compensates real consumer memberships and retry 
     ['portal-consumer', `portal-svc-${a.id}`, `portal-svc-${b.id}`].sort(),
   );
   await adapter.deleteConsumer(app);
+});
+
+it('AC 10: protected Admin API recipe isolates portal keys and allowlists, and exact-tag cleanup preserves operator objects', async () => {
+  const adminUrl = `http://${kong.getHost()}:${kong.getMappedPort(8001)}`;
+  const ownedInstance = randomUUID();
+  const tag = `portal-instance-${ownedInstance}`;
+  const owned = new KongAdapter({ adminUrl, instanceId: ownedInstance });
+  const serviceId = randomUUID();
+  const routeId = randomUUID();
+  const adminConsumer = randomUUID();
+  const token = randomUUID();
+  const portalApp = { id: randomUUID() };
+  const portalKey = randomUUID();
+  const path = `/qa-admin-${randomUUID()}`;
+  const operatorService = randomUUID();
+  const operatorPlugin = randomUUID();
+  let ipPlugin = '';
+  try {
+    await adapter.request(`/services/${serviceId}`, 'PUT', {
+      name: `admin-${serviceId}`,
+      url: 'http://127.0.0.1:8001',
+      tags: ['portal-internal'],
+    });
+    await adapter.request(`/routes/${routeId}`, 'PUT', {
+      service: { id: serviceId },
+      paths: [path],
+      strip_path: true,
+      tags: ['portal-internal'],
+    });
+    for (const [name, config] of [
+      ['key-auth', { key_names: ['Kong-Admin-Token'], hide_credentials: true }],
+      ['acl', { allow: ['kong-admin'], hide_groups_header: true }],
+      ['ip-restriction', { allow: ['0.0.0.0/0', '::/0'] }],
+    ] as const) {
+      const plugin = await adapter.request<{ id: string }>(
+        `/services/${serviceId}/plugins`,
+        'POST',
+        {
+          name,
+          config,
+          tags: ['portal-internal'],
+        },
+      );
+      if (name === 'ip-restriction') ipPlugin = plugin!.id;
+    }
+    await adapter.request(`/consumers/${adminConsumer}`, 'PUT', {
+      username: `admin-${adminConsumer}`,
+      tags: ['portal-internal'],
+    });
+    await adapter.request(`/consumers/${adminConsumer}/key-auth`, 'POST', {
+      key: token,
+      tags: ['portal-internal'],
+    });
+    await adapter.request(`/consumers/${adminConsumer}/acls`, 'POST', {
+      group: 'kong-admin',
+      tags: ['portal-internal'],
+    });
+    await owned.ensureConsumer(portalApp);
+    await owned.issueCredential(portalApp, {
+      id: randomUUID(),
+      key: portalKey,
+    });
+    const protectedAdapter = (adminToken?: string) =>
+      new KongAdapter({
+        adminUrl: proxy + path,
+        instanceId: ownedInstance,
+        adminToken,
+      });
+    await expect
+      .poll(() => protectedAdapter(token).checkConnection(), { timeout: 15000 })
+      .toMatchObject({ outcome: 'ok', version: expect.any(String) });
+    await expect
+      .poll(() => protectedAdapter('wrong').checkConnection(), {
+        timeout: 15000,
+      })
+      .toEqual({
+        outcome: 'refused',
+      });
+    await expect
+      .poll(() => protectedAdapter().checkConnection(), { timeout: 15000 })
+      .toEqual({
+        outcome: 'refused',
+      });
+    const portalStatus = async () =>
+      (
+        await fetch(proxy + path + '/', {
+          headers: { 'Kong-Admin-Token': portalKey },
+        })
+      ).status;
+    await expect.poll(portalStatus, { timeout: 15000 }).toBe(403);
+    expect((await owned.listServices()).some((s) => s.id === serviceId)).toBe(
+      false,
+    );
+    await adapter.request(`/plugins/${ipPlugin}`, 'PATCH', {
+      config: { allow: ['192.0.2.10/32'] },
+    });
+    await expect
+      .poll(
+        async () =>
+          (
+            await fetch(proxy + path + '/', {
+              headers: { 'Kong-Admin-Token': token },
+            })
+          ).status,
+        { timeout: 15000 },
+      )
+      .toBe(403);
+    await adapter.request(`/plugins/${ipPlugin}`, 'PATCH', {
+      config: { allow: ['0.0.0.0/0', '::/0'] },
+    });
+    // An operator key-auth service receives our tagged deny ACL, but is never deleted.
+    await adapter.request(`/services/${operatorService}`, 'PUT', {
+      name: `operator-${operatorService}`,
+      url: 'http://echo:8080',
+      tags: ['operator'],
+    });
+    await adapter.request(`/plugins/${operatorPlugin}`, 'PUT', {
+      name: 'key-auth',
+      service: { id: operatorService },
+      config: { hide_credentials: true },
+      tags: ['operator'],
+    });
+    await owned.applyAccessPolicy({
+      services: [],
+      apps: [{ app: portalApp, services: [] }],
+    });
+    const plugins = await adapter.request<{
+      data: {
+        id: string;
+        name: string;
+        tags: string[];
+        config: { deny?: string[] };
+      }[];
+    }>(`/plugins?tags=${tag}`);
+    expect(
+      plugins!.data.some(
+        (p) => p.name === 'acl' && p.config.deny?.includes('portal-consumer'),
+      ),
+    ).toBe(true);
+    // The recipe's independent ACL still blocks a portal key after reconciliation.
+    await expect.poll(portalStatus, { timeout: 15000 }).toBe(403);
+    for (const entity of ['plugins', 'consumers', 'routes', 'services']) {
+      const ids: string[] = [];
+      let next: string | null = `/${entity}?tags=${tag}&size=1`;
+      while (next) {
+        const page: {
+          data: { id: string; tags: string[] }[];
+          next: string | null;
+        } = (await adapter.request(next))!;
+        for (const item of page.data) {
+          expect(item.tags).toContain(tag);
+          ids.push(item.id);
+        }
+        next = page.next;
+      }
+      for (const id of ids) await adapter.request(`/${entity}/${id}`, 'DELETE');
+      expect(
+        (await adapter.request<{ data: unknown[] }>(`/${entity}?tags=${tag}`))!
+          .data,
+      ).toEqual([]);
+    }
+    expect(await adapter.request(`/services/${operatorService}`)).toMatchObject(
+      { id: operatorService },
+    );
+    expect(await adapter.request(`/plugins/${operatorPlugin}`)).toMatchObject({
+      id: operatorPlugin,
+    });
+    expect(await adapter.request(`/services/${serviceId}`)).toMatchObject({
+      tags: ['portal-internal'],
+    });
+    await expect
+      .poll(() => protectedAdapter(token).checkConnection(), { timeout: 15000 })
+      .toMatchObject({ outcome: 'ok' });
+  } finally {
+    await owned.deleteConsumer(portalApp);
+    for (const id of [serviceId, operatorService]) {
+      const plugins = await adapter.request<{ data: { id: string }[] }>(
+        `/services/${id}/plugins`,
+        'GET',
+        undefined,
+        true,
+      );
+      for (const p of plugins?.data ?? [])
+        await adapter.request(`/plugins/${p.id}`, 'DELETE');
+    }
+    await adapter.request(`/routes/${routeId}`, 'DELETE', undefined, true);
+    await adapter.request(`/services/${serviceId}`, 'DELETE', undefined, true);
+    await adapter.request(
+      `/services/${operatorService}`,
+      'DELETE',
+      undefined,
+      true,
+    );
+    await adapter.request(
+      `/consumers/${adminConsumer}`,
+      'DELETE',
+      undefined,
+      true,
+    );
+  }
+});
+
+it('AC 4: rejects a real DB-less Kong as read-only', async () => {
+  const dbless = await new GenericContainer('kong:3.9')
+    .withEnvironment({
+      KONG_DATABASE: 'off',
+      KONG_ADMIN_LISTEN: '0.0.0.0:8001',
+    })
+    .withExposedPorts(8001)
+    .withWaitStrategy(Wait.forHttp('/status', 8001))
+    .start();
+  try {
+    const candidate = new KongAdapter({
+      adminUrl: `http://${dbless.getHost()}:${dbless.getMappedPort(8001)}`,
+      instanceId,
+    });
+    expect(await candidate.checkConnection()).toEqual({ outcome: 'read-only' });
+  } finally {
+    await dbless.stop();
+  }
+});
+
+it('AC 7(e): two real Kongs expose missing consumers and new credentials work after repointing without copying old keys', async () => {
+  await postgres.exec([
+    'psql',
+    '-U',
+    'kong',
+    '-c',
+    'CREATE DATABASE kong_repoint',
+  ]);
+  const environment = {
+    KONG_DATABASE: 'postgres',
+    KONG_PG_HOST: 'postgres',
+    KONG_PG_USER: 'kong',
+    KONG_PG_PASSWORD: 'kong',
+    KONG_PG_DATABASE: 'kong_repoint',
+  };
+  const migration = await new GenericContainer('kong:3.9')
+    .withNetwork(network)
+    .withEnvironment(environment)
+    .withCommand(['kong', 'migrations', 'bootstrap'])
+    .withWaitStrategy(Wait.forOneShotStartup())
+    .start();
+  await migration.stop();
+  const second = await new GenericContainer('kong:3.9')
+    .withNetwork(network)
+    .withEnvironment({ ...environment, KONG_ADMIN_LISTEN: '0.0.0.0:8001' })
+    .withExposedPorts(8001, 8000)
+    .withWaitStrategy(Wait.forHttp('/status', 8001))
+    .start();
+  const next = new KongAdapter({
+    adminUrl: `http://${second.getHost()}:${second.getMappedPort(8001)}`,
+    instanceId,
+  });
+  const app = { id: randomUUID() };
+  const service = { id: randomUUID() };
+  const path = `/repoint-${randomUUID()}`;
+  const oldKey = randomUUID();
+  const newKey = randomUUID();
+  try {
+    for (const target of [adapter, next]) {
+      await target.request(`/services/${service.id}`, 'PUT', {
+        url: 'http://echo:8080',
+        tags: ['operator'],
+      });
+      await target.request('/routes', 'POST', {
+        service,
+        paths: [path],
+        strip_path: true,
+        tags: ['operator'],
+      });
+      await target.request(`/services/${service.id}/plugins`, 'POST', {
+        name: 'key-auth',
+        tags: ['operator'],
+      });
+      await target.protectService(service);
+    }
+    await adapter.ensureConsumer(app);
+    await adapter.grantAccess(app, service);
+    await adapter.issueCredential(app, { id: randomUUID(), key: oldKey });
+    expect(
+      (await adapter.listOwnedConsumers()).some((c) => c.appId === app.id),
+    ).toBe(true);
+    expect(
+      (await next.listOwnedConsumers()).some((c) => c.appId === app.id),
+    ).toBe(false);
+    const traffic = async (base: string, key: string) =>
+      (await fetch(base + path + '/get', { headers: { apikey: key } })).status;
+    await expect
+      .poll(() => traffic(proxy, oldKey), { timeout: 15000 })
+      .toBe(200);
+    const nextProxy = `http://${second.getHost()}:${second.getMappedPort(8000)}`;
+    await expect
+      .poll(() => traffic(nextProxy, oldKey), { timeout: 15000 })
+      .toBe(401);
+    await next.ensureConsumer(app);
+    await next.grantAccess(app, service);
+    await next.issueCredential(app, { id: randomUUID(), key: newKey });
+    await expect
+      .poll(() => traffic(nextProxy, newKey), { timeout: 15000 })
+      .toBe(200);
+    // Assert each final dataplane outcome independently: readiness of one key
+    // request does not establish the result of a later independent request.
+    await expect
+      .poll(() => traffic(nextProxy, oldKey), { timeout: 15000 })
+      .toBe(401);
+    await expect
+      .poll(() => traffic(proxy, oldKey), { timeout: 15000 })
+      .toBe(200);
+  } finally {
+    await adapter.deleteConsumer(app);
+    await second.stop();
+  }
 });

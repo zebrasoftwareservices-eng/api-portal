@@ -2,16 +2,22 @@
 import { readFile } from 'node:fs/promises';
 import { parse } from 'yaml';
 import { uuidv7 } from 'uuidv7';
+import { apis, apiVersions } from '@portal/db';
 import { eq } from 'drizzle-orm';
-import { apis, apiVersions, type Database } from '@portal/db';
+import type { DbConnection } from './gateway-connection.js';
 import { KongAdapter } from '@portal/adapter-kong';
 import { portalTags } from '@portal/adapter-sdk';
 export async function seedSample(
-  db: Database,
+  db: DbConnection,
   adapter: KongAdapter,
   gatewayId: string,
   instanceId: string,
 ) {
+  const [published] = await db
+    .select({ id: apis.id })
+    .from(apis)
+    .where(eq(apis.slug, 'sample'));
+  if (published) return;
   const tags = [...portalTags(instanceId), 'portal-seed'];
   await adapter.request('/services/portal-sample', 'PUT', {
     name: 'portal-sample',
