@@ -1,0 +1,74 @@
+- main
+  - navigation "Admin" [ref=e514]
+    - link "APIs" [ref=e522]
+    - link "Gateways" [ref=e523]
+  - navigation "Breadcrumb" [ref=e515]
+  - heading "Gateways" [level=1, ref=e516]
+  - paragraph
+    - StaticText "A portal connects to one gateway."
+  - form
+    - heading "Edit connection" [level=2, ref=e565]
+    - paragraph
+      - StaticText "Need a safe way to reach the Admin API? Read "
+      - link "Reaching the Kong Admin API" [ref=e569]
+      - StaticText "."
+    - group
+      - LabelText
+        - StaticText "Admin API URL"
+      - textbox "Admin API URL" [required, ref=e570]: ftp://kong:8001
+        - StaticText "ftp://kong:8001"
+      - StaticText "The address the portal server uses to reach Kong's Admin API, like http://kong:8001. It's resolved from the server, not your machine."
+      - generic
+        - StaticText "⚠ Enter a URL that starts with http:// or https://."
+      - LabelText
+        - StaticText "Admin API token (optional)"
+      - textbox "Admin API token (optional)" [ref=e571]
+      - button "Show" [ref=e572]
+      - StaticText "Sent as the Kong-Admin-Token header and stored encrypted. Leave blank if the Admin API has none."
+      - StaticText "Sent as the Kong-Admin-Token header and stored encrypted. Leave blank if the Admin API has none."
+      - LabelText
+        - StaticText "Internal proxy URL"
+      - textbox "Internal proxy URL" [required, ref=e573]: http://kong:8000
+        - StaticText "http://kong:8000"
+      - StaticText "Where the portal server reaches Kong's proxy. Test checks this one."
+      - LabelText
+        - StaticText "Public proxy URL"
+      - textbox "Public proxy URL" [required, ref=e574]: http://localhost:8000
+        - StaticText "http://localhost:8000"
+      - StaticText "The address developers call, shown in the catalog. The server can't check it, so make sure it's right."
+    - generic
+      - heading "What saving changes in this Kong" [level=3, ref=e575]
+      - paragraph
+        - StaticText "The portal starts writing to this Kong as soon as you save. Test changes nothing."
+      - list
+        - listitem [level=1]
+          - strong
+            - StaticText "Consumers and keys:"
+          - StaticText " it creates a consumer for each developer app, with its keys and group memberships."
+        - listitem [level=1]
+          - strong
+            - StaticText "Services you publish:"
+          - StaticText " it adds an ACL plugin, so only apps that include that API can call it. Other Kong consumers lose access until you add them to its group, and Kong stops forwarding API keys to the upstream."
+        - listitem [level=1]
+          - strong
+            - StaticText "Other services with key-auth:"
+          - StaticText " it adds a "
+          - code
+            - StaticText "deny"
+          - StaticText " ACL plugin, so portal keys get 403 there. Your own consumers' keys keep working."
+        - listitem [level=1]
+          - strong
+            - StaticText "Routes with no auth plugin:"
+          - StaticText " it leaves them alone."
+      - paragraph
+        - StaticText "Everything it creates carries the tag "
+        - code
+          - StaticText "portal-instance-<id>"
+        - StaticText ", and it stays in Kong if you remove this connection."
+      - paragraph
+        - StaticText "APIs already published stay linked to the services on the current Kong. Read "
+        - link "what changing Kong does and doesn't move" [ref=e576]
+        - StaticText "."
+    - button "Save connection" [ref=e566]
+    - button "Test connection" [ref=e567]
+    - button "Cancel" [ref=e568]

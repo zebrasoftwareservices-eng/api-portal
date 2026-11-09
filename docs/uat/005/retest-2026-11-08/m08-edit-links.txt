@@ -1,0 +1,22 @@
+page: 60bb53ac-b8ae-47cb-87d7-167dbf01a480
+Gateways · Developer Portal — http://localhost:3000/admin/gateways
+- link "Skip to content" [ref=e891, url=http://localhost:3000/admin/gateways#main]
+- link "Developer Portal" [ref=e893, url=http://localhost:3000/]
+- button "Open menu" [expanded=false, ref=e895]
+- navigation "Admin" [ref=e901]
+  - link "APIs" [ref=e908, url=http://localhost:3000/admin/apis]
+  - link "Gateways" [ref=e909, url=http://localhost:3000/admin/gateways]
+- navigation "Breadcrumb" [ref=e902]
+- heading "Gateways" [level=1, ref=e903]
+- heading "Edit connection" [level=2, ref=e910]
+- link "Reaching the Kong Admin API" [ref=e914, url=https://github.com/zebrasoftwareservices-eng/api-portal/blob/main/docs/connect-kong.md]
+- textbox "Admin API URL" [required, ref=e915]: http://kong:8001
+- textbox "Admin API token (optional)" [ref=e916]
+- button "Show" [ref=e917]
+- textbox "Internal proxy URL" [required, ref=e918]: http://kong:8000
+- textbox "Public proxy URL" [required, ref=e919]: http://localhost:8000
+- heading "What saving changes in this Kong" [level=3, ref=e920]
+- button "Save connection" [ref=e911]
+- button "Test connection" [ref=e912]
+- button "Cancel" [ref=e913]
+- region "Notifications alt+T" [ref=e892]

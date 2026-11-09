@@ -1,0 +1,57 @@
+{
+  "id": "0c6bc9a8-0543-4cc1-95c6-30cc0130b9cc",
+  "ok": true,
+  "result": {
+    "origin": "http://localhost:3000/admin/gateways",
+    "refs": {
+      "e828": {
+        "name": "Skip to content",
+        "role": "link"
+      },
+      "e829": {
+        "name": "Notifications alt+T",
+        "role": "region"
+      },
+      "e830": {
+        "name": "Developer Portal",
+        "role": "link"
+      },
+      "e832": {
+        "name": "Open menu",
+        "role": "button"
+      },
+      "e838": {
+        "name": "Admin",
+        "role": "navigation"
+      },
+      "e839": {
+        "name": "Breadcrumb",
+        "role": "navigation"
+      },
+      "e840": {
+        "name": "Gateways",
+        "role": "heading"
+      },
+      "e841": {
+        "name": "Kong",
+        "role": "heading"
+      },
+      "e842": {
+        "name": "APIs",
+        "role": "link"
+      },
+      "e843": {
+        "name": "Gateways",
+        "role": "link"
+      }
+    },
+    "removedRefs": [],
+    "snapshot": "- main\n  - navigation \"Admin\" [ref=e838]\n    - link \"APIs\" [ref=e842]\n    - link \"Gateways\" [ref=e843]\n  - navigation \"Breadcrumb\" [ref=e839]\n  - heading \"Gateways\" [level=1, ref=e840]\n  - paragraph\n    - StaticText \"A portal connects to one gateway.\"\n  - heading \"Kong\" [level=2, ref=e841]\n  - StaticText \"● Connected\"\n  - StaticText \"Kong \"\n  - StaticText \"3.9.4\"\n  - StaticText \"Set by environment\"\n  - DescriptionList\n    - term \"Admin API URL\"\n    - definition\n      - StaticText \"http://kong:8001\"\n    - term \"Admin API token\"\n    - definition\n      - StaticText \"None\"\n    - term \"Internal proxy URL\"\n    - definition\n      - StaticText \"http://kong:8000\"\n    - term \"Public proxy URL\"\n    - definition\n      - StaticText \"http://localhost:8000\"\n    - term \"Last changed\"\n    - definition\n      - time\n        - StaticText \"Nov 9, 2026\"\n  - paragraph\n    - StaticText \"ⓘ KONG_ADMIN_URL set this connection, so it can't be changed here. Change the server's environment and restart it. To manage it here instead, unset KONG_ADMIN_URL and restart the server.\"",
+    "browserPageId": "60bb53ac-b8ae-47cb-87d7-167dbf01a480",
+    "url": "http://localhost:3000/admin/gateways",
+    "title": "Gateways · Developer Portal"
+  },
+  "_meta": {
+    "runtimeId": "51e7026c-039b-4fc7-9b15-17880aae2ae7"
+  }
+}

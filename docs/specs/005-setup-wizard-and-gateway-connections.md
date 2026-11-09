@@ -1,7 +1,7 @@
 ---
 id: 005
 title: First-run setup and gateway connections
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-234
@@ -597,7 +597,7 @@ Reproduction: run the fresh isolated Compose suite; in `apps/portal/e2e/journeys
 - [x] Direct-Kong repoint test checked final key outcomes before independently waiting for them (minor test flake; bounded readiness assertions pass).
 - [x] Browser reconcile smoke imported the old pre-deploy server layout (minor test harness defect; corrected full browser suite passes).
 - [x] JSO-451 Quiet cold Compose quickstart regression (blocker; verified using backend quiet uncached 127.99s / 144.34s and passing QA runtime checks; independent QA benchmarks explicitly deferred).
-- [ ] (Linear issue pending: workspace quota) Newly imported route intermittently returns 404 through try-it after direct Kong is ready (minor).
+- [ ] (Linear issue pending: workspace quota) Newly imported route intermittently returns 404 through try-it after direct Kong is ready (minor). Browser retest on 2026-11-08 returned the correct 403 on its first request (`25`); one pass does not establish a fix. Filing retried on 2026-11-08 and again refused with `linear_write_failed: Usage limit exceeded`; intended Bug / low priority / parent JSO-234, details in the retest report.
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [x] JSO-380 Try-it retained saved proxy URLs for 30 seconds (verified by immediate saved-URL regression, Done).
 - [x] JSO-379 Portal component tests use Node storage globals instead of jsdom on Node 25+ (110 component tests pass on Node 26, Done).
@@ -609,16 +609,41 @@ Reproduction: run the fresh isolated Compose suite; in `apps/portal/e2e/journeys
 - [x] [frontend] Fix JSO-400: a 400 with field errors shows only the field errors, and no raw problem title reaches the user, including in the Revoke dialog (minor)
 - [x] [frontend] Fix JSO-401: the repoint dialog pluralises the key count, and the Test warning shows `affectedKeys` with the design §5.3 wording (minor)
 - [x] [frontend] Fix JSO-402: the localhost field error reads "Use an address the portal server can reach.", per design §5.2 (minor)
-- [ ] JSO-399 Reloading `/setup/gateway` after saving loses the sample choice (minor)
+- [ ] JSO-399 Reloading `/setup/gateway` after saving loses the sample choice (minor; reproduced 2026-11-08, retest screenshot `05`)
 - [x] JSO-400 Raw problem titles shown to users: "validation", "gateway unavailable" (minor)
 - [x] JSO-401 "1 active keys" in the repoint dialog, and the Test warning has no count (minor)
 - [x] JSO-402 localhost failure message does not say what to enter instead (minor)
 - [x] JSO-403 Setup token hint does not match the log line (minor)
 - [x] JSO-404 Protected-route recipe needs `curl`, which the Kong image lacks (minor)
-- [ ] JSO-405 Import form disappears on first load when Kong is down (minor)
-- [ ] JSO-406 Redundant "Connect a Kong" heading on the wizard gateway step (minor)
+- [ ] JSO-405 Import form disappears on first load when Kong is down (minor; reproduced 2026-11-08, retest screenshot `14`; retry recovers)
+- [ ] JSO-406 Redundant "Connect a Kong" heading on the wizard gateway step (minor; reproduced 2026-11-08, retest screenshot `02`)
 
 ## User testing  _(user-tester)_
+
+### Current retest — 2026-11-08
+
+**Result: ready for code review; no open blocker or major.** All seven stories were re-walked in Orca's built-in browser against freshly built branch images and real Kong 3.9.4. Evidence and exact limits: [`docs/uat/005/retest-2026-11-08/README.md`](../uat/005/retest-2026-11-08/README.md). Screenshot names below are relative to that directory.
+
+| User story | Current result | Evidence |
+| --- | --- | --- |
+| Fresh install creates the first admin | **Pass.** Default install needs no token; empty form validates, admin reaches gateway step. Production requires a token; missing/wrong/old tokens fail, restart rotates it, current token succeeds, replay gets 409 and exactly one admin exists | `01`, `30`–`33` |
+| Test a connection before saving | **Pass.** Bundled defaults and Kong version; Test explicitly says nothing is saved. Localhost guidance, malformed URL, non-Kong, DB-less, wrong protected token and unreachable proxy errors checked in the browser | `02`–`04`, `15`–`21` |
+| Edit, disable and remove a connection | **Pass.** Empty removal works; dependent removal names 2 APIs/1 key. Disable pauses imports, existing keys still return 200, failed re-enable stays disabled, recovery works. Stored token is preserved when blank, changed URL requires a new decision, explicit no-token removes it. Missing-key warning/confirmation/decline and confirmed repoint to a second Kong work | `06`, `12`–`13`, `17`, `22`–`24`, `m04`–`m05`, `m07`–`m08` |
+| Discover services and import | **Pass with existing minor JSO-405.** Both routes and key-auth shown, uploaded document publishes, developer signup/app/key succeed, direct Kong and browser try-it return 200. Outage retry restores service list. Fresh first-load outage still hides the form | `07`–`10`, `14` |
+| Sample API is optional | **Pass with existing minor JSO-399.** Both opt-in and keyboard-only decline walked; sample key returns 200. Declining leaves catalog and Kong services empty. Reload after Save still loses the choice | `05`, `27`, `m01`–`m03`, `m06` |
+| Environment configuration stays declarative | **Pass. JSO-398 verified fixed.** Admin-only sign-in reaches the missing gateway wizard. Both variables in production bypass setup, seed sample on request and show a read-only card. Kong-only production asks for admin only. Unsetting Kong variables preserves the connection and makes it editable | `26`, `28`–`33`, `m07` |
+| Safe Admin API documentation | **Pass.** Documented separate curl-container recipe executed on real Kong. UI Test rejects wrong token and passes correct token; direct checks: right 200, wrong 401, portal key 403, outside allowlist 403 | `15`–`16`; retest README |
+
+Existing minors **JSO-399, JSO-405 and JSO-406 remain open** and reproduced. The intermittent try-it 404 did not reproduce in one matching newly imported/ungranted-key browser attempt (direct and first try-it both 403); it remains open and quota-blocked. No new product bug was found. JSO-400/401/402 copy fixes were observed, including actionable localhost guidance and singular missing-key wording.
+
+Mobile functional wizard/save/sample and keyboard-only Save → decline passed at 390×844; the scale-3 screenshot capture repeats/crops pixels (as in historical UAT), so readable supplemental card/editor captures use scale 1. Desktop setup and environment card were checked at 1280×900; navigation resets Orca's viewport, so other desktop journeys used its native 666px width. Empty form, wrong password, refresh mid-flow, Escape from dialogs, developer denial and database-expired session → sign-in were exercised. Console checks showed only Scalar info messages; network failures matched intentional 401/403/409/422/503 cases. This retest does not claim a complete independent repeat of QA's concurrent-submission, encryption-at-rest, reconcile, actual baseline upgrade, tag cleanup or all timeout variants; their current automated QA evidence above and the prior UAT evidence below remain the coverage for those branches.
+
+Serial image builds plus fresh-volume `up --no-build -d --wait` took **78.36 + 26.84 + 43.36 = 148.56 seconds** of command time, including base/service downloads where needed. These were normal cached-mode builds, not a new no-cache benchmark; admin-only fresh startup later took 12.50 seconds. Only the owned `spec005uat` project/volumes and uniquely named images were used and removed after testing.
+
+### Historical first UAT — 2026-11-07
+
+The results below predate the fixes and are retained as history; the current decision is the retest above.
+
 Run on 2026-11-07 in Orca's built-in browser, against this branch's images and real Kong 3.9.4. Screenshots are in `docs/uat/005/`.
 
 | User story | Result | Screenshot |
