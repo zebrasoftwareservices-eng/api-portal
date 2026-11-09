@@ -1,7 +1,7 @@
 ---
 id: 012
 title: API versions and changelog, and spec linting
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-240
@@ -498,6 +498,18 @@ QA run (2026-11-08/09): tests reused from the interrupted QA worker and reviewed
 - Teardown: removed only QA's Compose containers, network and PostgreSQL test volume; operator-ruleset containers cleaned up in their tests; `docker ps` was empty. Coordinator notified immediately and handed Docker back to spec 005; no further Docker use by this QA task.
 - Outcome: all criteria retain passing automated coverage, the sole incoming bug is verified fixed, no durable Bug issues are required, and status is **uat** for browser user testing (no approval gate passed).
 
+### QA re-test — 2026-11-09 (build loop 2)
+- Independently verified frontend fix `99986f4`. The existing AC 1–9 criterion-to-test mapping above remains complete and passing; reviewed the new plus-version route/metadata, admin-table, switcher, changelog and duplicate-heading regressions rather than duplicating them. No application code or tests needed changes in this re-test.
+- **UAT-012-01: PASS.** `apps/portal/e2e/versions.test.ts`, **012 AC1-4,6,9: real Kong versions, stable references, changelog, defaults and duplicate refusal**, publishes `1.0.0+build.1` as non-default, opens its encoded stable URL from the admin table, refreshes it, and follows the switcher and changelog links. The older-version notice and Scalar reference render; the single catalog entry and service link remain unchanged. `apps/portal/components/version-pages.test.tsx` verifies both encoded and decoded route parameters resolve the published document and metadata; `versions.test.tsx` verifies encoded links.
+- **Duplicate-version heading: PASS.** The same real-stack journey asserts **This version already exists** in the alert heading, the corrective instruction, HTTP 409 and the unchanged stored document. Its component regression also passes. Both incoming open Bugs are now checked below; the frontend Fix tasks were already checked before this re-test.
+- `pnpm lint --force`: **PASS**, all 7 tasks freshly executed (10.00 s). `pnpm typecheck --force`: **PASS**, all 12 tasks freshly executed (12.45 s).
+- `NODE_OPTIONS=--no-experimental-webstorage pnpm test --force --concurrency=1 -- --maxWorkers=1`: **PASS, 250 tests** (139 portal, 70 server, 39 Kong adapter, 2 DB), 12 successful tasks, **0 cached**, 1m44.97s. Real Testcontainers PostgreSQL/Kong tests ran, including legacy migration preservation. Existing failure-path coverage for invalid input, expired sessions, missing permissions, unknown versions, concurrent duplicates, gateway outage and broken rulesets remains green.
+- `node deploy/quickstart-smoke.mjs`: **PASS, 15.9 s**, including production Compose image build/start, healthy services and seeded home page, using available build layers and a new QA database volume. `node deploy/smoke.mjs`: **PASS**, signup → app/key → real Kong 401 without key / 200 with key → try-it → one-time reveal → idempotent revocation / 401.
+- `pnpm test:e2e`: **PASS, 50/50 tests (1.8 min)** on the first full run, including all eight 012 tests, latest/older-reference try-it calls, custom/missing/invalid mounted production rulesets and the earlier hydration regression. No new application findings, unresolved test failures or flaky cases were observed.
+- Environment: initial sandbox attempts could not access Docker (`permission denied` / no container-runtime strategy); reran the complete suite with authorized Docker and local-listener access. Host Node 26 used the documented webstorage flag; production images use Node 22. These sandbox failures were environment restrictions, not product bugs.
+- Teardown: removed only this QA Compose project's containers, network and PostgreSQL volume; operator-ruleset containers cleaned up in their tests, and `docker ps` was empty. Returned Docker to the coordinator before finalizing this report; no further Docker use.
+- Outcome: **uat**. Both incoming bugs are verified fixed and no bugs remain open. The previously deferred major Bug creation remains recorded as history (Linear's free-plan limit); there is no remaining durable fix work to track. Browser UAT re-check and later review remain with their assigned roles; no approval gate passed.
+
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [x] Pre-hydration version upload loses the chosen file (minor, frontend; stays in this spec, no durable Linear issue).
@@ -511,12 +523,13 @@ QA run (2026-11-08/09): tests reused from the interrupted QA worker and reviewed
 - [x] QA Kong route readiness (minor, tests only): a freshly created route returned 404 `no Route matched with those values` before workers observed it. Poll a real authenticated gateway call before the browser journey; the browser still requires 200 on both stable version pages and passes in the full run.
 
 
-- [ ] UAT-012-01 Published versions containing `+` open **Version not found** (major, frontend; durable Bug deferred because Linear rejected creation at its free issue limit).
+- [x] UAT-012-01 Published versions containing `+` open **Version not found** (major, frontend; durable Bug deferred because Linear rejected creation at its free issue limit).
   - Repro: publish `docs/uat/012/fixtures/1.0.0+build.1.json` on `/admin/apis/sample` with the non-default checkbox selected; follow **View version 1.0.0+build.1**. The 201-success/table lists the version, but `/apis/sample/versions/1.0.0%2Bbuild.1` says the API has no version `1.0.0%2Bbuild.1`; refresh reproduces at 1280×900 and 390×844.
   - Expected: a published, accepted version with an allowed `+` name has a working stable reference. Evidence: `docs/uat/012/17-plus-version-not-found.png`, `docs/uat/012/browser-log.jsonl`; full report: `docs/uat/012/README.md`.
-  - Intended Linear issue: **UAT: published versions containing + open Version not found**, parent **JSO-240**, team **JSO**, label **Bug**, priority **High**, state **Todo**. Create once workspace capacity returns; the attempted write returned **Usage limit exceeded**.
-  - [ ] Fix: resolve encoded accepted version names to the published document; browser re-test the admin table, switcher and changelog entry links, including refresh.
-- [ ] Duplicate-version alert heading exposes “api version exists” (minor copy, current frontend loop; no separate issue). Steps: upload 2.0.0 twice on the version form; expected plain-language heading, actual lowercase problem identifier words above a helpful explanation. Evidence: `docs/uat/012/12-duplicate-refused.png` (390×844); refusal itself works and preserves published data.
+  - Intended Linear issue: **UAT: published versions containing + open Version not found**, parent **JSO-240**, team **JSO**, label **Bug**, priority **High**, state **Todo**. Creation was deferred until capacity returned; the attempted write returned **Usage limit exceeded**. The fix is now independently verified and closed in this spec; no durable fix remains pending.
+  - [x] Fix: resolve encoded accepted version names to the published document; browser re-test the admin table, switcher and changelog entry links, including refresh.
+  - QA verified fixed on 2026-11-09 in the full Compose Playwright run (50/50) and fresh component suite; see build loop 2 re-test above. Original issue-creation failure is preserved as history; no durable fix remains open.
+- [x] Duplicate-version alert heading exposes “api version exists” (minor copy, current frontend loop; no separate issue). Steps: upload 2.0.0 twice on the version form; expected plain-language heading, actual lowercase problem identifier words above a helpful explanation. Evidence: `docs/uat/012/12-duplicate-refused.png` (390×844); refusal itself works and preserves published data. QA verified fixed on 2026-11-09: the full Compose regression asserts **This version already exists**, 409 and unchanged stored data; the component regression also passes.
 
 
 ## User testing  _(user-tester)_
