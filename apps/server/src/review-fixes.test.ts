@@ -2,7 +2,7 @@
 import Fastify from 'fastify';
 import { describe, it, expect, vi } from 'vitest';
 import { portalProxy } from './trusted-proxy.js';
-import { registerProxy } from './proxy.js';
+import { registerProxy, tryItResetToken } from './proxy.js';
 import { problemHandler } from './problem.js';
 import type { Database } from '@portal/db';
 
@@ -46,6 +46,50 @@ describe('trusted portal rate limiting', () => {
       ).toBe(429);
       expect(proxy.trust('::ffff:127.0.0.1', 0)).toBe(true);
       expect(proxy.trust('127.0.0.1', 1)).toBe(false);
+    } finally {
+      await app.close();
+    }
+  });
+  it('clears the try-it budget for the next run without a restart', async () => {
+    const app = Fastify({ trustProxy: true });
+    problemHandler(app);
+    await registerProxy(
+      app,
+      {} as Database,
+      () => {
+        throw new Error('unused');
+      },
+      fetch,
+      { resetToken: 'test-reset' },
+    );
+    try {
+      const call = () =>
+        app.inject({ url: '/api/v1/try-it', remoteAddress: '203.0.113.9' });
+      for (let i = 0; i < 60; i++) expect((await call()).statusCode).toBe(400);
+      expect((await call()).statusCode).toBe(429);
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/api/v1/test/reset-try-it-limit',
+            remoteAddress: '203.0.113.9',
+          })
+        ).statusCode,
+      ).toBe(404);
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/api/v1/test/reset-try-it-limit',
+            remoteAddress: '203.0.113.9',
+            headers: { 'x-portal-rate-limit-reset': 'test-reset' },
+          })
+        ).statusCode,
+      ).toBe(204);
+      expect((await call()).statusCode).toBe(400);
+      expect(tryItResetToken({ NODE_ENV: 'production' }, 'test-reset')).toBe(
+        undefined,
+      );
     } finally {
       await app.close();
     }
