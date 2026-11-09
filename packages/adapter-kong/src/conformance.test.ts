@@ -270,15 +270,24 @@ it('AC 1/3/4: enforces all access rows and strips header/query keys while preser
   });
   await status(unmanaged.id, operatorKey, 200);
   for (const query of [false, true]) {
-    const response = await call(a.id, key.key, query);
-    expect(response.status).toBe(200);
-    const echo = await response.json();
-    expect(JSON.stringify(echo)).not.toContain(key.key);
-    expect(
-      Object.entries(echo.headers).find(
-        ([name]) => name.toLowerCase() === 'x-consumer-custom-id',
-      )?.[1],
-    ).toEqual([key.appId]);
+    // A different request's status does not establish credential stripping.
+    // Await the actual key-auth behavior independently for each source.
+    await expect
+      .poll(
+        async () => {
+          const response = await call(a.id, key.key, query);
+          const echo = await response.json();
+          return {
+            status: response.status,
+            exposesKey: JSON.stringify(echo).includes(key.key),
+            consumer: Object.entries(echo.headers ?? {}).find(
+              ([name]) => name.toLowerCase() === 'x-consumer-custom-id',
+            )?.[1],
+          };
+        },
+        { timeout: 15000, interval: 100 },
+      )
+      .toEqual({ status: 200, exposesKey: false, consumer: [key.appId] });
   }
   await adapter.revokeCredential({ id: key.appId }, key.id);
   await status(a.id, key.key, 401);
