@@ -62,19 +62,9 @@ export async function limitLock(
   return {
     subjectHash,
     hit: async () => {
-      await tx
-        .insert(rateLimitHits)
-        .values({ id: uuidv7(), bucket, subjectHash });
-    },
-    clear: async () => {
-      await tx
-        .delete(rateLimitHits)
-        .where(
-          and(
-            eq(rateLimitHits.bucket, bucket),
-            eq(rateLimitHits.subjectHash, subjectHash),
-          ),
-        );
+      const id = uuidv7();
+      await tx.insert(rateLimitHits).values({ id, bucket, subjectHash });
+      return id;
     },
   };
 }
@@ -106,16 +96,18 @@ export async function limitedAuth(
   run: () => Promise<Response>,
 ): Promise<Response> {
   if (request.method !== 'POST') return run();
-  const route = request.url.split('?')[0]!.replace(/\/+$/, '');
-  const path = route.split('/').pop();
-  if (path === 'forget-password') return new Response(null, { status: 404 });
+  // Better Auth drops empty path segments when routing, including doubled slashes.
+  const route =
+    '/' + request.url.split('?')[0]!.split('/').filter(Boolean).join('/');
+  if (route === '/api/auth/forget-password')
+    return new Response(null, { status: 404 });
   if (
     ![
-      'email',
-      'request-password-reset',
-      'send-verification-email',
-      'change-password',
-    ].includes(path ?? '')
+      '/api/auth/sign-in/email',
+      '/api/auth/request-password-reset',
+      '/api/auth/send-verification-email',
+      '/api/auth/change-password',
+    ].includes(route)
   )
     return run();
   const body =
@@ -123,20 +115,20 @@ export async function limitedAuth(
       ? (request.body as Record<string, unknown>)
       : {};
   let bucket: Bucket, subject: string;
-  if (path === 'change-password') {
+  if (route === '/api/auth/change-password') {
     const current = await requireUser(auth, request);
     subject = current.email;
     bucket = 'sign-in-failure';
     request.body = { ...body, revokeOtherSessions: true };
-  } else if (path === 'email' && route === '/api/auth/sign-in/email') {
+  } else if (route === '/api/auth/sign-in/email') {
     if (typeof body.email !== 'string') return run();
     subject = body.email;
     bucket = 'sign-in-failure';
-  } else if (path === 'request-password-reset') {
+  } else if (route === '/api/auth/request-password-reset') {
     if (typeof body.email !== 'string') return run();
     subject = body.email;
     bucket = 'password-reset';
-  } else if (path === 'send-verification-email') {
+  } else if (route === '/api/auth/send-verification-email') {
     if (typeof body.email !== 'string') return run();
     const [recipient] = await db
       .select({ id: user.id })
@@ -146,19 +138,38 @@ export async function limitedAuth(
     subject = recipient.id;
     bucket = 'verification-email';
   } else return run();
-  return db.transaction(async (tx) => {
+  // Reserve before dispatch, then release the connection: Better Auth uses the
+  // same pool and must never run while this transaction holds a connection.
+  const hitId = await db.transaction(async (tx) => {
     const limit = await limitLock(tx, bucket, subject, reply);
-    if (bucket !== 'sign-in-failure') await limit.hit();
-    const response = await run();
-    if (bucket === 'sign-in-failure') {
-      const result = (await response
-        .clone()
-        .json()
-        .catch(() => ({}))) as { code?: string };
-      if (response.status === 401 || result.code === 'INVALID_PASSWORD')
-        await limit.hit();
-      else if (response.ok) await limit.clear();
-    }
-    return response;
+    return limit.hit();
   });
+  const response = await run();
+  if (bucket === 'sign-in-failure') {
+    const result = (await response
+      .clone()
+      .json()
+      .catch(() => ({}))) as { code?: string };
+    if (response.status !== 401 && result.code !== 'INVALID_PASSWORD') {
+      await db.transaction(async (tx) => {
+        const subjectHash = hashSubject(subject);
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${bucket + subjectHash},0))`,
+        );
+        // Success clears the address's failures; other non-password refusals
+        // release only this request's reservation.
+        await tx
+          .delete(rateLimitHits)
+          .where(
+            response.ok
+              ? and(
+                  eq(rateLimitHits.bucket, bucket),
+                  eq(rateLimitHits.subjectHash, subjectHash),
+                )
+              : eq(rateLimitHits.id, hitId),
+          );
+      });
+    }
+  }
+  return response;
 }

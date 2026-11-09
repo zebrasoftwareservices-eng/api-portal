@@ -261,6 +261,70 @@ it('counts unknown reset addresses, commits failed sign-ins and applies changed 
     ).statusCode,
   ).toBe(404);
 });
+it.each([
+  '/api/auth/sign-in/email',
+  '/api/auth/sign-in//email',
+  '/api/auth//sign-in/email',
+  '/api/auth/sign-in/email/',
+])('applies the shared sign-in limit to %s', async (url) => {
+  await connection.db.update(accountSettings).set({ signInFailureMax: 1 });
+  const payload = { email: 'missing@example.com', password: 'wrong' };
+  const failed = await request('POST', url, payload);
+  expect(failed.statusCode, failed.body).toBe(401);
+  const blocked = await request('POST', '/api/auth/sign-in/email', payload);
+  expect(blocked.statusCode, blocked.body).toBe(429);
+  expect(blocked.headers['content-type']).toContain('application/problem+json');
+  expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+  expect(await connection.db.select().from(rateLimitHits)).toHaveLength(1);
+});
+it.each(['same', 'different'])(
+  'finishes more parallel sign-ins than pool connections for %s addresses',
+  async (mode) => {
+    // connect() has max: 10. Each admitted request must free its reservation
+    // transaction before Better Auth queries that very same pool.
+    const responses = await Promise.all(
+      Array.from({ length: 12 }, (_, index) =>
+        request('POST', '/api/auth/sign-in/email', {
+          email: `missing${mode === 'same' ? '' : index}@example.com`,
+          password: 'wrong',
+        }),
+      ),
+    );
+    expect(responses.filter((r) => r.statusCode === 401)).toHaveLength(
+      mode === 'same' ? 10 : 12,
+    );
+    expect(responses.filter((r) => r.statusCode === 429)).toHaveLength(
+      mode === 'same' ? 2 : 0,
+    );
+    expect(await connection.db.select().from(rateLimitHits)).toHaveLength(
+      mode === 'same' ? 10 : 12,
+    );
+    // The pool remains usable after every response has finished.
+    expect(await connection.client`select 1 as alive`).toMatchObject([
+      { alive: 1 },
+    ]);
+  },
+  20000,
+);
+it('releases non-password refusals and clears failures after successful sign-in', async () => {
+  const person = await signup();
+  const invalid = await request('POST', '/api/auth/sign-in/email', {
+    email: person.email,
+  });
+  expect(invalid.statusCode).toBe(400);
+  expect(await connection.db.select().from(rateLimitHits)).toHaveLength(0);
+  await request('POST', '/api/auth/sign-in/email', {
+    email: person.email,
+    password: 'wrong',
+  });
+  expect(await connection.db.select().from(rateLimitHits)).toHaveLength(1);
+  const success = await request('POST', '/api/auth/sign-in/email', {
+    email: person.email,
+    password: 'password123',
+  });
+  expect(success.statusCode, success.body).toBe(200);
+  expect(await connection.db.select().from(rateLimitHits)).toHaveLength(0);
+});
 it('serializes concurrent reset requests and expires old hits and email changes', async () => {
   const responses = await Promise.all(
     Array.from({ length: 8 }, () =>
