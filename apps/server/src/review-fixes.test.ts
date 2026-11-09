@@ -12,7 +12,9 @@ describe('trusted portal rate limiting', () => {
     const app = Fastify({ trustProxy: proxy.trust });
     app.addHook('onRequest', proxy.refresh);
     problemHandler(app);
-    await registerProxy(app, {} as Database);
+    await registerProxy(app, {} as Database, () => {
+      throw new Error('unused');
+    });
     try {
       const call = (peer: string, client: string) =>
         app.inject({
@@ -64,12 +66,18 @@ describe('unexpected error diagnostics', () => {
       key: 'pk_do_not_log',
     });
     const { app } = await createApp({
-      db: {} as Database,
+      db: {
+        select: () => ({
+          from: () => ({
+            limit: async () => [{ instanceId: 'test', id: 'test' }],
+          }),
+        }),
+      } as unknown as Database,
       config: loadConfig(),
-      adapter: {
-        health: vi.fn().mockRejectedValue(err),
-      } as unknown as import('@portal/adapter-sdk').GatewayAdapter,
-      gatewayId: 'test',
+      adapterFor: () =>
+        ({
+          health: vi.fn().mockRejectedValue(err),
+        }) as unknown as import('@portal/adapter-sdk').GatewayAdapter,
       auth: {} as import('./auth.js').Auth,
       logger: {
         stream: {

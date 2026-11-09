@@ -9,7 +9,15 @@ test('real gateway outage preserves active keys and retries app creation without
   const compose = (...args: string[]) =>
     execFileSync(
       'docker',
-      ['compose', '-f', 'deploy/docker-compose.yml', ...args],
+      [
+        'compose',
+        '-f',
+        'deploy/docker-compose.yml',
+        ...(process.env.SPEC005_COMPOSE_OVERRIDE
+          ? ['-f', process.env.SPEC005_COMPOSE_OVERRIDE]
+          : []),
+        ...args,
+      ],
       { stdio: 'ignore' },
     );
   const signup = await request.post('/api/auth/sign-up/email', {
@@ -81,7 +89,15 @@ test('sample seed converges across server restarts against real Kong', async ({
   const compose = (...args: string[]) =>
     execFileSync(
       'docker',
-      ['compose', '-f', 'deploy/docker-compose.yml', ...args],
+      [
+        'compose',
+        '-f',
+        'deploy/docker-compose.yml',
+        ...(process.env.SPEC005_COMPOSE_OVERRIDE
+          ? ['-f', process.env.SPEC005_COMPOSE_OVERRIDE]
+          : []),
+        ...args,
+      ],
       { encoding: 'utf8' },
     );
   const kong = 'http://localhost:8001';
@@ -152,7 +168,15 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
   const compose = (...args: string[]) =>
     execFileSync(
       'docker',
-      ['compose', '-f', 'deploy/docker-compose.yml', ...args],
+      [
+        'compose',
+        '-f',
+        'deploy/docker-compose.yml',
+        ...(process.env.SPEC005_COMPOSE_OVERRIDE
+          ? ['-f', process.env.SPEC005_COMPOSE_OVERRIDE]
+          : []),
+        ...args,
+      ],
       { encoding: 'utf8' },
     );
   const signup = await request.post('/api/auth/sign-up/email', {
@@ -203,8 +227,16 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
     expect(await (await request.get(`/api/v1/apps/${app.id}`)).json()).toEqual(
       before,
     );
-    const logs = compose('logs', '--no-color', '--since', '30s', 'server');
-    expect(logs).toContain('gateway unavailable');
+    let logs = '';
+    await expect
+      .poll(
+        () => {
+          logs = compose('logs', '--no-color', '--since', '30s', 'server');
+          return logs;
+        },
+        { timeout: 30000 },
+      )
+      .toContain('gateway unavailable');
     expect(logs).not.toContain(credential.key);
     expect(logs).not.toContain('QA-password-123');
   } finally {
@@ -220,12 +252,15 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
     '-e',
     `
     import { connect, instanceSettings } from './packages/db/dist/index.js';
-    import { KongAdapter } from './packages/adapter-kong/dist/index.js';
+    import { loadConfig } from './apps/server/dist/config.js';
+    import { gatewayConnection } from './apps/server/dist/gateway-connection.js';
     import { reconcile } from './apps/server/dist/reconcile.js';
     const { db, client } = connect(process.env.DATABASE_URL);
     try {
       const [instance] = await db.select().from(instanceSettings);
-      await reconcile(db, new KongAdapter({ adminUrl: process.env.KONG_ADMIN_URL, instanceId: instance.instanceId, adminToken: process.env.KONG_ADMIN_TOKEN }), { warn() {} });
+      const log = { warn() {}, error() {} };
+      const connection = gatewayConnection(db, loadConfig(), instance.instanceId, log);
+      await reconcile(db, connection, log);
     } finally { await client.end(); }
   `,
   );

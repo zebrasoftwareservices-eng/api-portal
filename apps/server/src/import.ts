@@ -6,12 +6,13 @@ import { uuidv7 } from 'uuidv7';
 import { apis, type Database } from '@portal/db';
 import { eq, and, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import {
-  GatewayServiceConflictError,
-  type GatewayAdapter,
-} from '@portal/adapter-sdk';
+import { GatewayServiceConflictError } from '@portal/adapter-sdk';
 import { requireUser, type Auth } from './auth.js';
 import { Problem } from './problem.js';
+import {
+  requireEnabled,
+  type GatewayConnection,
+} from './gateway-connection.js';
 import { apiDetail, publishedApis } from './catalog.js';
 const LIMIT = 5 * 1024 * 1024;
 const slugSchema = z
@@ -245,11 +246,11 @@ export function registerImport(
   server: FastifyInstance,
   db: Database,
   auth: Auth,
-  adapter: GatewayAdapter,
-  gatewayId: string,
+  connection: GatewayConnection,
 ) {
   server.get('/api/v1/admin/gateway/services', async (request) => {
     await requireUser(auth, request, true);
+    const { adapter } = requireEnabled(await connection.load());
     const [services, linked] = await Promise.all([
       adapter.listServices(),
       db.select().from(apis),
@@ -267,6 +268,8 @@ export function registerImport(
     { bodyLimit: 6 * 1024 * 1024 },
     async (request, reply) => {
       const user = await requireUser(auth, request, true);
+      let { adapter, row: gateway } = requireEnabled(await connection.load());
+      let gatewayId = gateway.id;
       const input = inputSchema.parse(request.body);
       const { document, sourceUrl } = await importDocument(input.spec);
       const service = await adapter.getService(input.gatewayServiceId);
@@ -312,6 +315,8 @@ export function registerImport(
           sql`select pg_advisory_xact_lock(hashtextextended(${'service:' + service.id}, 0))`,
         );
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+        ({ adapter, row: gateway } = requireEnabled(await connection.load(tx)));
+        gatewayId = gateway.id;
         const [linked] = await tx
           .select({ slug: apis.slug })
           .from(apis)

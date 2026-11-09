@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
-import type { GatewayAdapter } from '@portal/adapter-sdk';
+import type { AdapterFor } from './gateway-connection.js';
 import type { Database } from '@portal/db';
 import { publishedApis, baseUrl, type PublishedApi } from './catalog.js';
 import { readLimited } from './import.js';
@@ -59,7 +59,7 @@ export function resolveTarget(target: string, rows: PublishedApi[]) {
 export async function registerProxy(
   server: FastifyInstance,
   db: Database,
-  adapter: GatewayAdapter,
+  adapterFor: AdapterFor,
   fetcher: typeof fetch = fetch,
 ) {
   await server.register(async (app) => {
@@ -80,8 +80,6 @@ export async function registerProxy(
       { parseAs: 'buffer', bodyLimit: LIMIT },
       (_request, body, done) => done(null, body),
     );
-    let cached: PublishedApi[] = [];
-    let expires = 0;
     app.route({
       method: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       url: '/api/v1/try-it',
@@ -98,17 +96,9 @@ export async function registerProxy(
             'try-it-target-not-allowed',
             'Choose an operation from a published API.',
           );
-        if (Date.now() > expires) {
-          cached = await publishedApis(db);
-          expires = Date.now() + 30000;
-        }
-        let target = resolveTarget(query.scalar_url, cached);
-        if (!target) {
-          // A newly published API may be missing from the still-valid catalog.
-          cached = await publishedApis(db);
-          expires = Date.now() + 30000;
-          target = resolveTarget(query.scalar_url, cached);
-        }
+        // Connection URLs can change without a restart. Read the joined gateway for
+        // every request so a recently saved internal/public address takes effect now.
+        const target = resolveTarget(query.scalar_url, await publishedApis(db));
         if (!target)
           throw new Problem(
             400,
@@ -175,7 +165,7 @@ export async function registerProxy(
             if (!blocked.has(name) && !connectionNames.includes(name))
               reply.header(name, value);
           if (
-            adapter.isAccessDenied({
+            adapterFor(target.row.gateway).isAccessDenied({
               status: response.status,
               headers: response.headers,
               body: data,

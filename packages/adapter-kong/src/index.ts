@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import {
   GatewayServiceConflictError,
   type ServiceRef,
+  type ConnectionCheck,
   type ServiceProtection,
   type AccessPolicy,
   type AccessReport,
@@ -125,32 +126,114 @@ export class KongAdapter implements GatewayAdapter {
       return { reachable: false, latencyMs: Date.now() - start };
     }
   }
+  async checkConnection(): Promise<ConnectionCheck> {
+    let response: Response;
+    try {
+      response = await this.fetcher(
+        this.config.adminUrl.replace(/\/$/, '') + '/',
+        {
+          headers: this.config.adminToken
+            ? { 'Kong-Admin-Token': this.config.adminToken }
+            : {},
+          signal: AbortSignal.timeout(5000),
+          redirect: 'manual',
+        },
+      );
+    } catch {
+      return { outcome: 'unreachable' };
+    }
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => {});
+      return {
+        outcome:
+          response.status === 401 || response.status === 403
+            ? 'refused'
+            : response.status >= 500
+              ? 'unreachable'
+              : 'not-gateway',
+      };
+    }
+    const reader = response.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    try {
+      if (
+        !reader ||
+        Number(response.headers.get('content-length')) > 1024 * 1024
+      )
+        return { outcome: 'not-gateway' };
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        size += value.length;
+        if (size > 1024 * 1024) return { outcome: 'not-gateway' };
+        chunks.push(value);
+      }
+      const root = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+        tagline?: unknown;
+        version?: unknown;
+        configuration?: { database?: string; role?: string };
+      };
+      if (
+        root?.tagline !== 'Welcome to kong' ||
+        typeof root.version !== 'string' ||
+        !root.version
+      )
+        return { outcome: 'not-gateway' };
+      if (
+        root.configuration?.database === 'off' ||
+        root.configuration?.role === 'data_plane'
+      )
+        return { outcome: 'read-only' };
+      return { outcome: 'ok', version: root.version };
+    } catch (error) {
+      return {
+        outcome: error instanceof SyntaxError ? 'not-gateway' : 'unreachable',
+      };
+    } finally {
+      await reader?.cancel().catch(() => {});
+    }
+  }
+  async checkProxy(url: string): Promise<boolean> {
+    try {
+      const response = await this.fetcher(url, {
+        signal: AbortSignal.timeout(5000),
+        redirect: 'manual',
+      });
+      await response.body?.cancel().catch(() => {});
+      return true;
+    } catch {
+      return false;
+    }
+  }
   async listServices(): Promise<GatewayService[]> {
     const [services, routes, plugins] = await Promise.all([
       this.pages('/services?size=1000'),
       this.pages('/routes?size=1000'),
       this.pages('/plugins?size=1000'),
     ]);
-    return services.map((service) => {
-      const linked = routes.filter((r) => r.service?.id === service.id);
-      return {
-        id: service.id,
-        name: service.name ?? service.id,
-        routes: linked.map((r) => ({
-          id: r.id,
-          name: r.name ?? null,
-          paths: r.paths ?? [],
-        })),
-        keyAuth: plugins.some(
-          (p) =>
-            p.name === 'key-auth' &&
-            p.enabled !== false &&
-            (p.service?.id === service.id ||
-              linked.some((r) => r.id === p.route?.id) ||
-              (!p.service && !p.route && !p.consumer)),
-        ),
-      };
-    });
+    return services
+      .filter((s) => !s.tags?.includes('portal-internal'))
+      .map((service) => {
+        const linked = routes.filter((r) => r.service?.id === service.id);
+        return {
+          id: service.id,
+          name: service.name ?? service.id,
+          routes: linked.map((r) => ({
+            id: r.id,
+            name: r.name ?? null,
+            paths: r.paths ?? [],
+          })),
+          keyAuth: plugins.some(
+            (p) =>
+              p.name === 'key-auth' &&
+              p.enabled !== false &&
+              (p.service?.id === service.id ||
+                linked.some((r) => r.id === p.route?.id) ||
+                (!p.service && !p.route && !p.consumer)),
+          ),
+        };
+      });
   }
   async getService(idOrName: string) {
     const service = await this.request<Entity>(

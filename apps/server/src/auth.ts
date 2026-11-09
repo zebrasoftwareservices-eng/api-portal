@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { betterAuth } from 'better-auth';
+import { APIError } from 'better-auth/api';
+import { eq } from 'drizzle-orm';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { uuidv7 } from 'uuidv7';
-import { schema, type Database } from '@portal/db';
+import { schema, user, type Database } from '@portal/db';
 import type { Config } from './config.js';
 import type { FastifyRequest } from 'fastify';
 import { Problem } from './problem.js';
@@ -13,6 +15,24 @@ export function createAuth(db: Database, config: Config) {
     secret: config.BETTER_AUTH_SECRET,
     trustedOrigins: [config.PORTAL_PUBLIC_URL],
     database: drizzleAdapter(db, { provider: 'pg', schema }),
+    databaseHooks: {
+      user: {
+        create: {
+          before: async () => {
+            const [admin] = await db
+              .select({ id: user.id })
+              .from(user)
+              .where(eq(user.role, 'admin'))
+              .limit(1);
+            if (!admin)
+              throw new APIError('FORBIDDEN', {
+                message:
+                  'Create the first administrator through setup before signing up.',
+              });
+          },
+        },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       autoSignIn: true,

@@ -6,12 +6,15 @@ import {
   subscriptions,
   type Database,
 } from '@portal/db';
-import type { GatewayAdapter } from '@portal/adapter-sdk';
+import {
+  requireGateway,
+  type GatewayConnection,
+} from './gateway-connection.js';
 import type { FastifyBaseLogger } from 'fastify';
 import { sql, eq } from 'drizzle-orm';
 export async function reconcile(
   db: Database,
-  adapter: GatewayAdapter,
+  connection: GatewayConnection,
   log: Pick<FastifyBaseLogger, 'warn'>,
 ) {
   await db.transaction(async (tx) => {
@@ -19,6 +22,9 @@ export async function reconcile(
       sql`select pg_try_advisory_xact_lock(71833002) as acquired`,
     );
     if (!lock[0]?.acquired) return;
+    const gateway = await connection.load(tx);
+    if (!gateway) return;
+    const { adapter } = requireGateway(gateway);
     const [owned, appRows, keyRows] = await Promise.all([
       adapter.listOwnedConsumers(),
       tx.select({ id: apps.id }).from(apps),

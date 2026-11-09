@@ -20,7 +20,8 @@ api.use({
         `/sign-in?next=${encodeURIComponent(window.location.pathname + window.location.search)}`,
       );
     }
-    if (response.status === 403) window.location.assign('/not-found');
+    if (response.status === 403 && schemaPath !== '/v1/setup/admin')
+      window.location.assign('/not-found');
     if (response.status === 429)
       toast.error('Too many requests. Wait a moment and try again.');
     return response;

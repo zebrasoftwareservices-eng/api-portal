@@ -514,6 +514,36 @@ caption {
   }
 }
 
+.badge.warning {
+  background: var(--portal-warning-subtle);
+  color: var(--portal-warning);
+}
+.admin-nav {
+  padding-block: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.admin-nav [aria-current='page'] {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.5rem;
+}
+.gateway-details > div {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 1rem;
+  margin-block: 0.75rem;
+}
+.gateway-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .gateway-details > div {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+}
+
 /* Developer journey: names and access actions always wrap, including unbroken names. */
 .page-header > div,
 .access-actions,

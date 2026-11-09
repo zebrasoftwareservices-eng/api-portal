@@ -70,10 +70,15 @@ export class GatewayServiceConflictError extends Error {
     this.name = 'GatewayServiceConflictError';
   }
 }
+export type ConnectionCheck =
+  | { outcome: 'ok'; version: string }
+  | { outcome: 'unreachable' | 'refused' | 'not-gateway' | 'read-only' };
 export interface GatewayAdapter {
   readonly kind: 'kong';
   capabilities(): Capabilities;
   health(): Promise<HealthReport>;
+  checkConnection(): Promise<ConnectionCheck>;
+  checkProxy(url: string): Promise<boolean>;
   listServices(): Promise<GatewayService[]>;
   getService(idOrName: string): Promise<GatewayService | null>;
   ensureConsumer(app: AppRef): Promise<ConsumerRef>;

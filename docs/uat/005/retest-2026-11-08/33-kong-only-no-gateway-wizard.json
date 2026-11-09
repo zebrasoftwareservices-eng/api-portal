@@ -1,0 +1,62 @@
+{
+  "id": "33a4036c-15e1-4d58-adb7-87cd6cc1a093",
+  "ok": true,
+  "result": {
+    "origin": "http://localhost:3000/admin/gateways",
+    "refs": {
+      "e881": {
+        "name": "Skip to content",
+        "role": "link"
+      },
+      "e882": {
+        "name": "Notifications alt+T",
+        "role": "region"
+      },
+      "e883": {
+        "name": "Developer Portal",
+        "role": "link"
+      },
+      "e884": {
+        "name": "Admin",
+        "role": "navigation"
+      },
+      "e885": {
+        "name": "Breadcrumb",
+        "role": "navigation"
+      },
+      "e886": {
+        "name": "Gateways",
+        "role": "heading"
+      },
+      "e887": {
+        "name": "Kong",
+        "role": "heading"
+      },
+      "e888": {
+        "name": "Open menu",
+        "role": "button"
+      },
+      "e889": {
+        "name": "APIs",
+        "role": "link"
+      },
+      "e890": {
+        "name": "Gateways",
+        "role": "link"
+      }
+    },
+    "removedRefs": [
+      "@e877",
+      "@e878",
+      "@e879",
+      "@e880"
+    ],
+    "snapshot": "- main\n  - navigation \"Admin\" [ref=e884]\n    - link \"APIs\" [ref=e889]\n    - link \"Gateways\" [ref=e890]\n  - navigation \"Breadcrumb\" [ref=e885]\n  - heading \"Gateways\" [level=1, ref=e886]\n  - paragraph\n    - StaticText \"A portal connects to one gateway.\"\n  - heading \"Kong\" [level=2, ref=e887]\n  - StaticText \"● Connected\"\n  - StaticText \"Kong \"\n  - StaticText \"3.9.4\"\n  - StaticText \"Set by environment\"\n  - DescriptionList\n    - term \"Admin API URL\"\n    - definition\n      - StaticText \"http://kong:8001\"\n    - term \"Admin API token\"\n    - definition\n      - StaticText \"None\"\n    - term \"Internal proxy URL\"\n    - definition\n      - StaticText \"http://kong:8000\"\n    - term \"Public proxy URL\"\n    - definition\n      - StaticText \"http://localhost:8000\"\n    - term \"Last changed\"\n    - definition\n      - time\n        - StaticText \"Nov 9, 2026\"\n  - paragraph\n    - StaticText \"ⓘ KONG_ADMIN_URL set this connection, so it can't be changed here. Change the server's environment and restart it. To manage it here instead, unset KONG_ADMIN_URL and restart the server.\"",
+    "browserPageId": "60bb53ac-b8ae-47cb-87d7-167dbf01a480",
+    "url": "http://localhost:3000/admin/gateways",
+    "title": "Gateways · Developer Portal"
+  },
+  "_meta": {
+    "runtimeId": "51e7026c-039b-4fc7-9b15-17880aae2ae7"
+  }
+}
