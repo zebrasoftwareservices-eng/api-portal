@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { renderToString } from 'react-dom/server';
+import { hydrateRoot } from 'react-dom/client';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { ApiDetail } from '../lib/types';
@@ -176,6 +178,68 @@ it('publishes a patch without changing latest, retains warnings, resets fields a
   expect(screen.getByLabelText('Release note (optional)')).toHaveValue('');
   expect(screen.getByText(/1 lint warning/)).toBeVisible();
 });
+it.each([false, true])(
+  'retains a pre-hydration file and applies the size limit (oversized: %s)',
+  async (oversized) => {
+    const user = userEvent.setup();
+    const container = document.createElement('div');
+    document.body.append(container);
+    container.innerHTML = renderToString(<AdminVersions initial={detail} />);
+    const input = within(container).getByLabelText('OpenAPI file');
+    const content = '{"openapi":"3.0.3","info":{"version":"3.0.0"}}';
+    const file = new File([content], 'before-hydration.json', {
+      type: 'application/json',
+    });
+    const read = vi.fn().mockResolvedValue(content);
+    Object.defineProperty(file, 'text', { value: read });
+    if (oversized)
+      Object.defineProperty(file, 'size', { value: 5 * 1024 * 1024 + 1 });
+    // The browser populated the native input before React could see a change.
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [file],
+    });
+    mocks.post.mockResolvedValue({
+      data: {
+        api: { ...detail, version: '3.0.0' },
+        version: { version: '3.0.0' },
+        lintWarnings: [],
+      },
+    });
+    let root!: ReturnType<typeof hydrateRoot>;
+    try {
+      await act(async () => {
+        root = hydrateRoot(container, <AdminVersions initial={detail} />);
+      });
+      await user.click(
+        within(container).getByRole('button', { name: 'Publish version' }),
+      );
+      if (oversized) {
+        expect(
+          within(container).getByText(
+            /This document is larger than 5 MiB, the import limit\./,
+          ),
+        ).toBeVisible();
+        expect(mocks.post).not.toHaveBeenCalled();
+        expect(read).not.toHaveBeenCalled();
+      } else {
+        expect(await within(container).findByRole('status')).toHaveTextContent(
+          'Published version 3.0.0',
+        );
+        expect(mocks.post).toHaveBeenCalledWith(
+          '/v1/admin/apis/{slug}/versions',
+          {
+            params: { path: { slug: 'orders' } },
+            body: { spec: { content }, makeLatest: true },
+          },
+        );
+      }
+    } finally {
+      await act(async () => root?.unmount());
+      container.remove();
+    }
+  },
+);
 it('sets latest and moves focus when the row action disappears', async () => {
   const user = userEvent.setup();
   mocks.put.mockResolvedValue({

@@ -91,15 +91,21 @@ export function AdminVersions({
   }
   async function publish() {
     if (lock.current) return;
+    // A file selected in the server-rendered input may predate React's
+    // change handler. Read the input too; dropped files live in state only.
+    const selectedFile = file ?? fileInput.current?.files?.[0];
     setFieldError('');
     setProblem(undefined);
     if (note.length > 5000) {
       form.current?.querySelector<HTMLElement>('textarea')?.focus();
       return;
     }
-    if (source === 'file' && (!file || file.size > 5 * 1024 * 1024)) {
+    if (
+      source === 'file' &&
+      (!selectedFile || selectedFile.size > 5 * 1024 * 1024)
+    ) {
       setFieldError(
-        file
+        selectedFile
           ? 'This document is larger than 5 MiB, the import limit.'
           : 'Choose an OpenAPI file.',
       );
@@ -122,7 +128,10 @@ export function AdminVersions({
       const { data, error } = await api.POST('/v1/admin/apis/{slug}/versions', {
         params: { path: { slug: detail.slug } },
         body: {
-          spec: source === 'file' ? { content: await file!.text() } : { url },
+          spec:
+            source === 'file'
+              ? { content: await selectedFile!.text() }
+              : { url },
           ...(note.trim() ? { releaseNote: note } : {}),
           makeLatest: !keepLatest,
         },

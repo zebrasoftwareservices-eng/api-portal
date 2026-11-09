@@ -369,7 +369,7 @@ version's page.
 - [x] [frontend] Admin: show lint errors (422 `openapi-lint-failed`) and lint warnings (success) in both import forms with rule, message, location; 503 ruleset-unavailable message.
 - [x] [frontend] Handle `gateway-service-already-linked` per the UX decision (offer to add a version to the linked API).
 - [x] [frontend] Demo mode: `demoData()` with one version and changelog entry; demo build tests still pass.
-- [ ] [frontend] Fix pre-hydration upload bug: the version upload keeps a file chosen before hydration (or disables file entry until hydrated), so the failing regression "012 failure path: version upload cannot discard input before hydration" in `apps/portal/e2e/versions.test.ts` passes (see Bugs).
+- [x] [frontend] Fix pre-hydration upload bug: the version upload keeps a file chosen before hydration (or disables file entry until hydrated), so the failing regression "012 failure path: version upload cannot discard input before hydration" in `apps/portal/e2e/versions.test.ts` passes (see Bugs).
 - [ ] [qa] AC 1: import v2 onto a published v1 on the Compose stack; switcher, stable v1 URL, one catalog entry, same Kong service link (Playwright + API).
 - [ ] [qa] AC 2 and AC 9: upload order and `makeLatest: false`; "Set as latest"; 403 for a developer, 404 for an unknown version.
 - [ ] [qa] AC 3: changelog entry for the orders v1 → v2 example (note, date, `POST /orders` added, `GET /orders` removed and breaking).
@@ -406,6 +406,11 @@ No new tokens.
   focus order, and 375px/1280px layouts are in the design file, §3–§7.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Frontend fix — 2026-11-08
+- Version publication now falls back to the native file input's selected file when the selection happened before hydration and React state is empty. Both size validation and document reading use that file; drag-and-drop selections continue to use React state.
+- Added server-render/hydrate component regressions proving that an input populated before hydration publishes the selected document, and that an oversized pre-hydration selection is refused before reading or calling the API.
+- Validation: `pnpm lint` (7 tasks), `pnpm typecheck` (12 tasks), and `NODE_OPTIONS=--no-experimental-webstorage pnpm --filter @portal/portal test` (135 tests in 21 files, including all 10 version tests) pass. Docker/Compose, full workspace tests using Testcontainers, and the Playwright hydration regression are deferred to the QA re-test by coordinator instruction because spec 005 holds the shared Docker turn; the Bugs item remains open for QA verification. Spec status is unchanged.
 
 ### Frontend — 2026-11-08
 - Added the shared Radix version menu, stable version routes (including encoded `+` names, unknown-version 404s, latest canonical metadata and the older-version notice), and server-rendered changelog entries with plain-text release notes and operation summaries.
