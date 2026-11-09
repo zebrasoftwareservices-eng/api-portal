@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -529,9 +529,33 @@ Only tests and this spec changed; application code was not modified.
   log cases on 2026-11-08; B1 is closed and no longer blocks UAT. No keyed issue was created
   while the bug was open because Linear rejected it; no open durable bug remains.
 
+- [ ] **U1 — Removing saved SMTP settings leaves a stale saved-settings test result (minor, frontend).**
+  In Admin → Mail, save Mailpit as an admin-configured SMTP source, send a successful test email,
+  then choose **Remove saved settings** → **Remove settings**. The source banner correctly returns
+  to "Portal email uses the server's environment settings", but the result below **Send test email**
+  still says the message used the saved settings. Expected: clear the old result when the effective
+  source changes, or update it so the page does not present contradictory current states. Evidence:
+  `docs/uat/007/run-2026-11-09-final/23-stale-saved-test-result.png`. This does not block a journey;
+  it remains a transient in-spec minor finding with no Linear issue.
+
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |
 | --- | --- | --- |
+| Quickstart sends all mail to Mailpit from environment settings | PASS — fresh build/start healthy in 163.52 s; signup, verification and reset messages arrived | `docs/uat/007/run-2026-11-09-final/01-admin-mail-environment.png`, `13-reset-known-confirmation.png` |
+| Admin saves SMTP settings and sends a test email | PASS — saved Mailpit settings took precedence, sent successfully, then were removed to restore the environment fallback | `docs/uat/007/run-2026-11-09-final/22-saved-smtp-test.png` |
+| Admin requires verified email before app creation | PASS — setting enabled live; unverified dashboard/banner and disabled Create app were clear; creation succeeded after verification | `docs/uat/007/run-2026-11-09-final/04-unverified-dashboard-gate.png`, `05-create-app-blocked.png`, `12-verified-app-key-created.png` |
+| Admin changes sign-in/reset/verification limits | PASS — defaults were readable; reset maximum changed from 3 to 2 and applied without restart, then restored to 3 | `docs/uat/007/run-2026-11-09-final/03-admin-accounts-live-settings.png` |
+| Developer signs up, receives verification mail and can resend | PASS — verification message copy/link worked; verified profile and app creation were available afterward | `docs/uat/007/run-2026-11-09-final/04-unverified-dashboard-gate.png`, `06-verified-profile.png` |
+| Developer resets a forgotten password | PASS — known/unknown confirmations matched, old password failed, new password worked, and reopening the link showed expiry/recovery | `docs/uat/007/run-2026-11-09-final/13-reset-known-confirmation.png`, `14-reset-unknown-confirmation.png`, `15-reset-success.png`, `16-reset-link-used.png` |
+| Developer changes password while signed in | PASS — wrong current password preserved the account; correct current password produced the other-sessions-signed-out success state | `docs/uat/007/run-2026-11-09-final/08-password-wrong-current.png`, `09-password-changed.png` |
+| Developer updates name and email | PASS — name updated, old email remained pending, confirmation required an explicit click, and the new email became the sign-in address | `docs/uat/007/run-2026-11-09-final/07-name-saved.png`, `10-email-change-pending.png`, `11-email-changed.png` |
+| Developer deletes their account and keys | PASS — dialog named two apps; wrong password was refused; both keys changed from Kong 200 to 401; deleted address signed up again; last admin was protected | `docs/uat/007/run-2026-11-09-final/17-delete-wrong-password.png`, `18-account-deleted.png`, `19-mobile-keyboard-signup.png`, `21-last-admin-refusal.png` |
+
+UAT date: 2026-11-09. Full notes and evidence index:
+`docs/uat/007/run-2026-11-09-final/README.md`. Desktop journeys used 1280 px; the main signup
+journey was repeated at 390×844 using Tab, typed keys and Enter only, and Escape safely closed the
+delete dialog. Browser consoles were clean; no unexpected failed requests were observed. One minor
+finding (U1) remains open; there is no blocker or major, so the spec advances to `review`.
 
 ## Review  _(tech-lead)_
 
