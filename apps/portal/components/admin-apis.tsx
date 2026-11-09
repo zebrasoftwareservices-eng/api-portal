@@ -9,6 +9,13 @@ import { useResource } from './use-resource';
 import { Field } from './field';
 import { ProblemAlert } from './problem-alert';
 import { DateValue } from './date';
+import {
+  ImportProblem,
+  LintWarnings,
+  ReleaseNote,
+  RulesetBanner,
+  invalidVersionMessage,
+} from './lint-findings';
 export function serviceLabel(s: GatewayService) {
   return `${s.name} — ${s.routes.flatMap((r) => r.paths)[0] || 'no route path'} — key-auth ${s.keyAuth ? 'on' : 'off'}${s.linkedApiSlug ? ` · linked to /apis/${s.linkedApiSlug}` : ''}`;
 }
@@ -20,6 +27,7 @@ export function AdminApis() {
   const [file, setFile] = useState<File>();
   const [url, setUrl] = useState('');
   const [service, setService] = useState('');
+  const [releaseNote, setReleaseNote] = useState('');
   const [slug, setSlug] = useState('');
   const [routePath, setRoute] = useState('');
   const [options, setOptions] = useState(false);
@@ -70,6 +78,10 @@ export function AdminApis() {
         invalid.url = 'Enter a URL that starts with http:// or https://.';
       }
     }
+    if (releaseNote.length > 5000) {
+      invalid.releaseNote = 'Use up to 5,000 characters for the release note.';
+      setOptions(true);
+    }
     if (!service) invalid.gatewayServiceId = 'Choose a Kong service.';
     if (
       slug &&
@@ -86,7 +98,8 @@ export function AdminApis() {
         'This service has no route path. Enter the path Kong serves this API on.';
     setErrors(invalid);
     if (Object.keys(invalid).length) {
-      if (invalid.slug || invalid.routePath) setOptions(true);
+      if (invalid.slug || invalid.routePath || invalid.releaseNote)
+        setOptions(true);
       return;
     }
     lock.current = true;
@@ -98,6 +111,7 @@ export function AdminApis() {
         body: {
           spec: source === 'file' ? { content: await file!.text() } : { url },
           gatewayServiceId: service,
+          ...(releaseNote.trim() ? { releaseNote } : {}),
           ...(slug ? { slug } : {}),
           ...(routePath ? { routePath } : {}),
         },
@@ -106,7 +120,12 @@ export function AdminApis() {
         setProblem(error);
         setRetry(retrySeconds(response));
         const type = error.type.split('/').at(-1);
+        if (type === 'lint-ruleset-unavailable') void health.reload();
         const mapping: Record<string, [string, string]> = {
+          'invalid-api-version': [
+            source === 'file' ? 'file' : 'url',
+            invalidVersionMessage,
+          ],
           'spec-url-unreachable': [
             'url',
             "We couldn't fetch this URL. Check that it's reachable from the portal server and responds within 10 seconds.",
@@ -121,7 +140,7 @@ export function AdminApis() {
           ],
           'gateway-service-already-linked': [
             'gatewayServiceId',
-            'This service already serves a published API. Choose another service.',
+            'This service already serves a published API. Choose another service, or add a version to that API.',
           ],
           'gateway-service-has-no-route': [
             'routePath',
@@ -162,6 +181,7 @@ export function AdminApis() {
         setUrl('');
         setService('');
         setSlug('');
+        setReleaseNote('');
         setRoute('');
         setOptions(false);
         setErrors({});
@@ -199,6 +219,17 @@ export function AdminApis() {
           </p>
         )}
         <p>Nothing was published.</p>
+        {problem.type.endsWith('gateway-service-already-linked') &&
+          selected?.linkedApiSlug && (
+            <a
+              href={`/admin/apis/${selected.linkedApiSlug}${source === 'url' ? `?url=${encodeURIComponent(url)}` : ''}#add-version`}
+            >
+              Add a version to{' '}
+              {catalog.data?.items.find(
+                (a) => a.slug === selected.linkedApiSlug,
+              )?.title || `/apis/${selected.linkedApiSlug}`}
+            </a>
+          )}
       </>
     );
   }
@@ -208,6 +239,7 @@ export function AdminApis() {
         title="APIs"
         description="Import an OpenAPI document, link it to a Kong service and publish it."
       />
+      <RulesetBanner lint={health.data?.lint} />
       {health.data?.gateway.reachable === false && (
         <div className="alert warning">
           ⚠ Kong&apos;s Admin API isn&apos;t responding. Imports, new apps and
@@ -219,11 +251,14 @@ export function AdminApis() {
           className="alert success"
           role="status"
           aria-describedby={
-            published.warnings?.length
-              ? published.warnings
-                  .map((_, index) => `${warningId}-${index}`)
-                  .join(' ')
-              : undefined
+            [
+              published.lintWarnings?.length ? `${warningId}-lint` : '',
+              ...(published.warnings || []).map(
+                (_, index) => `${warningId}-${index}`,
+              ),
+            ]
+              .filter(Boolean)
+              .join(' ') || undefined
           }
           ref={success}
           tabIndex={-1}
@@ -241,6 +276,10 @@ export function AdminApis() {
           ⚠ {warning.message}
         </div>
       ))}
+      <LintWarnings
+        findings={published?.lintWarnings}
+        id={`${warningId}-lint`}
+      />
       <form
         ref={form}
         noValidate
@@ -288,6 +327,7 @@ export function AdminApis() {
                 {(props) => (
                   <Input
                     {...props}
+                    key="file"
                     ref={fileInput}
                     type="file"
                     accept=".yaml,.yml,.json,application/json,application/yaml"
@@ -322,6 +362,7 @@ export function AdminApis() {
               {(props) => (
                 <Input
                   {...props}
+                  key="url"
                   type="url"
                   placeholder="https://example.com/openapi.yaml"
                   value={url}
@@ -435,9 +476,16 @@ export function AdminApis() {
           )}
           {selected?.linkedApiSlug && (
             <div className="alert warning">
-              ⚠ This service already serves /apis/{selected.linkedApiSlug}. A
-              Kong service can serve only one published API, so this import will
-              be refused. Choose another one.
+              ⚠ This service already serves /apis/{selected.linkedApiSlug}. To
+              publish a new version of that API, add a version to it instead.
+              <a
+                href={`/admin/apis/${selected.linkedApiSlug}${source === 'url' ? `?url=${encodeURIComponent(url)}` : ''}#add-version`}
+              >
+                Add a version to{' '}
+                {catalog.data?.items.find(
+                  (a) => a.slug === selected.linkedApiSlug,
+                )?.title || `/apis/${selected.linkedApiSlug}`}
+              </a>
             </div>
           )}
           <details
@@ -474,24 +522,29 @@ export function AdminApis() {
                   />
                 )}
               </Field>
+              <ReleaseNote value={releaseNote} onChange={setReleaseNote} />
             </div>
           </details>
         </fieldset>
-        {problem && (
-          <ProblemAlert
-            problem={problem}
-            title={
-              problem.type.endsWith('invalid-openapi')
-                ? "This isn't a valid OpenAPI document"
-                : problem.type.endsWith('unsupported-openapi-version')
-                  ? 'Unsupported OpenAPI version'
-                  : undefined
-            }
-            message={importMessage()}
-            onRetry={problem.status === 503 ? submit : undefined}
-            retryAfterSeconds={retry}
-          />
-        )}
+        {problem &&
+          (problem.type.endsWith('openapi-lint-failed') ||
+          problem.type.endsWith('lint-ruleset-unavailable') ? (
+            <ImportProblem problem={problem} />
+          ) : (
+            <ProblemAlert
+              problem={problem}
+              title={
+                problem.type.endsWith('invalid-openapi')
+                  ? "This isn't a valid OpenAPI document"
+                  : problem.type.endsWith('unsupported-openapi-version')
+                    ? 'Unsupported OpenAPI version'
+                    : undefined
+              }
+              message={importMessage()}
+              onRetry={problem.status === 503 ? submit : undefined}
+              retryAfterSeconds={retry}
+            />
+          ))}
         <div className="actions">
           <Button
             type="submit"
@@ -500,7 +553,7 @@ export function AdminApis() {
             }
             aria-busy={pending}
           >
-            {pending ? 'Validating and publishing…' : 'Import and publish'}
+            {pending ? 'Linting and publishing…' : 'Import and publish'}
           </Button>
         </div>
       </form>
@@ -520,13 +573,18 @@ export function AdminApis() {
             <caption className="sr-only">Published APIs</caption>
             <thead>
               <tr>
-                {['Title', 'Slug', 'Version', 'Base URL', 'Published'].map(
-                  (h) => (
-                    <th scope="col" key={h}>
-                      {h}
-                    </th>
-                  ),
-                )}
+                {[
+                  'Title',
+                  'Slug',
+                  'Version',
+                  'Base URL',
+                  'Published',
+                  'Versions',
+                ].map((h) => (
+                  <th scope="col" key={h}>
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -547,6 +605,15 @@ export function AdminApis() {
                   </td>
                   <td>
                     <DateValue value={a.publishedAt} />
+                  </td>
+                  <td>
+                    <a
+                      href={`/admin/apis/${a.slug}`}
+                      aria-label={`Manage versions for ${a.title}`}
+                    >
+                      Manage versions
+                      <span className="sr-only"> for {a.title}</span>
+                    </a>
                   </td>
                 </tr>
               ))}
