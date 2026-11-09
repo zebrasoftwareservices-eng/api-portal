@@ -22,8 +22,10 @@ Last updated: 2026-11-08 · Owner: Elango · Linear project: **API Portal** (one
   ```
 - **During the week:** Elango approves each spec (`node scripts/factory.mjs set-status <id> ready`), the factory
   designs, builds, tests and reviews it, and Elango merges the pull request. Vercel deploys `main`.
-- **Parallel or serial:** run a sprint's two features side by side only when Claude usage allows. Otherwise start
-  the second when the first reaches testing (Codex does build and QA, so Claude is free then).
+- **Parallel or serial:** `node scripts/factory.mjs start` refuses a second feature while another
+  spec is in `ready`, `designed`, or `review`. Start the second when the first reaches `building`,
+  `testing`, or `uat` (Codex does those). Pass `--allow-parallel-claude` only when you mean to
+  spend two Claude stages at once.
 - **Friday:** sprint review. Run the sprint's demo script, tag the release (`git tag vX.Y`), close the milestone.
 - If a coordinator stops: `node scripts/factory.mjs resume <spec id>`.
 
@@ -87,7 +89,7 @@ Already shipped: **v0.1** — spec 001 (Kong quickstart) and spec 002 (static de
 | Backend (Codex)          | Server-side fixes                                   | ACL groups, hidden credentials, migration, reconcile |
 | Frontend (Codex)         | Most fixes                                          | —                                                    |
 | QA (Codex)               | A regression test per fixed issue                   | Access tests against a real Kong                     |
-| User-tester (Claude)     | Re-walk every affected screen                       | Try-it with the right and the wrong API              |
+| User-tester (Codex)     | Re-walk every affected screen                       | Try-it with the right and the wrong API              |
 | Elango                   | Approve spec, merge                                 | Approve spec, merge                                  |
 
 ## Sprint 2 · v0.3 — Live demo, connect your own Kong · 16–20 Nov
@@ -110,7 +112,7 @@ Already shipped: **v0.1** — spec 001 (Kong quickstart) and spec 002 (static de
 | Backend (Codex)          | Setup API, gateway CRUD, discovery   | Production config, trusted proxy, reset job                  |
 | Frontend (Codex)         | Wizard, admin pages                  | Demo copy                                                    |
 | QA (Codex)               | Fresh-install e2e                    | Smoke test on the deployed preview                           |
-| User-tester (Claude)     | First-run walkthrough                | Public sign-up → call walkthrough                            |
+| User-tester (Codex)     | First-run walkthrough                | Public sign-up → call walkthrough                            |
 | Elango                   | Approve, merge                       | **Pick hosts, create accounts, set secrets**, approve, merge |
 
 ## Sprint 3 · v0.4 — Accounts and teams · 23–27 Nov
@@ -132,7 +134,7 @@ Already shipped: **v0.1** — spec 001 (Kong quickstart) and spec 002 (static de
 | Backend (Codex)          | SMTP, verification, 2FA, account deletion            | Teams API, invites, migration  |
 | Frontend (Codex)         | Profile, 2FA setup, reset                            | Team pages and switcher        |
 | QA (Codex)               | e2e through Mailpit                                  | Role and ownership tests       |
-| User-tester (Claude)     | Full account lifecycle                               | Two-browser invite walkthrough |
+| User-tester (Codex)     | Full account lifecycle                               | Two-browser invite walkthrough |
 | Elango                   | Approve, merge; choose an SMTP provider for the demo | Approve, merge                 |
 
 ## Sprint 4 · v0.5 — Products, plans and approvals · 30 Nov–4 Dec
@@ -154,7 +156,7 @@ Already shipped: **v0.1** — spec 001 (Kong quickstart) and spec 002 (static de
 | Backend (Codex)          | Products, plans, subscriptions, rate limits | Requests, approvals, notifications, filters |
 | Frontend (Codex)         | Catalog, product page, dialogs              | Dialog, queue, catalog filtering            |
 | QA (Codex)               | Rate-limit tests against Kong               | Approval and visibility tests               |
-| User-tester (Claude)     | Subscribe, hit the limit, change plan       | Developer and admin side by side            |
+| User-tester (Codex)     | Subscribe, hit the limit, change plan       | Developer and admin side by side            |
 | Elango                   | Approve, merge                              | Approve, merge                              |
 
 ## Sprint 5 · v0.6 — Developer experience and insights · 7–11 Dec
@@ -178,7 +180,7 @@ downloads), split out of 012. Start them when 011 and 012 reach testing; whateve
 | Backend (Codex)          | Ingestion, aggregation          | Versions, changelog diff, Spectral   |
 | Frontend (Codex)         | Usage and insights screens      | Switcher, changelog, lint report     |
 | QA (Codex)               | Usage accuracy through Kong     | Import, version and lint tests       |
-| User-tester (Claude)     | Call in try-it, watch the meter | Browse a new version as a developer  |
+| User-tester (Codex)     | Call in try-it, watch the meter | Browse a new version as a developer  |
 | Elango                   | Approve, merge                  | Approve, merge                       |
 
 ## Sprint 6 · v0.7 — Branding and content · 14–18 Dec
@@ -200,7 +202,7 @@ downloads), split out of 012. Start them when 011 and 012 reach testing; whateve
 | Backend (Codex)          | Theme API, export/import   | Content API, SEO metadata             |
 | Frontend (Codex)         | Editor, token injection    | Editors, public rendering             |
 | QA (Codex)               | Visual and contrast checks | Visibility and sanitising tests       |
-| User-tester (Claude)     | Rebrand end to end         | Build pages as admin, read as visitor |
+| User-tester (Codex)     | Rebrand end to end         | Build pages as admin, read as visitor |
 | Elango                   | Approve, merge             | Approve, merge                        |
 
 ## Sprint 7 · v0.8 — Ready for company servers · 21–25 Dec
@@ -222,7 +224,7 @@ downloads), split out of 012. Start them when 011 and 012 reach testing; whateve
 | Backend (Codex)          | Roles, approvals, private mode, audit | Compose profile, Helm, backups, release CI  |
 | Frontend (Codex)         | Admin screens                         | —                                           |
 | QA (Codex)               | Permission matrix tests               | Install and upgrade tests in CI             |
-| User-tester (Claude)     | Admin, owner, sign-up walkthroughs    | Follow the install guide on a fresh machine |
+| User-tester (Codex)     | Admin, owner, sign-up walkthroughs    | Follow the install guide on a fresh machine |
 | Elango                   | Approve, merge                        | Decide the support matrix, approve, merge   |
 
 ## Sprint 8 · v0.9 — Second gateway and OAuth · 28 Dec–1 Jan
@@ -244,7 +246,7 @@ downloads), split out of 012. Start them when 011 and 012 reach testing; whateve
 | Backend (Codex)          | AWS adapter (SDK v3), LocalStack | Keycloak, OIDC client registration, Kong JWT |
 | Frontend (Codex)         | Gateways screen                  | Credentials UI, try-it token flow            |
 | QA (Codex)               | Conformance suite on LocalStack  | Token and revoke tests                       |
-| User-tester (Claude)     | Mixed catalog walkthrough        | Get credentials, call from try-it            |
+| User-tester (Codex)     | Mixed catalog walkthrough        | Get credentials, call from try-it            |
 | Elango                   | AWS test account, approve, merge | Approve, merge                               |
 
 ---

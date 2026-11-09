@@ -83,10 +83,11 @@ Linear holds the durable work item and its stage summaries.
   blocker/major, needs a different owner or release, or will remain open after the current spec.
   Minor findings fixed in the current loop stay as checkboxes/evidence in the spec. Every
   out-of-scope follow-up is a separate Backlog issue.
-- **Every agent is a Linear team member.** It comments its 2–4 sentence stage summary on the
-  feature issue and keeps any durable issue it touches current. Developers move durable fixes
-  to In Review; QA and the user-tester close durable bugs; the tech lead closes durable review
-  findings. Use `orca linear …` (see the orca-linear skill).
+- **Every agent is a Linear team member.** It appends its 2–4 sentence stage summary to
+  `docs/specs/log/<id>.md`. The coordinator posts that summary on the feature issue when it
+  wakes. The agent still updates durable bugs and review findings it owns. Developers move
+  durable fixes to In Review; QA and the user-tester close durable bugs; the tech lead closes
+  durable review findings. Use `orca linear …` (see the orca-linear skill).
 - The coordinator keeps the feature issue in step and reconciles anything missed
   (`node scripts/factory.mjs track <id> sync` — forward-only, safe any time).
 - Only Elango passes the requirements-approval and release/merge gates.
@@ -122,11 +123,17 @@ Codex custom agents (`.codex/agents/`), the Claude copy of the factory skill and
 A spec's `status` moves: `draft` → **Elango approves** → `ready` → tech-lead → `designed`
 → ui-designer → `building` → backend + frontend → `testing` → qa-tester → `uat`
 → user-tester → `review` → tech-lead → `approved` → **Elango merges** → `done` (Vercel deploys).
-Bugs from QA or user testing and blocking review findings send it back to `building`.
+Blocker and major bugs, and blocking review findings, send it back to `building`. A minor
+finding or a review suggestion stays in the spec.
+
+The coordinator starts the workers and ends its turn. Orca wakes it. It does not poll.
+At most one spec is in `ready`, `designed`, or `review`. Developers test the packages they
+changed and push the feature branch. QA runs the full suite once and leaves the stack up.
+Review reads that report. CI is the second full run.
 
 To run it, start the coordinator with the `factory` skill (Claude Code: `/factory 001`;
 Codex: `$factory 001`). It asks `node scripts/factory.mjs plan <id> --json` what comes next,
-starts each role as a supervised Orca worker, and updates Linear after every stage. To play one role by hand, run
-`node scripts/factory.mjs prompt <role> <id>` and paste the output into any agent.
+starts each role as a supervised Orca worker, and posts the stage summary after every stage.
+To play one role by hand, run `node scripts/factory.mjs prompt <role> <id>` and paste the output into any agent.
 
 Never mark your own work approved, and never pass one of Elango's two gates.

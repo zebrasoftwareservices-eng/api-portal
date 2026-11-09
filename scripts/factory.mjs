@@ -25,6 +25,7 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { chooseSpecStatuses, claudeConflicts } from './factory-guard.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SPECS = join(ROOT, 'docs', 'specs');
@@ -48,13 +49,13 @@ const STAGES = [
 const STAGE_KEYS = STAGES.map((s) => s.key);
 
 const OWNERSHIP = {
-  'product-manager': 'docs/specs/ and docs/roadmap.md only.',
-  'tech-lead': "the spec's Technical design and Review sections, apps/server/openapi.yaml (contract only) and docs/adr/. No application code.",
-  'ui-designer': "docs/design/ and the spec's UX section. No application code.",
-  'backend-developer': 'apps/server, packages/db, packages/adapter-*, packages/sdk, deploy/ and root workspace config (package.json, pnpm-workspace.yaml, turbo.json). Do not edit apps/portal or packages/ui.',
-  'frontend-developer': 'apps/portal and packages/ui. Do not edit apps/server, packages/db or adapters.',
-  'qa-tester': "test files (**/*.test.ts, apps/portal/e2e/, tests/) and the spec's Test report and Bugs sections. Do not fix application code.",
-  'user-tester': "docs/uat/ (screenshots and notes) and the spec's User testing and Bugs sections. Do not edit application code or tests.",
+  'product-manager': 'docs/specs/, docs/specs/log/, and docs/roadmap.md only.',
+  'tech-lead': "the spec's Technical design and Review sections, docs/specs/log/, apps/server/openapi.yaml (contract only) and docs/adr/. No application code.",
+  'ui-designer': "docs/design/, docs/specs/log/, and the spec's UX section. No application code.",
+  'backend-developer': 'apps/server, packages/db, packages/adapter-*, packages/sdk, deploy/, docs/specs/log/, and root workspace config (package.json, pnpm-workspace.yaml, turbo.json). Do not edit apps/portal or packages/ui.',
+  'frontend-developer': 'apps/portal, packages/ui, and docs/specs/log/. Do not edit apps/server, packages/db or adapters.',
+  'qa-tester': "test files (**/*.test.ts, apps/portal/e2e/, tests/), docs/specs/log/, and the spec's Test report and Bugs sections. Do not fix application code.",
+  'user-tester': "docs/uat/ (screenshots and notes), docs/specs/log/, and the spec's User testing and Bugs sections. Do not edit application code or tests.",
 };
 // ---------- helpers ----------
 const rel = (p) => relative(ROOT, p);
@@ -335,8 +336,8 @@ function jobFor(role, spec, opts = {}) {
     case 'tech-lead':
       if (opts.mode === 'review' || (!opts.mode && spec?.status === 'review'))
         return {
-          change: 'Review this branch against the spec (mode 2 in your role file): run git diff main...HEAD, pnpm lint, pnpm typecheck and pnpm test, then write blocking and suggestion findings with file:line in the Review section. Add an unkeyed Fix task for each blocking finding. Create a Code Review issue only if the finding needs another owner/release or will remain after this review. Set status: approved if nothing is blocking, otherwise status: building.',
-          acceptance: 'The Review section is filled, every blocking finding has a Fix task, durable findings have Linear issues, and status is approved or building.',
+          change: 'Review this branch against the spec (mode 2 in your role file). Read the Test report and git diff main...HEAD. Do not re-run lint, typecheck, or tests when the Test report names the current commit and says the full suite passed. CI on the pushed branch is the second run. Run the suite only when the report is missing or HEAD has moved past it. Write blocking and suggestion findings with file:line in the Review section. Add a Fix task only for a blocking finding. A suggestion gets no Fix task and does not set status to building. Create a Code Review issue only if the finding needs another owner/release or will remain after this review. Set status: approved if nothing is blocking, otherwise status: building.',
+          acceptance: 'The Review section is filled, every blocking finding has a Fix task, suggestions have none, durable findings have Linear issues, and status is approved or building.',
         };
       return {
         change: 'Write the Technical design section (components, API contract, data model, adapter calls, risks) and the task list tagged [backend], [frontend] and [qa]. Update apps/server/openapi.yaml and add an ADR if the design makes a lasting choice. Then set status: designed. Tasks stay in the spec; do not create task issues.',
@@ -352,45 +353,73 @@ function jobFor(role, spec, opts = {}) {
       const owner = role.split('-')[0];
       return {
         target: `every unchecked [${owner}] task`,
-        change: 'Implement those spec tasks with tests and tick each completed checkbox. Add a Build notes entry. For a keyed durable Fix task, comment on its bug/review issue with what changed and move it to In Review; unkeyed fixes stay in the spec.',
+        change: 'Implement those spec tasks. Test only the packages you changed (`pnpm --filter <name> lint`, `typecheck`, and `test`). Do not run the full workspace suite, the browser, or the quickstart. Tick each completed checkbox and add a Build notes entry. Push the feature branch with `git push -u origin HEAD` so CI starts. Never force-push and never push main. For a keyed durable Fix task, comment on its bug/review issue with what changed and move it to In Review; unkeyed fixes stay in the spec.',
         constraints: "Match the API contract in the spec's Technical design. Do not change the spec status; the coordinator moves it.",
-        acceptance: `pnpm lint, pnpm typecheck and pnpm test pass, and every [${owner}] task is ticked.`,
+        acceptance: `The packages you changed pass their tests, every [${owner}] task is ticked, and the feature branch is pushed.`,
       };
     }
     case 'qa-tester':
       return {
-        change: 'Map every acceptance criterion to an automated test, add failure-path tests, run the full suite and the docker compose quickstart, and fill the Test report. Re-test every open bug in the spec. Record every new bug in the spec; create a Bug issue only for blocker/major, cross-owner/release, or post-spec work. Add a Fix task for blockers and majors. Set status: uat if none remain open, otherwise status: building.',
-        acceptance: 'The Test report covers every acceptance criterion, durable bugs have Linear issues, all findings are in the spec, and status is uat or building.',
+        change: 'Map every acceptance criterion to an automated test, add failure-path tests, and run the one full pass: pnpm lint, pnpm typecheck, pnpm test, pnpm test:e2e, and the quickstart. Use `node scripts/worktree-compose.mjs up -d --build --wait` and leave that stack up. Record the portal URL from `node scripts/worktree-compose.mjs env` and the commit you tested in the Test report. Re-test every open bug. Record every new bug in the spec. Create a Bug issue and a Fix task only for a blocker or major, or for work that crosses owners or releases or remains after this spec. A minor finding stays in the spec and does not set status to building. Set status: uat if no blocker or major remains, otherwise status: building.',
+        acceptance: 'The Test report covers every acceptance criterion and names the commit, the stack is still up, durable bugs have Linear issues, minor findings have no Fix task, and status is uat or building.',
       };
     case 'user-tester':
       return {
-        change: "Test the running portal in Orca's built-in browser the way a real developer would, following the user stories and acceptance criteria (see your role file for the full checklist). Start the quickstart if it isn't running. Re-test every open bug in the spec. Record every new problem with evidence under docs/uat/; create a Bug issue only for blocker/major, cross-owner/release, or post-spec work. Fill User testing and set status: review if no blocker or major is open, otherwise building.",
-        acceptance: 'Every user story was walked in the browser with evidence in docs/uat/, all problems are recorded, durable work has a Linear issue, and status is review or building.',
+        change: "Reuse the stack QA left up. Read the portal URL in the Test report, or run `node scripts/worktree-compose.mjs env`. Start it with `node scripts/worktree-compose.mjs up -d --wait` only when that URL is not healthy. Walk each user-visible acceptance criterion once, then one mobile pass and one keyboard pass of the main journey. On a retest, walk only the rows that failed. Record problems under docs/uat/ and a short User testing table. Create a Bug issue only for blocker/major, cross-owner/release, or post-spec work. A minor finding does not set status to building. Set status: review if no blocker or major is open, otherwise building. Stop the stack with `node scripts/worktree-compose.mjs down` when you finish.",
+        acceptance: 'Each user-visible acceptance criterion was walked once, with one mobile pass and one keyboard pass, evidence is in docs/uat/, minor findings did not return the spec to building, and status is review or building.',
       };
     default:
       die(`unknown role "${role}". Roles: ${ROLES.join(', ')}`);
   }
 }
 
+function readScope(role, spec, stageKey) {
+  const log = spec ? `docs/specs/log/${spec.id}.md` : 'docs/specs/log/<id>.md';
+  switch (role) {
+    case 'product-manager':
+      return 'Read only AGENTS.md, docs/specs/_TEMPLATE.md, the roadmap row for this feature, and the Summary plus Out of scope of other specs. Do not open docs/specs/log/ or docs/uat/.';
+    case 'tech-lead':
+      return stageKey === 'review'
+        ? `Read only the spec Summary, Acceptance criteria, Technical design, and the current Test report. Read an ADR only when the spec names it. Do not open ${log} or docs/uat/.`
+        : 'Read only AGENTS.md, the spec through Open questions, and ADRs the spec names. Do not open docs/specs/log/ or other specs.';
+    case 'ui-designer':
+      return 'Read only the spec Summary, User stories, Acceptance criteria, Technical design, and docs/design/tokens.md. Do not open docs/specs/log/ or docs/uat/.';
+    case 'backend-developer':
+      return 'Read only the spec Technical design, your unchecked [backend] tasks, and Build notes. Do not open docs/specs/log/ or docs/uat/.';
+    case 'frontend-developer':
+      return 'Read only the spec Technical design, the UX section, your unchecked [frontend] tasks, the linked design file, and Build notes. Do not open docs/specs/log/ or docs/uat/.';
+    case 'qa-tester':
+      return 'Read only the spec Acceptance criteria, Technical design, Build notes, and open Bugs. Do not open docs/uat/ or old review notes.';
+    case 'user-tester':
+      return 'Read only the spec Summary, User stories, Acceptance criteria, UX section, and open Bugs. On a retest, walk only the failed rows. Do not read the code, docs/specs/log/, or old screenshots.';
+    default:
+      return 'Read only the sections named in your role file.';
+  }
+}
 function workerSpec(role, spec, job, stageKey) {
   const lines = [
     `Role: ${role}, in the API Developer Portal software factory.`,
     `Instructions: follow factory/roles/${role}.md (skip its YAML header) and AGENTS.md.`,
+    `Read: ${readScope(role, spec, stageKey)}`,
     `Target: ${spec ? spec.rel : 'docs/specs/'}${job.target ? ` — ${job.target}` : ''}.`,
     `Change: ${job.change}`,
-    `Constraints: work only in this worktree; never create or switch branches, force-push, push to main or merge; never pass Elango's approval gates.${job.constraints ? ` ${job.constraints}` : ''}`,
+    `Constraints: work only in this worktree; never create or switch branches, force-push, push to main, or merge. You may push this feature branch. Never pass Elango's approval gates.${job.constraints ? ` ${job.constraints}` : ''}`,
     `Ownership: you may edit ${OWNERSHIP[role]}`,
     `Observable acceptance: ${job.acceptance}`,
   ];
+  if (spec) {
+    lines.push(`History: append long notes to docs/specs/log/${spec.id}.md. Keep the matching spec section to the current result. Do not paste screenshots or earlier rounds into the spec.`);
+  }
   if (spec?.linear && LINEAR) {
     lines.push(
       [
         `Linear: you are a team member in project "${LINEAR.project}" (team ${LINEAR.team}); the feature issue is ${spec.linear} and authorizes this stage.`,
-        `When you finish, comment a 2-4 sentence ${stageKey || 'feature'} summary on ${spec.linear}. Tasks and transient findings stay in the spec; do not create stage/task issues.`,
-        'Keep durable issues current. Create one only for blocker/major work, a different owner or release, work that remains after the spec, or an out-of-scope follow-up (follow-ups go to Backlog with no parent).',
+        `When you finish, append a 2-4 sentence ${stageKey || 'feature'} summary to docs/specs/log/${spec.id}.md. Do not comment on Linear yourself. The coordinator posts that summary.`,
+        'Tasks and minor findings stay in the spec. Do not create stage or task issues.',
+        'Keep a durable bug or review issue current when you verify it. Create one only for blocker/major work, a different owner or release, work that remains after the spec, or an out-of-scope follow-up (follow-ups go to Backlog with no parent).',
         `End every commit message with "Refs ${spec.linear}".`,
-        `Commands: \`orca linear status set <KEY> --to "<State>" --json\`, \`orca linear comment add ${spec.linear} --body-file - --json\`, \`orca linear create --title "…" --parent ${spec.linear} --team ${LINEAR.team} --label <Label> --body-file - --json\`. States: ${Object.values(LINEAR.states).join(', ')}.`,
-      ].filter(Boolean).join(' '),
+        `Commands, only for a durable issue: \`orca linear status set <KEY> --to "<State>" --json\`, \`orca linear create --title "…" --parent ${spec.linear} --team ${LINEAR.team} --label <Label> --body-file - --json\`. States: ${Object.values(LINEAR.states).join(', ')}.`,
+      ].join(' '),
     );
   }
   return lines.join('\n');
@@ -412,7 +441,7 @@ function plan(spec, intake) {
     out.workers.push(worker('product-manager', null, 'new spec', intake));
     out.expectStatus = ['draft'];
     out.note = `After this worker, run \`node scripts/factory.mjs status --json\` to find the new spec id${LINEAR ? ', then `node scripts/factory.mjs linear-init <id>` to create its feature issue' : ''}. Its next stage is Elango's approval gate.`;
-    return out;
+    return finishPlan(out, null);
   }
   out.spec = { id: spec.id, path: spec.rel, title: spec.title, status: spec.status };
   if (LINEAR) {
@@ -499,6 +528,18 @@ function plan(spec, intake) {
       out.note = 'Shipped. Nothing left to do on this spec.';
       break;
   }
+  return finishPlan(out, spec?.id);
+}
+function finishPlan(out, exceptId) {
+  const usesClaude = out.workers.some((worker) => (config.roles[worker.role]?.agent || 'claude') === 'claude');
+  if (!usesClaude || args.includes('--allow-parallel-claude')) return out;
+  const hits = otherClaudeStages(exceptId);
+  if (!hits.length) return out;
+  out.workers = [];
+  out.parallel = false;
+  out.action = null;
+  out.expectStatus = [];
+  out.gate = { kind: 'claude-busy', message: claudeBusyMessage(hits) };
   return out;
 }
 
@@ -524,16 +565,16 @@ function mainRepoRoot() {
   return r.status === 0 ? dirname(r.stdout.trim()) : ROOT;
 }
 function coordinatorPrompt(target) {
-  return `You are the factory coordinator. Read .agents/skills/factory/SKILL.md and follow it for ${target}. Stop at Elango's gates and tell him what to do.`;
+  return `You are the factory coordinator. Read .agents/skills/factory/SKILL.md and follow it for ${target}. Start the workers, then end your turn. Do not poll. Orca wakes you when a worker finishes or asks a question. Stop at Elango's gates and tell him what to do.`;
 }
 function resumePrompt(spec) {
   return [
     `You are the factory coordinator. Read .agents/skills/factory/SKILL.md and follow it for spec ${spec.id} (${spec.rel}).`,
-    'This is a resume: the previous coordinator stopped (its tab was closed or Orca restarted).',
+    'This is a resume: the previous coordinator tab was closed or Orca restarted. Ending a turn while workers run is normal and is not a reason to resume.',
     "First find this worktree's existing Orca run with `orca orchestration run-list` and bind to it with `orca orchestration run-use --id <run id>`; create a new run only if there is none.",
     'Settle stale dispatches (failed, exited or abandoned workers) before starting new ones.',
     'Keep every uncommitted change in the worktree: never reset, stash or discard it.',
-    `Then continue the normal loop from \`node scripts/factory.mjs plan ${spec.id} --json\`. Stop at Elango's gates and tell him what to do.`,
+    `Then continue the normal loop from \`node scripts/factory.mjs plan ${spec.id} --json\`. Start workers and end your turn. Do not poll. Stop at Elango's gates and tell him what to do.`,
   ].join(' ');
 }
 function specWorktree(spec) {
@@ -572,6 +613,47 @@ function worktreesByBranch() {
     path: (block.match(/^worktree (.+)$/m) || [])[1],
     branch: (block.match(/^branch refs\/heads\/(.+)$/m) || [])[1],
   })).filter((w) => w.path && w.branch);
+}
+let claudeStageCache;
+function specStatuses(treePath) {
+  const dir = join(treePath, 'docs', 'specs');
+  if (!existsSync(dir)) return [];
+  const found = [];
+  for (const file of readdirSync(dir)) {
+    if (!/^\d{3}-.+\.md$/.test(file)) continue;
+    let text = '';
+    try {
+      text = readFileSync(join(dir, file), 'utf8');
+    } catch {
+      continue;
+    }
+    const status = (text.match(/^status:[ \t]*([a-z]+)/m) || [])[1];
+    if (!status) continue;
+    found.push({ id: (text.match(/^id:[ \t]*(\d{3})/m) || [])[1] || file.slice(0, 3), status, tree: treePath });
+  }
+  return found;
+}
+function otherClaudeStages(exceptId) {
+  if (!claudeStageCache) {
+    const main = mainRepoRoot();
+    const records = worktreesByBranch().flatMap((worktree) => {
+      const folder = worktree.path.split('/').pop() || '';
+      const fromMain = resolve(worktree.path) === resolve(main);
+      return specStatuses(worktree.path).map((spec) => {
+        const branch = worktree.branch || '';
+        const owned =
+          folder.startsWith(`${spec.id}-`) ||
+          (branch.startsWith('feat/') && (branch.includes(`-${spec.id}-`) || branch.endsWith(`-${spec.id}`)));
+        return { ...spec, owned, fromMain };
+      });
+    });
+    claudeStageCache = chooseSpecStatuses(records);
+  }
+  return claudeConflicts(claudeStageCache, exceptId ?? null);
+}
+function claudeBusyMessage(hits) {
+  const list = hits.map((hit) => `${hit.id} is ${hit.status} (${hit.tree.split('/').pop()})`).join('; ');
+  return `Elango: ${list}. One spec at a time can be in design or review. Continue when it is building, testing, or uat, or pass --allow-parallel-claude.`;
 }
 function nextWork(args) {
   const noLinear = Boolean(flag(args, '--no-linear'));
@@ -626,6 +708,8 @@ function nextWork(args) {
     for (const r of out.blocked) console.log(`${line(r)}\n       waits for spec ${r.missing.join(', ')}`);
   }
   console.log(`\nDone: ${out.done.length ? out.done.map((r) => r.id).join(', ') : 'none of the planned features yet'}`);
+  const busy = otherClaudeStages(null);
+  if (busy.length) console.log(`\nClaude is busy, so start will refuse another feature: ${claudeBusyMessage(busy)}`);
   if (noLinear) console.log('(Linear not checked: --no-linear)');
 }
 function resume(args) {
@@ -645,9 +729,10 @@ function resume(args) {
 }
 function start(args) {
   const dry = Boolean(flag(args, '--dry-run'));
+  const allow = Boolean(flag(args, '--allow-parallel-claude'));
   const idea = flag(args, '--idea');
   const agent = config.coordinator?.agent || 'claude';
-  let name, branch, target, linearIssue;
+  let name, branch, target, linearIssue, exceptId;
   if (idea && idea !== true) {
     const slug = slugify(idea);
     name = `idea-${slug}`;
@@ -657,6 +742,7 @@ function start(args) {
     linearIssue = args[0].toUpperCase();
     const reserved = reservedSpec(linearIssue);
     if (reserved?.slug) {
+      exceptId = reserved.id;
       name = `${reserved.id}-${reserved.slug}`;
       branch = `feat/${linearIssue.toLowerCase()}-${reserved.id}-${reserved.slug}`;
       target = `Linear issue ${linearIssue} (no spec yet: plan with --linear ${linearIssue}; spec ${reserved.id} is reserved for it in docs/roadmap.md)`;
@@ -669,11 +755,16 @@ function start(args) {
     }
   } else {
     const spec = findSpec(args[0]);
+    exceptId = spec.id;
     linearIssue = spec.linear || undefined;
     const prefix = spec.linear ? `${spec.linear.toLowerCase()}-` : '';
     name = `${spec.id}-${spec.slug}`;
     branch = `feat/${prefix}${spec.id}-${spec.slug}`;
     target = `spec ${spec.id} (${spec.rel})`;
+  }
+  if (!allow) {
+    const hits = otherClaudeStages(exceptId);
+    if (hits.length) die(claudeBusyMessage(hits));
   }
   const argv = ['worktree', 'create', '--repo', `path:${mainRepoRoot()}`, '--name', name, '--branch', branch, '--agent', agent, '--prompt', coordinatorPrompt(target), '--activate'];
   if (linearIssue) argv.push('--linear-issue', linearIssue);

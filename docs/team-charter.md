@@ -27,7 +27,9 @@ Each feature is one spec file and one Orca worktree (`feat/<linear-key>-<id>-<sl
 → backend + frontend → `testing` → qa-tester → `uat` → user-tester → `review` → tech-lead
 → `approved` → **Elango merges** → `done` → Vercel deploys
 
-- Bugs from QA or user testing, or blocking review findings, send it back to `building`; after 3 loops, stop and ask Elango.
+- Blocker or major bugs, and blocking review findings, send it back to `building`. A minor finding or a review suggestion does not. After 3 loops, stop and ask Elango.
+- The coordinator starts workers and ends its turn. Orca wakes it. One spec at a time is in design or review.
+- Each role reads only the spec sections named in its role file. Long notes go in `docs/specs/log/<id>.md`. The coordinator posts the stage summary to Linear.
 - Code is reviewed by a different model from the one that wrote it.
 - Linear project **API Portal** is the system of record: no work without an issue. The feature
   issue authorizes the whole spec; stage and task detail stays in the spec. Every agent comments

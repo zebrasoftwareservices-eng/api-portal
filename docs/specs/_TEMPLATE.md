@@ -48,8 +48,12 @@ Summary + link to `docs/design/NNN-*.md`
 ## Build notes  _(backend-developer, frontend-developer)_
 
 ## Test report  _(qa-tester)_
+Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
+
 | Criterion | Test file | Result |
 | --- | --- | --- |
+
+Long notes go in `docs/specs/log/NNN.md`, not here.
 
 ### Bugs
 <!-- Track every finding here. Add a JSO key only for a durable blocker/major, cross-owner/release item, or work that remains after this spec. -->
@@ -60,7 +64,12 @@ Summary + link to `docs/design/NNN-*.md`
 | User story | Result | Screenshot |
 | --- | --- | --- |
 
+One row per user-visible criterion. On a retest, change only the failed rows.
+Earlier rounds go in `docs/specs/log/NNN.md`.
+
 ## Review  _(tech-lead)_
+`blocking` findings get a Fix task. `suggestion` findings do not, and they do not
+return the spec to building. Earlier rounds go in `docs/specs/log/NNN.md`.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test

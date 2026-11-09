@@ -96,11 +96,11 @@ Resume after a stop (gate, limit, restart): open the spec's worktree in Orca, st
 Code and type `/factory 001` (Codex: `$factory 001`).
 
 ## Real-user testing in the browser
-After QA's automated tests pass, the **user-tester** (Codex) starts the quickstart and uses
-the portal in Orca's built-in browser like a real developer: sign up, read the docs, create an
-app, copy the key, try a call, revoke it. It also checks mobile size, keyboard use, error states
-and console errors, and saves screenshots in `docs/uat/<spec-id>/`. It records every problem in
-the spec and creates Linear bugs only for durable work. You can watch its browser tab in Orca.
+After QA's one full test pass, the **user-tester** (Codex) reuses the stack QA left up. It
+walks each user-visible acceptance criterion once, then one mobile pass and one keyboard pass
+of the main journey. On a retest it walks only the failed rows. Screenshots go in
+`docs/uat/<spec-id>/`. Minor findings stay in the spec. It creates a Linear bug only for a
+blocker or major that outlives the spec. You can watch its browser tab in Orca.
 
 ## Deploys (GitHub + Vercel)
 - Repo: private `github.com/zebrasoftwareservices-eng/api-portal`. Orca branches new
@@ -141,7 +141,15 @@ Paste it into any agent tab in that worktree (Orca: new tab → Claude Code or C
 | review | tech-lead: code review | Claude | status: approved (or back to building) |
 | approved | **Elango merges** | — | status: done |
 
-After three trips back to `building`, the coordinator stops and asks you.
+After three trips back to `building`, the coordinator stops and asks you. A minor finding or a
+review suggestion does not send the spec back.
+
+## The coordinator ends its turn
+The coordinator starts the workers for a stage and ends its turn. The tab stays open so Orca
+can wake it when a worker finishes or asks a question. It does not poll, so Claude is not
+spent while Codex builds or tests. Closing that tab is different: use `resume` below.
+Workers write a short summary in `docs/specs/log/<id>.md`. The coordinator posts it to Linear
+when it wakes.
 
 ## When a worker fails
 Open the worker's terminal in Orca to read its error, or run
@@ -164,12 +172,13 @@ Open the worker's terminal in Orca to read its error, or run
 
 ## Cleaning up finished workers
 A worker with a green check is done: its work is committed in the worktree and its summary is
-on its Linear issue. Close that one tab with its ✕. Never close the coordinator's tab, a worker
-that is still running, or the whole workspace while a spec is in progress: that stops them.
+in `docs/specs/log/`. Close that one tab with its ✕. Leave the coordinator's tab open while a
+spec is in progress, even after it has ended its turn. Closing it, or closing a worker that is
+still running, stops the wake.
 
-## If the coordinator stops
-If the coordinator's tab was closed, Orca restarted, or the tab shows a plain shell prompt
-instead of Claude, restart it from any terminal in the repo:
+## If the coordinator tab was closed
+Ending a turn while workers run is expected. Resume only if the tab was closed, Orca restarted,
+or the tab shows a plain shell prompt instead of Claude:
 ```bash
 cd ~/Documents/ZSS/api-portal && node scripts/factory.mjs resume 001
 ```
