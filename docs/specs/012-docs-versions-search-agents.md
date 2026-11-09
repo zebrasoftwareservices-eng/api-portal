@@ -369,6 +369,7 @@ version's page.
 - [x] [frontend] Admin: show lint errors (422 `openapi-lint-failed`) and lint warnings (success) in both import forms with rule, message, location; 503 ruleset-unavailable message.
 - [x] [frontend] Handle `gateway-service-already-linked` per the UX decision (offer to add a version to the linked API).
 - [x] [frontend] Demo mode: `demoData()` with one version and changelog entry; demo build tests still pass.
+- [ ] [frontend] Fix pre-hydration upload bug: the version upload keeps a file chosen before hydration (or disables file entry until hydrated), so the failing regression "012 failure path: version upload cannot discard input before hydration" in `apps/portal/e2e/versions.test.ts` passes (see Bugs).
 - [ ] [qa] AC 1: import v2 onto a published v1 on the Compose stack; switcher, stable v1 URL, one catalog entry, same Kong service link (Playwright + API).
 - [ ] [qa] AC 2 and AC 9: upload order and `makeLatest: false`; "Set as latest"; 403 for a developer, 404 for an unknown version.
 - [ ] [qa] AC 3: changelog entry for the orders v1 → v2 example (note, date, `POST /orders` added, `GET /orders` removed and breaking).
