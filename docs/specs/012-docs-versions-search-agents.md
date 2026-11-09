@@ -1,7 +1,7 @@
 ---
 id: 012
 title: API versions and changelog, and spec linting
-status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-240
@@ -363,6 +363,7 @@ version's page.
 - [x] [backend] Update `catalog.ts`, `apps.ts`, `seed.ts`, `reconcile.ts`, `proxy.ts` to read the latest version; seed keeps an admin's latest choice.
 - [x] [backend] `config.ts` `PORTAL_LINT_RULESET`; startup loads the ruleset without throwing, logs failures; `/api/v1/health` `lint` block and `degraded` status; imports 503 while degraded.
 - [x] [backend] Docs: README/configuration (`PORTAL_LINT_RULESET`, rule list, extending the shipped file), upgrade notes for the migration, `docs/engineering-conventions.md` if it lists the `apis` shape.
+- [ ] [backend] Merge `origin/main` (spec 005, PR #8) into this branch: renumber 012's migration to `0002_api_versions` after `0001_gateway_connections`, regenerate the Drizzle snapshot/journal and the SDK, and combine the conflicting server, contract and portal changes so both specs work; full suite, quickstart and both specs' e2e/upgrade tests green.
 - [x] [frontend] Reference page: version switcher from `ApiDetail.versions`, "latest" marker, versioned route `/apis/[slug]/versions/[version]`, 404 for unknown versions.
 - [x] [frontend] Changelog page `/apis/[slug]/changelog`: version, import date, plain-text note, added/removed/changed with breaking markers; first version shows no summary.
 - [x] [frontend] Admin: "Add version" form (spec URL/content, release note, "Don't make this the default version"), "Set as latest" per version, 409 version-exists message.
