@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-import { apis, gateways, type Database } from '@portal/db';
+import { apis, apiVersions, gateways, type Database } from '@portal/db';
 import { eq, desc } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { orderVersions, versionDocumentUrl } from './versions.js';
 import { notFound } from './problem.js';
 export async function publishedApis(db: Database) {
   return db
-    .select({ api: apis, gateway: gateways })
+    .select({ api: apis, version: apiVersions, gateway: gateways })
     .from(apis)
+    .innerJoin(apiVersions, eq(apis.latestVersionId, apiVersions.id))
     .innerJoin(gateways, eq(apis.gatewayId, gateways.id))
     .orderBy(desc(apis.publishedAt));
 }
@@ -17,16 +19,28 @@ export function apiSummary(row: PublishedApi) {
   return {
     id: row.api.id,
     slug: row.api.slug,
-    title: row.api.title,
-    version: row.api.version,
-    description: row.api.description,
+    title: row.version.title,
+    version: row.version.version,
+    description: row.version.description,
     gatewayBaseUrl: baseUrl(row),
     publishedAt: row.api.publishedAt.toISOString(),
   };
 }
-export function apiDetail(row: PublishedApi) {
+export async function apiDetail(db: Database, row: PublishedApi) {
+  const versions = orderVersions(
+    await db
+      .select()
+      .from(apiVersions)
+      .where(eq(apiVersions.apiId, row.api.id)),
+  );
   return {
     ...apiSummary(row),
+    versions: versions.map((v) => ({
+      version: v.version,
+      isLatest: v.id === row.api.latestVersionId,
+      publishedAt: v.publishedAt.toISOString(),
+      documentUrl: versionDocumentUrl(row.api.slug, v.version),
+    })),
     documentUrl: `/api/v1/apis/${row.api.slug}/openapi.json`,
     gatewayService: {
       id: row.api.gatewayServiceId,
@@ -34,8 +48,11 @@ export function apiDetail(row: PublishedApi) {
     },
   };
 }
-export function publicDocument(row: PublishedApi) {
-  const document = structuredClone(row.api.document);
+export function publicDocument(
+  row: PublishedApi,
+  input = row.version.document,
+) {
+  const document = structuredClone(input);
   document.servers = [{ url: baseUrl(row) }];
   const components = (document.components ?? {}) as Record<string, unknown>;
   const schemes = (components.securitySchemes ?? {}) as Record<
@@ -62,7 +79,7 @@ export function registerCatalog(app: FastifyInstance, db: Database) {
     items: (await publishedApis(db)).map(apiSummary),
   }));
   app.get<{ Params: { slug: string } }>('/api/v1/apis/:slug', async (req) =>
-    apiDetail(await find(req.params.slug)),
+    apiDetail(db, await find(req.params.slug)),
   );
   app.get<{ Params: { slug: string } }>(
     '/api/v1/apis/:slug/openapi.json',

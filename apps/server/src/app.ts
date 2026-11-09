@@ -10,6 +10,8 @@ import type { GatewayAdapter } from '@portal/adapter-sdk';
 import type { Config } from './config.js';
 import { createAuth, headersFor, requireUser, type Auth } from './auth.js';
 import { problemHandler } from './problem.js';
+import { loadLinter } from './lint/index.js';
+import { registerVersions } from './versions.js';
 import { registerCatalog } from './catalog.js';
 import { registerImport } from './import.js';
 import { registerApps } from './apps.js';
@@ -25,6 +27,7 @@ export interface AppOptions {
 }
 export async function createApp(options: AppOptions) {
   const { db, config, adapter, gatewayId } = options;
+  const linter = await loadLinter(config.PORTAL_LINT_RULESET);
   const auth = options.auth ?? createAuth(db, config);
   const proxy = portalProxy(config.PORTAL_PROXY_HOST);
   const app = Fastify({
@@ -60,6 +63,8 @@ export async function createApp(options: AppOptions) {
             },
           },
   });
+  if (linter.health.status === 'error')
+    app.log.error({ lint: linter.health }, 'Lint ruleset unavailable');
   app.addHook('onRequest', proxy.refresh);
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
@@ -93,7 +98,8 @@ export async function createApp(options: AppOptions) {
   app.get('/api/v1/health', async () => {
     const health = await adapter.health();
     return {
-      status: 'ok',
+      status: linter.health.status === 'error' ? 'degraded' : 'ok',
+      lint: linter.health,
       version: '0.1.0',
       gateway: {
         kind: 'kong',
@@ -103,7 +109,8 @@ export async function createApp(options: AppOptions) {
     };
   });
   registerCatalog(app, db);
-  registerImport(app, db, auth, adapter, gatewayId);
+  registerImport(app, db, auth, adapter, gatewayId, linter);
+  registerVersions(app, db, auth, linter);
   registerApps(app, db, auth, adapter, gatewayId);
   await registerProxy(app, db, adapter, options.proxyFetch);
   return { app, auth };

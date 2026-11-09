@@ -11,6 +11,7 @@ export class Problem extends Error {
     readonly code: string,
     detail: string,
     readonly errors?: { message: string; pointer?: string }[],
+    readonly errorCount?: number,
   ) {
     super(detail);
   }
@@ -87,6 +88,7 @@ export function problemHandler(app: FastifyInstance) {
         detail: p.message,
         instance: req.url.split('?')[0],
         ...(p.errors ? { errors: p.errors } : {}),
+        ...(p.errorCount === undefined ? {} : { errorCount: p.errorCount }),
       });
   });
 }

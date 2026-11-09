@@ -9,6 +9,7 @@ import {
   migrate,
   gateways,
   apis,
+  apiVersions,
   apps,
   credentials,
   user,
@@ -26,6 +27,8 @@ import {
 import { KongAdapter } from '@portal/adapter-kong';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
+import { seedSample } from './seed.js';
+import { createAuth } from './auth.js';
 import { reconcile } from './reconcile.js';
 let container: StartedPostgreSqlContainer;
 let connection: ReturnType<typeof connect>;
@@ -133,18 +136,26 @@ beforeAll(async () => {
   await connection.db.insert(apis).values({
     id: apiId,
     slug: 'sample',
-    title: 'Sample',
-    version: '1',
     gatewayId,
     gatewayServiceId: 'service',
     gatewayServiceName: 'pets',
     routePath: '/sample',
+  });
+  await connection.db.insert(apiVersions).values({
+    id: apiId,
+    apiId,
+    title: 'Sample',
+    version: '0.1.0',
     document: {
       openapi: '3.1.0',
-      info: { title: 'Sample', version: '1' },
+      info: { title: 'Sample', version: '0.1.0' },
       paths: {},
     },
   });
+  await connection.db
+    .update(apis)
+    .set({ latestVersionId: apiId })
+    .where(eq(apis.id, apiId));
   ({ app: server } = await createApp({
     db: connection.db,
     config: loadConfig({ DATABASE_URL: url }),
@@ -578,12 +589,8 @@ info: {}`,
         'application/problem+json',
       );
       expect(missingInfo.json()).toMatchObject({
-        type: '/problems/invalid-openapi',
-        detail:
-          "Invalid OpenAPI document: must have required property 'info' at /",
-        errors: [
-          { message: "must have required property 'info'", pointer: '' },
-        ],
+        type: '/problems/invalid-api-version',
+        errors: [{ message: 'Invalid API version', pointer: '/info/version' }],
       });
       expect(await connection.db.select().from(apis)).toHaveLength(1);
     }
@@ -772,18 +779,26 @@ info: {}`,
       await connection.db.insert(apis).values({
         id,
         slug,
-        title: 'Newly published',
-        version: '1',
         gatewayId,
         gatewayServiceId: id,
         gatewayServiceName: slug,
         routePath: `/${slug}`,
+      });
+      await connection.db.insert(apiVersions).values({
+        id,
+        apiId: id,
+        version: '1',
+        title: 'Newly published',
         document: {
           openapi: '3.1.0',
           info: { title: slug, version: '1' },
           paths: {},
         },
       });
+      await connection.db
+        .update(apis)
+        .set({ latestVersionId: id })
+        .where(eq(apis.id, id));
       const result = await fresh.inject(target);
       expect(result.statusCode, result.body).toBe(403);
       expect(result.json().type).toBe('/problems/api-access-denied');
@@ -833,5 +848,278 @@ info: {}`,
       }
     }
     expect(limited).toBe(true);
+  });
+});
+describe('API versions and changelog', () => {
+  const endpoint = '/api/v1/admin/apis/sample';
+  const spec = (version: string, paths: Record<string, unknown> = {}) => ({
+    content: JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: `Sample ${version}`, version },
+      paths,
+    }),
+  });
+  const publish = (version: string, extra = {}, paths = {}) =>
+    server.inject({
+      method: 'POST',
+      url: endpoint + '/versions',
+      headers: { cookie },
+      payload: { spec: spec(version, paths), ...extra },
+    });
+  it('publishes versions without gateway calls, switches latest, rejects duplicates and preserves stable documents', async () => {
+    const getService = vi.spyOn(adapter, 'getService');
+    getService.mockClear();
+    vi.mocked(adapter.protectService).mockClear();
+    const v1 = await publish(
+      '1.0.0',
+      {},
+      { '/orders': { get: { responses: { '200': { description: 'OK' } } } } },
+    );
+    expect(v1.statusCode, v1.body).toBe(201);
+    const v2 = await publish(
+      '2.0.0',
+      { releaseNote: 'Orders can now be created' },
+      {
+        '/orders': {
+          post: { responses: { '201': { description: 'Created' } } },
+        },
+      },
+    );
+    expect(v2.statusCode, v2.body).toBe(201);
+    expect(v2.json().version).toMatchObject({
+      releaseNote: 'Orders can now be created',
+      changes: {
+        comparedTo: '1.0.0',
+        added: [
+          expect.objectContaining({
+            method: 'POST',
+            path: '/orders',
+            breaking: false,
+          }),
+        ],
+        removed: [expect.objectContaining({ method: 'GET', breaking: true })],
+        breaking: true,
+      },
+    });
+    const patch = await publish('1.1.0', { makeLatest: false });
+    expect(patch.statusCode, patch.body).toBe(201);
+    expect(patch.json().api.version).toBe('2.0.0');
+    expect(patch.json().version.changes.comparedTo).toBe('1.0.0');
+    const newerPatch = await publish('1.2.0');
+    expect(newerPatch.json().api.version).toBe('1.2.0');
+    expect(
+      newerPatch.json().api.versions.map((v: { version: string }) => v.version),
+    ).toEqual(['2.0.0', '1.2.0', '1.1.0', '1.0.0', '0.1.0']);
+    const duplicate = await publish('2.0.0');
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json().type).toBe('/problems/api-version-exists');
+    const parallel = await Promise.all([publish('3.0.0'), publish('3.0.0')]);
+    expect(parallel.map((r) => r.statusCode).sort()).toEqual([201, 409]);
+    const latest = await server.inject({
+      method: 'PUT',
+      url: endpoint + '/latest-version',
+      headers: { cookie },
+      payload: { version: '2.0.0' },
+    });
+    expect(latest.statusCode, latest.body).toBe(200);
+    expect(latest.json().version).toBe('2.0.0');
+    expect(
+      latest.json().versions.filter((v: { isLatest: boolean }) => v.isLatest),
+    ).toHaveLength(1);
+    const stable = await server.inject(
+      '/api/v1/apis/sample/versions/1.0.0/openapi.json',
+    );
+    expect(stable.json().info.version).toBe('1.0.0');
+    expect(stable.json().servers).toEqual([
+      { url: 'http://localhost:8000/sample' },
+    ]);
+    expect(
+      (await server.inject('/api/v1/apis/sample/openapi.json')).json().info
+        .version,
+    ).toBe('2.0.0');
+    expect(
+      (await server.inject('/api/v1/apis/sample/changelog'))
+        .json()
+        .items.find((v: { version: string }) => v.version === '2.0.0')
+        .releaseNote,
+    ).toBe('Orders can now be created');
+    expect(getService).not.toHaveBeenCalled();
+    expect(adapter.protectService).not.toHaveBeenCalled();
+    getService.mockRestore();
+  });
+  it('sample seeding retains an administrator latest choice', async () => {
+    const seedAdapter = {
+      ...adapter,
+      request: vi.fn(async () => ({})),
+    } as unknown as KongAdapter;
+    await seedSample(connection.db, seedAdapter, gatewayId, 'test-instance');
+    const detail = (await server.inject('/api/v1/apis/sample')).json();
+    expect(detail.version).toBe('2.0.0');
+    expect(
+      detail.versions.filter((v: { version: string }) => v.version === '1.0.0'),
+    ).toHaveLength(1);
+  });
+  it('returns URL-encoded stable documents for version names containing plus', async () => {
+    const response = await publish('2024+build', { makeLatest: false });
+    expect(response.statusCode, response.body).toBe(201);
+    expect(response.headers.location).toBe(
+      '/api/v1/apis/sample/versions/2024%2Bbuild/openapi.json',
+    );
+    expect(
+      (await server.inject(response.headers.location!)).json().info.version,
+    ).toBe('2024+build');
+  });
+  it('enforces admin permissions and unknown API/version 404s', async () => {
+    for (const method of ['POST', 'PUT'] as const) {
+      const url =
+        endpoint + (method === 'POST' ? '/versions' : '/latest-version');
+      const payload =
+        method === 'POST' ? { spec: spec('4.0.0') } : { version: '1.0.0' };
+      expect((await server.inject({ method, url, payload })).statusCode).toBe(
+        401,
+      );
+      expect(
+        (
+          await server.inject({
+            method,
+            url,
+            headers: { cookie: secondCookie },
+            payload,
+          })
+        ).statusCode,
+      ).toBe(403);
+    }
+    for (const url of [
+      endpoint + '/latest-version',
+      '/api/v1/admin/apis/unknown/latest-version',
+    ])
+      expect(
+        (
+          await server.inject({
+            method: 'PUT',
+            url,
+            headers: { cookie },
+            payload: { version: 'unknown' },
+          })
+        ).statusCode,
+      ).toBe(404);
+    expect(
+      (await server.inject('/api/v1/apis/sample/versions/unknown/openapi.json'))
+        .statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await server.inject({
+          method: 'POST',
+          url: '/api/v1/admin/apis/unknown/versions',
+          headers: { cookie },
+          payload: { spec: spec('1.0.0') },
+        })
+      ).statusCode,
+    ).toBe(404);
+  });
+  it('refuses each blocking lint finding on new APIs and versions without modifying stored versions', async () => {
+    for (const [rule, paths] of [
+      [
+        'path-params',
+        {
+          '/orders/{id}': {
+            get: { responses: { '200': { description: 'OK' } } },
+          },
+        },
+      ],
+      [
+        'invalid-ref',
+        {
+          '/orders': {
+            get: {
+              responses: { '200': { $ref: '#/components/responses/Missing' } },
+            },
+          },
+        },
+      ],
+      [
+        'operation-operationId-unique',
+        {
+          '/a': {
+            get: {
+              operationId: 'same',
+              responses: { '200': { description: 'OK' } },
+            },
+          },
+          '/b': {
+            get: {
+              operationId: 'same',
+              responses: { '200': { description: 'OK' } },
+            },
+          },
+        },
+      ],
+    ] as const) {
+      const before = await connection.db.select().from(apiVersions);
+      for (const url of ['/api/v1/admin/apis', endpoint + '/versions']) {
+        const response = await server.inject({
+          method: 'POST',
+          url,
+          headers: { cookie },
+          payload: {
+            spec: spec('bad-lint', paths),
+            ...(url.endsWith('/apis')
+              ? { gatewayServiceId: 'unused', slug: 'bad-lint' }
+              : {}),
+          },
+        });
+        expect(response.statusCode, response.body).toBe(422);
+        expect(response.json()).toMatchObject({
+          type: '/problems/openapi-lint-failed',
+          errorCount: expect.any(Number),
+          errors: expect.arrayContaining([
+            expect.objectContaining({
+              rule,
+              line: 1,
+              pointer: expect.any(String),
+            }),
+          ]),
+        });
+      }
+      expect(await connection.db.select().from(apiVersions)).toHaveLength(
+        before.length,
+      );
+    }
+  });
+  it('keeps docs available and imports unavailable when an operator ruleset cannot load', async () => {
+    const { app } = await createApp({
+      db: connection.db,
+      config: loadConfig({
+        PORTAL_LINT_RULESET: '/missing/operator.spectral.yaml',
+      }),
+      adapter,
+      gatewayId,
+      auth: createAuth(connection.db, loadConfig({})),
+      logger: false,
+    });
+    try {
+      const health = (await app.inject('/api/v1/health')).json();
+      expect(health).toMatchObject({
+        status: 'degraded',
+        lint: {
+          ruleset: 'custom',
+          status: 'error',
+          path: '/missing/operator.spectral.yaml',
+          error: expect.stringContaining('/missing/operator.spectral.yaml'),
+        },
+      });
+      expect((await app.inject('/api/v1/apis/sample')).statusCode).toBe(200);
+      const response = await app.inject({
+        method: 'POST',
+        url: endpoint + '/versions',
+        headers: { cookie },
+        payload: { spec: spec('4.0.0') },
+      });
+      expect(response.statusCode, response.body).toBe(503);
+      expect(response.json().type).toBe('/problems/lint-ruleset-unavailable');
+    } finally {
+      await app.close();
+    }
   });
 });

@@ -9,6 +9,8 @@ import {
   check,
   uniqueIndex,
   index,
+  foreignKey,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { user } from './auth-schema.js';
@@ -45,23 +47,55 @@ export const apis = pgTable(
   {
     id: uuid('id').primaryKey(),
     slug: text('slug').notNull().unique(),
-    title: text('title').notNull(),
-    version: text('version').notNull(),
-    description: text('description'),
+    latestVersionId: uuid('latest_version_id'),
     gatewayId: uuid('gateway_id')
       .notNull()
       .references(() => gateways.id),
     gatewayServiceId: text('gateway_service_id').notNull(),
     gatewayServiceName: text('gateway_service_name').notNull(),
     routePath: text('route_path').notNull(),
-    document: jsonb('document').$type<Record<string, unknown>>().notNull(),
-    sourceUrl: text('source_url'),
     createdBy: uuid('created_by').references(() => user.id),
     publishedAt: time('published_at').notNull().defaultNow(),
     createdAt: created(),
     updatedAt: updated(),
   },
-  (t) => [index('api_published_idx').on(t.publishedAt.desc())],
+  (t) => [
+    index('api_published_idx').on(t.publishedAt.desc()),
+    foreignKey({
+      columns: [t.id, t.latestVersionId],
+      foreignColumns: [apiVersions.apiId, apiVersions.id],
+      name: 'api_latest_version_fk',
+    }),
+  ],
+);
+export const apiVersions = pgTable(
+  'api_versions',
+  {
+    id: uuid('id').primaryKey(),
+    apiId: uuid('api_id')
+      .notNull()
+      .references((): AnyPgColumn => apis.id, { onDelete: 'cascade' }),
+    version: text('version').notNull(),
+    title: text('title').notNull(),
+    description: text('description'),
+    document: jsonb('document').$type<Record<string, unknown>>().notNull(),
+    sourceUrl: text('source_url'),
+    sourceContent: text('source_content'),
+    sourceFormat: text('source_format'),
+    releaseNote: text('release_note'),
+    changeSummary: jsonb('change_summary').$type<Record<string, unknown>>(),
+    lintWarnings: jsonb('lint_warnings').$type<Record<string, unknown>[]>(),
+    createdBy: uuid('created_by').references(() => user.id),
+    publishedAt: time('published_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('api_version_unique').on(t.apiId, t.version),
+    uniqueIndex('api_version_id_unique').on(t.apiId, t.id),
+    check(
+      'api_version_source_format',
+      sql`${t.sourceFormat} in ('json', 'yaml')`,
+    ),
+  ],
 );
 export const apps = pgTable(
   'apps',

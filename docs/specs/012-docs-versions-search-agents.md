@@ -351,24 +351,24 @@ version's page.
 | Readers of the dropped `apis` columns missed. | `pnpm typecheck` fails on any leftover use; grep for `apis.title`/`apis.document` in review. |
 
 ### Tasks
-- [ ] [backend] Spike: add the Spectral dependencies and `semver`; lint the sample document in a unit test and confirm the server image builds and starts with them (record result in Build notes).
-- [ ] [backend] Drizzle schema: `api_versions` table and `apis` changes; migration `0001_api_versions.sql` with backfill; migration test on a populated spec 004 database.
-- [ ] [backend] Regenerate `packages/sdk` from the updated contract.
-- [ ] [backend] `src/lint/`: load the default ruleset file or `PORTAL_LINT_RULESET` (no network, no fallback); run Spectral on original text with the no-network resolver; map findings to `LintFinding` (1-based lines, JSON pointer, `source`, severity mapping, caps 100/200). Add `apps/server/rulesets/portal.spectral.yaml` with the full rule list and copy it into the Docker image.
-- [ ] [backend] Unit tests: default error-rule set equals the design table; sample seed document has zero errors; missing/invalid/network-`extends` ruleset files fail with the path in the message.
-- [ ] [backend] Refactor `importDocument` into the shared pipeline (steps 1–11), including the `invalid-api-version` check and external-only bundle failures.
-- [ ] [backend] `importApi`: write the first version and the latest pointer in its transaction; accept `releaseNote`; return `lintWarnings` and `versions`.
-- [ ] [backend] `src/changes.ts`: `summarise()` with the breaking rules; unit tests for each reason code, path-parameter renames, and `$ref`'d parameters.
-- [ ] [backend] `src/versions.ts`: `importApiVersion`, `setLatestApiVersion`, `getApiChangelog`, `getApiVersionDocument`; version order and baseline selection.
-- [ ] [backend] Update `catalog.ts`, `apps.ts`, `seed.ts`, `reconcile.ts`, `proxy.ts` to read the latest version; seed keeps an admin's latest choice.
-- [ ] [backend] `config.ts` `PORTAL_LINT_RULESET`; startup loads the ruleset without throwing, logs failures; `/api/v1/health` `lint` block and `degraded` status; imports 503 while degraded.
-- [ ] [backend] Docs: README/configuration (`PORTAL_LINT_RULESET`, rule list, extending the shipped file), upgrade notes for the migration, `docs/engineering-conventions.md` if it lists the `apis` shape.
-- [ ] [frontend] Reference page: version switcher from `ApiDetail.versions`, "latest" marker, versioned route `/apis/[slug]/versions/[version]`, 404 for unknown versions.
-- [ ] [frontend] Changelog page `/apis/[slug]/changelog`: version, import date, plain-text note, added/removed/changed with breaking markers; first version shows no summary.
-- [ ] [frontend] Admin: "Add version" form (spec URL/content, release note, "Don't make this the default version"), "Set as latest" per version, 409 version-exists message.
-- [ ] [frontend] Admin: show lint errors (422 `openapi-lint-failed`) and lint warnings (success) in both import forms with rule, message, location; 503 ruleset-unavailable message.
-- [ ] [frontend] Handle `gateway-service-already-linked` per the UX decision (offer to add a version to the linked API).
-- [ ] [frontend] Demo mode: `demoData()` with one version and changelog entry; demo build tests still pass.
+- [x] [backend] Spike: add the Spectral dependencies and `semver`; lint the sample document in a unit test and confirm the server image builds and starts with them (record result in Build notes).
+- [x] [backend] Drizzle schema: `api_versions` table and `apis` changes; migration `0001_api_versions.sql` with backfill; migration test on a populated spec 004 database.
+- [x] [backend] Regenerate `packages/sdk` from the updated contract.
+- [x] [backend] `src/lint/`: load the default ruleset file or `PORTAL_LINT_RULESET` (no network, no fallback); run Spectral on original text with the no-network resolver; map findings to `LintFinding` (1-based lines, JSON pointer, `source`, severity mapping, caps 100/200). Add `apps/server/rulesets/portal.spectral.yaml` with the full rule list and copy it into the Docker image.
+- [x] [backend] Unit tests: default error-rule set equals the design table; sample seed document has zero errors; missing/invalid/network-`extends` ruleset files fail with the path in the message.
+- [x] [backend] Refactor `importDocument` into the shared pipeline (steps 1–11), including the `invalid-api-version` check and external-only bundle failures.
+- [x] [backend] `importApi`: write the first version and the latest pointer in its transaction; accept `releaseNote`; return `lintWarnings` and `versions`.
+- [x] [backend] `src/changes.ts`: `summarise()` with the breaking rules; unit tests for each reason code, path-parameter renames, and `$ref`'d parameters.
+- [x] [backend] `src/versions.ts`: `importApiVersion`, `setLatestApiVersion`, `getApiChangelog`, `getApiVersionDocument`; version order and baseline selection.
+- [x] [backend] Update `catalog.ts`, `apps.ts`, `seed.ts`, `reconcile.ts`, `proxy.ts` to read the latest version; seed keeps an admin's latest choice.
+- [x] [backend] `config.ts` `PORTAL_LINT_RULESET`; startup loads the ruleset without throwing, logs failures; `/api/v1/health` `lint` block and `degraded` status; imports 503 while degraded.
+- [x] [backend] Docs: README/configuration (`PORTAL_LINT_RULESET`, rule list, extending the shipped file), upgrade notes for the migration, `docs/engineering-conventions.md` if it lists the `apis` shape.
+- [x] [frontend] Reference page: version switcher from `ApiDetail.versions`, "latest" marker, versioned route `/apis/[slug]/versions/[version]`, 404 for unknown versions.
+- [x] [frontend] Changelog page `/apis/[slug]/changelog`: version, import date, plain-text note, added/removed/changed with breaking markers; first version shows no summary.
+- [x] [frontend] Admin: "Add version" form (spec URL/content, release note, "Don't make this the default version"), "Set as latest" per version, 409 version-exists message.
+- [x] [frontend] Admin: show lint errors (422 `openapi-lint-failed`) and lint warnings (success) in both import forms with rule, message, location; 503 ruleset-unavailable message.
+- [x] [frontend] Handle `gateway-service-already-linked` per the UX decision (offer to add a version to the linked API).
+- [x] [frontend] Demo mode: `demoData()` with one version and changelog entry; demo build tests still pass.
 - [ ] [qa] AC 1: import v2 onto a published v1 on the Compose stack; switcher, stable v1 URL, one catalog entry, same Kong service link (Playwright + API).
 - [ ] [qa] AC 2 and AC 9: upload order and `makeLatest: false`; "Set as latest"; 403 for a developer, 404 for an unknown version.
 - [ ] [qa] AC 3: changelog entry for the orders v1 → v2 example (note, date, `POST /orders` added, `GET /orders` removed and breaking).
@@ -405,6 +405,41 @@ No new tokens.
   focus order, and 375px/1280px layouts are in the design file, §3–§7.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Frontend — 2026-11-08
+- Added the shared Radix version menu, stable version routes (including encoded `+` names, unknown-version 404s, latest canonical metadata and the older-version notice), and server-rendered changelog entries with plain-text release notes and operation summaries.
+- Added per-API version management, latest selection and version publishing through the generated SDK; both import forms now show detailed lint errors, collapsed warnings, ruleset failures, release notes and the linked-service hand-off (URL sources carry over).
+- Demo data contains one version and first-release changelog entry; public demo routes avoid server calls. Component/page tests cover menu order/links, lint locations and truncation, publish/default selection, duplicate and ruleset refusals, latest-action focus, changelog safety, unknown versions and demo rendering.
+- Frontend commit: `806a5c0`. Validation: `pnpm lint` and `pnpm typecheck` pass; the complete suite passes (242 tests: DB 2, Kong adapter 39, portal 133, server 68), including all 11 demo build/configuration tests. Final command: `NODE_OPTIONS=--no-experimental-webstorage pnpm test --concurrency=1 -- --maxWorkers=1` (12 successful Turbo tasks, 5m7s). The host's Node 26 needs that flag so jsdom supplies browser storage. An earlier two-worker run hit three transient gateway request/health failures; all 39 adapter tests then passed in isolation and again in the final full run. Frontend code is committed separately; the shared spec and lockfile remain for backend/coordinator reconciliation.
+
+- Backend (2026-11-08): implemented version rows and a same-API latest pointer, transactional
+  first/new-version imports, stable documents, changelog and set-latest endpoints, operation
+  summaries, original-source Spectral linting and degraded ruleset health. The default ruleset
+  has the seven configured error rules plus Spectral's core `invalid-ref`; custom rulesets replace
+  it and cannot fetch network dependencies. Lint refusal/warning caps are 100/200, with full
+  error count, escaped pointers, 1-based locations and external source URLs. SDK regenerated;
+  README covers mounted configuration, extension and migration/rollback. Catalog, subscriptions,
+  seed and proxy readers use version rows; reconcile already reads only unchanged API identity
+  and gateway columns.
+- Verification: `pnpm lint` and `pnpm typecheck` pass. The populated legacy migration and
+  DB constraint tests pass (2 tests), and all backend tests pass (68 tests), including all six
+  added endpoint/seed regressions: duplicates/concurrency, stable documents, patch baseline,
+  set-latest permissions/404s, lint refusals with no writes, degraded configuration and seed
+  preservation. The 2 MiB import pipeline measured 697–931 ms. Production image smoke caught
+  Node 22's inability to expose Spectral's CommonJS re-exports as named ESM exports; the loader
+  now uses default imports and destructuring (TypeScript and Vitest had accepted named imports).
+  `NODE_OPTIONS=--no-experimental-webstorage pnpm test --concurrency=1` passes for the whole
+  workspace (68 server, 2 DB, 133 portal and 39 adapter tests; unchanged adapter checks used
+  the Turbo cache). The final `docker compose -f deploy/docker-compose.yml build server`
+  succeeds; `node deploy/server-image-smoke.mjs` passes under Node 22 with network disabled,
+  including the packaged default ruleset, seed, migrations and unprivileged production graph.
+  An isolated Compose project (`portal012-backend`, host ports removed) starts the server against
+  real Kong and PostgreSQL: health/lint are ok, the sample is seeded, version import keeps one
+  catalog entry and the same service, stable v1 docs and changelog are served, set-latest works,
+  and Kong still refuses a request without a key. The stack is removed after verification.
+  Full portal/browser acceptance and the complete quickstart timing remain QA-stage checks.
+  The host runs Node 26.13.0: native webstorage causes a pre-existing portal key-reveal test
+  failure, and that isolated test passes with `NODE_OPTIONS=--no-experimental-webstorage`.
 
 ## Test report  _(qa-tester)_
 | Criterion | Test file | Result |

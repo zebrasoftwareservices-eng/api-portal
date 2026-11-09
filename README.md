@@ -76,3 +76,53 @@ Contributions are welcome. Sign off your commits with the
 ## License
 
 [Apache 2.0](LICENSE) © Zebra Software Services
+
+### API versions and import linting
+
+Each API has one gateway service and catalog entry, with a stored OpenAPI document per version.
+Use **Manage versions** in the API admin area to publish another `info.version`, supply a plain-text
+release note, or set an existing version as latest. Uploads become latest by default; select
+**Don't make this the default version** for an older patch. Version names must match
+`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`; duplicate versions are refused. Stable documents are served at
+`/api/v1/apis/{slug}/versions/{version}/openapi.json` and changes at `/api/v1/apis/{slug}/changelog`.
+All versions share subscriptions, keys and gateway routing.
+
+Imports use the packaged `apps/server/rulesets/portal.spectral.yaml` ruleset. Its blocking rules
+are `oas3-schema`, `invalid-ref` (Spectral core), `operation-operationId-unique`, `path-params`,
+`path-declarations-must-exist`, `path-not-include-query`, `operation-parameters` and
+`oas3-operation-security-defined`. Every other shipped rule is a warning. Errors return a 422
+problem with rule, message, JSON pointer, 1-based line/column and external source URL when applicable;
+successful imports return warnings.
+
+To replace the ruleset, mount a YAML or JSON Spectral ruleset in the server container and set
+`PORTAL_LINT_RULESET` to its **absolute container path**. For example, in a Compose override:
+
+```yaml
+services:
+  server:
+    environment:
+      PORTAL_LINT_RULESET: /etc/portal/ruleset.yaml
+    volumes:
+      - ./ruleset.yaml:/etc/portal/ruleset.yaml:ro
+```
+
+The file replaces the default ruleset. To retain the portal defaults and promote a warning:
+
+```yaml
+extends: /app/apps/server/rulesets/portal.spectral.yaml
+rules:
+  operation-description: error
+```
+
+Local files and `spectral:*` built-ins can be extended; network rulesets are refused. Restart the
+server after changing the file. A missing or invalid ruleset is logged with its path and reported
+by `/api/v1/health` as `status: degraded`, `lint.status: error`; docs remain readable and imports
+return 503 until the configuration is fixed. There is no automatic fallback.
+
+**Upgrading existing installations:** migration `0001_api_versions.sql` runs automatically at
+server startup. Back up PostgreSQL before upgrading. It moves each existing document into its
+first `api_versions` row, preserves API IDs, subscriptions and publication dates, and sets the latest
+pointer. Existing documents remain published without re-linting (`lint_warnings = null`). The
+migration drops the old per-document `apis` columns; rollback requires restoring the backup and
+previous image together. Sample seeding refreshes only its `1.0.0` document and retains the latest
+version chosen by an administrator.
