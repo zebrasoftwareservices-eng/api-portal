@@ -1,7 +1,7 @@
 ---
 id: 012
 title: API versions and changelog, and spec linting
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-240
@@ -657,6 +657,80 @@ ADR 0007 and the contract.
   pin `engines.node`) so contributors don't need the flag.
 
 **Verdict:** no blocking findings → `status: approved`. Merging is Elango's gate.
+
+### Merge re-review — 2026-11-09
+Scope: the main-integration merge `f69cd12` (main `db80714`, spec 005), checked with
+`git show --remerge-diff f69cd12`, plus the follow-ups `4e473e0` and `4005ac0`, then QA `a081bdf`
+and UAT `6325bcc`. This covers all nine conflicted files and the files that merged cleanly but
+were adapted to the new schema.
+
+**Checks run**
+- `pnpm lint`: PASS (7 tasks). `pnpm typecheck`: PASS (12 tasks).
+- `pnpm test` (plain, no Node flag, every test task a cache miss): **PASS, 378 tests**
+  (192 portal, 127 server, 55 Kong adapter, 4 DB), 12/12 tasks.
+- `openapi-typescript` regenerated from `apps/server/openapi.yaml` is byte-identical to
+  `packages/sdk/src/schema.d.ts`.
+- Drizzle snapshot chain: `0000 → 0001 → 0002` (`prevId` links are correct; 0002 adds
+  `api_versions`, 11 → 12 tables). The journal order is `0000_0000_init`, `0001_gateway_connections`
+  (main's entry, unchanged), then `0002_api_versions` with a later `when`.
+- `git merge-tree HEAD origin/main` is clean. Main has moved on to `eba970a` (PR #9). Since
+  `db80714` it has changed only the CI compose-smoke timeout, the expected-failure waits in
+  `setup-gateways.test.ts`, and spec 005's status and notes.
+
+**Conflict resolutions verified**
+- `openapi.yaml`: the `/health` description keeps both the lint `degraded` text and the
+  null-gateway text. `Health` requires `lint`, and `gateway` stays `oneOf null | object`. Both the
+  `Version` and `GatewayId` path parameters are kept.
+- `app.ts`: `loadLinter` and its error log run alongside the instance/`gatewayConnection` setup.
+  `registerImport(…, connection, linter)`, `registerVersions(…, linter)`, `registerApps(…, connection)`
+  and `registerProxy(…, connection.adapterFor, …)` are all wired. Nothing from either side was
+  dropped.
+- `import.ts`: imports use the gateway connection (`requireEnabled`, re-checked under the
+  transaction lock), the lint pipeline, and writes to `api_versions` plus `latestVersionId`. The
+  disabled-gateway and disconnected-gateway problems still precede any adapter call. Adding a
+  version (`versions.ts`) still makes no gateway call, so it works while Kong is down or disabled,
+  as designed.
+- `problem.ts`: the constructor is `(…, errors, fields, errorCount)`, and the handler spreads both.
+  The only five-argument caller, `lint/index.ts:130-136`, passes `undefined` for `fields`. The
+  `gateways.ts` callers pass `fields` in fourth position, as before.
+- `seed.ts`: main's idempotent Kong seeding and `DbConnection` type are combined with 012's
+  transactional `apis` + `api_versions` + `latestVersionId` write. `gateways.ts:414` awaits the new
+  async `apiDetail(db, …)`.
+- `admin-apis.tsx`: keeps the `RulesetBanner`, the `LintWarnings`, the release note under More
+  options, the link to add a version from an already-linked service, and `ImportProblem` for lint
+  refusals. From main it keeps the service loading, outage and disabled/disconnected states, and
+  the gateway-disabled/gateway-not-connected problem titles. The outage banner now reads
+  `gateway?.reachable` (null-safe).
+- Migrations: main's `0001_gateway_connections.sql` and snapshot are unchanged. The renamed
+  `0002_api_versions.sql` is the same SQL as the reviewed `0001_api_versions.sql`, with the
+  transactional backfill. `versions-migration.test.ts:75` upgrades a real main 0000+0001
+  journal to 0002 twice, without replaying 0001 and without duplicate versions. The README
+  upgrade note names `0002_api_versions.sql`.
+- Tests and fixtures (`app.test.ts`, `setup-gateways.test.ts`) are adapted to `adapterFor` and
+  the versioned `apis` shape without loosening any assertion.
+
+**Blocking**
+- None.
+
+**Suggestions** (non-blocking; none needs its own Linear issue)
+- [ ] Before opening or refreshing the PR, merge `origin/main` (`eba970a`) again so the branch
+  picks up the compose-smoke timeout of 20 minutes (`.github/workflows/ci.yml:42`). Spec 012 adds
+  e2e cases to that job, so the old 10-minute limit is likely to time out in CI. The merge is
+  conflict-free.
+- [ ] Dev databases created from this branch *before* `f69cd12` have `0001_api_versions` recorded.
+  Drizzle compares timestamps, so it would skip `0001_gateway_connections` and then fail on
+  `0002`. Only pre-merge preview or test volumes are affected, never main installs. Reset those
+  volumes (`docker compose down -v`); no code change is needed.
+- [ ] `seed.ts:66-73`: the conflict branch of `apis.slug` doesn't refresh `gatewayId`. It can't run
+  today, because the function returns early when `sample` exists, but setting `gatewayId` there
+  too would keep the upsert self-consistent.
+- The earlier review's suggestions still stand. Its reference to `0001_api_versions.sql` now
+  means `0002_api_versions.sql`. Plain `pnpm test` passes on this host now, so the Node 26
+  webstorage suggestion is lower priority.
+
+**Verdict:** the merge keeps both features' behavior and contract, the migration order and
+upgrade path are correct, and there are no blocking findings → `status: approved`. Merging is
+Elango's gate.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
