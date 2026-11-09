@@ -756,7 +756,13 @@ function mainRepoRoot() {
   return r.status === 0 ? dirname(r.stdout.trim()) : ROOT;
 }
 function coordinatorPrompt(target) {
-  return `You are the factory coordinator. Read .agents/skills/factory/SKILL.md and follow it for ${target}. Start the workers, then end your turn. Do not poll. Orca wakes you when a worker finishes or asks a question. Stop at Elango's gates and tell him what to do.`;
+  return [
+    `You are the factory coordinator. Read .agents/skills/factory/SKILL.md and follow it for ${target}.`,
+    'Start the workers, then end your turn. Do not poll. Orca wakes you when a worker finishes or asks a question.',
+    'Agents read and update Linear only through `node scripts/factory.mjs linear read|task|bug|issue`. Do not call `orca linear` yourself.',
+    'Do not launch the researcher. Grok writes docs/research/ beside this loop.',
+    "Stop at Elango's gates and tell him what to do.",
+  ].join(' ');
 }
 function resumePrompt(spec) {
   return [
@@ -765,7 +771,9 @@ function resumePrompt(spec) {
     "First find this worktree's existing Orca run with `orca orchestration run-list` and bind to it with `orca orchestration run-use --id <run id>`; create a new run only if there is none.",
     'Settle stale dispatches (failed, exited or abandoned workers) before starting new ones.',
     'Keep every uncommitted change in the worktree: never reset, stash or discard it.',
-    `Then continue the normal loop from \`node scripts/factory.mjs plan ${spec.id} --json\`. Start workers and end your turn. Do not poll. Stop at Elango's gates and tell him what to do.`,
+    `Then continue the normal loop from \`node scripts/factory.mjs plan ${spec.id} --json\`. Start workers and end your turn. Do not poll.`,
+    'Agents read and update Linear only through `node scripts/factory.mjs linear read|task|bug|issue`. Do not call `orca linear` yourself. Do not launch the researcher.',
+    "Stop at Elango's gates and tell him what to do.",
   ].join(' ');
 }
 function specWorktree(spec) {

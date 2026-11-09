@@ -224,7 +224,7 @@ Role instructions live in `factory/roles/*.md`. After editing one, run
 - `orca.yaml` — setup script for each new worktree (`pnpm install` once `package.json` exists)
 - `.worktreeinclude` — gitignored files (`.env`) copied into new worktrees
 - `AGENTS.md` — shared instructions (Codex and Antigravity read it; `CLAUDE.md` imports it)
-- `factory/roles/` — the seven roles (source); `.claude/agents/`, `.codex/agents/` are generated
+- `factory/roles/` — the seven loop roles plus the Grok researcher (source); `.claude/agents/`, `.codex/agents/` are generated
 - `.agents/skills/factory/` — the coordinator skill (copied to `.claude/skills/factory/`)
 - `factory/claude-settings.json` — Claude Code permissions (copied to `.claude/settings.json`)
 - `factory.config.json` — which agent plays which role, and the Linear workspace, team, project and states
