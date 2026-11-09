@@ -399,7 +399,7 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [x] [backend] Fix: don't hold a database transaction while calling Better Auth in `limitedAuth`; reserve the hit in a short locked transaction, then call Better Auth; add a test with more parallel sign-ins than the pool size (Review blocking 2).
 - [ ] [backend] Fix: match `/api/auth/*` limit rules on the same resolved path Better Auth receives (pass `url.pathname` from `app.ts`), so `/./`, `/x/../` and `%2e` segments can't skip the limits; add regression tests over real HTTP, not `inject` (Re-review R1).
 - [ ] [backend] Fix: confirming an email change deletes the user's `reset-password:%` verification rows (`value` = user ID), so old-address reset links stop working; add a test (Re-review R2).
-- [ ] [frontend] Fix: clear the mail-settings test result when the saved settings change or are removed (U1; Re-review R3).
+- [x] [frontend] Fix: clear the mail-settings test result when the saved settings change or are removed (U1; Re-review R3).
 - [x] [qa] AC 1, 2: quickstart under 5 minutes with Mailpit; sign-up email within 30 s through the environment settings, and the verify link; saved settings win, with a test email through a second Mailpit or a Mailpit SMTP-auth configuration; unreachable host and bad credentials give their errors within 15 s; the password is absent from every API response, the logs and `pgboss.job`.
 - [x] [qa] AC 3: setting off by default; a pre-upgrade user and the bootstrap admin are verified after migrating a v0.2 database; with it on, an unverified user gets 403 on `POST /v1/apps` and the key route, with no Kong consumer; succeeds after verifying; can't be turned on with no mail.
 - [x] [qa] AC 4, 5, 6: reset end to end with other sessions signed out; unknown address gives the same response and no email; used and over-one-hour links give the expired state (move the clock or edit `verification.expires_at`) with the password unchanged; change password with right and wrong current password.
@@ -436,6 +436,12 @@ No new tokens; one shadcn component (`Switch`) and a few small portal components
   `autocomplete` values, no per-second announcements) and the 375px and 1280px layouts are in §7–§8.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Frontend review fix R3 / U1 — 2026-11-09
+- Clear the previous successful test-email result whenever the mail settings response changes, including saving within the same source and removing saved settings to environment fallback or no mail. The page no longer pairs the new source banner with an old saved-settings result.
+- Added three component regressions for those transitions; fresh tests still display the current source afterward. Removed the known-failure marker from the existing `007 U1` Playwright regression so QA now requires the result to disappear.
+- `pnpm lint` (7 tasks), `pnpm typecheck` (12 tasks), and `pnpm test` (12 tasks, including 137 portal tests and 93 server tests) pass. Portal coverage includes all 18 account-security cases. Validation evidence: `/tmp/007-frontend-r3-lint-final.log`, `/tmp/007-frontend-r3-typecheck-final.log`, `/tmp/007-frontend-r3-test-final.log`. The full test suite needs Docker access outside the sandbox; the initial sandbox run could not reach its container runtime.
+- The Fix task is unkeyed; QA/tech lead must verify U1/R3 before closing the finding. The Bugs checkbox and spec status remain unchanged; QA owns the updated Compose/browser regression.
 
 ### Backend review fixes — 2026-11-09
 - Normalized auth paths by dropping empty segments before matching whole routes, matching Better Auth's routing. Doubled slashes and trailing slashes now share the canonical sign-in failure limit; the disabled reset alias remains blocked.

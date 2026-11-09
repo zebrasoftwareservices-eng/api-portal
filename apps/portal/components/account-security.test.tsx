@@ -241,6 +241,80 @@ describe('account security screens', () => {
       screen.getByRole('button', { name: 'Send test email' }),
     ).toHaveAttribute('aria-disabled', 'true');
   });
+  it.each(['environment', 'none', 'saved'] as const)(
+    'clears the previous test result after settings update to %s',
+    async (source) => {
+      const smtp = {
+        host: 'mailpit',
+        port: 1025,
+        security: 'none',
+        username: null,
+        hasPassword: true,
+        senderName: 'Portal',
+        senderAddress: 'portal@example.com',
+      };
+      mocks.get.mockResolvedValue({
+        data: { source: 'saved', saved: smtp, environment: smtp },
+      });
+      mocks.post.mockResolvedValue({ data: { sent: true } });
+      const updated = {
+        source,
+        saved: source === 'saved' ? { ...smtp } : null,
+        environment: source === 'none' ? null : smtp,
+      };
+      mocks.del.mockResolvedValue({ data: updated });
+      mocks.put.mockResolvedValue({ data: updated });
+      const actor = userEvent.setup();
+      render(<MailSettings />);
+      await actor.click(
+        await screen.findByRole('button', { name: 'Send test email' }),
+      );
+      const result = /Test email sent .* using the saved settings/;
+      expect(await screen.findByText(result)).toBeInTheDocument();
+
+      if (source === 'saved') {
+        await actor.click(
+          screen.getByRole('button', { name: 'Replace password' }),
+        );
+        await actor.type(
+          screen.getByLabelText('Password (optional)'),
+          'replacement',
+        );
+        await actor.click(
+          screen.getByRole('button', { name: 'Save mail settings' }),
+        );
+        await waitFor(() => expect(mocks.put).toHaveBeenCalled());
+      } else {
+        await actor.click(
+          screen.getByRole('button', { name: 'Remove saved settings' }),
+        );
+        await actor.click(
+          screen.getByRole('button', { name: 'Remove settings' }),
+        );
+        await waitFor(() => expect(mocks.del).toHaveBeenCalled());
+        expect(
+          await screen.findByText(
+            source === 'environment'
+              ? "ⓘ Portal email uses the server's environment settings"
+              : '⚠ Portal email is off',
+          ),
+        ).toBeInTheDocument();
+      }
+      await waitFor(() =>
+        expect(screen.queryByText(result)).not.toBeInTheDocument(),
+      );
+      if (source !== 'none') {
+        await actor.click(
+          screen.getByRole('button', { name: 'Send test email' }),
+        );
+        expect(
+          await screen.findByText(
+            new RegExp(`Test email sent .* using the ${source} settings`),
+          ),
+        ).toBeInTheDocument();
+      }
+    },
+  );
   it('changes the name through the SDK and updates the header state', async () => {
     mocks.patch.mockResolvedValue({ data: { ...user, name: 'Ana Silva' } });
     const actor = userEvent.setup();

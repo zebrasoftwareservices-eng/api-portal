@@ -121,12 +121,6 @@ test('007 U1: removing saved SMTP settings clears the saved-source test result',
         exact: true,
       }),
     ).toBeVisible();
-    // Known transient minor U1: an unexpected pass means this marker can be removed.
-    // Mark only the final defect assertion, so setup or removal failures remain real failures.
-    test.fail(
-      true,
-      'U1: removing saved settings leaves the old test result visible',
-    );
     await expect(
       page.getByText(/Test email sent .* using the saved settings/),
     ).toHaveCount(0);

@@ -58,6 +58,7 @@ export function MailSettings() {
     );
     setSecret(undefined);
     setSecretKey((n) => n + 1);
+    setTestResult('');
   }, [resource.data]);
   function change(key: keyof Request, value: string | number) {
     setForm((prev) => ({ ...prev, [key]: value }));
