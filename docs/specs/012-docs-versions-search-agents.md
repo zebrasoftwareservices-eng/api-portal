@@ -370,6 +370,8 @@ version's page.
 - [x] [frontend] Handle `gateway-service-already-linked` per the UX decision (offer to add a version to the linked API).
 - [x] [frontend] Demo mode: `demoData()` with one version and changelog entry; demo build tests still pass.
 - [x] [frontend] Fix pre-hydration upload bug: the version upload keeps a file chosen before hydration (or disables file entry until hydrated), so the failing regression "012 failure path: version upload cannot discard input before hydration" in `apps/portal/e2e/versions.test.ts` passes (see Bugs).
+- [ ] [frontend] Fix UAT-012-01: version pages decode the route parameter so an accepted version name containing `+` (e.g. `1.0.0+build.1` at `/apis/sample/versions/1.0.0%2Bbuild.1`) opens its published document; admin table, switcher and changelog links work, including on refresh; add a regression test (if the server lookup is at fault, fix it there and note it in Build notes).
+- [ ] [frontend] Fix duplicate-version alert heading: show a plain-language heading instead of the problem identifier words “api version exists” (see Bugs, minor copy).
 - [ ] [qa] AC 1: import v2 onto a published v1 on the Compose stack; switcher, stable v1 URL, one catalog entry, same Kong service link (Playwright + API).
 - [ ] [qa] AC 2 and AC 9: upload order and `makeLatest: false`; "Set as latest"; 403 for a developer, 404 for an unknown version.
 - [ ] [qa] AC 3: changelog entry for the orders v1 → v2 example (note, date, `POST /orders` added, `GET /orders` removed and breaking).
