@@ -1,7 +1,7 @@
 ---
 id: 005
 title: First-run setup and gateway connections
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-234
@@ -632,6 +632,12 @@ Reproduction: run the fresh isolated Compose suite; in `apps/portal/e2e/journeys
 - [ ] JSO-406 Redundant "Connect a Kong" heading on the wizard gateway step (minor): reproduced 2026-11-08, retest screenshot `02`
 
 ## User testing  _(user-tester)_
+
+### Final smoke — 2026-11-09
+
+**Result: review; no open blocker or major.** Narrow post-revert browser smoke on `2b88c0f` passed with newly built branch images, fresh volumes and real Kong 3.9.4. First admin → Test/Save → explicit sample opt-in → service discovery/import → developer signup/app/key → direct Kong and browser try-it **200**, plus Disable/Enable and fresh admin-only sign-in → gateway wizard all passed. The guide link points to `docs/connect-kong.md`; protected-route and full acceptance coverage remain in the preceding full retest.
+
+All seven story results and nine screenshots are recorded in [the final smoke report](../uat/005/final-2026-11-09/README.md). No new problem was found; existing minor bugs remain open without claiming fixes (JSO-406 duplicate headings still observed). This was the coordinator-requested narrow smoke, not another full mobile/keyboard/error matrix or cold-build benchmark. Only the owned `spec005final` resources and uniquely named application images were created and removed.
 
 ### Current retest — 2026-11-08
 
