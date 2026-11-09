@@ -614,14 +614,14 @@ Reproduction: run the fresh isolated Compose suite; in `apps/portal/e2e/journeys
 - [x] [frontend] Fix JSO-400: a 400 with field errors shows only the field errors, and no raw problem title reaches the user, including in the Revoke dialog (minor)
 - [x] [frontend] Fix JSO-401: the repoint dialog pluralises the key count, and the Test warning shows `affectedKeys` with the design §5.3 wording (minor)
 - [x] [frontend] Fix JSO-402: the localhost field error reads "Use an address the portal server can reach.", per design §5.2 (minor)
-- [ ] JSO-399 Reloading `/setup/gateway` after saving loses the sample choice (minor; reproduced 2026-11-08, retest screenshot `05`)
+- [ ] JSO-399 Reloading `/setup/gateway` after saving loses the sample choice (minor): reproduced 2026-11-08, retest screenshot `05`
 - [x] JSO-400 Raw problem titles shown to users: "validation", "gateway unavailable" (minor)
 - [x] JSO-401 "1 active keys" in the repoint dialog, and the Test warning has no count (minor)
 - [x] JSO-402 localhost failure message does not say what to enter instead (minor)
 - [x] JSO-403 Setup token hint does not match the log line (minor)
 - [x] JSO-404 Protected-route recipe needs `curl`, which the Kong image lacks (minor)
-- [ ] JSO-405 Import form disappears on first load when Kong is down (minor; reproduced 2026-11-08, retest screenshot `14`; retry recovers)
-- [ ] JSO-406 Redundant "Connect a Kong" heading on the wizard gateway step (minor; reproduced 2026-11-08, retest screenshot `02`)
+- [ ] JSO-405 Import form disappears on first load when Kong is down (minor): reproduced 2026-11-08, retest screenshot `14`; retry recovers
+- [ ] JSO-406 Redundant "Connect a Kong" heading on the wizard gateway step (minor): reproduced 2026-11-08, retest screenshot `02`
 
 ## User testing  _(user-tester)_
 
