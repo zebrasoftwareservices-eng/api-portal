@@ -270,7 +270,7 @@ it('keeps the form on duplicate version and does not offer retry for a broken ru
       error: {
         type: '/problems/api-version-exists',
         status: 409,
-        title: 'Version exists',
+        title: 'api version exists',
         detail: 'This API already has version 2.0.0.',
       },
     })
@@ -290,6 +290,10 @@ it('keeps the form on duplicate version and does not offer retry for a broken ru
   );
   await user.click(screen.getByRole('button', { name: 'Publish version' }));
   await screen.findByRole('alert');
+  expect(screen.getByRole('alert')).toHaveTextContent(
+    'This version already exists',
+  );
+  expect(screen.getByRole('alert')).not.toHaveTextContent('api version exists');
   expect(screen.getByLabelText('Document URL')).toHaveValue(
     'https://example.com/openapi.yaml',
   );

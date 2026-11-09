@@ -135,7 +135,9 @@ export function ImportProblem({
           ? `${n} ${n === 1 ? 'error stops' : 'errors stop'} this document from being published`
           : unavailable
             ? "Imports are paused: the lint ruleset didn't load"
-            : undefined
+            : problem.type.endsWith('api-version-exists')
+              ? 'This version already exists'
+              : undefined
       }
       message={
         lint ? (

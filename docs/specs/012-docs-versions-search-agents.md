@@ -370,8 +370,8 @@ version's page.
 - [x] [frontend] Handle `gateway-service-already-linked` per the UX decision (offer to add a version to the linked API).
 - [x] [frontend] Demo mode: `demoData()` with one version and changelog entry; demo build tests still pass.
 - [x] [frontend] Fix pre-hydration upload bug: the version upload keeps a file chosen before hydration (or disables file entry until hydrated), so the failing regression "012 failure path: version upload cannot discard input before hydration" in `apps/portal/e2e/versions.test.ts` passes (see Bugs).
-- [ ] [frontend] Fix UAT-012-01: version pages decode the route parameter so an accepted version name containing `+` (e.g. `1.0.0+build.1` at `/apis/sample/versions/1.0.0%2Bbuild.1`) opens its published document; admin table, switcher and changelog links work, including on refresh; add a regression test (if the server lookup is at fault, fix it there and note it in Build notes).
-- [ ] [frontend] Fix duplicate-version alert heading: show a plain-language heading instead of the problem identifier words “api version exists” (see Bugs, minor copy).
+- [x] [frontend] Fix UAT-012-01: version pages decode the route parameter so an accepted version name containing `+` (e.g. `1.0.0+build.1` at `/apis/sample/versions/1.0.0%2Bbuild.1`) opens its published document; admin table, switcher and changelog links work, including on refresh; add a regression test (if the server lookup is at fault, fix it there and note it in Build notes).
+- [x] [frontend] Fix duplicate-version alert heading: show a plain-language heading instead of the problem identifier words “api version exists” (see Bugs, minor copy).
 - [ ] [qa] AC 1: import v2 onto a published v1 on the Compose stack; switcher, stable v1 URL, one catalog entry, same Kong service link (Playwright + API).
 - [ ] [qa] AC 2 and AC 9: upload order and `makeLatest: false`; "Set as latest"; 403 for a developer, 404 for an unknown version.
 - [ ] [qa] AC 3: changelog entry for the orders v1 → v2 example (note, date, `POST /orders` added, `GET /orders` removed and breaking).
@@ -408,6 +408,12 @@ No new tokens.
   focus order, and 375px/1280px layouts are in the design file, §3–§7.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Frontend UAT fixes — 2026-11-09 (build loop 2)
+- Stable version pages decode the route segment before matching published versions, requesting the document through the SDK, rendering the selected version and generating metadata. Literal `+` stays `+`; malformed escapes return not-found. No server or contract change was needed.
+- Duplicate-version import refusals now show **This version already exists** while retaining the explanation and form values. Component regressions cover encoded/literal plus routes, metadata, malformed routes, changelog links and the duplicate heading; existing admin-table and switcher encoding assertions remain.
+- Validation: `pnpm lint` (7 tasks) and `pnpm typecheck` (12 tasks) pass. `NODE_OPTIONS=--no-experimental-webstorage pnpm test --concurrency=1 -- --maxWorkers=1` passes (250 tests: 139 portal, 70 server, 39 adapter, 2 DB; 11 unchanged Turbo tasks cached). An initial sandbox-only portal run hit three unrelated ingress `listen EPERM` failures; the full rerun with local listener access passes.
+- Fresh production Compose quickstart: **81.3 s**. Targeted `pnpm exec playwright test --config deploy/playwright.config.ts --grep '012 AC1-4,6,9'`: **1 passed (11.2 s)** against real Kong/PostgreSQL, including publication of `1.0.0+build.1`, admin-table/switcher/changelog navigation, stable-page refresh, Scalar rendering and the duplicate refusal heading. Bugs remain unchecked for independent QA/UAT verification; spec status is unchanged. The major bug's durable Linear issue remains deferred under the recorded workspace issue-limit finding.
 
 ### Frontend fix — 2026-11-08
 - Version publication now falls back to the native file input's selected file when the selection happened before hydration and React state is empty. Both size validation and document reading use that file; drag-and-drop selections continue to use React state.

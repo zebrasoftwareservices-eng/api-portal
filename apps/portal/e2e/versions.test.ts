@@ -235,6 +235,9 @@ test('012 AC1-4,6,9: real Kong versions, stable references, changelog, defaults 
     .getByRole('button', { name: 'Publish version', exact: true })
     .click();
   expect((await duplicate).status()).toBe(409);
+  await expect(page.getByRole('alert').locator('strong')).toHaveText(
+    '⚠ This version already exists',
+  );
   await expect(
     page
       .getByText('Change info.version in the document, then publish again.', {
@@ -247,6 +250,44 @@ test('012 AC1-4,6,9: real Kong versions, stable references, changelog, defaults 
       await context.request.get(`/api/v1/apis/${slug}/openapi.json`)
     ).json(),
   ).toEqual(before);
+  // UAT-012-01: every entry point must resolve the accepted plus-name document.
+  const plusVersion = '1.0.0+build.1';
+  const plusPath = `/apis/${slug}/versions/1.0.0%2Bbuild.1`;
+  await upload(page, document(plusVersion, v1Paths));
+  await page.getByLabel("Don't make this the default version").check();
+  await page
+    .getByRole('button', { name: 'Publish version', exact: true })
+    .click();
+  await expect(page.getByRole('status')).toContainText(
+    `Published version ${plusVersion}`,
+  );
+  await page
+    .getByRole('link', { name: `View version ${plusVersion}`, exact: true })
+    .click();
+  await expect(page).toHaveURL(`http://localhost:3000${plusPath}`);
+  await expect(
+    page.getByText(`You're reading version ${plusVersion}.`, { exact: false }),
+  ).toBeVisible();
+  await expect(page.locator('.scalar-api-reference')).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByText(`You're reading version ${plusVersion}.`, { exact: false }),
+  ).toBeVisible();
+  await page.goto(`/apis/${slug}`);
+  await page
+    .getByRole('button', { name: 'Version 2.0.0, latest', exact: true })
+    .click();
+  await page.getByRole('menuitem', { name: /1\.0\.0\+build\.1/ }).click();
+  await expect(
+    page.getByText(`You're reading version ${plusVersion}.`, { exact: false }),
+  ).toBeVisible();
+  await page.goto(`/apis/${slug}/changelog`);
+  await page
+    .getByRole('link', { name: `View ${plusVersion} reference`, exact: true })
+    .click();
+  await expect(
+    page.getByText(`You're reading version ${plusVersion}.`, { exact: false }),
+  ).toBeVisible();
   const catalog = (await (await context.request.get('/api/v1/apis')).json())
     .items;
   expect(catalog.filter((a: { slug: string }) => a.slug === slug)).toHaveLength(

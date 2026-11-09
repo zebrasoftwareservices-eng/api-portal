@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import VersionPage from '../app/apis/[slug]/versions/[version]/page';
+import VersionPage, {
+  generateMetadata,
+} from '../app/apis/[slug]/versions/[version]/page';
 import Changelog from '../app/apis/[slug]/changelog/page';
 import { demoData } from '../lib/demo-data';
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
@@ -63,14 +65,17 @@ it('shows the older version notice and the requested reference', async () => {
   ).toHaveAttribute('href', '/apis/orders');
   expect(screen.getByText('Reference 1')).toBeVisible();
 });
-it('returns not-found for unknown versions before rendering a reference', async () => {
-  get.mockResolvedValue({ data: api });
-  await expect(
-    VersionPage({
-      params: Promise.resolve({ slug: 'orders', version: 'missing' }),
-    }),
-  ).rejects.toThrow('NOT_FOUND');
-});
+it.each(['missing', '%invalid'])(
+  'returns not-found for unknown or malformed version %s',
+  async (version) => {
+    get.mockResolvedValue({ data: api });
+    await expect(
+      VersionPage({
+        params: Promise.resolve({ slug: 'orders', version }),
+      }),
+    ).rejects.toThrow('NOT_FOUND');
+  },
+);
 it('renders changelog in import order with plain notes and first-version copy', async () => {
   get.mockImplementation((path: string) =>
     Promise.resolve({
@@ -117,4 +122,51 @@ it('serves demo changelog and version routes without server calls', async () => 
   await expect(
     VersionPage({ params: Promise.resolve({ slug: 'sample', version: '2' }) }),
   ).rejects.toThrow('NOT_FOUND');
+});
+
+it.each(['1.0.0%2Bbuild.1', '1.0.0+build.1'])(
+  'resolves the plus-version route %s to its published document',
+  async (routeVersion) => {
+    const version = '1.0.0+build.1';
+    const plusApi = {
+      ...api,
+      versions: [...api.versions, { ...api.versions[1], version }],
+    };
+    get.mockImplementation((path: string) =>
+      Promise.resolve({ data: path === '/v1/apis/{slug}' ? plusApi : {} }),
+    );
+    render(
+      await VersionPage({
+        params: Promise.resolve({ slug: 'orders', version: routeVersion }),
+      }),
+    );
+    expect(screen.getByText(`Reference ${version}`)).toBeVisible();
+    expect(get).toHaveBeenCalledWith(
+      '/v1/apis/{slug}/versions/{version}/openapi.json',
+      { params: { path: { slug: 'orders', version } } },
+    );
+    expect(
+      await generateMetadata({
+        params: Promise.resolve({ slug: 'orders', version: routeVersion }),
+      }),
+    ).toEqual({ title: `Orders API ${version}` });
+  },
+);
+it('links the changelog plus-version entry to its encoded stable route', async () => {
+  const version = '1.0.0+build.1';
+  get.mockImplementation((path: string) =>
+    Promise.resolve({
+      data: path.endsWith('changelog')
+        ? {
+            items: [
+              { version, publishedAt: '2026-11-08T00:00:00Z', changes: null },
+            ],
+          }
+        : api,
+    }),
+  );
+  render(await Changelog({ params: Promise.resolve({ slug: 'orders' }) }));
+  expect(
+    screen.getByRole('link', { name: `View ${version} reference` }),
+  ).toHaveAttribute('href', '/apis/orders/versions/1.0.0%2Bbuild.1');
 });

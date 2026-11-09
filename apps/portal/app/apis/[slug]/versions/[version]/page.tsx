@@ -13,9 +13,19 @@ import {
   ApiAccessStatus,
   TryItRecovery,
 } from '../../../../../components/api-access';
+// Normalize the URL segment before comparing it with literal info.version values.
+// Some route entry paths retain percent escapes; plus signs are not form spaces.
+function decodeVersion(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    notFound();
+  }
+}
 type Props = { params: Promise<{ slug: string; version: string }> };
 export async function generateMetadata({ params }: Props) {
-  const { slug, version } = await params;
+  const { slug, version: encodedVersion } = await params;
+  const version = decodeVersion(encodedVersion);
   const data = isDemo()
     ? slug === 'sample'
       ? demoData().api
@@ -33,7 +43,8 @@ export async function generateMetadata({ params }: Props) {
   };
 }
 export default async function Page({ params }: Props) {
-  const { slug, version } = await params;
+  const { slug, version: encodedVersion } = await params;
+  const version = decodeVersion(encodedVersion);
   if (isDemo()) {
     if (slug !== 'sample') notFound();
     const { api, document } = demoData();
