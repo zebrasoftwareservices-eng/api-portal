@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { beforeAll, afterAll, beforeEach, it, expect, vi } from 'vitest';
+import { request as httpRequest } from 'node:http';
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
@@ -34,6 +35,7 @@ let container: StartedPostgreSqlContainer;
 let connection: ReturnType<typeof connect>;
 let server: Awaited<ReturnType<typeof createApp>>['app'];
 let auth: ReturnType<typeof createAuth>;
+let listeningUrl: URL;
 const queued: MailPayload[] = [];
 const enqueue = async (p: MailPayload) => {
   queued.push(p);
@@ -57,6 +59,7 @@ beforeAll(async () => {
     gatewayId: uuidv7(),
     logger: false,
   }));
+  listeningUrl = new URL(await server.listen({ host: '127.0.0.1', port: 0 }));
 });
 afterAll(async () => {
   await server?.close();
@@ -105,6 +108,45 @@ async function request(
     url,
     payload: payload as Record<string, unknown>,
     headers: cookie ? { cookie } : {},
+  });
+}
+// Pass the raw path to node:http: inject and URL constructors normalize dot
+// segments before Fastify can see the request and would hide this regression.
+async function rawPost(path: string, payload: Record<string, unknown>) {
+  return new Promise<{
+    status: number;
+    headers: import('node:http').IncomingHttpHeaders;
+    body: string;
+  }>((resolve, reject) => {
+    const outgoing = httpRequest(
+      {
+        hostname: listeningUrl.hostname,
+        port: listeningUrl.port,
+        method: 'POST',
+        path,
+        headers: { 'content-type': 'application/json' },
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk: string) => {
+          body += chunk;
+        });
+        response.on('end', () =>
+          resolve({
+            status: response.statusCode!,
+            headers: response.headers,
+            body,
+          }),
+        );
+        response.on('error', reject);
+      },
+    );
+    outgoing.on('error', reject);
+    outgoing.setTimeout(10000, () =>
+      outgoing.destroy(new Error('HTTP request timed out')),
+    );
+    outgoing.end(JSON.stringify(payload));
   });
 }
 it('signs up unverified, queues verification and verifies a fresh link', async () => {
@@ -277,6 +319,59 @@ it.each([
   expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
   expect(await connection.db.select().from(rateLimitHits)).toHaveLength(1);
 });
+it.each([
+  '/api/auth/sign-in/./email',
+  '/api/auth/x/../sign-in/email',
+  '/api/auth/sign-in/%2e/email',
+  '/api/auth/x/%2E%2E/sign-in/email',
+  '/api/auth/./request-password-reset',
+  '/api/auth/x/../request-password-reset',
+  '/api/auth/%2e/request-password-reset',
+  '/api/auth/x/%2E%2E/request-password-reset',
+])(
+  'shares the canonical auth limit over real HTTP for raw path %s',
+  async (path) => {
+    const reset = path.endsWith('request-password-reset');
+    await connection.db
+      .update(accountSettings)
+      .set({ signInFailureMax: 1, resetEmailMax: 1 });
+    const person = await signup();
+    queued.length = 0;
+    const payload = {
+      email: person.email,
+      password: 'wrong',
+      redirectTo: '/reset-password',
+    };
+    const first = await rawPost(path, payload);
+    expect(first.status, first.body).toBe(reset ? 200 : 401);
+    const canonical = reset
+      ? '/api/auth/request-password-reset'
+      : '/api/auth/sign-in/email';
+    for (const blockedPath of [canonical, path]) {
+      const blocked = await rawPost(blockedPath, payload);
+      expect(blocked.status, blocked.body).toBe(429);
+      expect(blocked.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(JSON.parse(blocked.body).type).toBe('/problems/rate-limited');
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+    }
+    expect(await connection.db.select().from(rateLimitHits)).toHaveLength(1);
+    expect(queued).toHaveLength(reset ? 1 : 0);
+  },
+);
+it.each([
+  '/api/auth/./forget-password',
+  '/api/auth/x/../forget-password',
+  '/api/auth/%2e/forget-password',
+])(
+  'keeps the reset alias disabled over real HTTP for raw path %s',
+  async (path) => {
+    const response = await rawPost(path, { email: 'missing@example.com' });
+    expect(response.status, response.body).toBe(404);
+    expect(queued).toHaveLength(0);
+  },
+);
 it.each(['same', 'different'])(
   'finishes more parallel sign-ins than pool connections for %s addresses',
   async (mode) => {
@@ -454,6 +549,56 @@ it('reset revokes all sessions, changes password and rejects reuse', async () =>
       })
     ).statusCode,
   ).toBe(400);
+});
+it('email confirmation invalidates every old-address reset link without affecting other accounts', async () => {
+  const person = await signup();
+  const other = await signup('other@example.com');
+  const resetToken = async (email: string) => {
+    const response = await request('POST', '/api/auth/request-password-reset', {
+      email,
+      redirectTo: '/reset-password',
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    return new URL(queued.at(-1)!.link).pathname.split('/').pop()!;
+  };
+  const tokens = [
+    await resetToken(person.email),
+    await resetToken(person.email),
+  ];
+  const otherToken = await resetToken(other.email);
+  const change = await request(
+    'POST',
+    '/api/v1/me/email',
+    { newEmail: 'changed@example.com' },
+    person.cookie,
+  );
+  expect(change.statusCode, change.body).toBe(202);
+  const token = new URL(queued.at(-1)!.link).searchParams.get('token')!;
+  const confirmed = await request('POST', '/api/v1/me/email/confirm', {
+    token,
+  });
+  expect(confirmed.statusCode, confirmed.body).toBe(200);
+  for (const reset of tokens) {
+    const refused = await request('POST', '/api/auth/reset-password', {
+      token: reset,
+      newPassword: 'stolen-password123',
+    });
+    expect(refused.statusCode, refused.body).toBe(400);
+    expect(refused.json().code).toBe('INVALID_TOKEN');
+  }
+  const signedIn = await request('POST', '/api/auth/sign-in/email', {
+    email: 'changed@example.com',
+    password: 'password123',
+  });
+  expect(signedIn.statusCode, signedIn.body).toBe(200);
+  // Another user's reset and a newly issued link to the new address remain valid.
+  for (const reset of [otherToken, await resetToken('changed@example.com')]) {
+    const accepted = await request('POST', '/api/auth/reset-password', {
+      token: reset,
+      newPassword: 'replacement123',
+    });
+    expect(accepted.statusCode, accepted.body).toBe(200);
+  }
 });
 it('saves encrypted SMTP credentials, keeps and removes passwords and protects the last source', async () => {
   const person = await signup();

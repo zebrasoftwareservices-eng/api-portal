@@ -93,12 +93,13 @@ export async function limitedAuth(
   auth: Auth,
   request: FastifyRequest,
   reply: FastifyReply,
+  pathname: string,
   run: () => Promise<Response>,
 ): Promise<Response> {
   if (request.method !== 'POST') return run();
-  // Better Auth drops empty path segments when routing, including doubled slashes.
-  const route =
-    '/' + request.url.split('?')[0]!.split('/').filter(Boolean).join('/');
+  // Use the resolved URL sent to Better Auth (dot segments already removed),
+  // then drop empty segments as Better Auth's router does.
+  const route = '/' + pathname.split('/').filter(Boolean).join('/');
   if (route === '/api/auth/forget-password')
     return new Response(null, { status: 404 });
   if (

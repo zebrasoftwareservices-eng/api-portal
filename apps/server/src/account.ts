@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { randomBytes, createHash } from 'node:crypto';
 import { uuidv7 } from 'uuidv7';
-import { and, eq, gt, asc } from 'drizzle-orm';
+import { and, eq, gt, asc, like } from 'drizzle-orm';
 import {
   user,
   account,
@@ -304,7 +304,12 @@ export function registerAccount(
           .where(eq(emailChangeRequests.id, pending.id));
         await tx
           .delete(verification)
-          .where(eq(verification.identifier, previous.email));
+          .where(
+            and(
+              like(verification.identifier, 'reset-password:%'),
+              eq(verification.value, pending.userId),
+            ),
+          );
         return updated!;
       });
       return userView(db, {

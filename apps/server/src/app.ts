@@ -92,17 +92,23 @@ export async function createApp(options: AppOptions) {
     url: '/api/auth/*',
     handler: async (request, reply) => {
       const url = new URL(request.url, config.PORTAL_PUBLIC_URL);
-      const response = await limitedAuth(db, auth, request, reply, () =>
-        auth.handler(
-          new Request(url, {
-            method: request.method,
-            headers: headersFor(request),
-            body:
-              request.body === undefined
-                ? undefined
-                : JSON.stringify(request.body),
-          }),
-        ),
+      const response = await limitedAuth(
+        db,
+        auth,
+        request,
+        reply,
+        url.pathname,
+        () =>
+          auth.handler(
+            new Request(url, {
+              method: request.method,
+              headers: headersFor(request),
+              body:
+                request.body === undefined
+                  ? undefined
+                  : JSON.stringify(request.body),
+            }),
+          ),
       );
       const cookies = response.headers.getSetCookie();
       for (const [name, value] of response.headers)

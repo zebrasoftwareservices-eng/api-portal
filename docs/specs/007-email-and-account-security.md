@@ -397,8 +397,8 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [x] [backend] Fix: redact password-reset bearer tokens from request URL paths before logging (major; Linear Bug creation pending due to workspace free issue limit).
 - [x] [backend] Fix: normalize `/api/auth/*` paths before applying rate-limit rules, so `/api/auth/sign-in//email` and `/api/auth//sign-in/email` can't skip the sign-in failure limit; add regression tests (Review blocking 1).
 - [x] [backend] Fix: don't hold a database transaction while calling Better Auth in `limitedAuth`; reserve the hit in a short locked transaction, then call Better Auth; add a test with more parallel sign-ins than the pool size (Review blocking 2).
-- [ ] [backend] Fix: match `/api/auth/*` limit rules on the same resolved path Better Auth receives (pass `url.pathname` from `app.ts`), so `/./`, `/x/../` and `%2e` segments can't skip the limits; add regression tests over real HTTP, not `inject` (Re-review R1).
-- [ ] [backend] Fix: confirming an email change deletes the user's `reset-password:%` verification rows (`value` = user ID), so old-address reset links stop working; add a test (Re-review R2).
+- [x] [backend] Fix: match `/api/auth/*` limit rules on the same resolved path Better Auth receives (pass `url.pathname` from `app.ts`), so `/./`, `/x/../` and `%2e` segments can't skip the limits; add regression tests over real HTTP, not `inject` (Re-review R1).
+- [x] [backend] Fix: confirming an email change deletes the user's `reset-password:%` verification rows (`value` = user ID), so old-address reset links stop working; add a test (Re-review R2).
 - [x] [frontend] Fix: clear the mail-settings test result when the saved settings change or are removed (U1; Re-review R3).
 - [x] [qa] AC 1, 2: quickstart under 5 minutes with Mailpit; sign-up email within 30 s through the environment settings, and the verify link; saved settings win, with a test email through a second Mailpit or a Mailpit SMTP-auth configuration; unreachable host and bad credentials give their errors within 15 s; the password is absent from every API response, the logs and `pgboss.job`.
 - [x] [qa] AC 3: setting off by default; a pre-upgrade user and the bootstrap admin are verified after migrating a v0.2 database; with it on, an unverified user gets 403 on `POST /v1/apps` and the key route, with no Kong consumer; succeeds after verifying; can't be turned on with no mail.
@@ -436,6 +436,12 @@ No new tokens; one shadcn component (`Switch`) and a few small portal components
   `autocomplete` values, no per-second announcements) and the 375px and 1280px layouts are in §7–§8.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Backend re-review fixes — 2026-11-09
+- R1: `app.ts` passes the already-resolved `url.pathname` to `limitedAuth`, which drops empty segments before matching rules. The limiter and Better Auth now share dot-segment resolution. Eleven new regressions use `server.listen()` and `node:http` raw paths (not `inject`): sign-in/reset limits for `/./`, `/x/../`, `%2e` and `%2E%2E`, plus the disabled reset alias. Canonical and noncanonical requests share one hit, return 429 problem+json with `Retry-After`, and don't send extra mail.
+- R2: email confirmation deletes all `verification` rows with `identifier like 'reset-password:%'` and `value` equal to the user ID in the email-update transaction. The regression issues two old-address links and confirms both return `INVALID_TOKEN`, the password stays unchanged, another account's link still works, and a fresh link to the changed address works.
+- Validation: `pnpm lint` (7 tasks), `pnpm typecheck` (12 tasks), `pnpm test` (12 tasks, all 93 server tests) and the focused account-security integration suite (38/38) pass. Evidence: `/tmp/007-backend-rereview-lint.log`, `/tmp/007-backend-rereview-typecheck.log`, `/tmp/007-backend-rereview-tests.log`, `/tmp/007-backend-rereview-focused.log`. Docker-dependent tests needed execution outside the sandbox after the initial run could not find its container runtime.
+- Both Fix tasks are unkeyed; no durable issue was created or moved. QA/tech lead should verify R1 and R2; no spec status, Bugs checkbox or approval gate changed.
 
 ### Frontend review fix R3 / U1 — 2026-11-09
 - Clear the previous successful test-email result whenever the mail settings response changes, including saving within the same source and removing saved settings to environment fallback or no mail. The page no longer pairs the new source banner with an old saved-settings result.
