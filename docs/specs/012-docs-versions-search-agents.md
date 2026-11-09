@@ -1,7 +1,7 @@
 ---
 id: 012
 title: API versions and changelog, and spec linting
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-240
@@ -553,11 +553,77 @@ Fresh real-Kong/Postgres Compose started in **12.45 seconds** using existing ima
 
 ## Review  _(tech-lead)_
 
+### Code review — 2026-11-09
+Scope: `git diff main...HEAD` (130 files) against the acceptance criteria, the Technical design,
+ADR 0007 and the contract.
+
+**Checks run**
+- `pnpm lint`: PASS (7 tasks). `pnpm typecheck`: PASS (12 tasks).
+- `pnpm test` (plain, host Node 26): one failure, `key-reveal-dialog.test.tsx:57` (`localStorage`
+  undefined). This is the known Node 26 native-webstorage problem recorded by build and QA; the
+  test isn't touched by this branch, and CI/production use Node 22 (`.nvmrc`, Dockerfile). Turbo
+  then stopped the server suite.
+- `NODE_OPTIONS=--no-experimental-webstorage pnpm test --concurrency=1 -- --maxWorkers=1`:
+  **PASS, 250 tests** (139 portal, 70 server, 39 Kong adapter, 2 DB), real Testcontainers
+  PostgreSQL included.
+- Quickstart and e2e were not re-run in this review; QA's build-loop-2 evidence (Compose
+  quickstart PASS, `pnpm test:e2e` 50/50, `deploy/smoke.mjs` PASS) is against the same
+  application code (`HEAD` adds only UAT evidence since then).
+
+**Against the checklist**
+- Acceptance criteria: AC 1–9 each map to passing tests at server (`app.test.ts`,
+  `lint/lint.test.ts`, `changes.test.ts`), DB (`versions-migration.test.ts`), component and
+  real-Kong Playwright level (`apps/portal/e2e/versions.test.ts`). AC 8's no-fallback is enforced
+  in `lint/index.ts:56-64` (load failure keeps `ruleset` undefined) and `requireLinter` (503).
+- Contract and data model match the design: paths, status codes and problem types in
+  `openapi.yaml`; `api_versions` table, composite latest-version FK and backfill in
+  `0001_api_versions.sql`; no leftover reads of the dropped `apis` columns (grep and typecheck
+  clean). The default ruleset's error set equals the design table, and a unit test pins it.
+- Errors are problem+json, including `errors[]` + `errorCount` for lint refusals. Inputs are
+  validated with zod (version name regex, 5000-char note, strict bodies). The Spectral resolver
+  serves only already-fetched files, `file:` refs are refused, and the ruleset loader can't fetch,
+  so there's no new SSRF path. Nothing secret is logged or returned.
+- Gateway: versions make no adapter calls (`versions.ts` has none); `importApi` still protects
+  the service exactly as before.
+- Release notes render as plain text (`release-note.tsx`, `white-space: pre-wrap`), never HTML.
+- The ruleset is copied into the image (`apps/server/Dockerfile:28`) and resolved relative to
+  `dist/` (`lint/index.ts:34-36`). README documents `PORTAL_LINT_RULESET` and the upgrade.
+
+**Blocking**
+- None.
+
+**Suggestions** (non-blocking; none needs its own Linear issue)
+- [ ] `apps/server/src/versions.ts:41-45` (and the existing `catalog.ts:73-77`): `find()` loads
+  every published API with its latest document and filters by slug in JS. `importApiVersion`
+  calls it twice (`:102`, `:175`). Query by `apis.slug` instead, ideally through one shared
+  helper in `catalog.ts`.
+- [ ] `apps/server/src/catalog.ts:30-35`: `apiDetail` selects every column of every version,
+  including `document` and `source_content`, only to sort and list names. Select
+  `id, version, publishedAt`. The same applies to the changelog query (`versions.ts:52-57`).
+- [ ] `apps/server/src/versions.ts:131-142`: the add-version transaction loads every version's
+  document to choose one baseline, and builds the new entry by spreading `existing[0]!`.
+  Order on light rows, then load only the baseline's document. This is clearer and avoids
+  reading N documents under the row lock.
+- [ ] `apps/portal/app/apis/[slug]/versions/[version]/page.tsx:84-88`: the server fetches the
+  whole version document only to check for 404, then `Reference` fetches it again on the client.
+  `selected` (`:82-83`) already proves the version exists, so drop the server fetch or pass the
+  document through.
+- [ ] `apps/server/src/import.ts:35-40`: `inputSchema.spec` repeats `specSchema` (`:28-31`);
+  reuse it.
+- [ ] Branch hygiene: commit `33516a3` (user-tester on Codex in `factory.config.json`,
+  `AGENTS.md`, `docs/team-charter.md`) is unrelated to spec 012. Call it out in the PR
+  description, or merge it separately.
+- [ ] Local DX: plain `pnpm test` fails on Node 26 hosts (`key-reveal-dialog.test.tsx`). This
+  predates the branch; consider having the portal Vitest config disable native webstorage (or
+  pin `engines.node`) so contributors don't need the flag.
+
+**Verdict:** no blocking findings → `status: approved`. Merging is Elango's gate.
+
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
 - [ ] Every user story passes in the browser (User testing section)
 - [ ] lint, typecheck, unit, integration and e2e all green in CI
 - [ ] Quickstart (`docker compose up`) still works end to end
 - [ ] API contract, README and docs updated
-- [ ] Tech-lead review has no blocking findings
+- [x] Tech-lead review has no blocking findings
 - [ ] Elango merged the PR
