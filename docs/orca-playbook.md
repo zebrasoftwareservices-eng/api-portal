@@ -62,30 +62,44 @@ Either way the product manager writes the spec and the coordinator runs
 write a spec by hand and run `linear-init` yourself.
 
 ## Tracking in Linear
-Project **API Portal** in Linear holds the whole SDLC:
+Project **API Portal** holds one feature issue per spec. The spec file is the task board.
+Agents do not call `orca linear` themselves.
 
-| Linear | What it is | Who moves it |
+| What | Where it lives | Command |
 | --- | --- | --- |
-| Feature issue (label Feature) | One per spec, in a release milestone (v0.1, v0.2, v0.3) | Coordinator, from the spec status; stage summaries are comments |
-| Spec task checkboxes | Every implementation and QA task; no Linear issue per task | The owning worker ticks it and reports the stage summary on the feature |
-| Bug sub-issues (label Bug) | Only durable blocker/major, cross-owner/release, or post-spec bugs | Tester creates and closes; developer moves to In Review when fixed |
-| Review sub-issues (label Code Review) | Only durable blocking findings that outlive the current review loop | Tech lead creates and closes |
-| Follow-ups (Backlog) | Out-of-scope work any agent spots | Whoever found it creates it; you prioritize |
+| Feature issue (label Feature) | Linear. Status follows the spec, forward only | `node scripts/factory.mjs track 001 sync` or `set-status` |
+| Tasks | Spec checkboxes. No issue per task | `node scripts/factory.mjs linear task 001 done\|open "<text>"` |
+| Bugs and durable review findings | Spec checkboxes, plus a child issue for a blocker or major | `linear bug 001 done\|open "<text>"` and `linear issue 001 bug\|review` |
+| Follow-ups | Spec, under Follow-ups | `linear issue 001 follow-up --title "…"` |
+| Stage summary | One comment on the feature issue | Coordinator: `track 001 note <stage>` |
 
-Every agent works in Linear like a team member, so stage summaries and durable issues update as
-the work happens. The coordinator only reconciles the feature issue: `track sync` fills in
-anything an agent missed and never moves an issue backwards. Legacy stage/task issues remain as
-history but are not required or created for new specs.
+Feature status: Backlog = draft · Todo = ready · In Progress = design, build, test ·
+In Review = review or waiting to merge · Done = merged.
 
-Feature status: Backlog = spec draft · Todo = approved · In Progress = design, build, test ·
-In Review = code review or waiting to merge · Done = merged.
-
-Useful commands:
+How an agent reads and updates status:
 ```bash
-node scripts/factory.mjs track 001 sync     # re-sync Linear with the spec (safe any time)
-orca linear issue JSO-117 --comments        # the feature and its stage summaries
+node scripts/factory.mjs linear read 001 --json          # open and done tasks and bugs; no comments
+node scripts/factory.mjs linear read 001 --live          # same, plus the feature issue's state name
+node scripts/factory.mjs linear read --issue JSO-117 --json
+                                                         # intake: title, description, state
+node scripts/factory.mjs linear task 001 done "Add the widget"
+                                                         # tick the task; a keyed line moves to In Review
+node scripts/factory.mjs linear task 001 open "JSO-140"  # untick; keyed line moves to In Progress
+node scripts/factory.mjs linear bug 001 done "JSO-140"   # QA verified; keyed issue moves to Done
+node scripts/factory.mjs linear bug 001 open "JSO-140"   # still broken; keyed issue moves to In Progress
+printf '%s\n' "steps" | node scripts/factory.mjs linear issue 001 bug \
+  --severity major --title "Widget snaps" --owner backend
+printf '%s\n' "not this release" | node scripts/factory.mjs linear issue 001 follow-up \
+  --title "Export later"
 ```
-Linear problems never stop the factory: the coordinator logs a warning and you can re-sync later.
+The match must hit one checkbox line. An exact line or key wins over a shorter substring.
+`linear task done` moves a keyed durable issue to **In Review**. `linear bug done` moves it to
+**Done**. Neither command moves the feature issue. A minor is refused. A follow-up is written
+into the spec and does not create a Linear issue unless you pass `--create`.
+
+If Linear rejects a required create, the command writes the finding under **Deferred Linear**
+and exits 0. The factory keeps going. `track sync` never moves the feature issue backwards.
+Legacy stage and task issues stay as history and are not created for new specs.
 
 **Commits and PRs in Linear** need the repo on GitHub plus Linear's GitHub integration
 (Linear → Settings → Integrations → GitHub). The branch name contains the feature key, every
@@ -99,8 +113,8 @@ Code and type `/factory 001` (Codex: `$factory 001`).
 After QA's one full test pass, the **user-tester** (Codex) reuses the stack QA left up. It
 walks each user-visible acceptance criterion once, then one mobile pass and one keyboard pass
 of the main journey. On a retest it walks only the failed rows. Screenshots go in
-`docs/uat/<spec-id>/`. Minor findings stay in the spec. It creates a Linear bug only for a
-blocker or major that outlives the spec. You can watch its browser tab in Orca.
+`docs/uat/<spec-id>/`. Minor findings stay in the spec. A blocker or major is filed with
+`node scripts/factory.mjs linear issue <id> bug`. You can watch its browser tab in Orca.
 
 ## Deploys (GitHub + Vercel)
 - Repo: private `github.com/zebrasoftwareservices-eng/api-portal`. Orca branches new
@@ -115,10 +129,10 @@ blocker or major that outlives the spec. You can watch its browser tab in Orca.
   project's Deployment Protection settings when you want the site public.
 
 ## Your two gates
-1. **Spec approval** (Linear: the Requirements issue, assigned to you). The coordinator stops
-   at `draft`. Read the spec, answer its open questions, run
+1. **Spec approval.** The coordinator stops at `draft`. The feature issue stays in Backlog until
+   you move the spec. Read the spec, answer its open questions, run
    `node scripts/factory.mjs set-status 001 ready`, commit, and run `/factory 001` again.
-2. **Merge** (Linear: the Release issue, assigned to you). The coordinator stops at `approved`.
+2. **Merge.** The coordinator stops at `approved`. The feature issue is In Review.
    Review the diff in Orca, push, open the PR with `Fixes JSO-117` in the description
    (the coordinator prints the exact `gh pr create` command), merge, then run
    `node scripts/factory.mjs set-status 001 done`.

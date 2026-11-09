@@ -56,7 +56,7 @@ Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
 Long notes go in `docs/specs/log/NNN.md`, not here.
 
 ### Bugs
-<!-- Track every finding here. Add a JSO key only for a durable blocker/major, cross-owner/release item, or work that remains after this spec. -->
+<!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [ ] …
 

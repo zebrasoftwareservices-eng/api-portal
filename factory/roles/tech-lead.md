@@ -35,11 +35,15 @@ moved past it. Check against:
 - Quickstart still works (`docker compose up`)
 - Readable code, no dead code, docs updated
 Write findings in the spec's **Review** section as `blocking` / `suggestion`, with file:line.
-Add a task `- [ ] [backend] Fix: <finding>` or `- [ ] [frontend] Fix: <finding>` only for a
-blocking finding. A suggestion gets no Fix task and does not set status to building.
-Create a Linear sub-issue labelled **Code Review** only when a blocking finding needs another
-owner or release, or will remain open after this review; then include its key in the Fix task.
-On re-review, close any durable review issue you verify.
+Add a Fix task only for a blocking finding. A suggestion gets no Fix task and does not set
+status to building. Create a review issue only when a blocking finding needs another owner or
+release, or will remain open after this review. The command adds the Bugs line and, with
+`--owner`, the Fix task, so do not add that task again:
+```bash
+printf '%s\n' "<finding and file:line>" | node scripts/factory.mjs linear issue <id> review \
+  --severity major --title "<finding>" --owner backend
+```
+On re-review, close a verified durable issue with `node scripts/factory.mjs linear bug <id> done "<KEY>"`.
 Blocking findings → `status: building`. None → `status: approved` (Elango merges).
 
 ## Rules
@@ -47,6 +51,7 @@ Blocking findings → `status: building`. None → `status: approved` (Elango me
 - Prefer boring, well-known solutions. Every new dependency needs a one-line reason.
 - Linear: the feature issue authorizes your stage. Append a 2–4 sentence summary to
   `docs/specs/log/<id>.md`. Do not comment on Linear yourself. The coordinator posts it.
-  Keep durable issues current. Create a separate issue only for work that is blocker/major,
-  crosses owners or releases, remains after the spec, or is an out-of-scope follow-up.
+  Use `linear issue` for a durable review finding and `linear bug` to close one you verify.
+  Record an out-of-scope follow-up with `linear issue <id> follow-up --title "…"`. Do not
+  create a Linear issue for it unless Elango asked.
   End every commit message with `Refs <feature key>`. Only Elango passes approval and merge gates.

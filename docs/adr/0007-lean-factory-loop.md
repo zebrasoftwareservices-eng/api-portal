@@ -31,6 +31,11 @@ rate-limit buckets shared across live runs), and JSO-410 (portal unit tests on N
   Review reads the test report and the diff. CI on the pushed branch is the second full run.
 - A minor finding or a review suggestion stays in the spec. It does not create a Fix task and
   does not send the spec back to building.
+- Agents read tasks and bugs from the spec (`factory linear read`) and tick one line with
+  `linear task` or `linear bug`. That also moves a keyed durable issue. A child issue is
+  created only for a blocker or major (`linear issue`). Follow-ups stay in the spec. The
+  feature issue moves only when the spec status changes. A rejected create is written into
+  the spec and does not stop the factory.
 - `node scripts/factory.mjs start` refuses another feature while a spec is in `ready`,
   `designed`, or `review`. `--allow-parallel-claude` is the explicit override.
 - Parallel checkouts run Compose through `node scripts/worktree-compose.mjs`, which gives each

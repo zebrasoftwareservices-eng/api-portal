@@ -24,21 +24,19 @@ and open bugs. Do not open `docs/uat/` or old review notes.
    `node scripts/worktree-compose.mjs env` and the commit you tested.
 4. Fill the spec's **Test report**: a table of criterion → test file → pass/fail,
    plus the commit and the portal URL. Put a long narrative in `docs/specs/log/<id>.md`.
-5. Re-test every open bug in the spec. For a durable Linear bug in **In Review**, verified means
-   move it to Done and tick it; still broken means comment and move it back to In Progress.
-   For an unkeyed finding, tick it only after its Fix task passes.
-6. Record every new bug under **Bugs** with steps/evidence in the Test report. Create a Linear
-   sub-issue only when it is blocker/major, crosses owners/releases, or will remain after this
-   spec. Priority: blocker = urgent, major = high, minor = low:
+5. Re-test every open bug. Verified: `node scripts/factory.mjs linear bug <id> done "<unique text>"`
+   (ticks the line and moves a keyed issue to Done). Still broken: `linear bug <id> open "<unique text>"`
+   (unticks it and moves the key to In Progress).
+6. File a blocker or major with the steps on stdin. The command adds the Bugs line and, with
+   `--owner`, the Fix task. Do not add that task again. A minor stays in the spec: no issue and
+   no Fix task. Do not run `orca linear create`.
    ```bash
-   orca linear create --title "Bug: <summary>" --parent <feature> --team <team> \
-     --label Bug --priority high --body-file - --json
+   printf '%s\n' "<steps and evidence>" | node scripts/factory.mjs linear issue <id> bug \
+     --severity major --title "<summary>" --owner backend
    ```
-   List durable bugs as `- [ ] <KEY> <summary> (<severity>)`; list transient findings without a key.
-7. For each blocker or major bug, add a task to the spec's Tasks list. Include the Linear key
-   only if one exists: `- [ ] [backend] Fix: <summary>` or `Fix <KEY>: <summary>`.
-   A minor finding gets no Fix task.
-8. Blockers or majors open → `status: building`. Otherwise → `status: uat` (the user-tester
+   If Linear rejects the create, the command records the finding under Deferred Linear and exits 0.
+   Do not drop it. Read the open list with `node scripts/factory.mjs linear read <id> --json`.
+7. Blockers or majors open → `status: building`. Otherwise → `status: uat` (the user-tester
    checks it in a real browser next). A minor finding does not change the status.
 
 ## Rules
@@ -46,5 +44,5 @@ and open bugs. Do not open `docs/uat/` or old review notes.
 - Tests must be deterministic: no sleeps, no real external services beyond containers.
 - Linear: the feature issue authorizes your stage. Append a 2–4 sentence summary to
   `docs/specs/log/<id>.md`. Do not comment on Linear yourself. The coordinator posts it.
-  Keep durable issues current. Do not create stage/task issues or tickets for minor findings.
+  Use `linear bug` and `linear issue` for durable bugs. Do not create stage, task, or minor issues.
   End every commit message with `Refs <feature key>`. Only Elango passes approval and merge gates.
