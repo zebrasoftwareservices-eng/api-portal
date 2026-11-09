@@ -227,8 +227,16 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
     expect(await (await request.get(`/api/v1/apps/${app.id}`)).json()).toEqual(
       before,
     );
-    const logs = compose('logs', '--no-color', '--since', '30s', 'server');
-    expect(logs).toContain('gateway unavailable');
+    let logs = '';
+    await expect
+      .poll(
+        () => {
+          logs = compose('logs', '--no-color', '--since', '30s', 'server');
+          return logs;
+        },
+        { timeout: 30000 },
+      )
+      .toContain('gateway unavailable');
     expect(logs).not.toContain(credential.key);
     expect(logs).not.toContain('QA-password-123');
   } finally {
