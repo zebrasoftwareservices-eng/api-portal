@@ -112,7 +112,11 @@ async function request(
 }
 // Pass the raw path to node:http: inject and URL constructors normalize dot
 // segments before Fastify can see the request and would hide this regression.
-async function rawPost(path: string, payload: Record<string, unknown>) {
+async function rawPost(
+  path: string,
+  payload: Record<string, unknown>,
+  cookie?: string,
+) {
   return new Promise<{
     status: number;
     headers: import('node:http').IncomingHttpHeaders;
@@ -124,7 +128,10 @@ async function rawPost(path: string, payload: Record<string, unknown>) {
         port: listeningUrl.port,
         method: 'POST',
         path,
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(cookie ? { cookie } : {}),
+        },
       },
       (response) => {
         let body = '';
@@ -358,6 +365,48 @@ it.each([
     }
     expect(await connection.db.select().from(rateLimitHits)).toHaveLength(1);
     expect(queued).toHaveLength(reset ? 1 : 0);
+  },
+);
+it.each(['/api/auth/send-verification-email', '/api/auth/change-password'])(
+  'counts raw dot paths for signed-in %s requests',
+  async (canonical) => {
+    const person = await signup();
+    queued.length = 0;
+    await connection.db.update(accountSettings).set({
+      verificationEmailMax: 1,
+      signInFailureMax: 1,
+    });
+    const verification = canonical.endsWith('send-verification-email');
+    const payload = verification
+      ? { email: person.email }
+      : {
+          currentPassword: 'incorrect-password',
+          newPassword: 'Must-not-change-123',
+        };
+    const route = canonical.split('/').pop()!;
+    const first = await rawPost(
+      `/api/auth/x/%2E%2E/${route}`,
+      payload,
+      person.cookie,
+    );
+    expect(first.status, first.body).toBe(verification ? 200 : 400);
+    for (const path of [
+      canonical,
+      `/api/auth/./${route}`,
+      `/api/auth/%2e/${route}`,
+    ]) {
+      const blocked = await rawPost(path, payload, person.cookie);
+      expect(blocked.status, blocked.body).toBe(429);
+      expect(blocked.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+    }
+    expect(await connection.db.select().from(rateLimitHits)).toHaveLength(1);
+    expect(queued).toHaveLength(verification ? 1 : 0);
+    expect(
+      (await request('GET', '/api/v1/me', undefined, person.cookie)).statusCode,
+    ).toBe(200);
   },
 );
 it.each([

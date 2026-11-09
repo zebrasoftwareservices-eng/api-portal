@@ -33,6 +33,8 @@ const compose = (...args: string[]) =>
 test('007 review blockers: noncanonical sign-ins share limits and parallel sign-ins finish', async ({
   request,
 }) => {
+  // Two sequential batches each allow 20 s, plus the path-limit setup.
+  test.setTimeout(90_000);
   const email = `review-path-${randomUUID()}@example.com`;
   const data = { email, password: 'incorrect-password' };
   const paths = [
@@ -303,6 +305,35 @@ test('007 AC4/5/6/7: browser reset, single-use links, profile and password/sessi
     200,
   );
   const newEmail = `changed-${crypto.randomUUID()}@example.com`;
+  // A link delivered to the old mailbox must lose authority after email change.
+  expect(
+    (
+      await context.request.post('/api/auth/request-password-reset', {
+        data: { email, redirectTo: '/reset-password' },
+      })
+    ).status(),
+  ).toBe(200);
+  let oldMailboxReset = '';
+  await expect
+    .poll(
+      async () => {
+        oldMailboxReset = new URL(
+          link(await message(context.request, email, 'reset')),
+        ).pathname
+          .split('/')
+          .pop()!;
+        return oldMailboxReset;
+      },
+      { timeout: 30_000 },
+    )
+    .not.toBe(new URL(resetLink).pathname.split('/').pop());
+  // Opening a valid link redirects to the reset form without consuming it.
+  const validReset = await context.request.get(
+    `/api/auth/reset-password/${oldMailboxReset}?callbackURL=/reset-password`,
+    { maxRedirects: 0 },
+  );
+  expect(validReset.status()).toBe(302);
+  expect(validReset.headers().location).not.toContain('INVALID_TOKEN');
   await page.getByRole('button', { name: 'Change email', exact: true }).click();
   await page.getByLabel('New email').fill(newEmail);
   await page.getByRole('button', { name: 'Send confirmation link' }).click();
@@ -318,6 +349,11 @@ test('007 AC4/5/6/7: browser reset, single-use links, profile and password/sessi
   await expect(
     page.getByRole('heading', { name: 'Email changed' }),
   ).toBeVisible();
+  const invalidated = await context.request.post('/api/auth/reset-password', {
+    data: { token: oldMailboxReset, newPassword: 'Must-not-change-123' },
+  });
+  expect(invalidated.status()).toBe(400);
+  expect((await invalidated.json()).code).toBe('INVALID_TOKEN');
   expect((await signin(other, email, 'Changed-password-123')).status()).toBe(
     401,
   );
@@ -486,6 +522,28 @@ test('007 AC2/8: saved SMTP precedence, errors and live default email/sign-in li
       '-c',
       'echo $$ > /tmp/qa007-smtp-auth.pid; exec /mailpit --smtp 0.0.0.0:1027 --listen 0.0.0.0:8027 --smtp-auth-file /tmp/qa007-smtp-auth --smtp-auth-allow-insecure > /tmp/qa007-smtp-auth.log 2>&1',
     );
+    await expect
+      .poll(
+        () => {
+          try {
+            compose(
+              'exec',
+              '-T',
+              'mailpit',
+              'wget',
+              '-q',
+              '-O',
+              '-',
+              'http://127.0.0.1:8027/livez',
+            );
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
     await admin.put('/api/v1/admin/settings/mail', {
       data: { ...saved, port: 1027, username: 'qa' },
     });

@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -477,21 +477,21 @@ No new tokens; one shadcn component (`Switch`) and a few small portal components
 
 ## Test report  _(qa-tester)_
 
-QA re-test date: 2026-11-09, after backend review fixes `3ce5597`. The current fresh Compose project
-`qa007r3` uses Postgres 17, Kong 3.9 and
+QA re-test date: 2026-11-09, after re-review fixes `325dafe` (backend) and `ef62b2b`
+(frontend). The current fresh Compose project `qa007r4` uses Postgres 17, Kong 3.9 and
 Mailpit v1.27.10, with separate host ports (portal 13000, server 14000, proxy 18000,
-Kong Admin 18001, Mailpit 18025) because another worktree owns the default ports.
+Kong Admin 18001, Mailpit 18025) to keep this run isolated from default-port stacks.
 Only tests and this spec changed; application code was not modified.
 
 | Criterion | Automated test file / case | Result |
 | --- | --- | --- |
-| AC 1 — fresh quickstart, environment SMTP, signup delivery within 30 s, verify link/profile and source banner | `apps/portal/e2e/account-security.test.ts`: `007 AC1/3`, `007 admin settings browser`; `deploy/e2e/quickstart.spec.ts` | PASS. Current fresh-volume build/start and healthy portal completed in 249.19 s; Mailpit is polled with a 30 s deadline. |
+| AC 1 — fresh quickstart, environment SMTP, signup delivery within 30 s, verify link/profile and source banner | `apps/portal/e2e/account-security.test.ts`: `007 AC1/3`, `007 admin settings browser`; `deploy/e2e/quickstart.spec.ts` | PASS. Current fresh-volume build/start and healthy portal completed in 107.19 s; Mailpit is polled with a 30 s deadline. |
 | AC 2 — saved settings precedence/sender, encrypted write-only password, bounded SMTP unreachable/auth errors, no secrets | `apps/portal/e2e/account-security.test.ts`: `007 AC2/8`, `007 security`; `apps/server/src/account-security.test.ts`: encrypted SMTP and queue cases; `apps/server/src/mail/transport.test.ts` | PASS. B1 reset-token log regression now passes against the rebuilt server; real SMTP auth/unreachable errors, saved sender precedence, encryption and queue/log SMTP-password checks pass. |
 | AC 3 — default-off, upgrade/bootstrap verified, UI/API gate and no app writes, succeeds after verification, no-mail refusal | `apps/portal/e2e/account-security.test.ts`: `007 AC1/3`; `apps/server/src/account-security.test.ts`: app/key guards and mail-less prerequisite; `packages/db/src/migrate.test.ts`: v0.2 upgrade | PASS. Real gated creation returns 403 problem+json and no app; verified creation succeeds against Kong. |
 | AC 4 — browser reset, new/old password, other sessions revoked, unknown-address parity/no email | `apps/portal/e2e/account-security.test.ts`: `007 AC4/5/6/7`, `007 AC4/5`; `apps/server/src/account-security.test.ts`: reset revocation and known/unknown parity | PASS. Lifecycle, session revocation, unknown-address parity/no mail and reset-token log confidentiality all pass. |
 | AC 5 — single-use/over-one-hour reset rejected, expired screen/recovery link, password unchanged | `apps/portal/e2e/account-security.test.ts`: `007 AC4/5/6/7`, `007 AC4/5`; `apps/server/src/account-security.test.ts`: expired reset/password unchanged; `apps/portal/components/account-security.test.tsx`: INVALID_TOKEN | PASS in Compose/browser and Postgres integration: over-one-hour and reused links are refused with password unchanged. |
 | AC 6 — correct/wrong current password and other-session revocation | `apps/portal/e2e/account-security.test.ts`: `007 AC4/5/6/7`; `apps/server/src/account-security.test.ts`: forced revokeOtherSessions | PASS. Real browser wrong-password refusal, subsequent valid change, old password failure and remote-session 401. |
-| AC 7 — name in header, pending old email retained, confirmed new address sign-in, neutral taken-address refusal | `apps/portal/e2e/account-security.test.ts`: `007 AC4/5/6/7`; `apps/server/src/account-security.test.ts`: neutral taken-address response and expired/replaced/reused/concurrently taken tokens | PASS. Browser name/menu, old-address retention and new-only sign-in; integration covers duplicate and token races. |
+| AC 7 — name in header, pending old email retained, confirmed new address sign-in, neutral taken-address refusal | `apps/portal/e2e/account-security.test.ts`: `007 AC4/5/6/7`; `apps/server/src/account-security.test.ts`: neutral taken-address response and expired/replaced/reused/concurrently taken tokens | PASS. Browser name/menu, old-address retention and new-only sign-in; integration covers duplicate and token races. The browser also proves a fresh old-mailbox reset link is invalidated on email confirmation. |
 | AC 8 — default 10 failures, fourth reset/verification 429, Retry-After, no extra email, reset confirmation, live admin changes | `apps/portal/e2e/account-security.test.ts`: `007 AC2/8`, `007 admin settings browser`; `apps/server/src/account-security.test.ts`: unknown reset counting, concurrent requests and live limits; `apps/server/src/mail/transport.test.ts`: Retry-After boundary | PASS. Exactly 3 reset and 4 verification emails (signup + 3 resends) reach Mailpit; fourth requests are refused, and live UI/API changes apply without restart. |
 | AC 9 — two keys revoked/consumers removed, account/session gone, address reusable, Admin API outage retains live keys, last admin refused | `apps/portal/e2e/account-security.test.ts`: `007 AC9`; `apps/server/src/account-security.test.ts`: partial-failure retry, late-app sweep, concurrent last-admin deletes | PASS. Both keys 200 before and during Admin listener outage, deletion refused with 503, then deletion 204 and both keys 401 with no tagged consumers. |
 
@@ -580,6 +580,49 @@ Only tests and this spec changed; application code was not modified.
 - No blocker or major remains open, so status is `uat`. The remaining tech-lead suggestions
   stay in Review for the coordinator/re-review decision; this QA pass does not approve them.
 
+### Re-review QA verification — 2026-11-09 (`325dafe`, `ef62b2b`)
+
+- AC 1–9 remain mapped to automated tests in the table above. No application code was changed.
+- `pnpm lint`: PASS (7 tasks); `pnpm typecheck`: PASS (12 tasks), including the added tests.
+- `pnpm test --force`: final uncached PASS, 12/12 tasks in 1m47.02s: **95 server,
+  137 portal, 39 Kong adapter and 2 database tests**. The focused account-security suite
+  also passed 40/40. R1 literal raw paths now cover verification and change-password in
+  addition to sign-in/reset, without `inject` or client URL normalization hiding the input.
+- `pnpm test:e2e`: final PASS, **51/51 normal passes (1.9m)**, no expected failures or
+  configured retries. This includes AC 1–9, the first-call journey, all secret/log checks,
+  U1, concurrency and the extended old-mailbox reset-link regression. Command:
+  `PORTAL_PUBLIC_URL=http://localhost:13000 KONG_PROXY_PUBLIC_URL=http://localhost:18000
+  KONG_ADMIN_URL=http://localhost:18001 SERVER_URL=http://localhost:14000
+  MAILPIT_URL=http://localhost:18025 QA_COMPOSE_PROJECT=qa007r4
+  QA_COMPOSE_OVERRIDE=/tmp/007-qa-r4-compose.yaml pnpm test:e2e`.
+- Fresh quickstart: PASS, **107.19 seconds**, `--build`, new `qa007r4` network and database
+  volume; Postgres 17, Kong 3.9 and Mailpit v1.27.10, all services healthy. Command:
+  `PORTAL_PUBLIC_URL=http://localhost:13000 KONG_PROXY_PUBLIC_URL=http://localhost:18000
+  /usr/bin/time -p docker compose -p qa007r4 -f deploy/docker-compose.yml
+  -f /tmp/007-qa-r4-compose.yaml up --build -d --wait`.
+  The override changes only image names and host ports. No pre-existing stack was modified.
+- Re-tested open U1/R3: normal Compose/browser regression passes; its expected-failure marker
+  was removed by the frontend fix. Re-tested R1 and R2: raw HTTP/Postgres cases and the
+  extended Mailpit/profile email-change journey pass. Existing B1/B2/B3 regressions pass.
+- Reliability evidence retained: the first uncached full suite hit the previously observed
+  Kong conformance Accept-variant mismatch at `conformance.test.ts:245` (404 instead of 403);
+  the complete second uncached suite passes all 39 adapter tests. The initial browser run
+  had 48 passes and three failures: the concurrency test's 30-second total deadline (T2),
+  SMTP fixture readiness (T1), and the existing spec-019 fake-clock timeout assertion not
+  seeing its expected alert. T1/T2 were corrected in tests; per-request 20-second bounds and
+  SMTP error 15-second bounds remain enforced. The spec-019 timeout case passes in the
+  complete rerun without changes to that test/application; its initial failure is retained
+  as a reliability observation, not a confirmed reproducible product defect. No retry
+  configuration was added.
+- No blocker, major or minor remains open in this spec's Bugs list, so status is **uat**.
+  No new open durable issue was found or created. The three pre-existing Backlog review
+  suggestions remain recorded in Review for the coordinator to reconcile when Linear
+  capacity permits. This QA result does not approve the feature or pass a release gate.
+- Evidence: `/tmp/007-qa-r4-lint-final.log`, `/tmp/007-qa-r4-types-final.log`,
+  `/tmp/007-qa-r4-tests.log` (initial conformance failure), `/tmp/007-qa-r4-tests-final.log`,
+  `/tmp/007-qa-r4-added-tests.log`, `/tmp/007-qa-r4-compose.log`,
+  `/tmp/007-qa-r4-e2e.log` (initial browser failures), `/tmp/007-qa-r4-e2e-final.log`.
+
 ### Bugs
 
 - [x] **B2 — Noncanonical sign-in paths bypass the failure limit (Review blocking 1, backend).**
@@ -605,7 +648,7 @@ Only tests and this spec changed; application code was not modified.
   log cases on 2026-11-08; B1 is closed and no longer blocks UAT. No keyed issue was created
   while the bug was open because Linear rejected it; no open durable bug remains.
 
-- [ ] **U1 — Removing saved SMTP settings leaves a stale saved-settings test result (minor, frontend).**
+- [x] **U1 — Removing saved SMTP settings leaves a stale saved-settings test result (minor, frontend).**
   In Admin → Mail, save Mailpit as an admin-configured SMTP source, send a successful test email,
   then choose **Remove saved settings** → **Remove settings**. The source banner correctly returns
   to "Portal email uses the server's environment settings", but the result below **Send test email**
@@ -617,6 +660,31 @@ Only tests and this spec changed; application code was not modified.
   assertion as expected while the preceding successful send and source/removal assertions pass.
   UAT re-tested it after the review fixes on 2026-11-09 and it remains reproducible; updated
   evidence: `docs/uat/007/run-2026-11-09-review-retest/04-u1-still-reproducible.png`.
+  **QA closure, 2026-11-09:** fixed in `ef62b2b`; the normal (no expected-failure marker)
+  `007 U1` Compose/browser regression passes. Three component regressions cover saved-to-saved,
+  saved-to-environment and saved-to-unconfigured changes. The completed R3 Fix task is verified.
+
+- [x] **R1 — Dot segments bypass auth rate limits (blocking security finding, backend).**
+  Fixed in `325dafe`. Real listening-server/`node:http` regressions send literal `/./`, `/x/../`,
+  `%2e` and `%2E%2E` paths and verify canonical/shared 429 budgets, problem+json, Retry-After,
+  exact database hit counts and no extra queued mail. QA added signed-in verification and
+  change-password raw-path cases; both pass, and the original sign-in/reset/disabled-alias
+  regressions pass. This closes the recorded finding after its existing Fix task passed; no
+  new open durable bug was discovered.
+- [x] **R2 — Old-mailbox reset links survive email confirmation (blocking security finding, backend).**
+  Fixed in `325dafe`. Postgres integration invalidates two existing links, preserves another
+  account's link and accepts a fresh new-address link. QA extended the Compose/browser profile
+  journey to wait for a distinct fresh old-address Mailpit link, verify it is valid before
+  confirmation, then prove reset returns INVALID_TOKEN after confirmation while the changed
+  account still signs in with its unchanged password. The existing Fix task is verified.
+- [x] **T1 — SMTP-auth browser fixture starts asynchronously (minor, QA tests).**
+  The first browser run expected smtp-auth-failed but received smtp-unreachable because the
+  detached authenticated Mailpit listener was not ready. Added a bounded `/livez` readiness
+  poll before sending the test mail; no application code changed.
+- [x] **T2 — Concurrency browser regression has an insufficient total deadline (minor, QA tests).**
+  Its two sequential batches each allow 20 seconds per request, plus path-limit setup, but the
+  entire test inherited a 30-second deadline. The first browser run exhausted that total
+  deadline. Set the test budget to 90 seconds, keeping each batch request timeout at 20 seconds.
 
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |
