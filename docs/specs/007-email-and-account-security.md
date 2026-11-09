@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -397,6 +397,9 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [x] [backend] Fix: redact password-reset bearer tokens from request URL paths before logging (major; Linear Bug creation pending due to workspace free issue limit).
 - [x] [backend] Fix: normalize `/api/auth/*` paths before applying rate-limit rules, so `/api/auth/sign-in//email` and `/api/auth//sign-in/email` can't skip the sign-in failure limit; add regression tests (Review blocking 1).
 - [x] [backend] Fix: don't hold a database transaction while calling Better Auth in `limitedAuth`; reserve the hit in a short locked transaction, then call Better Auth; add a test with more parallel sign-ins than the pool size (Review blocking 2).
+- [ ] [backend] Fix: match `/api/auth/*` limit rules on the same resolved path Better Auth receives (pass `url.pathname` from `app.ts`), so `/./`, `/x/../` and `%2e` segments can't skip the limits; add regression tests over real HTTP, not `inject` (Re-review R1).
+- [ ] [backend] Fix: confirming an email change deletes the user's `reset-password:%` verification rows (`value` = user ID), so old-address reset links stop working; add a test (Re-review R2).
+- [ ] [frontend] Fix: clear the mail-settings test result when the saved settings change or are removed (U1; Re-review R3).
 - [x] [qa] AC 1, 2: quickstart under 5 minutes with Mailpit; sign-up email within 30 s through the environment settings, and the verify link; saved settings win, with a test email through a second Mailpit or a Mailpit SMTP-auth configuration; unreachable host and bad credentials give their errors within 15 s; the password is absent from every API response, the logs and `pgboss.job`.
 - [x] [qa] AC 3: setting off by default; a pre-upgrade user and the bootstrap admin are verified after migrating a v0.2 database; with it on, an unverified user gets 403 on `POST /v1/apps` and the key route, with no Kong consumer; succeeds after verifying; can't be turned on with no mail.
 - [x] [qa] AC 4, 5, 6: reset end to end with other sessions signed out; unknown address gives the same response and no email; used and over-one-hour links give the expired state (move the clock or edit `verification.expires_at`) with the password unchanged; change password with right and wrong current password.
@@ -631,11 +634,72 @@ test/removal were smoked; U1 remains the only open minor. Evidence:
 `review`.
 
 ## Review  _(tech-lead)_
-First review, on 2026-11-09 at `0deb8a6`. **Result: two blocking findings, so the status goes back to
+### Re-review — 2026-11-09 at `1eefe69`
+**Result: three blocking findings, so the status goes back to `building`.** Blocking 2 (pool
+deadlock) is fixed. Blocking 1 (the sign-in limit bypass) is only partly fixed: dot segments still
+get past every `/api/auth/*` limit, and I reproduced it over real HTTP. My first-review fix
+(`split('/').filter(Boolean)`) didn't go far enough, which is my mistake. Two earlier items are
+now blocking: one is a security gap and one is a single-line UI fix, and the spec is going back to
+`building` anyway. The other three suggestions become Backlog follow-ups.
+
+#### Checks
+| Check | Result |
+| --- | --- |
+| `pnpm lint`, `pnpm typecheck` | Pass |
+| `pnpm test --force` | Pass, 12 of 12 tasks: 81 server, 134 portal, 39 adapter-kong and 2 database tests |
+| Earlier blocking 2 (`auth-limits.ts:141`–`174`) | **Fixed.** The reservation commits before `run()`. Release after a non-password refusal and clear after success both take the advisory lock. New tests send 12 parallel requests (pool `max: 10`) to sign-in (same and different addresses), reset, verification and change-password. All finish, the counts are exact and the pool still answers `select 1` |
+| Earlier blocking 1 (`auth-limits.ts:100`) | **Not fixed.** See R1 |
+| UAT re-test | Pass (`docs/uat/007/run-2026-11-09-review-retest/README.md`). U1 is still reproducible |
+
+#### Blocking
+- **R1. Dot segments still get past every `/api/auth/*` limit** (`apps/server/src/auth-limits.ts:100`,
+  `apps/server/src/app.ts:94`). `limitedAuth` builds its route from the raw `request.url`.
+  `app.ts:94` sends Better Auth `new URL(request.url, …)`, and that call resolves `.`, `..`,
+  `%2e` and `%2E%2E` segments. Fastify routes raw paths such as `/api/auth/sign-in/./email`,
+  `/api/auth/x/../sign-in/email` and `/api/auth/sign-in/%2e/email` to `/api/auth/*`. The limiter
+  doesn't recognise them, and Better Auth receives `/api/auth/sign-in/email`. Reproduced with a
+  real listening server and `signInFailureMax: 2`: six wrong passwords got
+  `[401,401,429,429,429,429]` on the canonical path. On each dot path they got six 401s and wrote
+  no `rate_limit_hits` rows. The same gap opens the reset, verification and change-password limits
+  and the `forget-password` 404. The new regression tests can't catch this: they use
+  `app.inject`, which normalizes the URL before Fastify sees it.
+  *Fix:* in `app.ts`, build the `URL` once and pass `url.pathname` into `limitedAuth`. Normalize
+  that (`split('/').filter(Boolean)`) and use it for rule matching, so the limiter and Better Auth
+  always see the same route. Optionally, refuse any `/api/auth/*` request whose raw path differs
+  from its normalized form with 404. Add regression tests against `server.listen()` with
+  `node:http` (not `inject`) for `/./`, `/x/../` and `%2e`, on sign-in and on reset.
+- **R2. Changing your email address doesn't cancel reset links sent to the old address**
+  (`apps/server/src/account.ts:305`). This was a suggestion in the first review. The Technical
+  design (Server flows, email change) says to delete every `verification` row for the old
+  address. The code deletes `identifier = <old email>`, which Better Auth 1.3.34 never writes.
+  Reset rows are `reset-password:<token>` with `value` = user ID. So whoever controls the old
+  mailbox can still reset the password for up to an hour after the change.
+  *Fix:* delete `verification` rows where `identifier like 'reset-password:%' and value = <user id>`
+  in the same transaction. Add a test: request a reset, confirm an email change, then expect the
+  reset token to be refused.
+- **R3. U1: after you remove saved mail settings, the old test result still says the saved settings were used**
+  (`apps/portal/components/mail-settings.tsx:45`–`61`, shown at `:400`). QA and UAT still
+  reproduce it, and the fix is one line.
+  *Fix:* call `setTestResult('')` in the `useEffect` that runs when `resource.data` changes, or
+  whenever `settings.source` changes. Add a component or e2e check.
+
+#### Carried over as Backlog follow-ups (not blocking)
+Linear refused all three with "free issue limit exceeded", so they aren't created yet. Create each
+one once capacity returns: team JSO, project API Portal, state Backlog, label **Code Review**,
+priority Low, **no parent**.
+- *Count email-change attempts before the address-taken check:* `account.ts:218` can tell a
+  signed-in user whether an address has an account, with no limit. Sign-up already reveals this.
+- *Make the last-admin check exact when two admins delete their accounts at once:*
+  `account.ts:108`, `:134`, `:157`. Take the `71833004` lock and re-check before removing apps.
+- *Require a shared enqueue in `mailQueue`:* `mail/queue.ts:19` starts a pg-boss instance for
+  every email when `enqueueMail` isn't passed.
+
+### First review — 2026-11-09 at `0deb8a6`
+**Result: two blocking findings, so the status goes back to
 `building`.** Both are in the `/api/auth/*` rate-limit wrapper, and I reproduced both against real
 Postgres. Everything else matches the design, and each acceptance criterion has a passing test.
 
-### Checks
+#### Checks
 | Check | Result |
 | --- | --- |
 | `pnpm lint`, `pnpm typecheck` | Pass (7 and 12 tasks) |
@@ -647,7 +711,7 @@ Postgres. Everything else matches the design, and each acceptance criterion has 
 | Quickstart and `pnpm test:e2e` | Not re-run here. QA's results stand: fresh compose with Mailpit healthy in 109.8 s, and e2e 49 of 49 at `dd768c7`. Only UAT docs changed since then |
 | Code read | Every server, db and mail change in `main...HEAD`, plus the portal's password-recovery, profile and mail-settings components. I skimmed the remaining portal UI and tests |
 
-### Blocking
+#### Blocking
 1. **Brute force can skip the sign-in limit with a doubled slash** (`apps/server/src/auth-limits.ts:109`,
    `:131`). The sign-in rule matches the exact string `/api/auth/sign-in/email`. Fastify's
    `/api/auth/*` route also sends `/api/auth/sign-in//email` and `/api/auth//sign-in/email` to the
@@ -678,7 +742,7 @@ Postgres. Everything else matches the design, and each acceptance criterion has 
    still can't overshoot. Reset and verification already insert before the call. Add an integration
    test that sends more parallel sign-ins than the pool size and expects them all to finish.
 
-### Suggestions
+#### Suggestions
 Fix these in this loop while the spec is back in `building`, if they're cheap. On re-review I'll
 file a Backlog issue for any that stay open.
 - `apps/server/src/account.ts:305`: confirming an email change deletes `verification` rows where
