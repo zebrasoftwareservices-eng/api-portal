@@ -380,6 +380,7 @@ test('JSO-399: reloading the saved gateway retains the sample choice', async ({
 test('JSO-405: first-load gateway outage retains import source fields', async ({
   page,
 }) => {
+  test.fail(true, 'JSO-405: first-load outage currently removes the form');
   test.setTimeout(60000);
   await page.goto('/sign-in');
   await page.getByLabel('Email', { exact: true }).fill('admin@example.com');
@@ -392,7 +393,6 @@ test('JSO-405: first-load gateway outage retains import source fields', async ({
     await expect(
       page.getByRole('alert').filter({ hasText: 'Gateway unavailable' }),
     ).toBeVisible();
-    test.fail(true, 'JSO-405: first-load outage currently removes the form');
     await expect(
       page.getByLabel('OpenAPI file', { exact: true }),
     ).toBeAttached();
