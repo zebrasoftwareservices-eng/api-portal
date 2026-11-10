@@ -1,7 +1,7 @@
 ---
 id: 008
 title: Teams and roles
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-10
 linear: JSO-236
@@ -290,10 +290,10 @@ health check, 503 and retry behaviour.
 - [x] [frontend] `/invitations/accept?token=` page: preview states, sign in or sign up with the invited address and return, accept, and every refusal message
 - [x] [frontend] App pages read `app.role`: Read-only sees keys' metadata without create or revoke controls; create app goes to the current team
 - [x] [frontend] Account deletion shows `team-needs-admin` with the named teams
-- [ ] [qa] Upgrade test (AC 1): pre-008 data, a key still works through real Kong after migrating; a new sign-up gets a current personal team
-- [ ] [qa] Role matrix API test (AC 4, 5, 7) with Kong and Postgres unchanged after every 403/404
-- [ ] [qa] Invitation e2e against Mailpit (AC 3) and the refusal cases (AC 6)
-- [ ] [qa] Removal and account deletion keep shared keys working through Kong (AC 7, 8); last-Admin guards and concurrent demotion (AC 9); switcher e2e (AC 2)
+- [x] [qa] Upgrade test (AC 1): pre-008 data, a key still works through real Kong after migrating; a new sign-up gets a current personal team
+- [x] [qa] Role matrix API test (AC 4, 5, 7) with Kong and Postgres unchanged after every 403/404
+- [x] [qa] Invitation e2e against Mailpit (AC 3) and the refusal cases (AC 6)
+- [x] [qa] Removal and account deletion keep shared keys working through Kong (AC 7, 8); last-Admin guards and concurrent demotion (AC 9); switcher e2e (AC 2)
 
 ## UX  _(ui-designer)_
 Design: [docs/design/008-teams-and-roles.md](../design/008-teams-and-roles.md). No new tokens.
@@ -319,17 +319,26 @@ Frontend: implemented the dashboard team switcher, team creation and member/invi
 - Backend (2026-11-10): Implemented migration/backfill, personal teams and selection, team/member/invitation endpoints, hashed invitation tokens with encrypted queued links, role-based app access, per-team app names, and account deletion that preserves shared apps. Membership writes and app/key writes coordinate with the final account-deletion lock; last-Admin checks serialize on the team row. Regenerated SDK types from the existing contract. Validation: server lint/typecheck and 198 tests passed; database lint/typecheck and 6 tests passed; SDK lint/typecheck/test passed (no SDK tests). QA still owns the real-Kong upgrade/shared-key checks, full suite, browser, and quickstart.
 
 ## Test report  _(qa-tester)_
-Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
+Commit tested: `33d1b186d076cc2db719aa0ee23b39e7a75571b1` (application unchanged from `6b97107f35756aae341fdb468203ebf3c6f10a07`; QA-only commits) · Portal: **http://localhost:3013**
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
+| AC 1 — upgrade preserves ownership and live keys; signup selects personal Admin team | `packages/db/src/teams-migration.test.ts`; `apps/portal/e2e/teams.test.ts` (personal signup) | Pass: real Postgres upgrade, real Kong key-auth returns 200 before/after migration, invalid key 401; signup personal team is current |
+| AC 2 — create team, switch and isolate apps | `apps/server/src/teams.test.ts` (personal teams/current selection); `apps/portal/e2e/teams.test.ts` (switcher isolation) | Pass: Payments is current, apps belong to it, personal/shared lists remain separate |
+| AC 3 — pending Member invitation, Mailpit delivery, signup/accept and live shared key | `apps/portal/e2e/teams.test.ts` (Mailpit invitation); `apps/server/src/teams.test.ts` (normalization/acceptance) | Pass: actual emailed link, pending role, signup return, acceptance and Member-created Kong key |
+| AC 4 — Read-only metadata, hidden controls and forbidden key writes | `apps/server/src/teams.test.ts` (app role access); `apps/portal/e2e/teams.test.ts` (role/removal access) | Pass: APIs/key hints visible, controls absent, 403 problem+json, unchanged Kong credentials and active keys |
+| AC 5 — non-Admins cannot manage invitations/members | `apps/server/src/teams.test.ts` (every non-admin management operation); `apps/portal/e2e/teams.test.ts` (Member/Read-only controls) | Pass: invite/cancel/change/remove denied with unchanged DB snapshots and no gateway mutation; UI controls absent |
+| AC 6 — wrong-account, cancelled, expired and used invitations | `apps/server/src/teams.test.ts` (invitation refusal cases); `apps/portal/e2e/teams.test.ts` (refusal pages) | Pass: all four API refusals and explanatory pages, unchanged membership, no app access |
+| AC 7 — removal hides teams/apps while the removed member's key survives | `apps/server/src/teams.test.ts` (member mutation/removal); `apps/portal/e2e/teams.test.ts` (role/removal access) | Pass: team absent, APIs 404, app page unavailable, shared key still returns 200 through Kong |
+| AC 8 — account deletion preserves shared apps/keys | `apps/server/src/teams.test.ts` (account deletion); `apps/portal/e2e/teams.test.ts` (deleting member account) | Pass: personal key becomes 401, shared original and member-created keys remain 200 |
+| AC 9 — last-Admin guards, concurrent demotion and refreshed role controls | `apps/server/src/teams.test.ts` (last-admin refusal/concurrent demotions); `apps/portal/e2e/teams.test.ts` (last-admin dialog/role change) | Pass: 409 on self-demotion/removal, only one concurrent demotion succeeds, UI explains another Admin is needed, refreshed Read-only controls disappear |
 
-Long notes go in `docs/specs/log/008.md`, not here.
+Validation: `pnpm lint` passed; `pnpm typecheck` passed after resolving a concurrent generated-output read; `pnpm test` passed **511 tests**. The one full `pnpm test:e2e` pass ran **71 tests**: 66 passed, five failed due to setup preconditions/test fixtures; all five failures and affected adjacent tests passed in a **10-test targeted recheck** after fixture corrections. Three existing expected gateway UI failures (JSO-399/405/406) remain expected; no new product finding was identified.
+
+Quickstart: `node scripts/worktree-compose.mjs up -d --build --wait` succeeded, and its real-Kong/Mailpit smoke and fresh-setup journey passed. Project `portal-008-teams-and-roles-2-0ed0` remains up at the URL above for UAT. No open bugs existed at intake; there are no blocker/major findings and all four QA tasks are complete. Details: [QA log](log/008.md).
 
 ### Bugs
-<!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
-<!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
+No open QA findings.
 
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
