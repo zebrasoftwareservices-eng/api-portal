@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -408,6 +408,9 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [x] [qa] AC 9: two apps with live keys → delete → both keys 401 in Kong, no consumer tagged with those apps, signed out, can't sign in, same address can sign up again; Kong stopped → 503 with keys still working; only admin → 409.
 - [x] [qa] Playwright journeys for forgot/reset password, profile and admin settings; update existing e2e helpers that sign up and create apps (users are unverified by default but the setting is off, so they should still pass).
 - [x] [backend] Merge `origin/main` into this branch (108 commits behind, 26 conflicting files) with a merge commit, no rebase. Resolve every conflict, frontend files included, keeping both sides' behaviour: renumber this spec's migration after main's and regenerate its snapshot and journal, merge `openapi.yaml` and regenerate `packages/sdk`, merge compose/env, and regenerate `pnpm-lock.yaml` with `pnpm install`. Then `pnpm lint`, `pnpm typecheck` and `pnpm test` pass, and `node scripts/factory.mjs` still works after main's factory changes. Push the branch.
+- [ ] [backend] Fix: let a developer delete their account when no gateway is connected. `deleteAccount` must not refuse with "gateway didn't respond" when `connection.load()` returns no row; return the stored-token problem when the token can't be decrypted; add server tests through `DELETE /v1/me` for both (Merge review M1).
+- [ ] [frontend] Fix: show one admin navigation (APIs · Gateways · Mail · Accounts) on every admin page, instead of main's `AdminNav` and this spec's `AdminNav` stacked on top of each other (Merge review M2).
+- [ ] [frontend] Fix: remove "the portal can't reset passwords yet" from the first-admin password hint in `setup-form.tsx` (U4; Merge review M3).
 
 ## UX  _(ui-designer)_
 Design: [docs/design/007-email-and-account-security.md](../design/007-email-and-account-security.md).
@@ -893,6 +896,80 @@ Earlier UAT evidence remains in `run-2026-11-09-final/` and
 superseded by this re-test and QA's closure above.
 
 ## Review  _(tech-lead)_
+### Merge review — 2026-11-10 at `24f05bd`
+**Result: three blocking findings, so the status goes back to `building`.** Most of the merge
+is right: the migration, `openapi.yaml`, `app.ts`, `config.ts`, `startup.ts`, compose and most
+portal components keep both sides' behaviour. Two conflict resolutions don't. Account deletion
+now fails on a portal with no gateway connected, and admin pages show two navigation bars. U4
+is a one-line copy fix. All three are small, and the spec is going back to `building` anyway.
+
+#### Checks
+| Check | Result |
+| --- | --- |
+| `pnpm lint`, `pnpm typecheck` | Pass (7 and 12 tasks) |
+| `pnpm test --force` | Pass, 12 of 12 tasks: 185 server, 212 portal, 55 adapter-kong and 5 database tests |
+| `packages/sdk` against `openapi.yaml` | No drift after regenerating |
+| Quickstart and `pnpm test:e2e` | Not re-run here. QA's post-merge results at `ff5b773` stand: fresh compose healthy, four migrations applied, and 66 of 66 e2e cases (61 passes, 5 known expected failures). UAT's fresh stack was healthy in 125.74 s |
+| What the PR adds to main (`git diff origin/main...HEAD`) | 207 files. Only this spec's work: server, mail, db, portal, compose, docs and UAT evidence |
+| Migrations | **Good.** `0003_email_and_account_security.sql` matches the old `0001`, plus `api_versions.created_by` → `on delete set null`. That keeps account deletion working for an admin who published a version (main added that table). The journal is in order (0000–0003), and `migrate.test.ts` upgrades from main's three migrations. No other main table references `user` |
+| `openapi.yaml` | **Good.** Every path and schema from both sides is present. Main's `/v1/me` handler was replaced by `registerAccount`, which returns the same fields plus the new ones |
+| `app.ts`, `config.ts`, `startup.ts`, `auth.ts`, `problem.ts`, `apps.ts` | **Good.** `limitedAuth` still gets `url.pathname` (R1). Log redaction is kept. The SMTP variables sit next to main's. `boss.start()` now runs before `createAuth`, so the `send-email` queue exists before the first email is queued. Main's `createFirstAdmin` now writes `emailVerified: true`, so admins created by env bootstrap or by the setup wizard are verified (AC 3). The app owner `key share` lock, `requireVerified` and `requireEnabled` are all in place |
+| Compose, `.env.example`, `next.config.ts`, `middleware.ts`, `lib/client.ts` | **Good.** Mailpit and `SMTP_*` sit next to main's services. Main's setup redirect, `/setup/gateway` and the `/v1/setup/admin` 403 exception are kept, along with `/profile` protection and the `email-not-verified` / `invalid-password` 403 exceptions. The demo build redirects the new pages |
+| Create app, App detail, header, auth form | **Good.** Main's `gateway-disabled`, `gateway-not-connected`, credential-limit and 502 messages are kept, and so are this spec's verification gate and resend offer |
+| Admin navigation | **Not kept as one.** See M2 |
+| Account deletion with main's gateway connection | **Regressed for "no gateway".** See M1 |
+
+#### Blocking
+- **M1. A developer can't delete their account when no gateway is connected**
+  (`apps/server/src/account.ts:116`–`126`). Main lets a portal run with no gateway at all:
+  `/setup/gateway` has a skip link, and an admin can remove a connection once no APIs or active keys depend on it. The merge added
+  `loadAdapter`, which throws `gateway-unavailable` whenever `connection.load()` returns
+  `null`, and the health check runs before the owned apps are counted. So a developer with
+  no apps, on a portal with no gateway, gets 503 "The API gateway didn't respond, so your
+  keys can't be removed yet. Your account was not deleted." That copy is false, and AC 9's
+  deletion can't be done. Spec 005 refuses gateway removal while keys are active, so with
+  no gateway there are no Kong keys to revoke. The existing tests call `deleteAccount` with
+  a bare adapter, or a gateway that is disabled but still present, so they don't cover this.
+  An undecryptable stored token also gets the same "didn't respond" copy, not
+  `storedTokenUnavailable()`.
+  *Fix:* load the gateway once. If there's no row, skip the health check and the
+  `deleteConsumer` calls: the app rows go with the user by cascade. If the row has
+  `adapter: null`, throw `storedTokenUnavailable()`. Keep the current path when an adapter
+  exists, disabled or not. Add `DELETE /v1/me` tests with the gateway row deleted (expect
+  204, user gone) and with an undecryptable token (expect 503 with that problem, user kept).
+- **M2. Admin pages show two navigation bars** (`apps/portal/app/admin/layout.tsx:6`,
+  `apps/portal/components/admin-nav.tsx:8`–`9`, `apps/portal/components/account-shared.tsx:154`,
+  used at `app/admin/apis/page.tsx:13`, `mail-settings.tsx:82`, `account-settings.tsx:47`).
+  Main's layout renders `APIs · Gateways` on every admin page. This spec's `APIs · Mail ·
+  Accounts` renders underneath on three of them (UAT `02-environment-mail.png`). So "APIs"
+  appears twice, and `/admin/gateways` has no link to Mail or Accounts. The UX section asks
+  for one `AdminNav`.
+  *Fix:* add Mail (`/admin/settings/mail`) and Accounts (`/admin/settings/accounts`) to
+  main's `components/admin-nav.tsx`. Mark `aria-current` for the settings routes. Remove
+  the `AdminNav` export from `account-shared.tsx` and its three uses. If the small-screen
+  `<select>` is still wanted, move it into the shared nav. Update the component tests and
+  any e2e selectors that use `admin-tabs`.
+- **M3. U4: the first-admin setup still says the portal can't reset passwords**
+  (`apps/portal/components/setup-form.tsx:156`). Main wrote this hint before this spec
+  shipped password reset, so it now contradicts this spec's main journey.
+  *Fix:* change the hint to "At least 8 characters." (or similar) and update any test that
+  asserts the old text.
+
+#### Suggestions
+- `apps/portal/components/app-detail.tsx:264`: the stray `{' '}` before the
+  `email-not-verified` paragraph is left over from the conflict. `create-app.tsx` doesn't have
+  it. Remove it while you're in the file.
+- **U2** (`profile.tsx:134`) and **U3** (`mail-settings.tsx:61`) are still open minors. QA's
+  expected-failure tests are already in place. Each fix is about one line, and the spec is
+  back in `building`, so fix them in this loop and remove the two expected-failure markers.
+  Anything still open at the next review becomes a Backlog Bug.
+- The three Backlog follow-ups from the second re-review (`account.ts:218`, the last-admin
+  race, the shared `mailQueue` enqueue) still stand. Linear still refuses new issues
+  (2026-11-10: `linear_write_failed`, free issue limit exceeded; the first try was a 503
+  timeout, and a search confirmed nothing was created). Create each one once there's room:
+  team JSO, project API Portal, state Backlog, priority Low, label **Code Review**, **no parent**.
+  M1–M3 are fixed in this loop, so none of them needs an issue.
+
 ### Second re-review — 2026-11-09 at `e02128f`
 **Result: nothing is blocking, so the status is `approved`.** R1, R2 and R3 are all fixed, and
 their tests would catch a regression. U2 and U3 are minor UI issues with no security impact and
