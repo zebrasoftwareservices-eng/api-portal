@@ -26,6 +26,13 @@ const envSchema = z.object({
   KONG_ADMIN_TOKEN: z.string().optional(),
   KONG_PROXY_INTERNAL_URL: z.url().default('http://localhost:8000'),
   KONG_PROXY_PUBLIC_URL: z.url().default('http://localhost:8000'),
+  SMTP_HOST: z.string().min(1).max(253).optional(),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65535).default(587),
+  SMTP_SECURITY: z.enum(['none', 'starttls', 'tls']).default('starttls'),
+  SMTP_USERNAME: z.string().max(254).optional(),
+  SMTP_PASSWORD: z.string().max(1024).optional(),
+  SMTP_SENDER_NAME: z.string().min(1).max(100).default('Developer Portal'),
+  SMTP_SENDER_ADDRESS: z.email().optional(),
   ADMIN_EMAIL: z.email().optional(),
   ADMIN_PASSWORD: z.string().min(8).optional(),
   SEED_SAMPLE: z

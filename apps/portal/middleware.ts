@@ -10,6 +10,7 @@ export async function middleware(request: NextRequest) {
   const protectedPage =
     path.startsWith('/dashboard') ||
     path.startsWith('/admin') ||
+    path.startsWith('/profile') ||
     path === '/setup/gateway';
   try {
     if (!adminExists) {

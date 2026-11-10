@@ -1,0 +1,344 @@
+ Image portal-server Building 
+ Image portal-web Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 1.56kB done
+#1 DONE 0.0s
+
+#2 [server internal] load build definition from Dockerfile
+#2 transferring dockerfile: 1.37kB done
+#2 DONE 0.0s
+
+#3 [portal internal] load build definition from Dockerfile
+#3 transferring dockerfile: 830B done
+#3 DONE 0.0s
+
+#4 [portal internal] load metadata for docker.io/library/node:22-alpine
+#4 DONE 2.4s
+
+#5 [portal internal] load .dockerignore
+#5 transferring context: 260B done
+#5 DONE 0.0s
+
+#6 [server base 1/3] FROM docker.io/library/node:22-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202
+#6 resolve docker.io/library/node:22-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202 done
+#6 DONE 0.0s
+
+#7 [server internal] load build context
+#7 transferring context: 68.49kB 0.1s done
+#7 DONE 0.1s
+
+#8 [portal deps 1/2] COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+#8 CACHED
+
+#9 [portal base 2/3] RUN corepack enable
+#9 CACHED
+
+#10 [portal base 3/3] WORKDIR /app
+#10 CACHED
+
+#11 [portal deps 2/2] RUN pnpm fetch
+#11 CACHED
+
+#12 [server build 1/3] COPY . .
+#12 DONE 0.2s
+
+#13 [portal build 2/3] RUN pnpm install --offline --frozen-lockfile
+#13 0.666 Scope: all 8 workspace projects
+#13 0.750 Lockfile is up to date, resolution step is skipped
+#13 0.875 Already up to date
+#13 1.619 
+#13 1.619 devDependencies:
+#13 1.619 + @changesets/cli 2.31.1
+#13 1.619 + @eslint/js 9.39.5
+#13 1.619 + @playwright/test 1.64.1
+#13 1.619 + @types/node 22.20.5
+#13 1.619 + eslint 9.39.5
+#13 1.619 + prettier 3.9.10
+#13 1.619 + turbo 2.11.10
+#13 1.619 + typescript 5.9.3
+#13 1.619 + typescript-eslint 8.72.1
+#13 1.619 + vitest 3.2.7
+#13 1.619 
+#13 1.663 ╭ Warning ─────────────────────────────────────────────────────────────────────╮
+#13 1.663 │                                                                              │
+#13 1.663 │   Ignored build scripts: @prisma/client@5.22.0, @prisma/engines@5.22.0,      │
+#13 1.663 │   @scarf/scarf@1.4.0, better-sqlite3@12.11.1, cpu-features@0.0.10,           │
+#13 1.663 │   esbuild@0.18.20, esbuild@0.25.12, esbuild@0.28.2, prisma@5.22.0,           │
+#13 1.663 │   protobufjs@7.6.6, ssh2@1.17.0, vue-demi@0.14.10.                           │
+#13 1.663 │   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+#13 1.663 │   to run scripts.                                                            │
+#13 1.663 │                                                                              │
+#13 1.663 ╰──────────────────────────────────────────────────────────────────────────────╯
+#13 1.668 Done in 1.2s using pnpm v10.28.2
+#13 DONE 1.8s
+
+#14 [server build 3/3] RUN pnpm --filter @portal/server... build
+#14 0.458 Scope: 4 of 8 workspace projects
+#14 0.462 packages/adapter-sdk build$ tsc -p tsconfig.json
+#14 0.463 packages/db build$ tsc -p tsconfig.json
+#14 2.412 packages/adapter-sdk build: Done
+#14 3.548 packages/db build: Done
+#14 3.549 packages/adapter-kong build$ tsc -p tsconfig.json
+#14 4.521 packages/adapter-kong build: Done
+#14 4.524 apps/server build$ tsc -p tsconfig.json
+#14 ...
+
+#15 [portal build 3/3] RUN pnpm --filter @portal/portal... build
+#15 0.463 Scope: 3 of 8 workspace projects
+#15 0.465 packages/sdk build$ tsc -p tsconfig.json && cp src/schema.d.ts dist/schema.d.ts
+#15 0.466 packages/ui build$ tsc --noEmit
+#15 2.089 packages/sdk build: Done
+#15 2.840 packages/ui build: Done
+#15 2.842 apps/portal build$ tsc -p tsconfig.ingress.json && next build
+#15 4.334 apps/portal build: ▲ Next.js 16.4.4 (Turbopack)
+#15 4.444 apps/portal build: ✓ Running next.config.ts took 114ms
+#15 4.460 apps/portal build: ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+#15 4.462 apps/portal build:   To migrate automatically, run:
+#15 4.463 apps/portal build:   npx @next/codemod@canary middleware-to-proxy .
+#15 4.463 apps/portal build:   Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+#15 4.485 apps/portal build:   Creating an optimized production build ...
+#15 ...
+
+#16 [server production-deps 2/2] RUN rm -rf node_modules && pnpm --filter @portal/server... install --prod --offline --frozen-lockfile
+#16 9.432 Scope: 4 of 8 workspace projects
+#16 9.575 Lockfile is up to date, resolution step is skipped
+#16 9.652 Progress: resolved 1, reused 0, downloaded 0, added 0
+#16 9.957 .                                        | +393 ++++++++++++++++++++++++++++++++
+#16 10.66 Progress: resolved 393, reused 194, downloaded 0, added 0
+#16 11.67 Progress: resolved 393, reused 392, downloaded 0, added 2
+#16 12.67 Progress: resolved 393, reused 393, downloaded 0, added 18
+#16 13.67 Progress: resolved 393, reused 393, downloaded 0, added 43
+#16 14.67 Progress: resolved 393, reused 393, downloaded 0, added 108
+#16 15.68 Progress: resolved 393, reused 393, downloaded 0, added 177
+#16 16.73 Progress: resolved 393, reused 393, downloaded 0, added 188
+#16 17.73 Progress: resolved 393, reused 393, downloaded 0, added 196
+#16 ...
+
+#14 [server build 3/3] RUN pnpm --filter @portal/server... build
+#14 16.55 apps/server build: Done
+#14 DONE 16.9s
+
+#15 [portal build 3/3] RUN pnpm --filter @portal/portal... build
+#15 ...
+
+#16 [server production-deps 2/2] RUN rm -rf node_modules && pnpm --filter @portal/server... install --prod --offline --frozen-lockfile
+#16 18.73 Progress: resolved 393, reused 393, downloaded 0, added 206
+#16 19.74 Progress: resolved 393, reused 393, downloaded 0, added 222
+#16 20.75 Progress: resolved 393, reused 393, downloaded 0, added 224
+#16 21.75 Progress: resolved 393, reused 393, downloaded 0, added 231
+#16 22.76 Progress: resolved 393, reused 393, downloaded 0, added 248
+#16 23.80 Progress: resolved 393, reused 393, downloaded 0, added 251
+#16 24.80 Progress: resolved 393, reused 393, downloaded 0, added 262
+#16 25.81 Progress: resolved 393, reused 393, downloaded 0, added 276
+#16 26.81 Progress: resolved 393, reused 393, downloaded 0, added 292
+#16 27.82 Progress: resolved 393, reused 393, downloaded 0, added 354
+#16 28.83 Progress: resolved 393, reused 393, downloaded 0, added 357
+#16 29.84 Progress: resolved 393, reused 393, downloaded 0, added 360
+#16 ...
+
+#15 [portal build 3/3] RUN pnpm --filter @portal/portal... build
+#15 28.98 apps/portal build: ✓ Compiled successfully in 24.4s
+#15 28.99 apps/portal build:   Running TypeScript ...
+#15 ...
+
+#16 [server production-deps 2/2] RUN rm -rf node_modules && pnpm --filter @portal/server... install --prod --offline --frozen-lockfile
+#16 30.84 Progress: resolved 393, reused 393, downloaded 0, added 390
+#16 32.00 Progress: resolved 393, reused 393, downloaded 0, added 391
+#16 42.01 Progress: resolved 393, reused 393, downloaded 0, added 392
+#16 ...
+
+#15 [portal build 3/3] RUN pnpm --filter @portal/portal... build
+#15 48.47 apps/portal build:   Finished TypeScript in 19.4s ...
+#15 48.49 apps/portal build:   Collecting page data using 7 workers ...
+#15 49.71 apps/portal build:   Generating static pages using 7 workers (0/18) ...
+#15 50.02 apps/portal build:   Generating static pages using 7 workers (4/18) 
+#15 50.03 apps/portal build:   Generating static pages using 7 workers (8/18) 
+#15 50.16 apps/portal build:   Generating static pages using 7 workers (13/18) 
+#15 50.46 apps/portal build: ✓ Generating static pages using 7 workers (18/18) in 751ms
+#15 50.46 apps/portal build:   Finalizing page optimization ...
+#15 50.94 apps/portal build: Route (app)
+#15 50.94 apps/portal build: ┌ ƒ /
+#15 50.94 apps/portal build: ├ ƒ /_not-found
+#15 50.94 apps/portal build: ├ ƒ /admin/apis
+#15 50.94 apps/portal build: ├ ƒ /admin/apis/[slug]
+#15 50.94 apps/portal build: ├ ƒ /admin/gateways
+#15 50.94 apps/portal build: ├ ƒ /admin/settings/accounts
+#15 50.94 apps/portal build: ├ ƒ /admin/settings/mail
+#15 50.95 apps/portal build: ├ ƒ /apis/[slug]
+#15 50.95 apps/portal build: ├ ƒ /apis/[slug]/changelog
+#15 50.95 apps/portal build: ├ ƒ /apis/[slug]/versions/[version]
+#15 50.95 apps/portal build: ├ ƒ /confirm-email
+#15 50.95 apps/portal build: ├ ƒ /dashboard
+#15 50.95 apps/portal build: ├ ƒ /dashboard/apps/[appId]
+#15 50.95 apps/portal build: ├ ƒ /dashboard/apps/new
+#15 50.95 apps/portal build: ├ ƒ /forgot-password
+#15 50.95 apps/portal build: ├ ƒ /profile
+#15 50.95 apps/portal build: ├ ○ /quickstart-required
+#15 50.95 apps/portal build: ├ ƒ /reset-password
+#15 50.95 apps/portal build: ├ ƒ /setup
+#15 50.95 apps/portal build: ├ ƒ /setup/gateway
+#15 50.95 apps/portal build: ├ ƒ /sign-in
+#15 50.95 apps/portal build: └ ƒ /sign-up
+#15 50.95 apps/portal build: ƒ Proxy (Middleware)
+#15 50.95 apps/portal build: ○  (Static)   prerendered as static content
+#15 50.95 apps/portal build: ƒ  (Dynamic)  server-rendered on demand
+#15 51.07 apps/portal build: Done
+#15 DONE 51.7s
+
+#16 [server production-deps 2/2] RUN rm -rf node_modules && pnpm --filter @portal/server... install --prod --offline --frozen-lockfile
+#16 ...
+
+#17 [server runtime 2/5] WORKDIR /app
+#17 CACHED
+
+#18 [portal runtime 3/5] COPY --from=build --chown=node:node /app/apps/portal/.next/standalone ./
+#18 DONE 0.9s
+
+#16 [server production-deps 2/2] RUN rm -rf node_modules && pnpm --filter @portal/server... install --prod --offline --frozen-lockfile
+#16 ...
+
+#19 [portal runtime 4/5] COPY --from=build --chown=node:node /app/apps/portal/.next/static ./apps/portal/.next/static
+#19 DONE 0.2s
+
+#16 [server production-deps 2/2] RUN rm -rf node_modules && pnpm --filter @portal/server... install --prod --offline --frozen-lockfile
+#16 ...
+
+#20 [portal runtime 5/5] COPY --from=build --chown=node:node /app/apps/portal/dist ./apps/portal/dist
+#20 DONE 0.1s
+
+#21 [portal] exporting to image
+#21 exporting layers
+#21 exporting layers 1.2s done
+#21 exporting manifest sha256:d27ada03e07a0249b7e74bbd8c20cc18fb1fe176b5dee3c7ecea537534005c17 0.0s done
+#21 exporting config sha256:4ac70a560244700847168976f37c093a9b70113d81de02917478c3987ebc131c done
+#21 exporting attestation manifest sha256:9af49bc7db6a5fc825205c221f6583f41cb29ebe11afee1caaab0ab94f50f75e 0.0s done
+#21 exporting manifest list sha256:57cff27719b071c4a28657d8aed521627f085061c291ff6519e081e364b966f3 done
+#21 naming to docker.io/library/portal-web:latest done
+#21 unpacking to docker.io/library/portal-web:latest
+#21 ...
+
+#16 [server production-deps 2/2] RUN rm -rf node_modules && pnpm --filter @portal/server... install --prod --offline --frozen-lockfile
+#16 56.15 Progress: resolved 393, reused 393, downloaded 0, added 393
+#16 56.16 Progress: resolved 393, reused 393, downloaded 0, added 393, done
+#16 56.50 ╭ Warning ─────────────────────────────────────────────────────────────────────╮
+#16 56.50 │                                                                              │
+#16 56.50 │   Ignored build scripts: @prisma/client@5.22.0, @prisma/engines@5.22.0,      │
+#16 56.50 │   @scarf/scarf@1.4.0, better-sqlite3@12.11.1, prisma@5.22.0.                 │
+#16 56.50 │   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+#16 56.50 │   to run scripts.                                                            │
+#16 56.50 │                                                                              │
+#16 56.50 ╰──────────────────────────────────────────────────────────────────────────────╯
+#16 56.56 Done in 47.4s using pnpm v10.28.2
+#16 DONE 56.9s
+
+#21 [portal] exporting to image
+#21 unpacking to docker.io/library/portal-web:latest 0.9s done
+#21 DONE 2.2s
+
+#22 [portal] resolving provenance for metadata file
+#22 DONE 0.3s
+
+#23 [server runtime  3/10] COPY --from=production-deps /app/node_modules ./node_modules
+#23 DONE 11.8s
+
+#24 [server runtime  4/10] COPY --from=production-deps /app/packages ./packages
+#24 DONE 0.3s
+
+#25 [server runtime  5/10] COPY --from=production-deps /app/apps/server ./apps/server
+#25 DONE 0.0s
+
+#26 [server runtime  6/10] COPY --from=build /app/packages/db/dist ./packages/db/dist
+#26 DONE 0.0s
+
+#27 [server runtime  7/10] COPY --from=build /app/packages/adapter-sdk/dist ./packages/adapter-sdk/dist
+#27 DONE 0.0s
+
+#28 [server runtime  8/10] COPY --from=build /app/packages/adapter-kong/dist ./packages/adapter-kong/dist
+#28 DONE 0.0s
+
+#29 [server runtime  9/10] COPY --from=build /app/apps/server/dist ./apps/server/dist
+#29 DONE 0.0s
+
+#30 [server runtime 10/10] COPY --from=build /app/apps/server/rulesets ./apps/server/rulesets
+#30 DONE 0.0s
+
+#31 [server] exporting to image
+#31 exporting layers
+#31 exporting layers 16.6s done
+#31 exporting manifest sha256:f7a1fbe71085b597c9509f7ed65965a08a46ff71d68dfe016b3680277c5308c2 0.0s done
+#31 exporting config sha256:de01888e6175f04d02d33630ff27ea1cafe1c1f3f4a0b9fd516d264c026e823d 0.0s done
+#31 exporting attestation manifest sha256:3b872f85da4dd62732e78fa5cabc028a0db4e3ffb695e2b63df960f0a7924e9c 0.1s done
+#31 exporting manifest list sha256:fba1a7470e82e66998073fccd0cf9541aa6faef2f2e50bbe92a520fe12546714
+#31 exporting manifest list sha256:fba1a7470e82e66998073fccd0cf9541aa6faef2f2e50bbe92a520fe12546714 0.0s done
+#31 naming to docker.io/library/portal-server:latest done
+#31 unpacking to docker.io/library/portal-server:latest
+#31 unpacking to docker.io/library/portal-server:latest 7.3s done
+#31 DONE 24.1s
+
+#32 [server] resolving provenance for metadata file
+#32 DONE 0.1s
+ Image portal-server Built 
+ Image portal-web Built 
+ Volume portal-007-uat-postmerge_postgres-data Creating 
+ Network portal-007-uat-postmerge_default Creating 
+ Volume portal-007-uat-postmerge_postgres-data Creating 
+ Network portal-007-uat-postmerge_default Creating 
+ Volume portal-007-uat-postmerge_postgres-data Created 
+ Volume portal-007-uat-postmerge_postgres-data Created 
+ Network portal-007-uat-postmerge_default Created 
+ Network portal-007-uat-postmerge_default Created 
+ Container portal-007-uat-postmerge-httpbin-1 Creating 
+ Container portal-007-uat-postmerge-mailpit-1 Creating 
+ Container portal-007-uat-postmerge-postgres-1 Creating 
+ Container portal-007-uat-postmerge-mailpit-1 Created 
+ Container portal-007-uat-postmerge-httpbin-1 Created 
+ Container portal-007-uat-postmerge-postgres-1 Created 
+ Container portal-007-uat-postmerge-kong-migrations-1 Creating 
+ Container portal-007-uat-postmerge-kong-migrations-1 Created 
+ Container portal-007-uat-postmerge-kong-1 Creating 
+ Container portal-007-uat-postmerge-kong-1 Created 
+ Container portal-007-uat-postmerge-server-1 Creating 
+ Container portal-007-uat-postmerge-server-1 Created 
+ Container portal-007-uat-postmerge-portal-1 Creating 
+ Container portal-007-uat-postmerge-portal-1 Created 
+ Container portal-007-uat-postmerge-mailpit-1 Starting 
+ Container portal-007-uat-postmerge-postgres-1 Starting 
+ Container portal-007-uat-postmerge-httpbin-1 Starting 
+ Container portal-007-uat-postmerge-mailpit-1 Started 
+ Container portal-007-uat-postmerge-postgres-1 Started 
+ Container portal-007-uat-postmerge-postgres-1 Waiting 
+ Container portal-007-uat-postmerge-httpbin-1 Started 
+ Container portal-007-uat-postmerge-postgres-1 Healthy 
+ Container portal-007-uat-postmerge-kong-migrations-1 Starting 
+ Container portal-007-uat-postmerge-kong-migrations-1 Started 
+ Container portal-007-uat-postmerge-kong-migrations-1 Waiting 
+ Container portal-007-uat-postmerge-kong-migrations-1 Exited 
+ Container portal-007-uat-postmerge-kong-1 Starting 
+ Container portal-007-uat-postmerge-kong-1 Started 
+ Container portal-007-uat-postmerge-kong-1 Waiting 
+ Container portal-007-uat-postmerge-postgres-1 Waiting 
+ Container portal-007-uat-postmerge-postgres-1 Healthy 
+ Container portal-007-uat-postmerge-kong-1 Healthy 
+ Container portal-007-uat-postmerge-server-1 Starting 
+ Container portal-007-uat-postmerge-server-1 Started 
+ Container portal-007-uat-postmerge-server-1 Waiting 
+ Container portal-007-uat-postmerge-server-1 Healthy 
+ Container portal-007-uat-postmerge-portal-1 Starting 
+ Container portal-007-uat-postmerge-portal-1 Started 
+ Container portal-007-uat-postmerge-mailpit-1 Waiting 
+ Container portal-007-uat-postmerge-server-1 Waiting 
+ Container portal-007-uat-postmerge-portal-1 Waiting 
+ Container portal-007-uat-postmerge-postgres-1 Waiting 
+ Container portal-007-uat-postmerge-kong-migrations-1 Waiting 
+ Container portal-007-uat-postmerge-kong-1 Waiting 
+ Container portal-007-uat-postmerge-httpbin-1 Waiting 
+ Container portal-007-uat-postmerge-mailpit-1 Healthy 
+ Container portal-007-uat-postmerge-kong-migrations-1 Exited 
+ Container portal-007-uat-postmerge-httpbin-1 Healthy 
+ Container portal-007-uat-postmerge-server-1 Healthy 
+ Container portal-007-uat-postmerge-postgres-1 Healthy 
+ Container portal-007-uat-postmerge-kong-1 Healthy 
+ Container portal-007-uat-postmerge-portal-1 Healthy 
+real 125.74
+user 0.45
+sys 0.86

@@ -1,0 +1,156 @@
+[
+  {
+    "Subject": "Test email from localhost:3000",
+    "To": [
+      {
+        "Name": "",
+        "Address": "admin-007@example.com"
+      }
+    ],
+    "From": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "Created": "2026-11-10T08:36:28.913Z"
+  },
+  {
+    "Subject": "Reset your password for localhost:3000",
+    "To": [
+      {
+        "Name": "",
+        "Address": "merge007-new@example.com"
+      }
+    ],
+    "From": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "Created": "2026-11-10T08:31:05.503Z"
+  },
+  {
+    "Subject": "Verify your email for localhost:3000",
+    "To": [
+      {
+        "Name": "",
+        "Address": "merge007-new@example.com"
+      }
+    ],
+    "From": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "Created": "2026-11-10T08:29:43.333Z"
+  },
+  {
+    "Subject": "Verify your email for localhost:3000",
+    "To": [
+      {
+        "Name": "",
+        "Address": "merge007-new@example.com"
+      }
+    ],
+    "From": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "Created": "2026-11-10T08:29:41.337Z"
+  },
+  {
+    "Subject": "Verify your email for localhost:3000",
+    "To": [
+      {
+        "Name": "",
+        "Address": "merge007-new@example.com"
+      }
+    ],
+    "From": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "Created": "2026-11-10T08:29:27.314Z"
+  },
+  {
+    "Subject": "Verify your email for localhost:3000",
+    "To": [
+      {
+        "Name": "",
+        "Address": "merge007-new@example.com"
+      }
+    ],
+    "From": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "Created": "2026-11-10T08:29:17.31Z"
+  },
+  {
+    "Subject": "Reset your password for localhost:3000",
+    "To": [
+      {
+        "Name": "",
+        "Address": "merge007-new@example.com"
+      }
+    ],
+    "From": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "Created": "2026-11-10T08:27:03.012Z"
+  },
+  {
+    "Subject": "Reset your password for localhost:3000",
+    "To": [
+      {
+        "Name": "",
+        "Address": "merge007@example.com"
+      }
+    ],
+    "From": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "Created": "2026-11-10T08:25:10.869Z"
+  },
+  {
+    "Subject": "Confirm your new email for localhost:3000",
+    "To": [
+      {
+        "Name": "",
+        "Address": "merge007-new@example.com"
+      }
+    ],
+    "From": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "Created": "2026-11-10T08:24:48.84Z"
+  },
+  {
+    "Subject": "Verify your email for localhost:3000",
+    "To": [
+      {
+        "Name": "",
+        "Address": "merge007@example.com"
+      }
+    ],
+    "From": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "Created": "2026-11-10T08:21:22.509Z"
+  },
+  {
+    "Subject": "Test email from localhost:3000",
+    "To": [
+      {
+        "Name": "",
+        "Address": "admin-007@example.com"
+      }
+    ],
+    "From": {
+      "Name": "Post Merge UAT",
+      "Address": "uat007@example.com"
+    },
+    "Created": "2026-11-10T08:20:00.414Z"
+  }
+]

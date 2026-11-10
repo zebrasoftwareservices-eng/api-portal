@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 import {
+  useId,
   useEffect,
   useRef,
   useState,
   type ComponentProps,
   type ReactNode,
 } from 'react';
+import * as SwitchPrimitive from '@radix-ui/react-switch';
 import { Slot } from '@radix-ui/react-slot';
 import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import * as Dialog from '@radix-ui/react-dialog';
@@ -164,6 +166,36 @@ export function StatusBadge({ status }: { status: 'active' | 'revoked' }) {
     <Badge className={status}>
       {status === 'active' ? '● Active' : '○ Revoked'}
     </Badge>
+  );
+}
+
+export function PasswordInput(props: ComponentProps<'input'>) {
+  const [show, setShow] = useState(false);
+  const generated = useId();
+  const id = props.id || generated;
+  return (
+    <div className="row">
+      <Input {...props} id={id} type={show ? 'text' : 'password'} />
+      <Button
+        type="button"
+        variant="ghost"
+        aria-controls={id}
+        aria-pressed={show}
+        onClick={() => setShow(!show)}
+      >
+        {show ? 'Hide' : 'Show'}
+      </Button>
+    </div>
+  );
+}
+export function Switch(props: ComponentProps<typeof SwitchPrimitive.Root>) {
+  return (
+    <SwitchPrimitive.Root
+      {...props}
+      className={`switch ${props.className || ''}`}
+    >
+      <SwitchPrimitive.Thumb className="switch-thumb" />
+    </SwitchPrimitive.Root>
   );
 }
 export { VersionSwitcher } from './version-switcher';

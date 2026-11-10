@@ -2,16 +2,20 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Card, Input } from '@portal/ui';
-import { api, auth } from '../lib/client';
+import { Button, Card, Input, PasswordInput } from '@portal/ui';
+import { toast } from '@portal/ui';
+import { waitTime } from './account-shared';
+import { api, auth, retrySeconds } from '../lib/client';
 import { safeNext, signInLink, signUpLink } from '../lib/navigation';
 import { Field, focusInvalid } from './field';
 export function AuthForm({
   mode,
   next,
+  reset,
 }: {
   mode: 'sign-up' | 'sign-in';
   next?: string;
+  reset?: boolean;
 }) {
   const signup = mode === 'sign-up';
   const router = useRouter();
@@ -20,7 +24,6 @@ export function AuthForm({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [show, setShow] = useState(false);
   const [pending, setPending] = useState(false);
   const [ready, setReady] = useState(false);
   // The server-rendered form must not accept a native submission before
@@ -47,6 +50,17 @@ export function AuthForm({
   const link = signup ? signInLink(next) : signUpLink(next);
   return (
     <Card className="auth stack">
+      {reset && (
+        <div role="status" className="alert success">
+          Your password is changed. Sign in with your new password.
+        </div>
+      )}
+      {next?.includes('error=invalid_token') && (
+        <p>
+          That verification link has expired or was already used. Sign in to
+          send a new one.
+        </p>
+      )}
       <h1>{signup ? 'Create your developer account' : 'Sign in'}</h1>
       {signup ? (
         <p>
@@ -87,9 +101,17 @@ export function AuthForm({
           setFailure('');
           setDuplicate(false);
           try {
+            let seconds = 60;
             const result = signup
               ? await auth.signUp.email({ name: name.trim(), email, password })
-              : await auth.signIn.email({ email, password });
+              : await auth.signIn.email(
+                  { email, password },
+                  {
+                    onResponse: (ctx) => {
+                      seconds = retrySeconds(ctx.response) || 60;
+                    },
+                  },
+                );
             if (result.error) {
               const code = result.error.code || '';
               if (code.includes('USER_ALREADY_EXISTS')) {
@@ -98,9 +120,12 @@ export function AuthForm({
                   email: 'An account with this email already exists.',
                 });
                 focusInvalid(form.current!);
-              } else if (result.error.status === 429)
-                setFailure('Too many attempts. Wait a minute and try again.');
-              else if (!signup && result.error.status === 401) {
+              } else if (result.error.status === 429) {
+                setFailure(
+                  `Too many sign-in attempts for this address. Try again in ${waitTime(seconds)}.`,
+                );
+                setPassword('');
+              } else if (!signup && result.error.status === 401) {
                 setFailure('Email or password is incorrect.');
                 setPassword('');
                 setTimeout(
@@ -117,6 +142,10 @@ export function AuthForm({
                     : "We couldn't sign you in. Try again.",
                 );
             } else {
+              if (signup)
+                toast.success(
+                  `Check ${email} for a link to verify your address.`,
+                );
               let destination = safeNext(next);
               if (!next && !signup) {
                 // Better Auth's sign-in response omits the portal role.
@@ -182,11 +211,10 @@ export function AuthForm({
             hint={signup ? 'At least 8 characters.' : undefined}
           >
             {(props) => (
-              <div className="row">
-                <Input
+              <>
+                <PasswordInput
                   {...props}
                   name="password"
-                  type={show ? 'text' : 'password'}
                   autoComplete={signup ? 'new-password' : 'current-password'}
                   required
                   readOnly={pending}
@@ -197,17 +225,16 @@ export function AuthForm({
                       setErrors(validate(name, email, e.target.value));
                   }}
                 />
-                <Button
-                  variant="ghost"
-                  type="button"
-                  aria-pressed={show}
-                  onClick={() => setShow(!show)}
-                >
-                  {show ? 'Hide' : 'Show'}
-                </Button>
-              </div>
+              </>
             )}
           </Field>
+          {!signup && (
+            <a
+              href={`/forgot-password${/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? `?email=${encodeURIComponent(email)}` : ''}`}
+            >
+              Forgot password?
+            </a>
+          )}
           <Button type="submit" disabled={pending} aria-busy={pending}>
             {pending
               ? signup

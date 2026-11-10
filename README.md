@@ -111,6 +111,37 @@ Contributions are welcome. Sign off your commits with the
 
 [Apache 2.0](LICENSE) © Zebra Software Services
 
+### Portal email
+
+The quickstart sends verification and password reset email to Mailpit. Open
+<http://127.0.0.1:8025> to read it; no external mail account is needed. Mailpit
+is independent of server readiness, so an SMTP outage does not block startup.
+The bootstrap admin is already verified; new accounts receive a verification
+link valid for 24 hours. Password reset links work once and expire after an hour.
+
+Admins can configure SMTP under **Mail** and send a test email. Saved settings
+win over the server environment on the next send. The password is encrypted at
+rest and write-only: omit it on updates to keep it, or send null to remove it.
+Removing saved settings restores the environment fallback. Under **Accounts**,
+admins can require verification before apps or keys are created and adjust the
+failed sign-in, reset email and verification email limits without restarting.
+Verification is off by default and cannot be enabled without configured mail.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SMTP_HOST` | unset (`mailpit` in compose) | SMTP hostname; mail needs this and a sender address |
+| `SMTP_PORT` | `587` (`1025` in compose) | Port, 1–65535 |
+| `SMTP_SECURITY` | `starttls` (`none` in compose) | `none`, required `starttls`, or direct `tls` |
+| `SMTP_USERNAME` | unset | Optional SMTP username |
+| `SMTP_PASSWORD` | unset | Optional SMTP password |
+| `SMTP_SENDER_NAME` | `Developer Portal` | Sender display name |
+| `SMTP_SENDER_ADDRESS` | unset (`noreply@example.com` in compose) | Sender email address |
+
+For local `pnpm dev`, set `SMTP_HOST=localhost` and expose the Mailpit SMTP
+port on localhost (for example `docker run --rm -p 127.0.0.1:1025:1025 -p
+127.0.0.1:8025:8025 axllent/mailpit:v1.27.10`). Production installs use their own
+SMTP provider and should use STARTTLS or TLS. `PORTAL_PUBLIC_URL` determines the
+origin of links in all account emails.
 ### API versions and import linting
 
 Each API has one gateway service and catalog entry, with a stored OpenAPI document per version.

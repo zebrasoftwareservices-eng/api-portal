@@ -13,15 +13,24 @@ export const api = createClient({ baseUrl });
 // Only the API page's access check bypasses global redirects and toasts.
 export const quietApi = createClient({ baseUrl });
 api.use({
-  onResponse({ response, schemaPath }) {
+  async onResponse({ response, schemaPath }) {
     if (response.status === 401 && schemaPath !== '/v1/me') {
       toast.error('Your session has ended. Sign in to continue.');
       window.location.assign(
         `/sign-in?next=${encodeURIComponent(window.location.pathname + window.location.search)}`,
       );
     }
-    if (response.status === 403 && schemaPath !== '/v1/setup/admin')
-      window.location.assign('/not-found');
+    if (response.status === 403 && schemaPath !== '/v1/setup/admin') {
+      const problem = (await response
+        .clone()
+        .json()
+        .catch(() => ({}))) as { type?: string };
+      if (
+        !problem.type?.endsWith('/email-not-verified') &&
+        !problem.type?.endsWith('/invalid-password')
+      )
+        window.location.assign('/not-found');
+    }
     if (response.status === 429)
       toast.error('Too many requests. Wait a moment and try again.');
     return response;

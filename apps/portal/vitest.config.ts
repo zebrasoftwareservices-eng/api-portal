@@ -18,6 +18,8 @@ export default defineConfig({
   esbuild: { jsx: 'automatic' },
   test: {
     testTimeout: 15000,
+    // Keep browser component workers within the quickstart test stack's CPU budget.
+    maxWorkers: 2,
     name: 'portal',
     environment: 'jsdom',
     setupFiles: ['./test-setup.ts'],

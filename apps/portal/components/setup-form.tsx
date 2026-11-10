@@ -153,7 +153,7 @@ export function SetupForm({
             <Field
               label="Password"
               error={errors.password}
-              hint="At least 8 characters. Keep it safe: the portal can't reset passwords yet."
+              hint="At least 8 characters."
             >
               {(props) => (
                 <div className="row">

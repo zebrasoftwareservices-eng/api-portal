@@ -14,6 +14,7 @@ import { api, networkProblem, retrySeconds } from '../lib/client';
 import type { Credential, Problem } from '../lib/types';
 import { useResource } from './use-resource';
 import { usePortal } from './providers';
+import { ResendVerification } from './account-shared';
 import { ProblemAlert } from './problem-alert';
 import { KeyRevealDialog } from './key-reveal-dialog';
 import { DateValue } from './date';
@@ -27,7 +28,9 @@ export function AppDetail({ appId }: { appId: string }) {
   } = useResource(() =>
     api.GET('/v1/apps/{appId}', { params: { path: { appId } } }),
   );
-  const { reveal, setReveal } = usePortal();
+  const { reveal, setReveal, user, setUser } = usePortal();
+  const verificationBlocked =
+    !!user?.verificationRequired && !user.emailVerified;
   const [pending, setPending] = useState(false);
   const lock = useRef(false);
   const [problem, setProblem] = useState<Problem>();
@@ -55,6 +58,10 @@ export function AppDetail({ appId }: { appId: string }) {
     highlightTimer.current = setTimeout(() => setHighlight(undefined), 3000);
   }
   async function createKey() {
+    if (verificationBlocked) {
+      document.getElementById('verification-banner')?.focus();
+      return;
+    }
     if (lock.current || !app || active >= 5) return;
     lock.current = true;
     setPending(true);
@@ -66,6 +73,10 @@ export function AppDetail({ appId }: { appId: string }) {
       );
       if (error) {
         setProblem(error);
+        if (error.type.endsWith('/email-not-verified')) {
+          const current = await api.GET('/v1/me');
+          if (current.data) setUser(current.data);
+        }
         setRetry(retrySeconds(response));
         if (error.type.endsWith('/credential-limit')) await reload();
       } else if (data) {
@@ -215,8 +226,10 @@ export function AppDetail({ appId }: { appId: string }) {
           </div>
           <Button
             variant="secondary"
-            aria-describedby="key-limit"
-            aria-disabled={active >= 5}
+            aria-describedby={
+              verificationBlocked ? 'verification-reason' : 'key-limit'
+            }
+            aria-disabled={verificationBlocked || active >= 5}
             disabled={pending}
             aria-busy={pending && !revoke}
             onClick={createKey}
@@ -224,6 +237,12 @@ export function AppDetail({ appId }: { appId: string }) {
             {pending && !revoke ? 'Creating key…' : 'Create key'}
           </Button>
         </div>
+        {verificationBlocked && (
+          <p id="verification-reason">
+            Verify your email address first. Use the button at the top of the
+            page.
+          </p>
+        )}
         {!active && (
           <p className="muted">
             This app has no active keys. Create one to call its APIs.
@@ -240,15 +259,20 @@ export function AppDetail({ appId }: { appId: string }) {
                   : undefined
             }
             message={
-              problem.type.endsWith('/gateway-disabled')
-                ? 'The portal admin has turned off new apps and keys for now. Keys you already have keep working. No key was created.'
-                : problem.type.endsWith('/gateway-not-connected')
-                  ? "This portal isn't connected to an API gateway right now. No key was created. Tell the portal admin."
-                  : problem.type.endsWith('/credential-limit')
-                    ? 'This app already has 5 active keys. Revoke one, then create a new key.'
-                    : problem.status === 502
-                      ? 'The gateway rejected the request. No key was created. Try again, and if it keeps happening, tell the portal admin.'
-                      : undefined
+              problem.type.endsWith('/email-not-verified') ? (
+                <>
+                  <p>{problem.detail}</p>
+                  <ResendVerification email={user?.email || ''} />
+                </>
+              ) : problem.type.endsWith('/gateway-disabled') ? (
+                'The portal admin has turned off new apps and keys for now. Keys you already have keep working. No key was created.'
+              ) : problem.type.endsWith('/gateway-not-connected') ? (
+                "This portal isn't connected to an API gateway right now. No key was created. Tell the portal admin."
+              ) : problem.type.endsWith('/credential-limit') ? (
+                'This app already has 5 active keys. Revoke one, then create a new key.'
+              ) : problem.status === 502 ? (
+                'The gateway rejected the request. No key was created. Try again, and if it keeps happening, tell the portal admin.'
+              ) : undefined
             }
             onRetry={problem.status === 503 ? createKey : undefined}
             retryAfterSeconds={retry}

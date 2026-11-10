@@ -636,6 +636,89 @@ caption {
   }
 }
 
+.admin-tabs {
+  display: flex;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.admin-tabs a {
+  padding: 0.75rem 0;
+}
+.admin-tabs a[aria-current='page'] {
+  border-bottom: 2px solid var(--primary);
+}
+.admin-select {
+  display: none;
+}
+.limit-row {
+  flex-wrap: wrap;
+}
+.limit-row input {
+  width: 6ch;
+}
+.delete-account {
+  border-color: var(--destructive);
+}
+.wrap-anywhere,
+dd {
+  overflow-wrap: anywhere;
+}
+.account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 24ch;
+}
+.warning {
+  color: var(--portal-warning);
+  background: var(--portal-warning-subtle);
+}
+[role='switch'] {
+  accent-color: var(--primary);
+}
+@media (max-width: 767px) {
+  .admin-tabs {
+    display: none;
+  }
+  .admin-select {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .form .card .button {
+    width: 100%;
+  }
+}
+
+.switch {
+  width: 44px;
+  height: 26px;
+  padding: 2px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  background: var(--input);
+  vertical-align: middle;
+}
+.switch[data-state='checked'] {
+  background: var(--primary);
+}
+.switch-thumb {
+  display: block;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius);
+  background: var(--background);
+  transition: transform var(--portal-duration);
+}
+.switch-thumb[data-state='checked'] {
+  transform: translateX(18px);
+}
+.switch:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.settings-skeleton {
+  min-height: 120px;
+}
 .version-menu {
   z-index: 100;
   background: var(--popover);
