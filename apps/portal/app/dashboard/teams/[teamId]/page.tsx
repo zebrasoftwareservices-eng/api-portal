@@ -6,5 +6,6 @@ export default async function Page({
 }: {
   params: Promise<{ teamId: string }>;
 }) {
-  return <TeamPage teamId={(await params).teamId} />;
+  const { teamId } = await params;
+  return <TeamPage key={teamId} teamId={teamId} />;
 }

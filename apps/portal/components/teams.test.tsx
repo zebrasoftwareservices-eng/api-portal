@@ -436,3 +436,15 @@ it('hides key mutation controls after a role refusal and reloading the app', asy
     ).not.toBeInTheDocument(),
   );
 });
+
+it('remounts team settings when switching between dynamic team routes', async () => {
+  const { default: Page } =
+    await import('../app/dashboard/teams/[teamId]/page');
+  const first = await Page({ params: Promise.resolve({ teamId: 'personal' }) });
+  const second = await Page({
+    params: Promise.resolve({ teamId: 'payments' }),
+  });
+  expect(first.key).toBe('personal');
+  expect(second.key).toBe('payments');
+  expect(second.props.teamId).toBe('payments');
+});
