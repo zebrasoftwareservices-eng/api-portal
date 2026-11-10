@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -686,32 +686,61 @@ Only tests and this spec changed; application code was not modified.
   entire test inherited a 30-second deadline. The first browser run exhausted that total
   deadline. Set the test budget to 90 seconds, keeping each batch request timeout at 20 seconds.
 
+- [ ] **U2 — Delete dialog retains the wrong-password error after a correct-password retry (minor, frontend).**
+  In Profile → Delete account, submit a wrong password, then enter the correct password. Stop
+  local Kong and submit again. The gateway-unavailable refusal correctly preserves the account,
+  but the prior “This password is incorrect” message remains beside the new error even though
+  password validation succeeded. Expected: clear the previous field error on retry or when
+  validation succeeds. Both keys still returned 200 after Kong restarted, and the same correct
+  password then deleted the account successfully (both keys became 401). Evidence:
+  `docs/uat/007/run-2026-11-09-current/11-gateway-refusal-stale-password.png`; default browser
+  viewport at the refusal, main mobile journey 390×844. Transient in-spec finding; no durable
+  issue or blocking Fix task required.
+
+- [ ] **U3 — SMTP test error persists after corrected settings are saved (minor, frontend).**
+  Save `mailpit:1` with None security and send a test, producing the unreachable error.
+  Change port to `1025` and save. The old “Can't reach the mail server” error remains under
+  the test form without indicating that it belongs to the previous settings. Expected:
+  clear the test error when effective settings change, consistently with U1's success-result
+  clearing. The error also persists after removing saved settings; a new test clears it, so no journey
+  is blocked. Evidence:
+  `docs/uat/007/run-2026-11-09-current/17-smtp-error-after-save.png`, 1280 px desktop.
+  Transient in-spec minor; no durable Linear issue required.
+
 ## User testing  _(user-tester)_
+
+Current UAT: 2026-11-09, after QA re-review at `37ed904`. Browser: Orca built-in browser;
+full notes and evidence: `docs/uat/007/run-2026-11-09-current/README.md`.
+
 | User story | Result | Screenshot |
 | --- | --- | --- |
-| Quickstart sends all mail to Mailpit from environment settings | PASS — fresh build/start healthy in 163.52 s; signup, verification and reset messages arrived | `docs/uat/007/run-2026-11-09-final/01-admin-mail-environment.png`, `13-reset-known-confirmation.png` |
-| Admin saves SMTP settings and sends a test email | PASS — saved Mailpit settings took precedence, sent successfully, then were removed to restore the environment fallback | `docs/uat/007/run-2026-11-09-final/22-saved-smtp-test.png` |
-| Admin requires verified email before app creation | PASS — setting enabled live; unverified dashboard/banner and disabled Create app were clear; creation succeeded after verification | `docs/uat/007/run-2026-11-09-final/04-unverified-dashboard-gate.png`, `05-create-app-blocked.png`, `12-verified-app-key-created.png` |
-| Admin changes sign-in/reset/verification limits | PASS — defaults were readable; reset maximum changed from 3 to 2 and applied without restart, then restored to 3 | `docs/uat/007/run-2026-11-09-final/03-admin-accounts-live-settings.png` |
-| Developer signs up, receives verification mail and can resend | PASS — verification message copy/link worked; verified profile and app creation were available afterward | `docs/uat/007/run-2026-11-09-final/04-unverified-dashboard-gate.png`, `06-verified-profile.png` |
-| Developer resets a forgotten password | PASS — known/unknown confirmations matched, old password failed, new password worked, and reopening the link showed expiry/recovery | `docs/uat/007/run-2026-11-09-final/13-reset-known-confirmation.png`, `14-reset-unknown-confirmation.png`, `15-reset-success.png`, `16-reset-link-used.png` |
-| Developer changes password while signed in | PASS — wrong current password preserved the account; correct current password produced the other-sessions-signed-out success state | `docs/uat/007/run-2026-11-09-final/08-password-wrong-current.png`, `09-password-changed.png` |
-| Developer updates name and email | PASS — name updated, old email remained pending, confirmation required an explicit click, and the new email became the sign-in address | `docs/uat/007/run-2026-11-09-final/07-name-saved.png`, `10-email-change-pending.png`, `11-email-changed.png` |
-| Developer deletes their account and keys | PASS — dialog named two apps; wrong password was refused; both keys changed from Kong 200 to 401; deleted address signed up again; last admin was protected | `docs/uat/007/run-2026-11-09-final/17-delete-wrong-password.png`, `18-account-deleted.png`, `19-mobile-keyboard-signup.png`, `21-last-admin-refusal.png` |
+| Quickstart sends email to Mailpit | PASS — reused healthy quickstart; signup, resend and reset delivered through environment fallback | `docs/uat/007/run-2026-11-09-current/03-mobile-signup-gate.png` |
+| Admin configures SMTP and sends test mail | PASS — saved sender/source delivered; unreachable port showed actionable error immediately; removed saved settings | `docs/uat/007/run-2026-11-09-current/01-saved-smtp.png`, `docs/uat/007/run-2026-11-09-current/15-smtp-unreachable.png` |
+| Admin requires verified email before app creation | PASS — enabled policy; unverified Create app disabled; verified account created two apps | `docs/uat/007/run-2026-11-09-current/03-mobile-signup-gate.png` |
+| Admin sets sign-in/reset/verification limits | PASS — defaults readable; reset maximum saved as 2, persisted across navigation, restored to 3 | `docs/uat/007/run-2026-11-09-current/02-policy.png` |
+| Developer signs up, verifies and resends | PASS — keyboard mobile signup, resend email and verification link worked; profile showed Verified | `docs/uat/007/run-2026-11-09-current/03-mobile-signup-gate.png`, `docs/uat/007/run-2026-11-09-current/05-email-pending-password-success.png` |
+| Developer resets forgotten password | PASS — matching known/unknown confirmation copy; fresh link worked, prior session signed out, old password refused and new password accepted | `docs/uat/007/run-2026-11-09-current/08-reset-confirmation.png`, `docs/uat/007/run-2026-11-09-current/09-reset-success.png` |
+| Developer changes password while signed in | PASS — wrong current password refused, correct current password succeeded | `docs/uat/007/run-2026-11-09-current/04-name-password.png`, `docs/uat/007/run-2026-11-09-current/05-email-pending-password-success.png` |
+| Developer updates name and email | PASS — name saved, old email remained pending, explicit confirmation changed address; old-mailbox reset rejected | `docs/uat/007/run-2026-11-09-current/05-email-pending-password-success.png`, `docs/uat/007/run-2026-11-09-current/06-email-confirmed.png`, `docs/uat/007/run-2026-11-09-current/07-old-mailbox-reset-rejected.png` |
+| Developer deletes account and revokes keys | PASS with minor U2 — two apps named; wrong password and unavailable Kong refused; deletion signed out; keys 200→401; address registered again; last admin protected | `docs/uat/007/run-2026-11-09-current/10-delete-wrong-password.png`, `docs/uat/007/run-2026-11-09-current/11-gateway-refusal-stale-password.png`, `docs/uat/007/run-2026-11-09-current/12-account-deleted.png`, `docs/uat/007/run-2026-11-09-current/13-recreated-address.png`, `docs/uat/007/run-2026-11-09-current/14-last-admin.png` |
 
-UAT date: 2026-11-09. Full notes and evidence index:
-`docs/uat/007/run-2026-11-09-final/README.md`. Desktop journeys used 1280 px; the main signup
-journey was repeated at 390×844 using Tab, typed keys and Enter only, and Escape safely closed the
-delete dialog. Browser consoles were clean; no unexpected failed requests were observed. One minor
-finding (U1) remains open; there is no blocker or major, so the spec advances to `review`.
+All nine stories were walked again. U1/R3 is now verified fixed by a successful saved-settings
+send followed by removal: the environment banner returns and the success result disappears
+(`docs/uat/007/run-2026-11-09-current/16-u1-result-cleared.png`). R2 was also re-tested in the
+browser using a valid old-mailbox reset form opened before confirmation; submitting it after
+confirmation shows expiry and leaves the password unchanged. No blocker or major is open;
+status advances to `review`. U2 and U3 are transient minors and need no durable issues.
 
-Review-fix re-test, 2026-11-09: PASS. In Orca's built-in browser, normal sign-in succeeded; ten
-quick failed attempts for a disposable address returned 401 and the next returned 429 with the
-designed 15-minute message; a subsequent correct sign-in succeeded and the portal remained
-responsive. Admin Accounts, verified Profile, unknown-address reset confirmation and saved SMTP
-test/removal were smoked; U1 remains the only open minor. Evidence:
-`docs/uat/007/run-2026-11-09-review-retest/README.md`. No blocker or major is open, so status is
-`review`.
+The main signup journey used 390×844 mobile emulation with typed keys, Tab and Enter; Escape
+closed the deletion dialog safely. Desktop profile/reference/admin checks used 1280 px. Consoles
+were clean; observed failed requests were intentional negative cases. This run reused the healthy
+stack, so the fresh-build quickstart timing remains QA's 107.19 seconds. SMTP/API secret storage,
+raw-path rate-limit bypasses and concurrency retain QA's passing evidence; these internal checks
+were not inferred from browser screenshots. Settings were restored and the stack was stopped.
+
+Earlier UAT evidence remains in `run-2026-11-09-final/` and
+`run-2026-11-09-review-retest/`; their statements that U1 remained open are historical and are
+superseded by this re-test and QA's closure above.
 
 ## Review  _(tech-lead)_
 ### Re-review — 2026-11-09 at `1eefe69`
