@@ -4,6 +4,10 @@ import { execFileSync } from 'node:child_process';
 
 // Owns the Compose test stack. Run before the environment-path e2e suite:
 // pnpm exec playwright test --config tests/spec005.playwright.config.ts
+const apiUrl = process.env.SERVER_URL ?? 'http://localhost:4000';
+const adminUrl = process.env.KONG_ADMIN_URL ?? 'http://localhost:8001';
+const proxyUrl = process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000';
+const portalUrl = process.env.PORTAL_PUBLIC_URL ?? 'http://localhost:3000';
 const fresh = {
   ...process.env,
   ADMIN_EMAIL: '',
@@ -56,16 +60,13 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
     await expect(page.getByLabel('Setup token', { exact: true })).toHaveCount(
       0,
     );
+    expect((await request.get(`${apiUrl}/api/v1/health`)).ok()).toBe(true);
     expect(
-      (await request.get('http://localhost:4000/api/v1/health')).ok(),
-    ).toBe(true);
-    expect(
-      (await (await request.get('http://localhost:4000/api/v1/apis')).json())
-        .items,
+      (await (await request.get(`${apiUrl}/api/v1/apis`)).json()).items,
     ).toEqual([]);
     expect(
       (
-        await request.post('http://localhost:4000/api/auth/sign-up/email', {
+        await request.post(`${apiUrl}/api/auth/sign-up/email`, {
           data: {
             name: 'Premature developer',
             email: 'before-setup@example.com',
@@ -76,8 +77,7 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
     ).toBe(403);
     for (const entity of ['services', 'routes', 'plugins', 'consumers'])
       expect(
-        (await (await request.get(`http://localhost:8001/${entity}`)).json())
-          .data,
+        (await (await request.get(`${adminUrl}/${entity}`)).json()).data,
       ).toEqual([]);
     await page.getByLabel('Email', { exact: true }).fill('wizard@example.com');
     await page
@@ -170,7 +170,7 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
     ).items[0];
     expect(connection.managedBy).toBe('admin');
     const developer = await browser.newContext({
-      baseURL: 'http://localhost:3000',
+      baseURL: portalUrl,
     });
     try {
       expect(
@@ -191,7 +191,7 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
       const { app, credential } = await created.json();
       const traffic = async () =>
         (
-          await request.get('http://localhost:8000/sample/get', {
+          await request.get(`${proxyUrl}/sample/get`, {
             headers: { apikey: credential.key },
           })
         ).status();
@@ -260,7 +260,7 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
       const values: Record<string, unknown> = {};
       for (const entity of ['services', 'routes', 'plugins', 'consumers'])
         values[entity] = (
-          await (await request.get(`http://localhost:8001/${entity}`)).json()
+          await (await request.get(`${adminUrl}/${entity}`)).json()
         ).data.sort((a: { id: string }, b: { id: string }) =>
           a.id.localeCompare(b.id),
         );
@@ -268,7 +268,7 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
     };
     const beforeRemoval = await snapshot();
     const trafficBeforeRemoval = (
-      await request.get('http://localhost:8000/sample/get')
+      await request.get(`${proxyUrl}/sample/get`)
     ).status();
     // Test-only teardown of the published dependency; the product has no unpublish endpoint.
     compose([
@@ -289,9 +289,9 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
       ).status(),
     ).toBe(204);
     expect(await snapshot()).toEqual(beforeRemoval);
-    expect(
-      (await request.get('http://localhost:8000/sample/get')).status(),
-    ).toBe(trafficBeforeRemoval);
+    expect((await request.get(`${proxyUrl}/sample/get`)).status()).toBe(
+      trafficBeforeRemoval,
+    );
     expect(
       (await (await page.request.get('/api/v1/admin/gateways')).json()).items,
     ).toEqual([]);
@@ -399,9 +399,9 @@ test('JSO-405: first-load gateway outage retains import source fields', async ({
     await expect(
       page.getByRole('alert').filter({ hasText: 'Gateway unavailable' }),
     ).toBeVisible({ timeout: 5000 });
-    await expect(
-      page.getByLabel('OpenAPI file', { exact: true }),
-    ).toBeAttached({ timeout: 5000 });
+    await expect(page.getByLabel('OpenAPI file', { exact: true })).toBeAttached(
+      { timeout: 5000 },
+    );
   } finally {
     compose(['start', '--wait', 'kong']);
   }

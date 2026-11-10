@@ -798,3 +798,6 @@ for (const conflict of ['already-linked', 'has-acl'] as const) {
 
 // Spec 007 Compose-backed account lifecycle.
 import './account-security.test';
+
+// Spec 008 team journeys run in the Compose-backed root suite.
+import './teams.test';

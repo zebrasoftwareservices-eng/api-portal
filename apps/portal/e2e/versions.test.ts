@@ -44,15 +44,18 @@ test('012 AC1-4,6,9: real Kong versions, stable references, changelog, defaults 
     slug = `versions-${id}`;
   expect(
     (
-      await context.request.put(`http://localhost:8001/services/${id}`, {
-        data: { name: slug, url: 'http://httpbin:8080' },
-      })
+      await context.request.put(
+        `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${id}`,
+        {
+          data: { name: slug, url: 'http://httpbin:8080' },
+        },
+      )
     ).ok(),
   ).toBe(true);
   expect(
     (
       await context.request.post(
-        `http://localhost:8001/services/${id}/routes`,
+        `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${id}/routes`,
         {
           data: { paths: [`/${slug}`] },
         },
@@ -112,9 +115,12 @@ test('012 AC1-4,6,9: real Kong versions, stable references, changelog, defaults 
   await expect
     .poll(async () =>
       (
-        await context.request.get(`http://localhost:8000/${slug}/get`, {
-          headers: { apikey: key },
-        })
+        await context.request.get(
+          `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/${slug}/get`,
+          {
+            headers: { apikey: key },
+          },
+        )
       ).status(),
     )
     .toBe(200);
@@ -133,7 +139,7 @@ test('012 AC1-4,6,9: real Kong versions, stable references, changelog, defaults 
     );
     await page
       .getByRole('button', {
-        name: `Send get request to http://localhost:8000/${slug}/get`,
+        name: `Send get request to ${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/${slug}/get`,
         exact: true,
       })
       .click();
@@ -195,7 +201,7 @@ test('012 AC1-4,6,9: real Kong versions, stable references, changelog, defaults 
   const developer = await context.browser()!.newContext();
   try {
     const signed = await developer.request.post(
-      'http://localhost:3000/api/auth/sign-up/email',
+      `${process.env.PORTAL_PUBLIC_URL ?? 'http://localhost:3000'}/api/auth/sign-up/email`,
       {
         data: {
           name: 'Version reader',
@@ -206,7 +212,7 @@ test('012 AC1-4,6,9: real Kong versions, stable references, changelog, defaults 
     );
     expect(signed.status()).toBe(200);
     const refused = await developer.request.put(
-      `http://localhost:3000/api/v1/admin/apis/${slug}/latest-version`,
+      `${process.env.PORTAL_PUBLIC_URL ?? 'http://localhost:3000'}/api/v1/admin/apis/${slug}/latest-version`,
       {
         data: { version: '1.0.0' },
       },
@@ -264,7 +270,9 @@ test('012 AC1-4,6,9: real Kong versions, stable references, changelog, defaults 
   await page
     .getByRole('link', { name: `View version ${plusVersion}`, exact: true })
     .click();
-  await expect(page).toHaveURL(`http://localhost:3000${plusPath}`);
+  await expect(page).toHaveURL(
+    `${process.env.PORTAL_PUBLIC_URL ?? 'http://localhost:3000'}${plusPath}`,
+  );
   await expect(
     page.getByText(`You're reading version ${plusVersion}.`, { exact: false }),
   ).toBeVisible();
@@ -531,15 +539,18 @@ test('012 failure path: version upload cannot discard input before hydration', a
   const slug = `hydration-${id}`;
   expect(
     (
-      await context.request.put(`http://localhost:8001/services/${id}`, {
-        data: { name: slug, url: 'http://httpbin:8080' },
-      })
+      await context.request.put(
+        `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${id}`,
+        {
+          data: { name: slug, url: 'http://httpbin:8080' },
+        },
+      )
     ).ok(),
   ).toBe(true);
   expect(
     (
       await context.request.post(
-        `http://localhost:8001/services/${id}/routes`,
+        `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${id}/routes`,
         {
           data: { paths: [`/${slug}`] },
         },

@@ -588,3 +588,60 @@ it('refuses account deletion before gateway calls for the last Admin and preserv
   ]);
   expect(await connection.db.select().from(credentials)).toHaveLength(1);
 });
+
+it('rejects expired sessions and every non-admin management operation without database or gateway changes', async () => {
+  const invitation = await invite();
+  const snapshot = async () => ({
+    teams: await connection.client`select * from teams order by id`,
+    members:
+      await connection.client`select * from team_members order by team_id,user_id`,
+    invitations:
+      await connection.client`select * from team_invitations order by id`,
+    apps: await connection.client`select * from apps order by id`,
+    keys: await connection.client`select * from credentials order by id`,
+  });
+  for (const id of [member, reader, outsider, '']) {
+    for (const [method, path, payload] of [
+      [
+        'POST',
+        `/teams/${teamId}/invitations`,
+        { email: 'new@example.com', role: 'member' },
+      ],
+      ['DELETE', `/teams/${teamId}/invitations/${invitation.id}`, undefined],
+      ['PATCH', `/teams/${teamId}/members/${admin}`, { role: 'read-only' }],
+      ['DELETE', `/teams/${teamId}/members/${admin}`, undefined],
+    ] as const) {
+      const before = await snapshot();
+      const denied = await request(method, path, id, payload);
+      expect(denied.statusCode, denied.body).toBe(
+        !id ? 401 : id === outsider ? 404 : 403,
+      );
+      expect(denied.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(await snapshot()).toEqual(before);
+      expect(adapter.ensureConsumer).not.toHaveBeenCalled();
+      expect(adapter.issueCredential).not.toHaveBeenCalled();
+      expect(adapter.revokeCredential).not.toHaveBeenCalled();
+      expect(adapter.deleteConsumer).not.toHaveBeenCalled();
+    }
+  }
+});
+
+it('refuses last-admin demotion, self-removal and leave without changing membership', async () => {
+  for (const method of ['PATCH', 'DELETE'] as const) {
+    const denied = await request(
+      method,
+      `/teams/${teamId}/members/${admin}`,
+      admin,
+      method === 'PATCH' ? { role: 'read-only' } : undefined,
+    );
+    expect(denied.statusCode).toBe(409);
+    expect(denied.json().type).toBe('/problems/team-needs-admin');
+  }
+  expect(
+    (await request('GET', `/teams/${teamId}`))
+      .json()
+      .members.find((m: { userId: string }) => m.userId === admin).role,
+  ).toBe('admin');
+});
