@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
 import { Button, Card, PasswordInput } from '@portal/ui';
 import { usePortal } from './providers';
 import { auth, retrySeconds } from '../lib/client';
@@ -149,49 +148,6 @@ export function VerificationBanner({ user }: { user: User | null }) {
       <ResendVerification email={user.email} />
       <a href="/profile">Wrong address? Change it in your profile.</a>
     </div>
-  );
-}
-export function AdminNav({
-  current,
-}: {
-  current: 'apis' | 'mail' | 'accounts';
-}) {
-  const router = useRouter();
-  const items = [
-    ['apis', 'APIs', '/admin/apis'],
-    ['mail', 'Mail', '/admin/settings/mail'],
-    ['accounts', 'Accounts', '/admin/settings/accounts'],
-  ] as const;
-  return (
-    <>
-      <nav className="admin-tabs" aria-label="Admin section">
-        {items.map(([key, label, url]) => (
-          <a
-            key={key}
-            href={url}
-            aria-current={key === current ? 'page' : undefined}
-          >
-            {label}
-          </a>
-        ))}
-      </nav>
-      <label className="admin-select">
-        Admin section
-        <select
-          value={current}
-          onChange={(e) => {
-            const item = items.find((i) => i[0] === e.target.value);
-            if (item) router.push(item[2]);
-          }}
-        >
-          {items.map(([key, label]) => (
-            <option key={key} value={key}>
-              {label}
-            </option>
-          ))}
-        </select>
-      </label>
-    </>
   );
 }
 export function SecretReplacementField({

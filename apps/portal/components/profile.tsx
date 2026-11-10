@@ -125,6 +125,7 @@ export function Profile({
       setErrors((p) => ({ ...p, deletion: 'Enter your password.' }));
       return;
     }
+    setErrors((p) => ({ ...p, deletion: '' }));
     await run('delete', async () => {
       const { error, response } = await api.DELETE('/v1/me', {
         body: { password: deletion },

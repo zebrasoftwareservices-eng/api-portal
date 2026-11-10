@@ -167,7 +167,6 @@ test('007 U2: a gateway refusal after a correct-password retry clears the prior 
     .getByRole('button', { name: 'Delete account', exact: true })
     .click();
   await expect(dialog.getByText(/Gateway unavailable/)).toBeVisible();
-  test.fail(true, 'Known minor U2: stale wrong-password field error');
   await expect(dialog.getByText(/This password is incorrect/)).toHaveCount(0);
 });
 
@@ -214,7 +213,6 @@ test('007 U3: saving corrected SMTP settings clears the previous test error', as
           ).saved.port,
       )
       .toBe(1025);
-    test.fail(true, 'Known minor U3: stale SMTP test error');
     await expect(page.getByText(/Can't reach the mail server/)).toHaveCount(0);
   } finally {
     await context.request.delete('/api/v1/admin/settings/mail');

@@ -49,6 +49,9 @@ describe('first admin setup', () => {
     });
     render(<SetupForm setupTokenRequired />);
     const user = await fill();
+    expect(screen.getByLabelText('Password')).toHaveAccessibleDescription(
+      'At least 8 characters.',
+    );
     expect(screen.getByLabelText('Setup token')).toHaveAttribute(
       'spellcheck',
       'false',

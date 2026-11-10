@@ -15,7 +15,7 @@ import type { Problem } from '../lib/types';
 import { usePortal } from './providers';
 import { useResource } from './use-resource';
 import { Field, focusInvalid } from './field';
-import { AdminNav, emailValid, SecretReplacementField } from './account-shared';
+import { emailValid, SecretReplacementField } from './account-shared';
 import { ProblemAlert } from './problem-alert';
 type Request = components['schemas']['SaveMailSettingsRequest'];
 const defaults: Request = {
@@ -59,6 +59,7 @@ export function MailSettings() {
     setSecret(undefined);
     setSecretKey((n) => n + 1);
     setTestResult('');
+    setTestProblem(undefined);
   }, [resource.data]);
   function change(key: keyof Request, value: string | number) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -79,7 +80,6 @@ export function MailSettings() {
     JSON.stringify(form) !== JSON.stringify(baseline) || secret !== undefined;
   return (
     <div className="stack form">
-      <AdminNav current="mail" />
       <PageHeader
         title="Mail"
         description="How the portal sends verification and password reset emails."

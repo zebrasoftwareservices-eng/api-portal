@@ -5,7 +5,6 @@ import type { components } from '@portal/sdk';
 import { Button, Card, Input, PageHeader, Switch, toast } from '@portal/ui';
 import { quietApi, networkProblem } from '../lib/client';
 import type { Problem } from '../lib/types';
-import { AdminNav } from './account-shared';
 import { useResource } from './use-resource';
 import { ProblemAlert } from './problem-alert';
 import { focusInvalid } from './field';
@@ -44,7 +43,6 @@ export function AccountSettings() {
   }, [resource.data]);
   return (
     <div className="stack form">
-      <AdminNav current="accounts" />
       <PageHeader
         title="Accounts"
         description="Email verification and limits that protect sign-in and inboxes."

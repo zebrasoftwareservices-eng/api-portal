@@ -261,7 +261,6 @@ export function AppDetail({ appId }: { appId: string }) {
             message={
               problem.type.endsWith('/email-not-verified') ? (
                 <>
-                  {' '}
                   <p>{problem.detail}</p>
                   <ResendVerification email={user?.email || ''} />
                 </>

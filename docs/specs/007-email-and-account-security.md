@@ -409,8 +409,8 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [x] [qa] Playwright journeys for forgot/reset password, profile and admin settings; update existing e2e helpers that sign up and create apps (users are unverified by default but the setting is off, so they should still pass).
 - [x] [backend] Merge `origin/main` into this branch (108 commits behind, 26 conflicting files) with a merge commit, no rebase. Resolve every conflict, frontend files included, keeping both sides' behaviour: renumber this spec's migration after main's and regenerate its snapshot and journal, merge `openapi.yaml` and regenerate `packages/sdk`, merge compose/env, and regenerate `pnpm-lock.yaml` with `pnpm install`. Then `pnpm lint`, `pnpm typecheck` and `pnpm test` pass, and `node scripts/factory.mjs` still works after main's factory changes. Push the branch.
 - [x] [backend] Fix: let a developer delete their account when no gateway is connected. `deleteAccount` must not refuse with "gateway didn't respond" when `connection.load()` returns no row; return the stored-token problem when the token can't be decrypted; add server tests through `DELETE /v1/me` for both (Merge review M1).
-- [ ] [frontend] Fix: show one admin navigation (APIs · Gateways · Mail · Accounts) on every admin page, instead of main's `AdminNav` and this spec's `AdminNav` stacked on top of each other (Merge review M2).
-- [ ] [frontend] Fix: remove "the portal can't reset passwords yet" from the first-admin password hint in `setup-form.tsx` (U4; Merge review M3).
+- [x] [frontend] Fix: show one admin navigation (APIs · Gateways · Mail · Accounts) on every admin page, instead of main's `AdminNav` and this spec's `AdminNav` stacked on top of each other (Merge review M2).
+- [x] [frontend] Fix: remove "the portal can't reset passwords yet" from the first-admin password hint in `setup-form.tsx` (U4; Merge review M3).
 
 ## UX  _(ui-designer)_
 Design: [docs/design/007-email-and-account-security.md](../design/007-email-and-account-security.md).
@@ -440,6 +440,13 @@ No new tokens; one shadcn component (`Switch`) and a few small portal components
   `autocomplete` values, no per-second announcements) and the 375px and 1280px layouts are in §7–§8.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Frontend merge-review fixes — 2026-11-10
+- M2: the layout's shared `AdminNav` now provides APIs, Gateways, Mail and Accounts on every admin route, including the labelled mobile select. Removed the duplicate navigation from API, mail and account pages; settings routes and nested API routes identify their current section with `aria-current`.
+- M3 / U4: the first-admin password hint now says "At least 8 characters." Removed the stray whitespace in App detail's verification alert while touching this UI.
+- U2: clear the delete-password field error on each valid submit, so a correct-password retry displays only the current gateway/last-admin refusal. U3: clear the previous SMTP test error along with the test success when saved settings change. Marked U2/U3 fixed as requested; the current factory CLI has no `linear bug … done` command.
+- Added six navigation component regressions, layout/page checks for a single navigation, two wrong-password retry cases and a corrected-SMTP-save regression; the setup test asserts the corrected password hint. Removed the U2/U3 expected-failure markers from the existing Playwright cases so QA must observe passing assertions.
+- Validation: `pnpm lint` (7/7 tasks), `pnpm typecheck` (12/12 tasks) and `pnpm test` (12/12 tasks; 223 portal tests) pass. Full tests needed execution outside the sandbox for listening sockets; logs: `/tmp/007-frontend-lint.log`, `/tmp/007-frontend-typecheck.log`, `/tmp/007-frontend-test-unrestricted.log`. Browser/Compose tests were not rerun in this frontend stage (no running quickstart stack); QA should rerun U2/U3 and inspect the four-section navigation at desktop/mobile sizes. Spec status and approval gates are unchanged.
 
 ### Backend merge-review fix M1 — 2026-11-10
 - Resolve the gateway once for account deletion. With no connection, skip health and consumer calls and remove the account and local apps; an unreadable stored token returns `storedTokenUnavailable()` before any deletion. Existing connected/disabled gateway revocation and outage behavior remain covered.
@@ -779,7 +786,7 @@ Only tests and this spec changed; application code was not modified.
   entire test inherited a 30-second deadline. The first browser run exhausted that total
   deadline. Set the test budget to 90 seconds, keeping each batch request timeout at 20 seconds.
 
-- [ ] **U2 — Delete dialog retains the wrong-password error after a correct-password retry (minor, frontend).**
+- [x] **U2 — Delete dialog retains the wrong-password error after a correct-password retry (minor, frontend).**
   In Profile → Delete account, submit a wrong password, then enter the correct password. Stop
   local Kong and submit again. The gateway-unavailable refusal correctly preserves the account,
   but the prior “This password is incorrect” message remains beside the new error even though
@@ -799,7 +806,7 @@ Only tests and this spec changed; application code was not modified.
   then returned 401 for both and removed both consumers. Evidence:
   `docs/uat/007/run-2026-11-10-post-merge/24-u2-gateway-refusal-stale-password.png` (806×812).
 
-- [ ] **U3 — SMTP test error persists after corrected settings are saved (minor, frontend).**
+- [x] **U3 — SMTP test error persists after corrected settings are saved (minor, frontend).**
   Save `mailpit:1` with None security and send a test, producing the unreachable error.
   Change port to `1025` and save. The old “Can't reach the mail server” error remains under
   the test form without indicating that it belongs to the previous settings. Expected:

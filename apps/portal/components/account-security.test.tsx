@@ -11,6 +11,7 @@ import { SecretReplacementField, ResendVerification } from './account-shared';
 import { AccountSettings } from './account-settings';
 import { MailSettings } from './mail-settings';
 import { Profile } from './profile';
+import AdminLayout from '../app/admin/layout';
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
   reset: vi.fn(),
@@ -28,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   setReveal: vi.fn(),
 }));
 vi.mock('next/navigation', () => ({
+  usePathname: () => '/admin/settings/mail',
   useRouter: () => ({
     replace: mocks.replace,
     refresh: mocks.refresh,
@@ -444,3 +446,128 @@ it('clears only the current password after INVALID_PASSWORD', async () => {
     ),
   ).toBeInTheDocument();
 });
+
+it.each([
+  ['mail', MailSettings],
+  ['accounts', AccountSettings],
+] as const)(
+  'shows only the shared admin navigation on the %s page',
+  (_, Component) => {
+    render(
+      <AdminLayout>
+        <Component />
+      </AdminLayout>,
+    );
+    expect(
+      screen.getAllByRole('navigation', { name: 'Admin section' }),
+    ).toHaveLength(1);
+    for (const name of ['APIs', 'Gateways', 'Mail', 'Accounts']) {
+      expect(screen.getAllByRole('link', { name })).toHaveLength(
+        1,
+      );
+    }
+    expect(
+      screen.getAllByRole('combobox', { name: 'Admin section' }),
+    ).toHaveLength(1);
+  },
+);
+it('clears a prior SMTP test error after corrected settings are saved', async () => {
+  const smtp = {
+    host: 'mailpit',
+    port: 1,
+    security: 'none',
+    username: '',
+    hasPassword: false,
+    senderName: 'Portal',
+    senderAddress: 'portal@example.com',
+  };
+  mocks.get.mockResolvedValue({
+    data: { source: 'saved', saved: smtp, environment: null },
+  });
+  mocks.post.mockResolvedValue({
+    error: {
+      type: '/problems/smtp-unreachable',
+      title: "Can't reach the mail server",
+      status: 422,
+    },
+  });
+  mocks.put.mockResolvedValue({
+    data: {
+      source: 'saved',
+      saved: { ...smtp, port: 1025 },
+      environment: null,
+    },
+  });
+  const actor = userEvent.setup();
+  render(<MailSettings />);
+  await actor.click(
+    await screen.findByRole('button', { name: 'Send test email' }),
+  );
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    "Can't reach the mail server",
+  );
+  await actor.clear(screen.getByLabelText('Port'));
+  await actor.type(screen.getByLabelText('Port'), '1025');
+  await actor.click(screen.getByRole('button', { name: 'Save mail settings' }));
+  await waitFor(() =>
+    expect(mocks.put).toHaveBeenCalledWith(
+      '/v1/admin/settings/mail',
+      expect.objectContaining({
+        body: expect.objectContaining({ port: 1025 }),
+      }),
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument(),
+  );
+  mocks.post.mockResolvedValue({ data: { sent: true } });
+  await actor.click(screen.getByRole('button', { name: 'Send test email' }));
+  expect(
+    await screen.findByText(/Test email sent .* using the saved settings/),
+  ).toBeInTheDocument();
+});
+it.each([
+  ['gateway-unavailable', 503, 'Gateway unavailable'],
+  ['last-admin', 409, "You're the only admin"],
+])(
+  'clears the wrong-password error when a retry is refused with %s',
+  async (code, status, title) => {
+    mocks.del
+      .mockResolvedValueOnce({
+        error: {
+          type: '/problems/invalid-password',
+          status: 403,
+          title: 'Incorrect password',
+        },
+        response: new Response(),
+      })
+      .mockResolvedValueOnce({
+        error: {
+          type: `/problems/${code}`,
+          status,
+          title,
+          detail: 'Your account was not deleted.',
+        },
+        response: new Response(),
+      });
+    const actor = userEvent.setup();
+    render(<Profile />);
+    await screen.findByLabelText('Name');
+    await actor.click(screen.getByRole('button', { name: 'Delete account…' }));
+    const input = screen.getByLabelText('Password', { exact: true });
+    await actor.type(input, 'wrong-password');
+    await actor.click(screen.getByRole('button', { name: 'Delete account' }));
+    expect(
+      await screen.findByText(/This password is incorrect/),
+    ).toBeInTheDocument();
+    await actor.type(input, 'correct-password');
+    await actor.click(screen.getByRole('button', { name: 'Delete account' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(title);
+    expect(
+      screen.queryByText(/This password is incorrect/),
+    ).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+    expect(mocks.replace).not.toHaveBeenCalled();
+  },
+);
