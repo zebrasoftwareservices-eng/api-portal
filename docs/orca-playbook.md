@@ -62,30 +62,44 @@ Either way the product manager writes the spec and the coordinator runs
 write a spec by hand and run `linear-init` yourself.
 
 ## Tracking in Linear
-Project **API Portal** in Linear holds the whole SDLC:
+Project **API Portal** holds one feature issue per spec. The spec file is the task board.
+Agents do not call `orca linear` themselves.
 
-| Linear | What it is | Who moves it |
+| What | Where it lives | Command |
 | --- | --- | --- |
-| Feature issue (label Feature) | One per spec, in a release milestone (v0.1, v0.2, v0.3) | Coordinator, from the spec status; stage summaries are comments |
-| Spec task checkboxes | Every implementation and QA task; no Linear issue per task | The owning worker ticks it and reports the stage summary on the feature |
-| Bug sub-issues (label Bug) | Only durable blocker/major, cross-owner/release, or post-spec bugs | Tester creates and closes; developer moves to In Review when fixed |
-| Review sub-issues (label Code Review) | Only durable blocking findings that outlive the current review loop | Tech lead creates and closes |
-| Follow-ups (Backlog) | Out-of-scope work any agent spots | Whoever found it creates it; you prioritize |
+| Feature issue (label Feature) | Linear. Status follows the spec, forward only | `node scripts/factory.mjs track 001 sync` or `set-status` |
+| Tasks | Spec checkboxes. No issue per task | `node scripts/factory.mjs linear task 001 done\|open "<text>"` |
+| Bugs and durable review findings | Spec checkboxes, plus a child issue for a blocker or major | `linear bug 001 done\|open "<text>"` and `linear issue 001 bug\|review` |
+| Follow-ups | Spec, under Follow-ups | `linear issue 001 follow-up --title "…"` |
+| Stage summary | One comment on the feature issue | Coordinator: `track 001 note <stage>` |
 
-Every agent works in Linear like a team member, so stage summaries and durable issues update as
-the work happens. The coordinator only reconciles the feature issue: `track sync` fills in
-anything an agent missed and never moves an issue backwards. Legacy stage/task issues remain as
-history but are not required or created for new specs.
+Feature status: Backlog = draft · Todo = ready · In Progress = design, build, test ·
+In Review = review or waiting to merge · Done = merged.
 
-Feature status: Backlog = spec draft · Todo = approved · In Progress = design, build, test ·
-In Review = code review or waiting to merge · Done = merged.
-
-Useful commands:
+How an agent reads and updates status:
 ```bash
-node scripts/factory.mjs track 001 sync     # re-sync Linear with the spec (safe any time)
-orca linear issue JSO-117 --comments        # the feature and its stage summaries
+node scripts/factory.mjs linear read 001 --json          # open and done tasks and bugs; no comments
+node scripts/factory.mjs linear read 001 --live          # same, plus the feature issue's state name
+node scripts/factory.mjs linear read --issue JSO-117 --json
+                                                         # intake: title, description, state
+node scripts/factory.mjs linear task 001 done "Add the widget"
+                                                         # tick the task; a keyed line moves to In Review
+node scripts/factory.mjs linear task 001 open "JSO-140"  # untick; keyed line moves to In Progress
+node scripts/factory.mjs linear bug 001 done "JSO-140"   # QA verified; keyed issue moves to Done
+node scripts/factory.mjs linear bug 001 open "JSO-140"   # still broken; keyed issue moves to In Progress
+printf '%s\n' "steps" | node scripts/factory.mjs linear issue 001 bug \
+  --severity major --title "Widget snaps" --owner backend
+printf '%s\n' "not this release" | node scripts/factory.mjs linear issue 001 follow-up \
+  --title "Export later"
 ```
-Linear problems never stop the factory: the coordinator logs a warning and you can re-sync later.
+The match must hit one checkbox line. An exact line or key wins over a shorter substring.
+`linear task done` moves a keyed durable issue to **In Review**. `linear bug done` moves it to
+**Done**. Neither command moves the feature issue. A minor is refused. A follow-up is written
+into the spec and does not create a Linear issue unless you pass `--create`.
+
+If Linear rejects a required create, the command writes the finding under **Deferred Linear**
+and exits 0. The factory keeps going. `track sync` never moves the feature issue backwards.
+Legacy stage and task issues stay as history and are not created for new specs.
 
 **Commits and PRs in Linear** need the repo on GitHub plus Linear's GitHub integration
 (Linear → Settings → Integrations → GitHub). The branch name contains the feature key, every
@@ -96,11 +110,13 @@ Resume after a stop (gate, limit, restart): open the spec's worktree in Orca, st
 Code and type `/factory 001` (Codex: `$factory 001`).
 
 ## Real-user testing in the browser
-After QA's automated tests pass, the **user-tester** (Codex) starts the quickstart and uses
-the portal in Orca's built-in browser like a real developer: sign up, read the docs, create an
-app, copy the key, try a call, revoke it. It also checks mobile size, keyboard use, error states
-and console errors, and saves screenshots in `docs/uat/<spec-id>/`. It records every problem in
-the spec and creates Linear bugs only for durable work. You can watch its browser tab in Orca.
+After QA's one full test pass, the **user-tester** (Codex) reuses the stack QA left up. It
+walks each user-visible acceptance criterion once, then one mobile pass and one keyboard pass
+of the main journey. On a retest it walks only the failed rows. The report is
+`docs/uat/<spec-id>/report.md`. A screenshot is kept only for a failure, plus one desktop
+and one mobile shot of the main success, at most 12 images in that one folder. Those images
+are not committed. Minor findings stay in the spec. A blocker or major is filed with
+`node scripts/factory.mjs linear issue <id> bug`. You can watch its browser tab in Orca.
 
 ## Deploys (GitHub + Vercel)
 - Repo: private `github.com/zebrasoftwareservices-eng/api-portal`. Orca branches new
@@ -115,13 +131,28 @@ the spec and creates Linear bugs only for durable work. You can watch its browse
   project's Deployment Protection settings when you want the site public.
 
 ## Your two gates
-1. **Spec approval** (Linear: the Requirements issue, assigned to you). The coordinator stops
-   at `draft`. Read the spec, answer its open questions, run
+1. **Spec approval.** The coordinator stops at `draft`. The feature issue stays in Backlog until
+   you move the spec. Read the spec, answer its open questions, run
    `node scripts/factory.mjs set-status 001 ready`, commit, and run `/factory 001` again.
-2. **Merge** (Linear: the Release issue, assigned to you). The coordinator stops at `approved`.
+2. **Merge.** The coordinator stops at `approved`. The feature issue is In Review.
    Review the diff in Orca, push, open the PR with `Fixes JSO-117` in the description
    (the coordinator prints the exact `gh pr create` command), merge, then run
    `node scripts/factory.mjs set-status 001 done`.
+
+## Grok beside the factory
+Grok researches once before a spec exists, and reviews the board when you ask. Claude still
+designs and reviews. Codex still builds and tests. The coordinator does not launch Grok.
+
+```bash
+node scripts/factory.mjs prompt researcher --idea "AWS API Gateway REST adapter"
+node scripts/factory.mjs prompt researcher --linear JSO-130
+node scripts/factory.mjs prompt researcher --board
+```
+
+Paste the prompt into Grok. The brief lands in `docs/research/` (see `docs/research/README.md`).
+Start the factory after the brief exists. The product manager reads it and writes the spec.
+A board review is one page. Follow-ups stay in the spec. Run it when you ask, or once on a
+weekday while a Grok session is open.
 
 ## Play one role by hand
 ```bash
@@ -141,7 +172,15 @@ Paste it into any agent tab in that worktree (Orca: new tab → Claude Code or C
 | review | tech-lead: code review | Claude | status: approved (or back to building) |
 | approved | **Elango merges** | — | status: done |
 
-After three trips back to `building`, the coordinator stops and asks you.
+After three trips back to `building`, the coordinator stops and asks you. A minor finding or a
+review suggestion does not send the spec back.
+
+## The coordinator ends its turn
+The coordinator starts the workers for a stage and ends its turn. The tab stays open so Orca
+can wake it when a worker finishes or asks a question. It does not poll, so Claude is not
+spent while Codex builds or tests. Closing that tab is different: use `resume` below.
+Workers write a short summary in `docs/specs/log/<id>.md`. The coordinator posts it to Linear
+when it wakes.
 
 ## When a worker fails
 Open the worker's terminal in Orca to read its error, or run
@@ -164,12 +203,13 @@ Open the worker's terminal in Orca to read its error, or run
 
 ## Cleaning up finished workers
 A worker with a green check is done: its work is committed in the worktree and its summary is
-on its Linear issue. Close that one tab with its ✕. Never close the coordinator's tab, a worker
-that is still running, or the whole workspace while a spec is in progress: that stops them.
+in `docs/specs/log/`. Close that one tab with its ✕. Leave the coordinator's tab open while a
+spec is in progress, even after it has ended its turn. Closing it, or closing a worker that is
+still running, stops the wake.
 
-## If the coordinator stops
-If the coordinator's tab was closed, Orca restarted, or the tab shows a plain shell prompt
-instead of Claude, restart it from any terminal in the repo:
+## If the coordinator tab was closed
+Ending a turn while workers run is expected. Resume only if the tab was closed, Orca restarted,
+or the tab shows a plain shell prompt instead of Claude:
 ```bash
 cd ~/Documents/ZSS/api-portal && node scripts/factory.mjs resume 001
 ```
@@ -186,7 +226,7 @@ Role instructions live in `factory/roles/*.md`. After editing one, run
 - `orca.yaml` — setup script for each new worktree (`pnpm install` once `package.json` exists)
 - `.worktreeinclude` — gitignored files (`.env`) copied into new worktrees
 - `AGENTS.md` — shared instructions (Codex and Antigravity read it; `CLAUDE.md` imports it)
-- `factory/roles/` — the seven roles (source); `.claude/agents/`, `.codex/agents/` are generated
+- `factory/roles/` — the seven loop roles plus the Grok researcher (source); `.claude/agents/`, `.codex/agents/` are generated
 - `.agents/skills/factory/` — the coordinator skill (copied to `.claude/skills/factory/`)
 - `factory/claude-settings.json` — Claude Code permissions (copied to `.claude/settings.json`)
 - `factory.config.json` — which agent plays which role, and the Linear workspace, team, project and states

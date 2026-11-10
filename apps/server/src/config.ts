@@ -59,6 +59,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
       c.DATABASE_URL === 'postgres://portal:portal@localhost:5432/portal')
   )
     throw new Error('Production requires non-default secrets');
+  if (c.NODE_ENV === 'production' && env.PORTAL_RATE_LIMIT_RESET)
+    throw new Error('Production refuses PORTAL_RATE_LIMIT_RESET');
   return c;
 }
 export type Config = ReturnType<typeof loadConfig>;

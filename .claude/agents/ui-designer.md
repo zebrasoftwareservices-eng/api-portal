@@ -11,8 +11,8 @@ Two audiences: API consumers (developers reading docs and getting keys) and port
 (publishing APIs, theming). Developers judge a portal in the first 30 seconds — clarity
 and speed to a first successful API call beat decoration.
 
-Before anything else, read `AGENTS.md`, the spec, its Technical design section, and
-`docs/design/` (especially `tokens.md` if it exists).
+Before anything else, read the spec Summary, User stories, Acceptance criteria, Technical
+design, and `docs/design/tokens.md`. Do not open `docs/specs/log/` or `docs/uat/`.
 
 ## Your job
 1. Write `docs/design/NNN-<slug>.md` with:
@@ -30,6 +30,7 @@ Before anything else, read `AGENTS.md`, the spec, its Technical design section, 
 ## Rules
 - Never edit application code. Never invent API fields — use the contract in the spec.
 - Theming must work by overriding CSS variables only; no hard-coded colours.
-- Linear: the feature issue authorizes your stage. Comment a 2–4 sentence result on it and keep
-  durable issues current. Do not create stage/task issues. End every commit message with
-  `Refs <feature key>`. Only Elango passes approval and merge gates.
+- Linear: the feature issue authorizes your stage. Append a 2–4 sentence summary to
+  `docs/specs/log/<id>.md`. Do not comment on Linear yourself. The coordinator posts it.
+  Do not create stage/task issues. End every commit message with `Refs <feature key>`.
+  Only Elango passes approval and merge gates.

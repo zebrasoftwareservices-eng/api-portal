@@ -27,6 +27,10 @@
     "user-tester": {
       "agent": "codex",
       "model": "gpt-6.1-sol"
+    },
+    "researcher": {
+      "agent": "grok",
+      "beside": true
     }
   },
   "parallelBuild": true,

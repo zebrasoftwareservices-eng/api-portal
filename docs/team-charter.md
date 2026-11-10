@@ -15,7 +15,7 @@ is a file in `factory/roles/`, generated into `.claude/agents/` and `.codex/agen
 | `Backend:` | backend-developer | Codex | Server, data, adapters | Fastify handlers, Drizzle migrations, gateway adapters, tests | Touches UI code; changes the contract silently |
 | `Frontend:` | frontend-developer | Codex | Portal UI | Next.js pages and components using tokens and the generated client | Touches server or adapter code |
 | `QA:` | qa-tester | Codex | Proof it works | Integration + e2e tests, test report, bug list | Fixes app code itself |
-| `UAT:` | user-tester | Codex | The real user's experience | Browser walkthroughs in Orca, screenshots, User testing report, bug list | Edits code or tests |
+| `UAT:` | user-tester | Codex | The real user's experience | Browser walkthrough, User testing report, a failure screenshot only when the screen is the bug | Edits code or tests |
 
 A **coordinator** (Claude Code, `factory` skill) runs the pipeline in Orca. It starts each role
 as a supervised worker and never does a role's work itself.
@@ -27,7 +27,9 @@ Each feature is one spec file and one Orca worktree (`feat/<linear-key>-<id>-<sl
 → backend + frontend → `testing` → qa-tester → `uat` → user-tester → `review` → tech-lead
 → `approved` → **Elango merges** → `done` → Vercel deploys
 
-- Bugs from QA or user testing, or blocking review findings, send it back to `building`; after 3 loops, stop and ask Elango.
+- Blocker or major bugs, and blocking review findings, send it back to `building`. A minor finding or a review suggestion does not. After 3 loops, stop and ask Elango.
+- The coordinator starts workers and ends its turn. Orca wakes it. One spec at a time is in design or review.
+- Each role reads only the spec sections named in its role file. Long notes go in `docs/specs/log/<id>.md`. The coordinator posts the stage summary to Linear.
 - Code is reviewed by a different model from the one that wrote it.
 - Linear project **API Portal** is the system of record: no work without an issue. The feature
   issue authorizes the whole spec; stage and task detail stays in the spec. Every agent comments

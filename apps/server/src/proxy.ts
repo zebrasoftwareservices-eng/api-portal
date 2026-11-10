@@ -56,16 +56,25 @@ export function resolveTarget(target: string, rows: PublishedApi[]) {
   }
   return null;
 }
+export function tryItResetToken(env: NodeJS.ProcessEnv, optionsToken?: string) {
+  if (env.NODE_ENV === 'production') return undefined;
+  return optionsToken || env.PORTAL_RATE_LIMIT_RESET || undefined;
+}
 export async function registerProxy(
   server: FastifyInstance,
   db: Database,
   adapterFor: AdapterFor,
   fetcher: typeof fetch = fetch,
+  options: { resetToken?: string } = {},
 ) {
+  // A new generation abandons the previous in-memory buckets without a restart.
+  let rateGeneration = 0;
+  const resetToken = tryItResetToken(process.env, options.resetToken);
   await server.register(async (app) => {
     await app.register(rateLimit, {
       max: 60,
       timeWindow: '1 minute',
+      keyGenerator: (request) => `${rateGeneration}:${request.ip}`,
       errorResponseBuilder: () =>
         new Problem(
           429,
@@ -198,5 +207,13 @@ export async function registerProxy(
         }
       },
     });
+  });
+  if (!resetToken) return;
+  // Outside the rate-limited context so a full bucket can still be cleared.
+  server.post('/api/v1/test/reset-try-it-limit', async (request, reply) => {
+    if (request.headers['x-portal-rate-limit-reset'] !== resetToken)
+      return reply.code(404).send();
+    rateGeneration += 1;
+    return reply.code(204).send();
   });
 }

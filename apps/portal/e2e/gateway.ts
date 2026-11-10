@@ -326,46 +326,28 @@ test('AC 6: server boots while Kong is down and the next reconcile repairs acces
   ).toHaveLength(1);
 });
 
+async function resetTryItLimit(request: {
+  post: (
+    url: string,
+    options: { headers: Record<string, string> },
+  ) => Promise<{ status: () => number }>;
+}) {
+  const port = process.env.PORTAL_API_PORT ?? '4000';
+  const token = process.env.PORTAL_RATE_LIMIT_RESET ?? 'local-rate-limit-reset';
+  const response = await request.post(
+    `http://127.0.0.1:${port}/api/v1/test/reset-try-it-limit`,
+    { headers: { 'x-portal-rate-limit-reset': token } },
+  );
+  expect(response.status()).toBe(204);
+}
+
 test('JSO-169: public ingress cannot rotate a client rate-limit budget with forged XFF', async ({
   request,
 }) => {
   test.setTimeout(120_000);
-  // Other browser journeys use this same socket address. Reset the server's
-  // in-memory buckets so this assertion starts with exactly 60 available calls.
-  execFileSync(
-    'docker',
-    [
-      'compose',
-      ...(process.env.QA_COMPOSE_PROJECT
-        ? ['-p', process.env.QA_COMPOSE_PROJECT]
-        : []),
-      '-f',
-      'deploy/docker-compose.yml',
-      ...(process.env.QA_COMPOSE_OVERRIDE ||
-      process.env.SPEC005_COMPOSE_OVERRIDE
-        ? [
-            '-f',
-            (process.env.QA_COMPOSE_OVERRIDE ||
-              process.env.SPEC005_COMPOSE_OVERRIDE)!,
-          ]
-        : []),
-      'restart',
-      'server',
-    ],
-    { stdio: 'ignore' },
-  );
-  await expect
-    .poll(
-      async () => {
-        try {
-          return (await request.get('/api/v1/health')).status();
-        } catch {
-          return 0;
-        }
-      },
-      { timeout: 60_000 },
-    )
-    .toBe(200);
+  // Other journeys share this server process. Drop the in-memory buckets without
+  // restarting it, including when a worktree is not on the default Compose project.
+  await resetTryItLimit(request);
   try {
     const suffix = crypto.randomUUID().replaceAll('-', '');
     const call = (client: string) =>
@@ -396,23 +378,6 @@ test('JSO-169: public ingress cannot rotate a client rate-limit budget with forg
       );
     }
   } finally {
-    // Do not leave the shared browser client's budget exhausted for later tests.
-    execFileSync(
-      'docker',
-      ['compose', '-f', 'deploy/docker-compose.yml', 'restart', 'server'],
-      { stdio: 'ignore' },
-    );
-    await expect
-      .poll(
-        async () => {
-          try {
-            return (await request.get('/api/v1/health')).status();
-          } catch {
-            return 0;
-          }
-        },
-        { timeout: 60_000 },
-      )
-      .toBe(200);
+    await resetTryItLimit(request);
   }
 });
