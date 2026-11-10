@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -407,6 +407,7 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [x] [qa] AC 8: 10 failed sign-ins then 429 with `Retry-After`; fourth reset and fourth verification request give 429 with no extra Mailpit message, and the reset page still confirms; an admin change applies to the next request.
 - [x] [qa] AC 9: two apps with live keys → delete → both keys 401 in Kong, no consumer tagged with those apps, signed out, can't sign in, same address can sign up again; Kong stopped → 503 with keys still working; only admin → 409.
 - [x] [qa] Playwright journeys for forgot/reset password, profile and admin settings; update existing e2e helpers that sign up and create apps (users are unverified by default but the setting is off, so they should still pass).
+- [ ] [backend] Merge `origin/main` into this branch (108 commits behind, 26 conflicting files) with a merge commit, no rebase. Resolve every conflict, frontend files included, keeping both sides' behaviour: renumber this spec's migration after main's and regenerate its snapshot and journal, merge `openapi.yaml` and regenerate `packages/sdk`, merge compose/env, and regenerate `pnpm-lock.yaml` with `pnpm install`. Then `pnpm lint`, `pnpm typecheck` and `pnpm test` pass, and `node scripts/factory.mjs` still works after main's factory changes. Push the branch.
 
 ## UX  _(ui-designer)_
 Design: [docs/design/007-email-and-account-security.md](../design/007-email-and-account-security.md).
