@@ -1,7 +1,7 @@
 ---
 id: 008
 title: Teams and roles
-status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-10
 linear: JSO-236
@@ -123,12 +123,177 @@ Every member can leave a team, except its last Admin.
 <!-- Sections below are filled by later stages. -->
 
 ## Technical design  _(tech-lead)_
-Components · API contract · Data model · Adapter calls · Risks
+Decision record: [ADR 0008](../adr/0008-teams-own-apps.md). Teams are portal tables, not Better
+Auth's organization plugin. An app belongs to one team. Kong consumers stay one per app, so
+membership changes never call Kong.
+
+**Answers to the open questions.** The Elango questions are designed on the recommended answers.
+Changing one later changes only `deleteAccount` or one constant.
+- *Last Admin deletes their account while others remain:* refused with 409
+  `/problems/team-needs-admin`, and the problem names the teams. Nothing is deleted.
+- *Last remaining member of a non-personal team deletes their account:* the team's apps are
+  deleted through Kong, then the team, the same as a personal team.
+- *Invitation lifetime:* 7 days, a server constant (`INVITATION_TTL_DAYS = 7`), not configurable.
+- *Does accepting an invitation verify the address (tech-lead):* yes. The token was emailed to
+  that address. Accept sets `user.emailVerified = true` when the session's email matches.
+- *Already a member or already invited (ui-designer):* the API refuses with 409
+  `/problems/already-member` or `/problems/invitation-pending`. The ui-designer writes the copy.
+- *Kong consumers per person or per app (tech-lead):* per app already (`ensureConsumer({ id:
+  appId })`; username and tags come from the app ID). The migration needs no Kong re-tagging.
+- *New, not in the spec:* a personal team is single-member. It takes no invitations (409
+  `/problems/personal-team`), so deleting an account deletes only apps nobody else uses (AC 8).
+
+### Components
+- `packages/db`: the new tables, `apps.team_id`, and migration `0004_teams.sql` with the backfill.
+- `apps/server`: new `teams.ts` (teams, members, invitations, access helpers). `apps.ts` checks
+  access by team instead of by owner. `account.ts` changes `deleteAccount`. `auth.ts` creates the
+  personal team after sign-up. The mail queue gets a `team-invitation` template.
+- `packages/sdk`: regenerate from `openapi.yaml`.
+- `apps/portal`: team switcher in the dashboard header; team pages (create, members,
+  invitations); invitation accept page `/invitations/accept?token=…`; role-aware app pages.
+- No adapter changes. `packages/adapter-kong` and the conformance suite are untouched.
+
+### API contract (`apps/server/openapi.yaml`, tag `teams`)
+| Method and path | Who | Result |
+| --- | --- | --- |
+| `GET /v1/teams` | signed in | `{ items: TeamSummary[], currentTeamId }`, personal team first, then by name |
+| `POST /v1/teams` `{ name }` | signed in | 201 `TeamSummary`. Caller is Admin, and the team becomes current |
+| `GET /v1/teams/{teamId}` | member | `TeamDetail`: summary, `members[]`, `invitations[]` (pending only; `null` unless Admin) |
+| `PUT /v1/me/current-team` `{ teamId }` | member | 204. Sets `selected_at` on that membership |
+| `POST /v1/teams/{teamId}/invitations` `{ email, role }` | Admin | 201 `Invitation`, email queued |
+| `DELETE /v1/teams/{teamId}/invitations/{invitationId}` | Admin | 204, idempotent if already cancelled |
+| `PATCH /v1/teams/{teamId}/members/{userId}` `{ role }` | Admin | 200 `TeamMember` |
+| `DELETE /v1/teams/{teamId}/members/{userId}` | Admin, or self (leave) | 204 |
+| `POST /v1/invitations/preview` `{ token }` | anyone | 200 `InvitationPreview` with `state`. Unknown token is 404 |
+| `POST /v1/invitations/accept` `{ token }` | signed in | 200 `TeamSummary`. Membership is created and becomes current |
+
+Changed endpoints:
+- `GET /v1/apps?teamId=` lists that team's apps. Without `teamId`, it lists the current team's.
+  The portal always sends `teamId`.
+- `POST /v1/apps` takes an optional `teamId` in the body (default: the current team).
+  Read-only gets 403. Name uniqueness is per team (`/problems/app-name-taken`).
+- `GET /v1/apps/{appId}`, `POST …/credentials` and `DELETE …/credentials/{id}` use team access.
+  A non-member gets 404 (AC 7). Read-only gets 403 on create and revoke (AC 4). The role is
+  checked before `requireVerified` and before any gateway call.
+- `App` gains `teamId` and `role` (the caller's role in that team), so the UI hides controls
+  without a second call. `User` gains `currentTeamId`.
+- `DELETE /v1/me` gains 409 `/problems/team-needs-admin`, with a `teams: [{id, name}]` extension.
+
+Access rule, in one helper (`teamAccess(tx, teamId, userId, need)` and `appAccess(tx, appId,
+userId, need)`, where `need` is `read`, `write` or `admin`). Not a member is 404 `not-found`, never
+403, so team and app IDs don't leak. Not enough role is 403 `/problems/team-role-forbidden`. Write
+paths lock the membership row `FOR SHARE`, so a removal waits for an in-flight key create.
+
+New problem types (title and detail copy in `security-problems.ts` style; the ui-designer may edit
+the copy, not the types):
+| type | status | when |
+| --- | --- | --- |
+| `team-role-forbidden` | 403 | Read-only creates or revokes, or a non-Admin manages members or invitations |
+| `team-needs-admin` | 409 | The last Admin demotes, removes or leaves themselves, or deletes their account while others remain |
+| `personal-team` | 409 | An invitation to a personal team |
+| `already-member` | 409 | The invited address belongs to a current member |
+| `invitation-pending` | 409 | That address already has a pending, unexpired invitation to this team |
+| `invitation-wrong-account` | 409 | Accept while signed in with another address. Nothing changes, and the invitation stays pending |
+| `invitation-expired` · `invitation-cancelled` · `invitation-used` | 409 | Accept, and cancel for `used` |
+| `mail-not-configured` (existing) | 409 | Invite when there are no effective mail settings, so nothing is stored |
+| `rate-limited` (existing) | 429 | More than 20 invitations an hour from one user |
+
+The order of checks for invite: validation, access (404/403), personal team, mail settings, rate
+limit, already member, pending invitation. Emails are trimmed and lowercased before every
+comparison.
+
+### Data model (`packages/db/src/schema.ts`, migration `0004_teams.sql`)
+- `teams`: `id` uuid pk; `name` text not null (1–80, trimmed; personal teams store `Personal`);
+  `personal_owner_id` uuid unique, references `user`, on delete cascade, null for shared teams;
+  `created_by` uuid, references `user`, on delete set null; `created_at`, `updated_at`.
+- `team_members`: pk (`team_id`, `user_id`); `team_id` on delete cascade; `user_id` on delete
+  cascade; `role` text, check in (`admin`, `member`, `read-only`); `selected_at` timestamptz not null
+  default now(); `created_at`. Index on (`user_id`, `selected_at` desc).
+- `team_invitations`: `id` uuid pk; `team_id` on delete cascade; `email` text not null (lowercased);
+  `role` with the same check; `token_hash` text unique (SHA-256 of 32 random bytes, base64url);
+  `invited_by` on delete set null; `created_at`; `expires_at`; `accepted_at`; `accepted_by` (on delete
+  set null); `cancelled_at`. Partial unique index on (`team_id`, `email`) where `accepted_at` and
+  `cancelled_at` are both null. Before inserting, the invite transaction deletes that address's
+  expired pending rows for the team.
+- `apps`: add `team_id` uuid not null, references `teams`, on delete **restrict**; add
+  `created_by` uuid, references `user`, on delete set null; drop `owner_id` and
+  `app_owner_name_unique`; add unique (`team_id`, `name`).
+- `rate_limit_hits.bucket` check gains `team-invitation`.
+- Current team = the caller's membership with the latest `selected_at`. `ensurePersonalTeam(userId)`
+  is idempotent (`insert … on conflict (personal_owner_id) do nothing`, then insert the Admin
+  membership on conflict do nothing). It runs in Better Auth's `user.create.after` hook and again
+  at the start of `GET /v1/me`, `GET /v1/teams` and `GET/POST /v1/apps`.
+- **Migration backfill**, one transaction, run by `migrate()` at server start: create
+  `pg_temp.uuidv7(ts)`; for every `user` insert a personal team (`created_at` = the user's) and an
+  Admin membership; add `apps.team_id` nullable, set it from `owner_id` through
+  `personal_owner_id`, set `created_by = owner_id`, then `set not null`, swap the indexes and drop
+  `owner_id`. `credentials` and `gateway_consumers` are untouched, so every key keeps working (AC 1).
+  Add `packages/db/src/teams-migration.test.ts` in the style of `versions-migration.test.ts`.
+
+### Flows
+- **Invite:** in one transaction, lock the team row `FOR UPDATE`, run the checks above, insert the
+  invitation and a rate-limit hit, then enqueue mail. Mail payload: `{ template: 'team-invitation',
+  invitationId, to, link }`, with the link encrypted as today. `processMail` loads the invitation,
+  skips it if it isn't pending, and renders with the team name, the inviter's name, the role and
+  the expiry. Link: `${PORTAL_PUBLIC_URL}/invitations/accept?token=…`. Make `MailPayload` a union.
+  The `userId` variants stay as they are.
+- **Accept:** lock the invitation `FOR UPDATE` by `token_hash`. Check state (cancelled, then used,
+  then expired), then email match. Insert the membership (on conflict do nothing, for someone who
+  joined meanwhile) with `selected_at = now()`. Set `accepted_at` and `accepted_by`, and
+  `emailVerified = true`. A failed check writes nothing (AC 6).
+- **Role change, remove, leave:** lock the team row `FOR UPDATE`, then count Admins. If the
+  change would leave zero, return `team-needs-admin`. Removing a member deletes only the
+  `team_members` row (AC 7). Their keys and Kong stay as they are.
+- **Account deletion (`deleteAccount`):** before the gateway health check, find teams where the user
+  is the only Admin and other members exist, and refuse with `team-needs-admin` naming them. Then
+  pick the teams where the user is the only member (the personal team, plus any shared team they
+  are alone in). Delete each of those teams' apps through Kong one at a time, exactly as today,
+  then delete those teams. Finally delete the user, which cascades their other memberships, and
+  `created_by` becomes null. The final transaction re-runs both checks under the existing
+  `71833004` lock. The `restrict` FK makes a missed app fail loudly instead of leaving a Kong
+  consumer behind.
+
+### Adapter calls
+None new. Create app, create key and revoke key make the same calls as today, keyed by app ID,
+after the team access check. Membership changes make no gateway call, so they work while Kong is
+down. Account deletion calls `deleteConsumer` only for apps of teams it deletes, with the existing
+health check, 503 and retry behaviour.
+
+### Risks and how to test them
+- **Upgrade loses keys (AC 1).** Migration test on a 0003 database seeded with users, apps, keys and
+  consumers. Integration test: a key issued before the migration still gets 200 through a real Kong.
+- **Access leaks across teams (AC 4, 5, 7).** Table-driven API test: every app and team endpoint ×
+  {Admin, Member, Read-only, non-member, removed member}, checking 200/403/404 and that Kong and
+  Postgres are unchanged after each 403.
+- **Zero-Admin team under concurrency (AC 9).** Two Admins demoting each other in parallel: exactly one
+  succeeds.
+- **Invitation token misuse (AC 6).** Wrong account, cancelled, expired (clock moved 7 days) and
+  reused tokens. No membership is created, and the preview shows the right state. Tokens never
+  appear in logs, since they go in POST bodies only.
+- **Account deletion deletes shared apps (AC 8).** A member of a shared team with another Admin
+  deletes their account. The shared app's key still gets 200 through Kong, and the personal app's
+  key gets 401.
+- **Invitation spam.** 20/hour/user limit, and refused when mail isn't configured.
+- **Quickstart.** The e2e invite flow runs against Mailpit in `docker compose up`.
 
 ### Tasks
-- [ ] [backend] …
-- [ ] [frontend] …
-- [ ] [qa] …
+- [ ] [backend] Schema and `0004_teams.sql`: tables, `apps.team_id`/`created_by`, backfill with temporary UUIDv7 function, rate-limit bucket; `teams-migration.test.ts`
+- [ ] [backend] `ensurePersonalTeam`, wired into Better Auth `user.create.after` and the first-use endpoints; `currentTeamId` on `GET /v1/me`
+- [ ] [backend] `teams.ts`: `teamAccess`/`appAccess`, `GET/POST /v1/teams`, `GET /v1/teams/{teamId}`, `PUT /v1/me/current-team`
+- [ ] [backend] Members: `PATCH` and `DELETE /v1/teams/{teamId}/members/{userId}` with the team-row lock and last-Admin rule
+- [ ] [backend] Invitations: create (checks, rate limit, mail), cancel, preview, accept (verifies email); `team-invitation` mail template and `MailPayload` union
+- [ ] [backend] `apps.ts`: team access on every app route, `teamId` on list and create, per-team name lock and uniqueness, `teamId` and `role` on `App`
+- [ ] [backend] `deleteAccount`: `team-needs-admin` refusal, delete sole-member teams' apps through Kong, then the teams; update spec 007 tests for the new ownership
+- [ ] [backend] New problem types and copy; regenerate `packages/sdk`
+- [ ] [frontend] Team switcher in the dashboard header (personal team first); switching calls `PUT /v1/me/current-team` and reloads My apps with `teamId`
+- [ ] [frontend] Create team form; team page with members, roles, pending invitations; invite, cancel, change role, remove, leave, all hidden by role
+- [ ] [frontend] `/invitations/accept?token=` page: preview states, sign in or sign up with the invited address and return, accept, and every refusal message
+- [ ] [frontend] App pages read `app.role`: Read-only sees keys' metadata without create or revoke controls; create app goes to the current team
+- [ ] [frontend] Account deletion shows `team-needs-admin` with the named teams
+- [ ] [qa] Upgrade test (AC 1): pre-008 data, a key still works through real Kong after migrating; a new sign-up gets a current personal team
+- [ ] [qa] Role matrix API test (AC 4, 5, 7) with Kong and Postgres unchanged after every 403/404
+- [ ] [qa] Invitation e2e against Mailpit (AC 3) and the refusal cases (AC 6)
+- [ ] [qa] Removal and account deletion keep shared keys working through Kong (AC 7, 8); last-Admin guards and concurrent demotion (AC 9); switcher e2e (AC 2)
 
 ## UX  _(ui-designer)_
 Summary + link to `docs/design/008-*.md`

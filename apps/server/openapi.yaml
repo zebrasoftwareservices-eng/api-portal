@@ -36,6 +36,10 @@ info:
     - IDs are UUIDv7. Timestamps are UTC ISO 8601 (`date-time`).
     - Secrets are never returned, except a new API key, exactly once, in the response that
       creates it.
+    - Apps belong to a team, not a person (spec 008, ADR 0008). Roles are `admin`, `member` and
+      `read-only`. Access is membership in the app's team, checked on every request. A caller who
+      isn't a member gets 404 (`/problems/not-found`), and a member whose role is too low gets 403
+      (`/problems/team-role-forbidden`). Membership changes never call the gateway.
     - An API has one or more versions (spec 012, ADR 0007). Exactly one is the latest; the
       unversioned catalog paths serve it. Versions are named by the document's `info.version`.
 servers:
@@ -48,7 +52,9 @@ tags:
   - name: me
     description: The signed-in user
   - name: apps
-    description: A developer's apps and their API keys
+    description: A team's apps and their API keys (spec 008, ADR 0008)
+  - name: teams
+    description: Teams, members and invitations (spec 008, ADR 0008)
   - name: setup
     description: First-run setup (spec 005, ADR 0006)
   - name: admin
@@ -274,11 +280,16 @@ paths:
       operationId: deleteMe
       summary: Delete the signed-in user's account, its apps and their keys
       description: |
-        Spec 007 AC 9. Checks in this order: password (403 `/problems/invalid-password`, counted
-        as a failed sign-in), last admin (409 `/problems/last-admin`), then a gateway health check
-        (503 `/problems/gateway-unavailable`, nothing deleted). It then deletes each app's Kong
-        consumer (with its keys and ACL memberships) and that app's rows, one app at a time, and
-        finally the user with their sessions. If Kong fails part way, apps already removed stay
+        Spec 007 AC 9 and spec 008 AC 8. Checks in this order: password (403
+        `/problems/invalid-password`, counted as a failed sign-in), last portal admin (409
+        `/problems/last-admin`), last Admin of a team that has other members (409
+        `/problems/team-needs-admin`, with `teams` naming them), then a gateway health check
+        (503 `/problems/gateway-unavailable`, nothing deleted). It then deletes the teams where
+        the user is the only member (their personal team, and any shared team they are alone in):
+        each of those teams' apps loses its Kong consumer (with its keys and ACL memberships) and
+        its rows, one app at a time, then the team. Finally it deletes the user with their
+        sessions and their other memberships. Apps of teams with other members are not touched,
+        and their keys keep working. If Kong fails part way, apps already removed stay
         removed (their keys no longer work), the account and the remaining apps stay, and the
         call returns 503 so a retry finishes the job. On success the session cookie is cleared and
         the email address can sign up again as a new account.
@@ -302,7 +313,10 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
         '409':
-          description: This is the only admin (`/problems/last-admin`); another admin must exist first.
+          description: |
+            This is the only portal admin (`/problems/last-admin`); another admin must exist first.
+            Or this is the only Admin of a team that has other members
+            (`/problems/team-needs-admin`; `teams` lists them). Nothing was deleted.
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -318,6 +332,26 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/me/current-team:
+    put:
+      tags: [me, teams]
+      operationId: setCurrentTeam
+      summary: Switch the signed-in user's current team
+      description: |
+        Spec 008 AC 2. The current team is the membership selected most recently. It is stored
+        server-side, so it survives sign-out and is the same on every device. API calls still
+        name their team explicitly.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetCurrentTeamRequest' }
+      responses:
+        '204': { description: Current team changed }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /v1/me/email:
     post:
@@ -393,7 +427,13 @@ paths:
     get:
       tags: [apps]
       operationId: listApps
-      summary: List the signed-in developer's apps
+      summary: List a team's apps
+      description: Any role. Without `teamId`, lists the caller's current team.
+      parameters:
+        - name: teamId
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
       responses:
         '200':
           description: Apps, newest first
@@ -406,7 +446,9 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/App' }
+        '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
     post:
       tags: [apps]
       operationId: createApp
@@ -418,6 +460,9 @@ paths:
         whatever it created in Kong and stores nothing, so a retry creates exactly one consumer.
         The returned `credential.key` is never shown again. The key works only on the APIs in
         `apiIds`; Kong answers 403 on every other key-auth service (ADR 0005).
+        The app belongs to `teamId` (default: the caller's current team), and needs the
+        `admin` or `member` role there (spec 008). The role is checked before email verification
+        and before any gateway call.
       requestBody:
         required: true
         content:
@@ -435,15 +480,15 @@ paths:
               schema: { $ref: '#/components/schemas/CreateAppResponse' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/EmailNotVerified' }
+        '403': { $ref: '#/components/responses/TeamForbiddenOrNotVerified' }
         '404':
-          description: One of `apiIds` is not a published API
+          description: One of `apiIds` is not a published API, or the caller isn't a member of `teamId`
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
         '409':
           description: |
-            The developer already has an app with this name (`/problems/app-name-taken`), or the
+            The team already has an app with this name (`/problems/app-name-taken`), or the
             API's gateway connection is disabled (`/problems/gateway-disabled`). When disabled,
             nothing is created in Kong or Postgres.
           content:
@@ -456,7 +501,8 @@ paths:
     get:
       tags: [apps]
       operationId: getApp
-      summary: Get one of the signed-in developer's apps
+      summary: Get one of a team's apps
+      description: Any role in the app's team. Anyone else gets 404, including a removed member.
       parameters:
         - $ref: '#/components/parameters/AppId'
       responses:
@@ -476,7 +522,9 @@ paths:
       description: |
         The returned `key` is shown once and never stored by the portal. The consumer and its
         access are upserted first, so this also works when the connection now points at a Kong
-        that doesn't have the app's consumer yet (spec 005 AC 7(e)).
+        that doesn't have the app's consumer yet (spec 005 AC 7(e)). Needs the `admin` or
+        `member` role in the app's team; `read-only` gets 403 and nothing changes in Kong or
+        Postgres (spec 008 AC 4).
       parameters:
         - $ref: '#/components/parameters/AppId'
       responses:
@@ -486,7 +534,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/IssuedCredential' }
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '403': { $ref: '#/components/responses/EmailNotVerified' }
+        '403': { $ref: '#/components/responses/TeamForbiddenOrNotVerified' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: |
@@ -508,16 +556,237 @@ paths:
         Deletes the key-auth credential in Kong, then marks the credential `revoked`.
         Idempotent: revoking an already revoked key returns 204. If Kong is unreachable
         the key stays `active` and the call returns 503, so the UI never shows a key as
-        revoked while Kong still accepts it.
+        revoked while Kong still accepts it. Needs the `admin` or `member` role in the app's
+        team; `read-only` gets 403 and the key stays active (spec 008 AC 4). Any member may
+        revoke any of the team's keys, whoever created them.
       parameters:
         - $ref: '#/components/parameters/AppId'
         - $ref: '#/components/parameters/CredentialId'
       responses:
         '204': { description: Revoked }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TeamRoleForbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '502': { $ref: '#/components/responses/GatewayRejected' }
         '503': { $ref: '#/components/responses/GatewayUnavailable' }
+
+  /v1/teams:
+    get:
+      tags: [teams]
+      operationId: listTeams
+      summary: The signed-in user's teams
+      description: Personal team first, then by name. Creates the personal team if it is missing.
+      responses:
+        '200':
+          description: Teams and the current one
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, currentTeamId]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/TeamSummary' }
+                  currentTeamId: { type: string, format: uuid }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [teams]
+      operationId: createTeam
+      summary: Create a team
+      description: Spec 008 AC 2. The caller becomes its Admin, and it becomes their current team.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTeamRequest' }
+      responses:
+        '201':
+          description: Team created
+          headers:
+            Location:
+              schema: { type: string }
+              description: /api/v1/teams/{teamId}
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/teams/{teamId}:
+    parameters:
+      - $ref: '#/components/parameters/TeamId'
+    get:
+      tags: [teams]
+      operationId: getTeam
+      summary: A team with its members and, for Admins, its pending invitations
+      responses:
+        '200':
+          description: The team
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/teams/{teamId}/invitations:
+    parameters:
+      - $ref: '#/components/parameters/TeamId'
+    post:
+      tags: [teams]
+      operationId: createInvitation
+      summary: Invite someone to the team by email
+      description: |
+        Spec 008 AC 3. Admin only. Emails a single-use link, valid 7 days, to `email` (trimmed and
+        lowercased). Checks in this order: validation, membership (404) and role (403
+        `/problems/team-role-forbidden`), personal team, mail settings, rate limit (20 an hour per
+        user), already a member, pending invitation. A refused request stores nothing and
+        sends nothing.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateInvitationRequest' }
+      responses:
+        '201':
+          description: Invitation created and email queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Invitation' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TeamRoleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            `type` is one of `/problems/personal-team` (personal teams take no invitations),
+            `/problems/mail-not-configured` (no mail settings, so nobody would get the email),
+            `/problems/already-member` (the address belongs to a member) or
+            `/problems/invitation-pending` (that address already has a pending invitation to this
+            team; cancel it to invite again).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/teams/{teamId}/invitations/{invitationId}:
+    parameters:
+      - $ref: '#/components/parameters/TeamId'
+      - $ref: '#/components/parameters/InvitationId'
+    delete:
+      tags: [teams]
+      operationId: cancelInvitation
+      summary: Cancel a pending invitation
+      description: Admin only. Its link stops working at once. Cancelling a cancelled or expired invitation returns 204.
+      responses:
+        '204': { description: Cancelled }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TeamRoleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Already accepted (`/problems/invitation-used`). Remove the member instead.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/teams/{teamId}/members/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/TeamId'
+      - $ref: '#/components/parameters/UserId'
+    patch:
+      tags: [teams]
+      operationId: updateTeamMember
+      summary: Change a member's role
+      description: |
+        Admin only (spec 008 AC 9). Applies on the member's next request. Refused with
+        `/problems/team-needs-admin` if it would leave the team with no Admin.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTeamMemberRequest' }
+      responses:
+        '200':
+          description: The member with the new role
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamMember' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TeamRoleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TeamNeedsAdmin' }
+    delete:
+      tags: [teams]
+      operationId: removeTeamMember
+      summary: Remove a member, or leave the team
+      description: |
+        An Admin may remove anyone; any member may remove themselves (leave). Only the
+        membership is deleted: the team's apps, keys and Kong consumers are unchanged, including
+        keys this member created (spec 008 AC 7). Refused with `/problems/team-needs-admin` for
+        the last Admin.
+      responses:
+        '204': { description: Removed }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TeamRoleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/TeamNeedsAdmin' }
+
+  /v1/invitations/preview:
+    post:
+      tags: [teams]
+      operationId: previewInvitation
+      summary: Show what an invitation link is for
+      description: |
+        No session needed: the invitee may not have an account yet. The token is in the body so
+        it never appears in access logs. Changes nothing.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvitationTokenRequest' }
+      responses:
+        '200':
+          description: The invitation, in any state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InvitationPreview' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/invitations/accept:
+    post:
+      tags: [teams]
+      operationId: acceptInvitation
+      summary: Accept an invitation and join the team
+      description: |
+        Spec 008 AC 3 and 6. The signed-in account's email must equal the invited address
+        (case-insensitive). On success the membership is created with the invited role, the team
+        becomes the current team, and the account's email is marked verified (the token reached
+        that inbox). On any refusal nothing changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvitationTokenRequest' }
+      responses:
+        '200':
+          description: Joined
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            `type` is one of `/problems/invitation-cancelled`, `/problems/invitation-used`,
+            `/problems/invitation-expired` or `/problems/invitation-wrong-account` (signed in with
+            another address; the invitation stays pending).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 
   /v1/admin/gateway/services:
     get:
@@ -1189,6 +1458,21 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    TeamId:
+      name: teamId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    InvitationId:
+      name: invitationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
 
   responses:
     ValidationError:
@@ -1211,6 +1495,29 @@ components:
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
+    TeamRoleForbidden:
+      description: |
+        The caller is a member of the team but their role doesn't allow this
+        (`/problems/team-role-forbidden`). Nothing was changed, in Kong or the portal.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TeamForbiddenOrNotVerified:
+      description: |
+        `/problems/team-role-forbidden` (the caller is `read-only` in the team; checked first) or
+        `/problems/email-not-verified` (the admin requires a verified email and the user hasn't
+        verified theirs; the UI offers to resend it with `POST /api/auth/send-verification-email`).
+        Nothing was created, in Kong or the portal.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    TeamNeedsAdmin:
+      description: |
+        This would leave the team with no Admin (`/problems/team-needs-admin`). Make another member
+        an Admin first. Nothing was changed.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
     GatewayUnavailable:
       description: |
         Kong's Admin API is unreachable, timed out (5 s) or returned 5xx
@@ -1219,14 +1526,6 @@ components:
       headers:
         Retry-After:
           schema: { type: integer }
-      content:
-        application/problem+json:
-          schema: { $ref: '#/components/schemas/Problem' }
-    EmailNotVerified:
-      description: |
-        The admin requires a verified email and the user hasn't verified theirs
-        (`/problems/email-not-verified`). Nothing was created, in Kong or the portal. The UI offers
-        to resend the verification email (`POST /api/auth/send-verification-email`).
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -1320,6 +1619,15 @@ components:
               column: { type: integer, minimum: 1, description: Lint findings only. 1-based column in `source` }
               source: { type: [string, 'null'], description: Lint findings only. URL of the external file the finding is in; null for the imported document itself }
         errorCount: { type: integer, description: 'Only on `/problems/openapi-lint-failed`: total number of error findings' }
+        teams:
+          type: array
+          description: 'With `/problems/team-needs-admin` from `DELETE /v1/me`: the teams where the caller is the only Admin and others are members'
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: { type: string, format: uuid }
+              name: { type: string }
 
     Slug:
       type: string
@@ -1476,7 +1784,7 @@ components:
 
     User:
       type: object
-      required: [id, email, name, role, emailVerified, pendingEmail, verificationRequired]
+      required: [id, email, name, role, emailVerified, pendingEmail, verificationRequired, currentTeamId]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email, description: The address the account signs in with }
@@ -1490,6 +1798,10 @@ components:
         verificationRequired:
           type: boolean
           description: The admin's "Require a verified email" setting. With `emailVerified` false, creating apps and keys is refused.
+        currentTeamId:
+          type: string
+          format: uuid
+          description: The team picked most recently in the switcher; the personal team for a new account (spec 008)
 
     UpdateMeRequest:
       type: object
@@ -1830,6 +2142,112 @@ components:
           type: [string, 'null']
           description: Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`; add a version to that API instead (`importApiVersion`).
 
+    TeamRole:
+      type: string
+      enum: [admin, member, read-only]
+
+    CreateTeamRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80, description: Trimmed before saving; need not be unique }
+
+    SetCurrentTeamRequest:
+      type: object
+      required: [teamId]
+      additionalProperties: false
+      properties:
+        teamId: { type: string, format: uuid }
+
+    TeamSummary:
+      type: object
+      required: [id, name, personal, role, memberCount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, description: '`Personal` for a personal team' }
+        personal: { type: boolean, description: The caller's personal team. Single-member; takes no invitations. }
+        role: { $ref: '#/components/schemas/TeamRole' }
+        memberCount: { type: integer, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+
+    TeamMember:
+      type: object
+      required: [userId, name, email, role, joinedAt]
+      properties:
+        userId: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { $ref: '#/components/schemas/TeamRole' }
+        joinedAt: { type: string, format: date-time }
+
+    TeamDetail:
+      allOf:
+        - $ref: '#/components/schemas/TeamSummary'
+        - type: object
+          required: [members, invitations]
+          properties:
+            members:
+              type: array
+              description: Admins first, then by name
+              items: { $ref: '#/components/schemas/TeamMember' }
+            invitations:
+              type: [array, 'null']
+              description: Pending, unexpired invitations, newest first. `null` unless the caller is an Admin.
+              items: { $ref: '#/components/schemas/Invitation' }
+
+    CreateInvitationRequest:
+      type: object
+      required: [email, role]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254, description: Trimmed and lowercased }
+        role: { $ref: '#/components/schemas/TeamRole' }
+
+    UpdateTeamMemberRequest:
+      type: object
+      required: [role]
+      additionalProperties: false
+      properties:
+        role: { $ref: '#/components/schemas/TeamRole' }
+
+    Invitation:
+      type: object
+      required: [id, email, role, invitedBy, createdAt, expiresAt]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        role: { $ref: '#/components/schemas/TeamRole' }
+        invitedBy:
+          type: [object, 'null']
+          description: '`null` if the inviter''s account was deleted'
+          required: [userId, name]
+          properties:
+            userId: { type: string, format: uuid }
+            name: { type: string }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, description: 7 days after `createdAt` }
+
+    InvitationTokenRequest:
+      type: object
+      required: [token]
+      additionalProperties: false
+      properties:
+        token: { type: string, minLength: 1, maxLength: 200 }
+
+    InvitationPreview:
+      type: object
+      required: [teamName, role, email, invitedByName, expiresAt, state]
+      properties:
+        teamName: { type: string }
+        role: { $ref: '#/components/schemas/TeamRole' }
+        email: { type: string, format: email, description: The invited address; sign in or sign up with it to accept }
+        invitedByName: { type: [string, 'null'] }
+        expiresAt: { type: string, format: date-time }
+        state:
+          type: string
+          enum: [pending, accepted, cancelled, expired]
+
     CreateAppRequest:
       type: object
       required: [name, apiIds]
@@ -1837,6 +2255,10 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 80 }
         description: { type: string, maxLength: 500 }
+        teamId:
+          type: string
+          format: uuid
+          description: The team the app belongs to. Defaults to the caller's current team; the portal always sends it.
         apiIds:
           type: array
           minItems: 1
@@ -1846,9 +2268,13 @@ components:
 
     App:
       type: object
-      required: [id, name, subscriptions, credentials, createdAt]
+      required: [id, teamId, role, name, subscriptions, credentials, createdAt]
       properties:
         id: { type: string, format: uuid }
+        teamId: { type: string, format: uuid }
+        role:
+          $ref: '#/components/schemas/TeamRole'
+          description: The caller's role in the app's team. `read-only` can't create or revoke keys.
         name: { type: string }
         description: { type: [string, 'null'] }
         subscriptions:
