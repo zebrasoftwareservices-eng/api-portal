@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { ensurePersonalTeam } from './teams.js';
 import {
   afterAll,
   afterEach,
@@ -161,15 +162,13 @@ async function publish(gatewayId: string) {
     gatewayServiceName: 'pets',
     routePath: '/pets',
   });
-  await db.db
-    .insert(apiVersions)
-    .values({
-      id,
-      apiId: id,
-      title: 'Pets',
-      version: '1',
-      document: JSON.parse(document),
-    });
+  await db.db.insert(apiVersions).values({
+    id,
+    apiId: id,
+    title: 'Pets',
+    version: '1',
+    document: JSON.parse(document),
+  });
   await db.db.update(apis).set({ latestVersionId: id }).where(eq(apis.id, id));
   return id;
 }
@@ -465,7 +464,14 @@ it('disables with no Kong call, blocks discovery/import/sample/app/key creation,
   const apiId = await publish(id);
   const appId = uuidv7(),
     credentialId = uuidv7();
-  await db.db.insert(apps).values({ id: appId, ownerId, name: 'existing' });
+  await db.db
+    .insert(apps)
+    .values({
+      id: appId,
+      teamId: await ensurePersonalTeam(db.db, ownerId),
+      createdBy: ownerId,
+      name: 'existing',
+    });
   await db.db.insert(subscriptions).values({ id: uuidv7(), appId, apiId });
   await db.db.insert(credentials).values({
     id: credentialId,
@@ -537,7 +543,14 @@ it('counts dependent APIs and keys, then removes without Kong calls and preserve
   const id = await connectGateway();
   const apiId = await publish(id);
   const appId = uuidv7();
-  await db.db.insert(apps).values({ id: appId, ownerId, name: 'existing' });
+  await db.db
+    .insert(apps)
+    .values({
+      id: appId,
+      teamId: await ensurePersonalTeam(db.db, ownerId),
+      createdBy: ownerId,
+      name: 'existing',
+    });
   await db.db.insert(credentials).values({
     id: uuidv7(),
     appId,
@@ -587,7 +600,14 @@ it('warns and requires confirmation for missing consumers, then reprovisions the
   const id = await connectGateway();
   const apiId = await publish(id);
   const appId = uuidv7();
-  await db.db.insert(apps).values({ id: appId, ownerId, name: 'existing' });
+  await db.db
+    .insert(apps)
+    .values({
+      id: appId,
+      teamId: await ensurePersonalTeam(db.db, ownerId),
+      createdBy: ownerId,
+      name: 'existing',
+    });
   await db.db.insert(subscriptions).values({ id: uuidv7(), appId, apiId });
   await db.db.insert(credentials).values({
     id: uuidv7(),

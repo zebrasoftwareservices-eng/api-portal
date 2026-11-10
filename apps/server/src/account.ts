@@ -3,11 +3,13 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { randomBytes, createHash } from 'node:crypto';
 import { uuidv7 } from 'uuidv7';
-import { and, eq, gt, asc, like } from 'drizzle-orm';
+import { and, eq, gt, asc, like, inArray } from 'drizzle-orm';
 import {
   user,
   account,
   apps,
+  teams,
+  teamMembers,
   emailChangeRequests,
   verification,
   type Database,
@@ -20,6 +22,7 @@ import { sql } from 'drizzle-orm';
 import { type Auth, requireUser } from './auth.js';
 import { limitLock, readAccountSettings, type Tx } from './auth-limits.js';
 import { securityProblem } from './security-problems.js';
+import { ensurePersonalTeam, currentTeamId } from './teams.js';
 import { Problem } from './problem.js';
 import {
   storedTokenUnavailable,
@@ -51,6 +54,7 @@ export async function userView(
     emailVerified: boolean;
   },
 ) {
+  await db.transaction((tx) => ensurePersonalTeam(tx, current.id));
   const [pending] = await db
     .select()
     .from(emailChangeRequests)
@@ -62,6 +66,7 @@ export async function userView(
     );
   return {
     ...current,
+    currentTeamId: await currentTeamId(db, current.id),
     pendingEmail: pending?.newEmail ?? null,
     verificationRequired: (await readAccountSettings(db)).requireVerifiedEmail,
   };
@@ -109,7 +114,44 @@ export async function deleteAccount(
     if (!admins.some((a) => a.id !== current.id))
       throw securityProblem(409, 'last-admin');
   };
+  const teamOwnership = async (tx: Database | Tx, lock = false) => {
+    // Lock teams in a stable order before membership and user locks, matching invitations.
+    const query = tx
+      .select({ id: teams.id, name: teams.name })
+      .from(teams)
+      .where(
+        sql`${teams.id} in (select team_id from team_members where user_id = ${current.id})`,
+      )
+      .orderBy(asc(teams.id));
+    const rows = await (lock ? query.for('update') : query);
+    const blocked: { id: string; name: string }[] = [];
+    const sole: string[] = [];
+    for (const team of rows) {
+      const members = await tx
+        .select()
+        .from(teamMembers)
+        .where(eq(teamMembers.teamId, team.id));
+      if (members.length === 1) sole.push(team.id);
+      else if (
+        members.some((m) => m.userId === current.id && m.role === 'admin') &&
+        !members.some((m) => m.userId !== current.id && m.role === 'admin')
+      )
+        blocked.push(team);
+    }
+    if (blocked.length) {
+      const problem = securityProblem(409, 'team-needs-admin');
+      throw new Problem(
+        problem.status,
+        problem.code,
+        problem.message,
+        undefined,
+        { teams: blocked },
+      );
+    }
+    return sole;
+  };
   await checkAdmin(db);
+  const soleTeams = await teamOwnership(db);
   const unavailable = () =>
     new Problem(
       503,
@@ -141,19 +183,21 @@ export async function deleteAccount(
   const owned = await db
     .select({ id: apps.id })
     .from(apps)
-    .where(eq(apps.ownerId, current.id));
+    .where(inArray(apps.teamId, soleTeams));
   for (const app of owned)
     await db.transaction(async (tx) => {
+      const sole = await teamOwnership(tx, true);
       const [locked] = await tx
         .select({ id: apps.id })
         .from(apps)
-        .where(eq(apps.id, app.id))
+        .where(and(eq(apps.id, app.id), inArray(apps.teamId, sole)))
         .for('update');
       if (locked) await remove(tx, locked);
     });
   await db.transaction(async (tx) => {
     // Serialize final deletions, including two admins deleting simultaneously.
     await tx.execute(sql`select pg_advisory_xact_lock(71833004)`);
+    const sole = await teamOwnership(tx, true);
     await tx
       .select({ id: user.id })
       .from(user)
@@ -169,9 +213,11 @@ export async function deleteAccount(
     const late = await tx
       .select({ id: apps.id })
       .from(apps)
-      .where(eq(apps.ownerId, current.id))
+      .where(inArray(apps.teamId, sole))
       .for('update');
     for (const app of late) await remove(tx, app);
+    for (const teamId of sole)
+      await tx.delete(teams).where(eq(teams.id, teamId));
     await tx.delete(user).where(eq(user.id, current.id));
   });
 }

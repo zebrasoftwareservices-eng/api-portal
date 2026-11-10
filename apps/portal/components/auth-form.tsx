@@ -12,17 +12,19 @@ export function AuthForm({
   mode,
   next,
   reset,
+  email: invitedEmail = '',
 }: {
   mode: 'sign-up' | 'sign-in';
   next?: string;
   reset?: boolean;
+  email?: string;
 }) {
   const signup = mode === 'sign-up';
   const router = useRouter();
   const form = useRef<HTMLFormElement>(null);
   const lock = useRef(false);
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [email, setEmail] = useState(invitedEmail);
   const [password, setPassword] = useState('');
   const [pending, setPending] = useState(false);
   const [ready, setReady] = useState(false);
@@ -47,7 +49,10 @@ export function AuthForm({
       result.password = 'Use 128 characters or fewer.';
     return result;
   }
-  const link = signup ? signInLink(next) : signUpLink(next);
+  const baseLink = signup ? signInLink(next) : signUpLink(next);
+  const link = invitedEmail
+    ? `${baseLink}${baseLink.includes('?') ? '&' : '?'}email=${encodeURIComponent(invitedEmail)}`
+    : baseLink;
   return (
     <Card className="auth stack">
       {reset && (

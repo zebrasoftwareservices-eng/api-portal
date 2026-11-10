@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 import { Badge, EmptyState, PageHeader, Table } from '@portal/ui';
+import { useEffect, useRef } from 'react';
+import { useTeams } from './team-context';
 import { api } from '../lib/client';
 import { useResource } from './use-resource';
 import { ProblemAlert } from './problem-alert';
@@ -14,9 +16,30 @@ function AccessLabel({ title }: { title?: string }) {
   ) : null;
 }
 export function Dashboard({ slug }: { slug?: string }) {
+  const { current, unavailable } = useTeams();
+  const readOnly = current?.role === 'read-only';
   const { data, error, loading, reload } = useResource(() =>
-    api.GET('/v1/apps'),
+    unavailable
+      ? Promise.resolve({
+          error: {
+            type: '/problems/team-unavailable',
+            title: 'Team unavailable',
+            status: 503,
+            detail: 'Try loading your teams again.',
+          },
+        })
+      : api.GET('/v1/apps', { params: { query: { teamId: current?.id } } }),
   );
+  const loadedScope = useRef({ teamId: current?.id, unavailable });
+  useEffect(() => {
+    if (
+      loadedScope.current.teamId === current?.id &&
+      loadedScope.current.unavailable === unavailable
+    )
+      return;
+    loadedScope.current = { teamId: current?.id, unavailable };
+    void reload();
+  }, [current?.id, unavailable, reload]);
   const apps = data?.items.map((app) => ({
     ...app,
     apiTitles: app.subscriptions.map((s) => s.title).join(', '),
@@ -31,6 +54,7 @@ export function Dashboard({ slug }: { slug?: string }) {
       <PageHeader
         title="My apps"
         actions={
+          !readOnly &&
           !!apps?.length && (
             <div className="actions">
               <a className="button" href="/dashboard/apps/new">
@@ -40,9 +64,15 @@ export function Dashboard({ slug }: { slug?: string }) {
           )
         }
       />
+      {readOnly && (
+        <p className="muted">
+          You have Read-only access to {current?.name}. Ask a team Admin to
+          create apps.
+        </p>
+      )}
       {loading ? (
         <div role="status" className="skeleton">
-          Loading your apps…
+          {current ? `Loading ${current.name}'s apps…` : 'Loading your apps…'}
         </div>
       ) : error ? (
         <ProblemAlert
@@ -52,18 +82,32 @@ export function Dashboard({ slug }: { slug?: string }) {
         />
       ) : !apps?.length ? (
         <EmptyState
-          title="Create your first app"
-          description="An app holds your API keys. Create one, choose the APIs it uses, and you'll get a key straight away."
+          title={
+            current && (!current.personal || readOnly)
+              ? `No apps in ${current.name} yet`
+              : 'Create your first app'
+          }
+          description={
+            readOnly
+              ? 'A team Admin or Member can create one.'
+              : current && !current.personal
+                ? 'Apps you create here belong to the team, so they keep working when people leave.'
+                : "An app holds your API keys. Create one, choose the APIs it uses, and you'll get a key straight away."
+          }
           action={
-            <a className="button" href="/dashboard/apps/new">
-              Create app
-            </a>
+            !readOnly && (
+              <a className="button" href="/dashboard/apps/new">
+                Create app
+              </a>
+            )
           }
         />
       ) : (
         <>
           <Table className="apps-table">
-            <caption className="sr-only">My apps</caption>
+            <caption className="sr-only">
+              {current ? `Apps in ${current.name}` : 'My apps'}
+            </caption>
             <thead>
               <tr>
                 {['Name', 'APIs', 'Active keys', 'Created'].map((h) => (

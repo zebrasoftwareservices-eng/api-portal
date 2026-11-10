@@ -8,6 +8,7 @@ import { schema, user, type Database } from '@portal/db';
 import type { Config } from './config.js';
 import type { FastifyRequest } from 'fastify';
 import { mailQueue, type EnqueueMail } from './mail/queue.js';
+import { ensurePersonalTeam } from './teams.js';
 import { Problem } from './problem.js';
 export function createAuth(
   db: Database,
@@ -23,6 +24,9 @@ export function createAuth(
     databaseHooks: {
       user: {
         create: {
+          after: async (created) => {
+            await db.transaction((tx) => ensurePersonalTeam(tx, created.id));
+          },
           before: async () => {
             const [admin] = await db
               .select({ id: user.id })

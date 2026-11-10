@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, EmptyState, Input, PageHeader, Textarea } from '@portal/ui';
+import { useTeams } from './team-context';
 import { api, networkProblem, retrySeconds } from '../lib/client';
 import type { Problem } from '../lib/types';
 import { useResource } from './use-resource';
@@ -12,6 +13,7 @@ import { ResendVerification } from './account-shared';
 import { ProblemAlert } from './problem-alert';
 export function CreateApp({ slug }: { slug?: string }) {
   const router = useRouter();
+  const { current, unavailable } = useTeams();
   const { setReveal, user, setUser } = usePortal();
   const verificationBlocked =
     !!user?.verificationRequired && !user.emailVerified;
@@ -52,6 +54,7 @@ export function CreateApp({ slug }: { slug?: string }) {
     initialized.current = true;
   }, [data, slug]);
   async function submit() {
+    if (unavailable || current?.role === 'read-only') return;
     if (verificationBlocked) {
       document.getElementById('verification-banner')?.focus();
       return;
@@ -79,12 +82,14 @@ export function CreateApp({ slug }: { slug?: string }) {
         response,
       } = await api.POST('/v1/apps', {
         body: {
+          teamId: current?.id,
           name: name.trim(),
           ...(description ? { description } : {}),
           apiIds: selected,
         },
       });
       if (error) {
+        if (error.type.endsWith('/team-role-forbidden')) router.refresh();
         if (error.type.endsWith('/email-not-verified')) {
           const current = await api.GET('/v1/me');
           if (current.data) setUser(current.data);
@@ -92,7 +97,7 @@ export function CreateApp({ slug }: { slug?: string }) {
         setRetry(retrySeconds(response));
         if (error.type.endsWith('/app-name-taken')) {
           setErrors({
-            name: `You already have an app called “${name.trim()}”. Choose a different name.`,
+            name: `An app in ${current?.name || 'this team'} already has this name. Choose another name.`,
           });
           focusInvalid(form.current!);
         } else if (error.status === 404) {
@@ -139,7 +144,18 @@ export function CreateApp({ slug }: { slug?: string }) {
           { label: 'New app' },
         ]}
       />
-      {!loading && data?.items.length === 0 ? (
+      {current && <p>This app will belong to {current.name}.</p>}
+      {current?.role === 'read-only' ? (
+        <div className="stack">
+          <p>
+            You have Read-only access to {current.name}, so you can't create
+            apps here. Switch to another team or ask a team Admin.
+          </p>
+          <a className="button secondary" href="/dashboard">
+            Back to My apps
+          </a>
+        </div>
+      ) : !loading && data?.items.length === 0 ? (
         <EmptyState
           title="No APIs to use yet"
           description="An app needs at least one API, and none have been published. Check back soon."
@@ -151,16 +167,26 @@ export function CreateApp({ slug }: { slug?: string }) {
             <ProblemAlert
               problem={problem}
               title={
-                problem.type.endsWith('/gateway-disabled')
-                  ? 'New apps and keys are paused'
-                  : problem.status === 503
-                    ? 'Gateway unavailable'
-                    : problem.status === 502
-                      ? 'The gateway rejected the request'
-                      : undefined
+                problem.type.endsWith('/team-role-forbidden')
+                  ? `You can't create apps in ${current?.name || 'this team'}`
+                  : problem.type.endsWith('/gateway-disabled')
+                    ? 'New apps and keys are paused'
+                    : problem.status === 503
+                      ? 'Gateway unavailable'
+                      : problem.status === 502
+                        ? 'The gateway rejected the request'
+                        : undefined
               }
               message={
-                problem.type.endsWith('/email-not-verified') ? (
+                problem.type.endsWith('/team-role-forbidden') ? (
+                  <>
+                    <p>
+                      Your role in this team may have changed. Nothing was
+                      created.
+                    </p>
+                    <a href="/dashboard">Back to My apps</a>
+                  </>
+                ) : problem.type.endsWith('/email-not-verified') ? (
                   <>
                     <p>{problem.detail}</p>
                     <ResendVerification email={user?.email || ''} />
@@ -194,7 +220,7 @@ export function CreateApp({ slug }: { slug?: string }) {
               <Field
                 label="App name"
                 error={errors.name}
-                hint="Up to 80 characters. Only you can see it."
+                hint="Up to 80 characters. Only your team can see it."
               >
                 {(props) => (
                   <Input
@@ -294,7 +320,13 @@ export function CreateApp({ slug }: { slug?: string }) {
             <div className="actions row">
               <Button
                 type="submit"
-                disabled={pending || loading || !!error || !data?.items.length}
+                disabled={
+                  unavailable ||
+                  pending ||
+                  loading ||
+                  !!error ||
+                  !data?.items.length
+                }
                 aria-busy={pending}
                 aria-disabled={verificationBlocked}
                 aria-describedby={

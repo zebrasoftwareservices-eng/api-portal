@@ -14,10 +14,9 @@ async function register(context: BrowserContext) {
   expect(response.status()).toBe(200);
   return email;
 }
+const appsList = /\/api\/v1\/apps(?:\?.*)?$/;
 async function mockApps(page: Page, items: unknown[]) {
-  await page.route('**/api/v1/apps', (route) =>
-    route.fulfill({ json: { items } }),
-  );
+  await page.route(appsList, (route) => route.fulfill({ json: { items } }));
 }
 function app(id: string, name: string, access = true, count = 1) {
   return {
@@ -241,7 +240,7 @@ test('019 AC4,7,8: revoked-key access, long names, several apps and unfiltered h
     `If you get a 403, select Open in ${items[0]!.name} and use one of its active keys.`,
   );
   await fits(page);
-  await page.unroute('**/api/v1/apps');
+  await page.unroute(appsList);
   await mockApps(page, items);
   await page.goto('/apis/sample');
   await expect(page.locator('main .alert')).toContainText(
@@ -321,7 +320,7 @@ test('019 AC5,7: delayed check keeps title, base URL and real reference availabl
   const gate = new Promise<void>((r) => {
     release = r;
   });
-  await page.route('**/api/v1/apps', async (route) => {
+  await page.route(appsList, async (route) => {
     await gate;
     await route.fulfill({ json: { items: [] } });
   });
@@ -374,7 +373,7 @@ for (const failure of [401, 403, 500, 503, 'network', 'timeout'] as const) {
     const gate = new Promise<void>((r) => {
       release = r;
     });
-    await page.route('**/api/v1/apps', async (route) => {
+    await page.route(appsList, async (route) => {
       started();
       if (mode === 'success') return route.fulfill({ json: { items: [] } });
       if (mode === 'expired') return route.fulfill({ status: 401, json: {} });
@@ -479,9 +478,7 @@ test('019 AC6: retry 401 focuses signed-out action without a redirect', async ({
 }) => {
   await register(context);
   let status = 500;
-  await page.route('**/api/v1/apps', (route) =>
-    route.fulfill({ status, json: {} }),
-  );
+  await page.route(appsList, (route) => route.fulfill({ status, json: {} }));
   await page.goto('/apis/sample');
   await expect(
     page.getByText("Access status couldn't be confirmed", { exact: false }),

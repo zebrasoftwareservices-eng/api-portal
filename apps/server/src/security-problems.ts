@@ -1,6 +1,42 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Problem } from './problem.js';
 export const securityCopy = {
+  'team-role-forbidden': [
+    'This action needs a different team role',
+    'Your team role does not allow this action. Ask a team Admin for access. Nothing was changed.',
+  ],
+  'team-needs-admin': [
+    'The team needs an Admin',
+    'Make another member an Admin before leaving, removing or demoting the last Admin, or deleting your account. Nothing was changed.',
+  ],
+  'personal-team': [
+    'Personal teams cannot invite members',
+    'Create a shared team to invite people. Nothing was changed.',
+  ],
+  'already-member': [
+    'Already a team member',
+    'This address belongs to someone who is already a member of this team.',
+  ],
+  'invitation-pending': [
+    'An invitation is already pending',
+    'This address already has a pending invitation to this team. Cancel it before sending another.',
+  ],
+  'invitation-wrong-account': [
+    'Sign in with the invited address',
+    'This invitation is for another email address. Sign in with the invited address to accept. Nothing was changed.',
+  ],
+  'invitation-expired': [
+    'Invitation expired',
+    'This invitation has expired. Ask a team Admin for a new invitation.',
+  ],
+  'invitation-cancelled': [
+    'Invitation cancelled',
+    'This invitation was cancelled. Ask a team Admin for a new invitation.',
+  ],
+  'invitation-used': [
+    'Invitation already accepted',
+    'This invitation has already been accepted.',
+  ],
   'email-not-verified': [
     'Verify your email address',
     'The portal admin requires a verified email address before you create apps or keys. Select Send verification email, then open the link we send you. Nothing was created.',

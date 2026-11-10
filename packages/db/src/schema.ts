@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   pgTable,
+  primaryKey,
   boolean,
   text,
   timestamp,
@@ -109,19 +110,88 @@ export const apiVersions = pgTable(
     ),
   ],
 );
+export const teams = pgTable(
+  'teams',
+  {
+    id: uuid('id').primaryKey(),
+    name: text('name').notNull(),
+    personalOwnerId: uuid('personal_owner_id')
+      .unique()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [check('team_name', sql`length(btrim(${t.name})) between 1 and 80`)],
+);
+export const teamMembers = pgTable(
+  'team_members',
+  {
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    role: text('role').notNull().$type<'admin' | 'member' | 'read-only'>(),
+    selectedAt: time('selected_at').notNull().defaultNow(),
+    createdAt: created(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.userId] }),
+    check('team_member_role', sql`${t.role} in ('admin','member','read-only')`),
+    index('team_member_current_idx').on(t.userId, t.selectedAt.desc()),
+  ],
+);
+export const teamInvitations = pgTable(
+  'team_invitations',
+  {
+    id: uuid('id').primaryKey(),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: text('role').notNull().$type<'admin' | 'member' | 'read-only'>(),
+    tokenHash: text('token_hash').notNull().unique(),
+    invitedBy: uuid('invited_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: created(),
+    expiresAt: time('expires_at').notNull(),
+    acceptedAt: time('accepted_at'),
+    acceptedBy: uuid('accepted_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    cancelledAt: time('cancelled_at'),
+  },
+  (t) => [
+    check(
+      'team_invitation_role',
+      sql`${t.role} in ('admin','member','read-only')`,
+    ),
+    uniqueIndex('team_invitation_pending_unique')
+      .on(t.teamId, t.email)
+      .where(sql`${t.acceptedAt} is null and ${t.cancelledAt} is null`),
+  ],
+);
 export const apps = pgTable(
   'apps',
   {
     id: uuid('id').primaryKey(),
-    ownerId: uuid('owner_id')
+    teamId: uuid('team_id')
       .notNull()
-      .references(() => user.id, { onDelete: 'cascade' }),
+      .references(() => teams.id, { onDelete: 'restrict' }),
+    createdBy: uuid('created_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
     name: text('name').notNull(),
     description: text('description'),
     createdAt: created(),
     updatedAt: updated(),
   },
-  (t) => [uniqueIndex('app_owner_name_unique').on(t.ownerId, t.name)],
+  (t) => [uniqueIndex('app_team_name_unique').on(t.teamId, t.name)],
 );
 export const subscriptions = pgTable(
   'subscriptions',
@@ -258,7 +328,7 @@ export const rateLimitHits = pgTable(
   (t) => [
     check(
       'rate_bucket',
-      sql`${t.bucket} in ('sign-in-failure','password-reset','verification-email')`,
+      sql`${t.bucket} in ('sign-in-failure','password-reset','verification-email','team-invitation')`,
     ),
     index('rate_limit_window_idx').on(t.bucket, t.subjectHash, t.createdAt),
   ],

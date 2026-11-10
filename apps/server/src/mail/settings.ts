@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { mailSettings, type Database } from '@portal/db';
+import type { Tx } from '../auth-limits.js';
 import type { Config } from '../config.js';
 import { decrypt } from '../crypto.js';
 export interface SmtpSettings {
@@ -24,7 +25,7 @@ export function environmentSettings(c: Config): SmtpSettings | null {
       }
     : null;
 }
-export async function effectiveSettings(db: Database, config: Config) {
+export async function effectiveSettings(db: Database | Tx, config: Config) {
   const [saved] = await db.select().from(mailSettings);
   return saved
     ? {

@@ -97,9 +97,23 @@ beforeEach(() => {
       data:
         path === '/v1/me'
           ? user
-          : path === '/v1/apps'
-            ? { items: [] }
-            : settings,
+          : path === '/v1/teams'
+            ? {
+                items: [
+                  {
+                    id: 'personal',
+                    name: 'Personal',
+                    personal: true,
+                    role: 'admin',
+                    memberCount: 1,
+                    createdAt: '2026-11-10T00:00:00Z',
+                  },
+                ],
+                currentTeamId: 'personal',
+              }
+            : path === '/v1/apps'
+              ? { items: [] }
+              : settings,
     }),
   );
 });
@@ -462,9 +476,7 @@ it.each([
       screen.getAllByRole('navigation', { name: 'Admin section' }),
     ).toHaveLength(1);
     for (const name of ['APIs', 'Gateways', 'Mail', 'Accounts']) {
-      expect(screen.getAllByRole('link', { name })).toHaveLength(
-        1,
-      );
+      expect(screen.getAllByRole('link', { name })).toHaveLength(1);
     }
     expect(
       screen.getAllByRole('combobox', { name: 'Admin section' }),
@@ -571,3 +583,103 @@ it.each([
     expect(mocks.replace).not.toHaveBeenCalled();
   },
 );
+
+it('names the shared teams that need an Admin without clearing the deletion password', async () => {
+  mocks.del.mockResolvedValue({
+    error: {
+      type: '/problems/team-needs-admin',
+      title: 'Team needs Admin',
+      status: 409,
+      teams: [
+        { id: 'payments', name: 'Payments' },
+        { id: 'mobile', name: 'Mobile' },
+      ],
+    },
+    response: new Response(null, { status: 409 }),
+  });
+  const actor = userEvent.setup();
+  render(<Profile />);
+  await screen.findByLabelText('Name');
+  await actor.click(screen.getByRole('button', { name: 'Delete account…' }));
+  await actor.type(
+    screen.getByLabelText('Password', { exact: true }),
+    'password123',
+  );
+  await actor.click(
+    screen.getByRole('button', { name: 'Delete account' }),
+  );
+  expect(
+    await screen.findByText('⚠ Make someone else an Admin first'),
+  ).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Payments' })).toHaveAttribute(
+    'href',
+    '/dashboard/teams/payments',
+  );
+  expect(screen.getByRole('link', { name: 'Mobile' })).toHaveAttribute(
+    'href',
+    '/dashboard/teams/mobile',
+  );
+  expect(screen.getByLabelText('Password', { exact: true })).toHaveValue(
+    'password123',
+  );
+  expect(mocks.setUser).not.toHaveBeenCalled();
+});
+
+it('counts only sole-member team apps for account deletion and explains which shared apps stay', async () => {
+  mocks.get.mockImplementation(async (path, options) => ({
+    data:
+      path === '/v1/me'
+        ? user
+        : path === '/v1/teams'
+          ? {
+              items: [
+                {
+                  id: 'personal',
+                  name: 'Personal',
+                  personal: true,
+                  role: 'admin',
+                  memberCount: 1,
+                },
+                {
+                  id: 'side',
+                  name: 'Side project',
+                  personal: false,
+                  role: 'admin',
+                  memberCount: 1,
+                },
+                {
+                  id: 'payments',
+                  name: 'Payments',
+                  personal: false,
+                  role: 'member',
+                  memberCount: 2,
+                },
+              ],
+              currentTeamId: 'payments',
+            }
+          : {
+              items:
+                options.params.query.teamId === 'personal' ? [{}, {}] : [{}],
+            },
+  }));
+  const actor = userEvent.setup();
+  render(<Profile />);
+  await screen.findByLabelText('Name');
+  await actor.click(screen.getByRole('button', { name: 'Delete account…' }));
+  expect(
+    await screen.findByText('your 2 personal apps and their API keys'),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "Side project, where you're the only member, with 1 app and its keys",
+    ),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      "You'll leave Payments. Their apps and keys keep working.",
+    ),
+  ).toBeInTheDocument();
+  expect(mocks.get).not.toHaveBeenCalledWith('/v1/apps', {
+    params: { query: { teamId: 'payments' } },
+  });
+});
