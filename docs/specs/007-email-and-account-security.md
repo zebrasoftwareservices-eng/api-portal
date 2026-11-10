@@ -485,6 +485,68 @@ No new tokens; one shadcn component (`Switch`) and a few small portal components
 
 ## Test report  _(qa-tester)_
 
+### Post-merge QA — 2026-11-10 (`ff5b773`)
+
+This run uses a new `qa007merge` Compose project and Postgres volume; old
+`portal`, `qa007r3` and `qa007r4` volumes and both untracked UAT folders are untouched.
+Application code is unchanged. The AC mapping below remains the automated coverage
+inventory; the results of this post-merge run supersede the historical run details.
+
+- `pnpm lint` and `pnpm typecheck`: PASS, including the added browser tests (7 and 12 tasks).
+- `pnpm test --force`: PASS, 12/12 uncached tasks in 1m42.915s: **185 server,
+  212 portal, 55 Kong adapter and 5 database tests**. This includes all auth raw-path,
+  concurrency, expired-session, token invalidation, permission, malformed-input and
+  gateway-failure regressions, plus account deletion against a changed/disabled gateway.
+- Fresh quickstart: PASS, **26.96 seconds** for `up --build -d --wait`; all services
+  healthy, `/` redirects to `/setup`, no users exist, and the database journal has four
+  applied migrations including `0003_email_and_account_security`. Docker build layers
+  and images were already cached; the database volume and project were new. Command:
+  `PORTAL_PUBLIC_URL=http://localhost:13000 KONG_PROXY_PUBLIC_URL=http://localhost:18000
+  docker compose -p qa007merge -f deploy/docker-compose.yml
+  -f /tmp/007-qa-merge-compose.yaml up --build -d --wait`.
+- Added deterministic browser regressions for known minors U2/U3, with expected-failure
+  annotations placed only after the wrong-password/gateway refusal and corrected-SMTP
+  save prerequisites succeed. These annotations must be removed when the UI fixes land;
+  an unexpected pass will fail the suite. U2 isolates the second UI error response;
+  the existing AC9 test independently exercises an actual Kong Admin listener outage.
+- Restored the missing root Playwright import for spec 007 (T3 below). The full command
+  now discovers 66 tests, including all account-security journeys.
+- Evidence: `/tmp/007-qa-merge-{lint,types,tests,compose,e2e}.log` and
+  `/tmp/007-qa-merge-{lint,types}-final.log`.
+- Full browser command: `COMPOSE_PROJECT_NAME=qa007merge
+  SPEC005_COMPOSE_OVERRIDE=/tmp/007-qa-merge-default-compose.yaml
+  QA_COMPOSE_PROJECT=qa007merge QA_COMPOSE_OVERRIDE=/tmp/007-qa-merge-default-compose.yaml
+  pnpm test:e2e`. All 66 cases executed in 5.4m. The initial invocation had 62 reported
+  passes (including the existing expected failures JSO-399/405/406) and four failures:
+  the first two demo checks lacked the seeded stack, and the new U2/U3 selectors omitted
+  the warning-icon prefix in the error titles. Corrected those test selectors, then reran
+  exactly those four cases against the initialized stack: **4/4 reported passes in 13.4s**,
+  including U2/U3's intended expected failures at their final stale-error assertions.
+  Evidence: `/tmp/007-qa-merge-e2e-retest.log`. Across the full run and targeted re-test,
+  **61 normal passes and 5 known expected failures** cover all 66 cases; there are no
+  unresolved unexpected failures. No application defect or flake was inferred from the
+  initial invocation/selector mistakes, and no automatic retry was added.
+- All AC1–9 and closed B1/B2/B3/R1/R2/U1 regressions pass. U2 and U3 remain reproducible
+  **minor** findings; no blocker/major was found, and no new durable Bug issue is needed.
+  Status is **building**, following this dispatch's explicit rule to use building while
+  any bug remains open (rather than treating the two minors as a passing UAT threshold).
+  No requirements, release or merge gate has been passed. The QA stack is stopped after
+  testing; its volume is retained, and no pre-existing volume was modified.
+
+| Criterion | Automated coverage executed after merge | Result |
+| --- | --- | --- |
+| AC1 | `apps/portal/e2e/account-security.test.ts` AC1/3 + admin-settings browser; `deploy/e2e/quickstart.spec.ts`; fresh-volume check above | PASS |
+| AC2 | Same browser file AC2/8 + security; `apps/server/src/account-security.test.ts` SMTP/queue; `apps/server/src/mail/transport.test.ts` | PASS |
+| AC3 | Browser AC1/3; server app/key guards and mail-less refusal; `packages/db/src/migrate.test.ts` upgrade | PASS |
+| AC4 | Browser AC4/5/6/7 + AC4/5; server reset/session/unknown-address cases | PASS |
+| AC5 | Browser AC4/5/6/7 + AC4/5; server expired/reused reset; `apps/portal/components/account-security.test.tsx` INVALID_TOKEN | PASS |
+| AC6 | Browser AC4/5/6/7; server forced other-session revocation and incorrect current password | PASS |
+| AC7 | Browser AC4/5/6/7; server replaced/expired/reused/taken tokens and old-mailbox reset invalidation | PASS |
+| AC8 | Browser AC2/8 + admin-settings browser + review-blockers; server raw HTTP limits/concurrency/housekeeping | PASS |
+| AC9 | Browser AC9; server gateway outage/partial deletion/late apps/last admins/current gateway configuration | PASS |
+
+### Historical QA baseline — 2026-11-09
+
 QA re-test date: 2026-11-09, after re-review fixes `325dafe` (backend) and `ef62b2b`
 (frontend). The current fresh Compose project `qa007r4` uses Postgres 17, Kong 3.9 and
 Mailpit v1.27.10, with separate host ports (portal 13000, server 14000, proxy 18000,
@@ -633,6 +695,20 @@ Only tests and this spec changed; application code was not modified.
 
 ### Bugs
 
+- [x] **T4 — New error assertions omit warning-icon prefixes (minor, QA tests).**
+  The first full run's U2/U3 tests could not locate their prerequisite error titles because
+  `getByText(..., { exact: true })` omitted the displayed `⚠` prefix. Switched those two
+  selectors to matching the title text irrespective of that prefix; focused re-tests now
+  reach and fail only the intended final stale-error assertions, as documented expected
+  failures. No application code changed.
+
+- [x] **T3 — Root browser suite lost spec-007 registration during the merge (minor, QA tests).**
+  `deploy/e2e/journeys.test.ts` imported setup, general journeys and gateway tests but omitted
+  `apps/portal/e2e/account-security.test.ts`, so `pnpm test:e2e` silently excluded every
+  spec-007 browser check. Restored the import; discovery now includes all eleven spec-007
+  cases (nine existing cases plus the U2/U3 regressions). No application change or durable
+  issue is required for this test-only finding fixed in the current QA loop.
+
 - [x] **B2 — Noncanonical sign-in paths bypass the failure limit (Review blocking 1, backend).**
   Fixed in `3ce5597`. QA verified canonical, both doubled-slash placements and trailing-slash
   paths consume the same limit in Postgres integration and through the Compose portal HTTP
@@ -704,6 +780,10 @@ Only tests and this spec changed; application code was not modified.
   `docs/uat/007/run-2026-11-09-current/11-gateway-refusal-stale-password.png`; default browser
   viewport at the refusal, main mobile journey 390×844. Transient in-spec finding; no durable
   issue or blocking Fix task required.
+  **Post-merge QA, 2026-11-10:** still reproducible in `007 U2`; the real wrong-password
+  response is followed by a deterministic gateway-error response, and the final assertion
+  still sees the stale field error. Real gateway refusal and retained keys independently
+  pass in AC9. The expected-failure marker is activated only at this final regression assertion.
 
 - [ ] **U3 — SMTP test error persists after corrected settings are saved (minor, frontend).**
   Save `mailpit:1` with None security and send a test, producing the unreachable error.
@@ -714,6 +794,9 @@ Only tests and this spec changed; application code was not modified.
   is blocked. Evidence:
   `docs/uat/007/run-2026-11-09-current/17-smtp-error-after-save.png`, 1280 px desktop.
   Transient in-spec minor; no durable Linear issue required.
+  **Post-merge QA, 2026-11-10:** still reproducible in `007 U3` after a real unreachable
+  SMTP test and successful save of port 1025, verified through the API; the old error remains.
+  The expected-failure marker is activated only for the final stale-error assertion.
 
 ## User testing  _(user-tester)_
 

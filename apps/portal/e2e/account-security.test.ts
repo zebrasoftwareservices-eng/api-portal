@@ -130,6 +130,96 @@ test('007 U1: removing saved SMTP settings clears the saved-source test result',
     await context.request.delete('/api/v1/admin/settings/mail');
   }
 });
+
+test('007 U2: a gateway refusal after a correct-password retry clears the prior password error', async ({
+  page,
+  context,
+}) => {
+  await signup(context.request, `stale-delete-${randomUUID()}@example.com`);
+  await page.goto('/profile');
+  await page
+    .getByRole('button', { name: 'Delete account…', exact: true })
+    .click();
+  const dialog = page.getByRole('alertdialog');
+  await dialog.getByLabel('Password', { exact: true }).fill('wrong-password');
+  await dialog
+    .getByRole('button', { name: 'Delete account', exact: true })
+    .click();
+  await expect(dialog.getByText(/This password is incorrect/)).toBeVisible();
+  // Keep the real wrong-password path, then deterministically exercise the
+  // gateway-error rendering without interrupting the shared Compose stack.
+  await page.route('**/api/v1/me', (route) =>
+    route.request().method() === 'DELETE'
+      ? route.fulfill({
+          status: 503,
+          contentType: 'application/problem+json',
+          json: {
+            type: '/problems/gateway-unavailable',
+            title: 'Gateway unavailable',
+            status: 503,
+            detail: 'Your account was not deleted. Try again.',
+          },
+        })
+      : route.continue(),
+  );
+  await dialog.getByLabel('Password', { exact: true }).fill(password);
+  await dialog
+    .getByRole('button', { name: 'Delete account', exact: true })
+    .click();
+  await expect(dialog.getByText(/Gateway unavailable/)).toBeVisible();
+  test.fail(true, 'Known minor U2: stale wrong-password field error');
+  await expect(dialog.getByText(/This password is incorrect/)).toHaveCount(0);
+});
+
+test('007 U3: saving corrected SMTP settings clears the previous test error', async ({
+  page,
+  context,
+}) => {
+  expect(
+    (
+      await signin(context.request, 'admin@example.com', 'change-me-now')
+    ).status(),
+  ).toBe(200);
+  try {
+    expect(
+      (
+        await context.request.put('/api/v1/admin/settings/mail', {
+          data: {
+            host: 'mailpit',
+            port: 1,
+            security: 'none',
+            username: '',
+            senderName: 'Security QA',
+            senderAddress: 'qa@example.com',
+          },
+        })
+      ).status(),
+    ).toBe(200);
+    await page.goto('/admin/settings/mail');
+    await page
+      .getByRole('button', { name: 'Send test email', exact: true })
+      .click();
+    await expect(page.getByText(/Can't reach the mail server/)).toBeVisible();
+    await page.getByLabel('Port', { exact: true }).fill('1025');
+    await page
+      .getByRole('button', { name: 'Save mail settings', exact: true })
+      .click();
+    await expect
+      .poll(
+        async () =>
+          (
+            await (
+              await context.request.get('/api/v1/admin/settings/mail')
+            ).json()
+          ).saved.port,
+      )
+      .toBe(1025);
+    test.fail(true, 'Known minor U3: stale SMTP test error');
+    await expect(page.getByText(/Can't reach the mail server/)).toHaveCount(0);
+  } finally {
+    await context.request.delete('/api/v1/admin/settings/mail');
+  }
+});
 async function signup(request: APIRequestContext, email: string) {
   const result = await request.post('/api/auth/sign-up/email', {
     data: { email, name: 'Security QA', password },
