@@ -44,12 +44,13 @@ uses to wake you, and it spends the Claude allowance while Codex works.
    asking Elango, and answer anything the spec already decides. When the wave has settled, run
    `node scripts/factory.mjs track <id> sync`. Read the new heading in `docs/specs/log/<id>.md`
    and post it. Workers do not comment on Linear themselves:
-   `printf '%s\n' "<role> (<agent>): <outcome> — <summary>" | node scripts/factory.mjs track <id> note <worker.stageKey>`
+   `printf '%s\n' "<role> (<agent>, <model>): <outcome> — <summary>" | node scripts/factory.mjs track <id> note <worker.stageKey>`
+   Include `<model>` when the plan's worker has one, for example `backend-developer (codex, gpt-6.1-sol)`. When it has none, omit the model: `tech-lead (claude)`.
 7. Re-plan. If the new status is not one of `expectStatus` (or the build tasks did not move),
    report what happened and stop.
 8. Count each return to `building` from `testing`, `uat` or `review`. After `maxBuildLoops`, stop
    and ask Elango. A minor finding or a review suggestion is not a return to building.
-9. After every stage print one line: `stage · role (agent) · new status · feature issue · anything for Elango`.
+9. After every stage print one line: `stage · role (agent, model) · new status · feature issue · anything for Elango`. Include the model when the worker has one, and omit it when the plan has none.
 10. For a new idea or Linear issue, after the product-manager worker run
     `node scripts/factory.mjs status --json` to find the new spec id, then
     `node scripts/factory.mjs linear-init <id>`, and continue with that id (its next step is
