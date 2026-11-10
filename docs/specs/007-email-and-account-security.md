@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -785,6 +785,11 @@ Only tests and this spec changed; application code was not modified.
   still sees the stale field error. Real gateway refusal and retained keys independently
   pass in AC9. The expected-failure marker is activated only at this final regression assertion.
 
+  **Post-merge UAT, 2026-11-10:** reproduced with a real stopped Kong; correct-password
+  retry retained both errors. After restart both keys still returned 200; successful deletion
+  then returned 401 for both and removed both consumers. Evidence:
+  `docs/uat/007/run-2026-11-10-post-merge/24-u2-gateway-refusal-stale-password.png` (806×812).
+
 - [ ] **U3 — SMTP test error persists after corrected settings are saved (minor, frontend).**
   Save `mailpit:1` with None security and send a test, producing the unreachable error.
   Change port to `1025` and save. The old “Can't reach the mail server” error remains under
@@ -798,7 +803,61 @@ Only tests and this spec changed; application code was not modified.
   SMTP test and successful save of port 1025, verified through the API; the old error remains.
   The expected-failure marker is activated only for the final stale-error assertion.
 
+  **Post-merge UAT, 2026-11-10:** reproduced again after saving port 1025 and after
+  removing saved settings; a new successful test clears it. Full-page evidence includes
+  the corrected port and stale error:
+  `docs/uat/007/run-2026-11-10-post-merge/42-u3-full-page.png` (1280×2200 viewport).
+
+- [ ] **U4 — First-admin setup says password reset is unavailable (minor, frontend copy).**
+  On a fresh install, open `/setup`. The password hint says “At least 8 characters. Keep it
+  safe: the portal can't reset passwords yet.” Password recovery now works end to end, so
+  this hint contradicts the available account feature. Expected: remove/update the stale
+  sentence. Actual: unchanged hint on the first-admin form. Evidence:
+  `docs/uat/007/run-2026-11-10-post-merge/01-setup-stale-copy.png` (806×812).
+  Setup and recovery both complete; transient in-spec minor for the current loop, no blocker
+  or major and no separate stage/task issue.
+
 ## User testing  _(user-tester)_
+
+### Current post-merge UAT — 2026-11-10 (`c653c63`)
+
+All nine stories pass, with minors U2/U3 still reproducible and new copy minor U4.
+No blocker or major is open, so status is **review**, following this UAT dispatch's
+explicit severity threshold. This supersedes QA's historical any-open-bug status rule;
+no approval or merge gate has been passed. Full walkthrough, findings, coverage limits
+and evidence: `docs/uat/007/run-2026-11-10-post-merge/README.md`.
+
+| User story | Result | Screenshot in `docs/uat/007/run-2026-11-10-post-merge/` |
+| --- | --- | --- |
+| Quickstart sends email to Mailpit | PASS — new Postgres volume, all services healthy in 125.74 s; browser setup, signup, verification and reset delivered | `02-environment-mail.png`, `09-verified-profile.png`; `quickstart.log` |
+| Admin configures SMTP and sends test mail | PASS with U3 — saved sender/source delivered; unreachable host/port error; environment fallback restored | `04-smtp-success.png`, `42-u3-full-page.png`, `43-environment-restored.png` |
+| Admin requires verified email before app creation | PASS — default off/admin Verified; unverified submit disabled; verified developer creates two apps | `06-policy-defaults.png`, `35-mobile-create-gate-scale1.png`, `39-mobile-create-ready-scale1.png` |
+| Admin sets sign-in/reset/verification limits | PASS — changed maxima apply without restart; sign-in, reset and verification 429 states; neutral reset confirmation; defaults restored | `28-verification-rate-limit.png`, `30-signin-rate-limit.png`, `31-reset-limited-confirmation.png`, `41-policy-restored.png` |
+| Developer signs up, verifies and resends | PASS — mobile keyboard signup, delivered resend, profile Verified; recreated account verifies while signed out | `09-verified-profile.png`, `27-mobile-recreated-account.png`, `28a-verification-resend-success.png` |
+| Developer resets forgotten password | PASS — matching known/unknown confirmation; fresh link succeeds; prior session signed out; old password refused/new accepted | `17-reset-known-confirmation.png`, `18-reset-unknown-confirmation.png`, `19-reset-success.png`, `20-prior-session-signed-out.png`, `22-old-password-refused.png` |
+| Developer changes password while signed in | PASS — wrong current password refused; correct current password succeeds | `12-password-refusal.png`, `13-name-header-password-success.png` |
+| Developer updates name and email | PASS — header name updates; taken address refused; pending old-address login works; explicit confirmation changes address; old-mailbox reset invalidated | `13-name-header-password-success.png`, `14-email-pending.png`, `15-email-confirmed.png`, `16-old-mailbox-reset-refused.png`, `21-old-address-refused.png` |
+| Developer deletes account and revokes keys | PASS with U2 — wrong password/gateway outage refuse; both keys survive refusal (200), then become 401; consumers removed; same address registers again; last admin protected | `07-last-admin.png`, `24-u2-gateway-refusal-stale-password.png`, `25-account-deleted.png`, `27-mobile-recreated-account.png`; `gateway-results.json` |
+
+The merged header, auth form, Create app and App detail were exercised. A real API-reference
+GET with the UI-issued key returned 200 OK (`11-reference-request.png`). Mobile signup
+used 390×844/scale 3 with typed keys, Tab and Enter; Orca's scale-3 screenshots show a
+capture tiling artifact, so main mobile views were repeated at scale 1 for clean visual
+evidence (`32`–`40`). Layout width measured 390 px without horizontal overflow. Escape
+safely dismisses the deletion dialog and mobile menu. Captured console windows have no
+errors; failed requests are the intentional negative cases, recorded in `health-*.json`.
+
+U1/R3 remains fixed. R2 was re-tested using a valid old-mailbox reset form opened before
+email confirmation, then refused after confirmation. B1/B2/B3/R1, SMTP auth failure, exact
+rate-limit response structure, elapsed token expiry and independent-device sessions retain
+post-merge QA evidence; signed-out links here used Orca's same default profile. U4's
+stale setup hint does not stop setup or recovery. No new blocker/major or open keyed
+durable bug was discovered. Settings were restored, recreated test data deleted and the
+dedicated Compose project stopped; existing volumes and the two untracked Nov 9 folders
+were left alone.
+
+### Historical UAT — 2026-11-09
+
 
 Current UAT: 2026-11-09, after QA re-review at `37ed904`. Browser: Orca built-in browser;
 full notes and evidence: `docs/uat/007/run-2026-11-09-current/README.md`.
