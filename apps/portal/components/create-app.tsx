@@ -90,7 +90,7 @@ export function CreateApp({ slug }: { slug?: string }) {
           if (current.data) setUser(current.data);
         }
         setRetry(retrySeconds(response));
-        if (error.status === 409) {
+        if (error.type.endsWith('/app-name-taken')) {
           setErrors({
             name: `You already have an app called “${name.trim()}”. Choose a different name.`,
           });
@@ -151,11 +151,13 @@ export function CreateApp({ slug }: { slug?: string }) {
             <ProblemAlert
               problem={problem}
               title={
-                problem.status === 503
-                  ? 'Gateway unavailable'
-                  : problem.status === 502
-                    ? 'The gateway rejected the request'
-                    : undefined
+                problem.type.endsWith('/gateway-disabled')
+                  ? 'New apps and keys are paused'
+                  : problem.status === 503
+                    ? 'Gateway unavailable'
+                    : problem.status === 502
+                      ? 'The gateway rejected the request'
+                      : undefined
               }
               message={
                 problem.type.endsWith('/email-not-verified') ? (
@@ -163,6 +165,8 @@ export function CreateApp({ slug }: { slug?: string }) {
                     <p>{problem.detail}</p>
                     <ResendVerification email={user?.email || ''} />
                   </>
+                ) : problem.type.endsWith('/gateway-disabled') ? (
+                  'The portal admin has turned off new apps and keys for now. Keys you already have keep working. Nothing was created.'
                 ) : problem.status === 502 ? (
                   <>
                     <p>

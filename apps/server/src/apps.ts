@@ -7,12 +7,18 @@ import {
   apps,
   subscriptions,
   apis,
+  apiVersions,
   credentials,
   gatewayConsumers,
   user as users,
   type Database,
 } from '@portal/db';
 import type { GatewayAdapter } from '@portal/adapter-sdk';
+import {
+  requireEnabled,
+  requireGateway,
+  type GatewayConnection,
+} from './gateway-connection.js';
 import { requireUser, type Auth } from './auth.js';
 import { Problem, notFound } from './problem.js';
 import { requireVerified } from './verified.js';
@@ -41,9 +47,10 @@ function credentialView(c: typeof credentials.$inferSelect) {
 async function view(db: Database | Tx, app: typeof apps.$inferSelect) {
   const [subs, keys] = await Promise.all([
     db
-      .select({ apiId: apis.id, slug: apis.slug, title: apis.title })
+      .select({ apiId: apis.id, slug: apis.slug, title: apiVersions.title })
       .from(subscriptions)
       .innerJoin(apis, eq(subscriptions.apiId, apis.id))
+      .innerJoin(apiVersions, eq(apis.latestVersionId, apiVersions.id))
       .where(eq(subscriptions.appId, app.id)),
     db
       .select()
@@ -78,8 +85,7 @@ export function registerApps(
   server: FastifyInstance,
   db: Database,
   auth: Auth,
-  adapter: GatewayAdapter,
-  gatewayId: string,
+  connection: GatewayConnection,
 ) {
   server.get('/api/v1/apps', async (request) => {
     const user = await requireUser(auth, request);
@@ -98,11 +104,13 @@ export function registerApps(
   server.post('/api/v1/apps', async (request, reply) => {
     const user = await requireUser(auth, request);
     await requireVerified(db, user);
+    requireEnabled(await connection.load());
     const input = createSchema.parse(request.body);
     const appId = uuidv7(),
       id = uuidv7(),
       key = generateKey();
     let gatewayAttempted = false;
+    let adapter: GatewayAdapter | undefined;
     try {
       const result = await db.transaction(async (tx) => {
         const [owner] = await tx
@@ -130,13 +138,16 @@ export function registerApps(
           .from(apis)
           .where(inArray(apis.id, input.apiIds));
         if (selected.length !== input.apiIds.length) throw notFound();
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+        const gateway = requireEnabled(await connection.load(tx));
+        adapter = gateway.adapter;
+        const gatewayId = gateway.row.id;
         if (selected.some((a) => a.gatewayId !== gatewayId))
           throw new Problem(
             400,
             'validation',
             'APIs must use the configured gateway.',
           );
-        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
         gatewayAttempted = true;
         const consumer = await adapter.ensureConsumer({ id: appId });
         for (const serviceId of new Set(
@@ -189,7 +200,7 @@ export function registerApps(
         .header('Location', `/api/v1/apps/${appId}`)
         .send(result);
     } catch (error) {
-      if (gatewayAttempted)
+      if (gatewayAttempted && adapter)
         await adapter
           .deleteConsumer({ id: appId })
           .catch(() =>
@@ -205,9 +216,11 @@ export function registerApps(
     const user = await requireUser(auth, request);
     await requireVerified(db, user);
     const { appId } = appParams.parse(request.params);
+    requireEnabled(await connection.load());
     const id = uuidv7(),
       key = generateKey();
     let attempted = false;
+    let adapter: GatewayAdapter | undefined;
     try {
       const result = await db.transaction(async (tx) => {
         await owned(tx, appId, user.id, true);
@@ -224,7 +237,31 @@ export function registerApps(
             'This app already has five active keys. Revoke one before creating another.',
           );
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+        const gateway = requireEnabled(await connection.load(tx));
+        adapter = gateway.adapter;
+        const gatewayId = gateway.row.id;
         attempted = true;
+        const consumer = await adapter.ensureConsumer({ id: appId });
+        const services = await tx
+          .select({ id: apis.gatewayServiceId })
+          .from(subscriptions)
+          .innerJoin(apis, eq(subscriptions.apiId, apis.id))
+          .where(eq(subscriptions.appId, appId));
+        for (const serviceId of new Set(services.map((s) => s.id)))
+          await adapter.grantAccess({ id: appId }, { id: serviceId });
+        await tx
+          .insert(gatewayConsumers)
+          .values({
+            id: uuidv7(),
+            appId,
+            gatewayId,
+            externalId: consumer.id,
+            username: consumer.username,
+          })
+          .onConflictDoUpdate({
+            target: [gatewayConsumers.appId, gatewayConsumers.gatewayId],
+            set: { externalId: consumer.id, username: consumer.username },
+          });
         await adapter.issueCredential({ id: appId }, { id, key });
         const [credential] = await tx
           .insert(credentials)
@@ -241,7 +278,7 @@ export function registerApps(
       });
       return reply.code(201).send(result);
     } catch (error) {
-      if (attempted)
+      if (attempted && adapter)
         await adapter
           .revokeCredential({ id: appId }, id)
           .catch(() =>
@@ -270,6 +307,8 @@ export function registerApps(
           );
         if (!credential) throw notFound();
         if (credential.status === 'revoked') return;
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+        const { adapter } = requireGateway(await connection.load(tx));
         await adapter.revokeCredential({ id: appId }, credentialId);
         await tx
           .update(credentials)

@@ -21,6 +21,7 @@ import { type Auth, requireUser } from './auth.js';
 import { limitLock, readAccountSettings, type Tx } from './auth-limits.js';
 import { securityProblem } from './security-problems.js';
 import { Problem } from './problem.js';
+import type { GatewayConnection } from './gateway-connection.js';
 import type { EnqueueMail } from './mail/queue.js';
 import type { Config } from './config.js';
 const emailSchema = z.strictObject({
@@ -93,7 +94,7 @@ async function checkPassword(
 }
 export async function deleteAccount(
   db: Database,
-  adapter: GatewayAdapter,
+  connection: GatewayAdapter | GatewayConnection,
   current: { id: string; role: string },
 ) {
   const checkAdmin = async (tx: Database | Tx) => {
@@ -112,7 +113,14 @@ export async function deleteAccount(
       'gateway-unavailable',
       "The API gateway didn't respond, so your keys can't be removed yet. Your account was not deleted. Try again in a moment.",
     );
+  const loadAdapter = async (tx: Database | Tx) => {
+    if (!('load' in connection)) return connection;
+    const gateway = await connection.load(tx);
+    if (!gateway?.adapter) throw unavailable();
+    return gateway.adapter;
+  };
   try {
+    const adapter = await loadAdapter(db);
     if (!(await adapter.health()).reachable) throw unavailable();
   } catch {
     throw unavailable();
@@ -120,6 +128,7 @@ export async function deleteAccount(
   const remove = async (tx: Tx, app: { id: string }) => {
     await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
     try {
+      const adapter = await loadAdapter(tx);
       await adapter.deleteConsumer(app);
     } catch (error) {
       if (error instanceof GatewayUnavailableError) throw unavailable();
@@ -168,7 +177,7 @@ export function registerAccount(
   server: FastifyInstance,
   db: Database,
   auth: Auth,
-  adapter: GatewayAdapter,
+  connection: GatewayConnection,
   config: Config,
   enqueue: EnqueueMail,
 ) {
@@ -331,7 +340,7 @@ export function registerAccount(
       .strictObject({ password: z.string().min(1).max(128) })
       .parse(request.body);
     await checkPassword(db, auth, current, password, reply);
-    await deleteAccount(db, adapter, current);
+    await deleteAccount(db, connection, current);
     const context = await auth.$context;
     const cookie = context.authCookies.sessionToken;
     reply.header(

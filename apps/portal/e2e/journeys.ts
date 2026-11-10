@@ -288,17 +288,33 @@ for (const mediaType of [
         )
         .toBe(403);
       // JSO-277: one request must refresh a warm catalog on a target miss.
-      expect(
-        (
-          await context.request.get(
-            '/api/v1/try-it?scalar_url=' +
-              encodeURIComponent(
-                `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/${path}/get`,
-              ),
-            { headers: { apikey: credential.key } },
+      const proxyCall = () =>
+        context.request.get(
+          '/api/v1/try-it?scalar_url=' +
+            encodeURIComponent(
+              `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/${path}/get`,
+            ),
+          { headers: { apikey: credential.key } },
+        );
+      const firstProxyStatus = (await proxyCall()).status();
+      if (firstProxyStatus !== 403) {
+        // Diagnostic only: retain the first-request assertion below even if retry recovers.
+        const retryStarted = Date.now();
+        let retryCount = 0;
+        await expect
+          .poll(
+            async () => {
+              retryCount++;
+              return (await proxyCall()).status();
+            },
+            { timeout: 15000 },
           )
-        ).status(),
-      ).toBe(403);
+          .toBe(403);
+        console.log(
+          `${mediaType}: initial try-it ${firstProxyStatus}, retry recovered 403 after ${retryCount} requests in ${Date.now() - retryStarted}ms`,
+        );
+      }
+      expect(firstProxyStatus).toBe(403);
       await page.goto(`/apis/${path}`);
       if (mediaType === 'application/json') {
         // JSO-281: operation-level security initially has no selected scheme.
@@ -475,7 +491,8 @@ test('admin imports files and URLs and rejects invalid files without publication
       (await (await context.request.get('/api/v1/apis')).json()).items,
     ).toHaveLength(before);
   }
-  // JSO-160: a missing top-level info must name the actual schema error.
+  // Spec 012 validates info.version before lint/schema validation (pipeline step 4).
+  // Missing info must still fail closed with an actionable version location.
   for (const version of ['3.0.3', '3.1.0']) {
     for (const format of ['json', 'yaml']) {
       const content =
@@ -499,12 +516,11 @@ test('admin imports files and URLs and rejects invalid files without publication
         'application/problem+json',
       );
       const detail =
-        "Invalid OpenAPI document: must have required property 'info' at /";
+        'info.version must be a URL-safe version name of 1–64 characters.';
       expect(await response.json()).toMatchObject({
+        type: '/problems/invalid-api-version',
         detail,
-        errors: [
-          { message: "must have required property 'info'", pointer: '' },
-        ],
+        errors: [{ message: 'Invalid API version', pointer: '/info/version' }],
       });
       await expect(page.getByText(detail, { exact: true })).toBeVisible();
       await expect(

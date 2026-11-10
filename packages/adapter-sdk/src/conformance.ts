@@ -8,6 +8,7 @@ interface AccessFixture {
     appId: string,
   ): Promise<{ id: string; group: string; tags: string[] }[]>;
   unavailable(): GatewayAdapter;
+  refused?(): GatewayAdapter;
 }
 
 export function conformance(
@@ -16,6 +17,12 @@ export function conformance(
   access?: () => AccessFixture,
 ) {
   describe('GatewayAdapter conformance', () => {
+    it('checks healthy and refused gateway connections', async () => {
+      expect((await factory().checkConnection()).outcome).toBe('ok');
+      const refused = access?.().refused?.();
+      if (!refused) throw new Error('A refused gateway fixture is required');
+      expect(await refused.checkConnection()).toEqual({ outcome: 'refused' });
+    });
     it('supports idempotent tagged access grants and unavailable gateway errors', async () => {
       if (!access)
         throw new Error('An access fixture is required for conformance');

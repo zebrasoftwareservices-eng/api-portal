@@ -25,6 +25,7 @@ COPY --from=build /app/packages/db/dist ./packages/db/dist
 COPY --from=build /app/packages/adapter-sdk/dist ./packages/adapter-sdk/dist
 COPY --from=build /app/packages/adapter-kong/dist ./packages/adapter-kong/dist
 COPY --from=build /app/apps/server/dist ./apps/server/dist
+COPY --from=build /app/apps/server/rulesets ./apps/server/rulesets
 USER node
 EXPOSE 4000
 CMD ["node", "apps/server/dist/main.js"]

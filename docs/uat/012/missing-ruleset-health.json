@@ -1,0 +1,1 @@
+{"status":"degraded","lint":{"ruleset":"custom","path":"/etc/portal/uat012-missing.yaml","status":"error","error":"/etc/portal/uat012-missing.yaml: ENOENT: no such file or directory, open '/etc/portal/uat012-missing.yaml'"},"version":"0.1.0","gateway":{"kind":"kong","reachable":true,"version":"3.9.4"}}

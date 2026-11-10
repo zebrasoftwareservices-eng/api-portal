@@ -1,9 +1,41 @@
 // SPDX-License-Identifier: Apache-2.0
 import { NextResponse, type NextRequest } from 'next/server';
 import { createAuthClient } from 'better-auth/client';
+import { createClient } from '@portal/sdk';
 import { isDemo } from './lib/demo';
+let adminExists = false;
 export async function middleware(request: NextRequest) {
   if (isDemo()) return NextResponse.next();
+  const path = request.nextUrl.pathname;
+  const protectedPage =
+    path.startsWith('/dashboard') ||
+    path.startsWith('/admin') ||
+    path.startsWith('/profile') ||
+    path === '/setup/gateway';
+  try {
+    if (!adminExists) {
+      const client = createClient({
+        baseUrl: `${process.env.SERVER_URL || 'http://localhost:4000'}/api`,
+        cache: 'no-store',
+      });
+      const { data, error } = await client.GET('/v1/setup');
+      if (error || !data) throw new Error('Setup unavailable');
+      if (data.adminRequired)
+        return path === '/setup'
+          ? NextResponse.next()
+          : NextResponse.redirect(new URL('/setup', request.url));
+      adminExists = true;
+    }
+    if (path === '/setup')
+      return NextResponse.redirect(new URL('/', request.url));
+  } catch {
+    if (!protectedPage) return NextResponse.next();
+    return new NextResponse(
+      'The portal server is unavailable. Try again in a moment.',
+      { status: 503 },
+    );
+  }
+  if (!protectedPage) return NextResponse.next();
   const auth = createAuthClient({
     baseURL: process.env.SERVER_URL || 'http://localhost:4000',
   });
@@ -22,7 +54,7 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(target);
     }
     if (
-      request.nextUrl.pathname.startsWith('/admin') &&
+      (path.startsWith('/admin') || path === '/setup/gateway') &&
       (!('role' in data.user) || data.user.role !== 'admin')
     )
       return NextResponse.rewrite(new URL('/not-found', request.url), {
@@ -36,6 +68,4 @@ export async function middleware(request: NextRequest) {
     );
   }
 }
-export const config = {
-  matcher: ['/dashboard/:path*', '/admin/:path*', '/profile/:path*'],
-};
+export const config = { matcher: ['/((?!api(?:/|$)|_next/|.*\\.[^/]+$).*)'] };

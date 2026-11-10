@@ -110,7 +110,7 @@ test('019 AC1: visitor, developer and admin navigation, current page and My apps
         await expect(page).toHaveTitle('My apps · Developer Portal');
       }
       if (path.startsWith('/dashboard'))
-        await expect(page.locator('main')).not.toContainText('Your apps');
+        await expect(page.locator('#main')).not.toContainText('Your apps');
     }
   }
 });
@@ -236,7 +236,7 @@ test('019 AC4,7,8: revoked-key access, long names, several apps and unfiltered h
   await expect(
     page.getByRole('link', { name: `Open in ${items[0]!.name}`, exact: true }),
   ).toHaveAttribute('href', `/dashboard/apps/${items[0]!.id}`);
-  await expect(page.locator('main')).not.toContainText('Get an API key');
+  await expect(page.locator('#main')).not.toContainText('Get an API key');
   await expect(page.locator('main .alert')).toContainText(
     `If you get a 403, select Open in ${items[0]!.name} and use one of its active keys.`,
   );
@@ -367,10 +367,15 @@ for (const failure of [401, 403, 500, 503, 'network', 'timeout'] as const) {
     if (failure === 'timeout') await page.clock.install();
     let mode: 'fail' | 'success' | 'expired' = 'fail';
     let release!: () => void;
+    let started!: () => void;
+    const requestStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
     const gate = new Promise<void>((r) => {
       release = r;
     });
     await page.route('**/api/v1/apps', async (route) => {
+      started();
       if (mode === 'success') return route.fulfill({ json: { items: [] } });
       if (mode === 'expired') return route.fulfill({ status: 401, json: {} });
       if (failure === 'network') return route.abort();
@@ -385,7 +390,10 @@ for (const failure of [401, 403, 500, 503, 'network', 'timeout'] as const) {
     });
     try {
       await page.goto('/apis/sample');
-      if (failure === 'timeout') await page.clock.runFor(10001);
+      if (failure === 'timeout') {
+        await requestStarted;
+        await page.clock.runFor(10001);
+      }
       if (failure === 401) {
         await expect(page.locator('.access-action')).toHaveAttribute(
           'href',
@@ -404,7 +412,7 @@ for (const failure of [401, 403, 500, 503, 'network', 'timeout'] as const) {
       });
       await expect(message).toBeVisible();
       await expect(page.locator('.access-action')).toHaveCount(0);
-      await expect(page.locator('main')).not.toContainText(
+      await expect(page.locator('#main')).not.toContainText(
         'PRIVATE DIAGNOSTIC',
       );
       await expect(page.locator('main .alert').last()).toContainText(
@@ -577,7 +585,7 @@ test('019 AC1,4,9: real app links work with and without active keys', async ({
         .getByRole('navigation', { name: 'Main navigation' })
         .locator('[aria-current="page"]'),
     ).toHaveText('My apps');
-    await expect(page.locator('main')).not.toContainText('Your apps');
+    await expect(page.locator('#main')).not.toContainText('Your apps');
     await expect(
       page.locator('main').getByRole('link', { name: 'My apps', exact: true }),
     ).toBeVisible();

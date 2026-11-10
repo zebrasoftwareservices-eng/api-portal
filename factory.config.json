@@ -25,8 +25,8 @@
       "model": "gpt-6.1-sol"
     },
     "user-tester": {
-      "agent": "antigravity",
-      "model": "gemini-3.8-flash-high"
+      "agent": "codex",
+      "model": "gpt-6.1-sol"
     }
   },
   "parallelBuild": true,

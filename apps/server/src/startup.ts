@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-import { connect, migrate, instanceSettings, gateways, user } from '@portal/db';
+import { randomBytes } from 'node:crypto';
+import { connect, migrate, instanceSettings, gateways } from '@portal/db';
 import { eq, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import PgBoss from 'pg-boss';
 import { GatewayUnavailableError } from '@portal/adapter-sdk';
-import { KongAdapter } from '@portal/adapter-kong';
+import type { KongAdapter } from '@portal/adapter-kong';
+import { gatewayConnection, requireEnabled } from './gateway-connection.js';
+import { adminExists, createFirstAdmin } from './setup.js';
 import type { Config } from './config.js';
 import { encrypt } from './crypto.js';
 import { createAuth } from './auth.js';
@@ -30,77 +33,101 @@ export async function start(config: Config) {
       .onConflictDoNothing();
     const [instance] = await db.select().from(instanceSettings);
     if (!instance) throw new Error('Instance missing');
-    const values = {
-      kind: 'kong',
-      adminUrl: config.KONG_ADMIN_URL,
-      adminTokenCiphertext: config.KONG_ADMIN_TOKEN
-        ? encrypt(config.KONG_ADMIN_TOKEN, config.PORTAL_ENCRYPTION_KEY)
-        : null,
-      proxyPublicUrl: config.KONG_PROXY_PUBLIC_URL,
-      proxyInternalUrl: config.KONG_PROXY_INTERNAL_URL,
-    };
-    const [gateway] = await db
-      .insert(gateways)
-      .values({ id: uuidv7(), name: 'default', ...values })
-      .onConflictDoUpdate({
-        target: gateways.name,
-        set: { ...values, updatedAt: new Date() },
-      })
-      .returning();
-    if (!gateway) throw new Error('Gateway missing');
-    const adapter = new KongAdapter({
-      adminUrl: config.KONG_ADMIN_URL,
-      instanceId: instance.instanceId,
-      adminToken: config.KONG_ADMIN_TOKEN,
-    });
+    if (config.KONG_ADMIN_URL) {
+      const values = {
+        kind: 'kong',
+        adminUrl: config.KONG_ADMIN_URL,
+        adminTokenCiphertext: config.KONG_ADMIN_TOKEN
+          ? encrypt(config.KONG_ADMIN_TOKEN, config.PORTAL_ENCRYPTION_KEY)
+          : null,
+        proxyPublicUrl: config.KONG_PROXY_PUBLIC_URL,
+        proxyInternalUrl: config.KONG_PROXY_INTERNAL_URL,
+        managedBy: 'env',
+        enabled: true,
+      };
+      await db
+        .insert(gateways)
+        .values({ id: uuidv7(), name: 'default', ...values })
+        .onConflictDoUpdate({
+          target: gateways.name,
+          set: { ...values, updatedAt: new Date() },
+        });
+    } else {
+      await db
+        .update(gateways)
+        .set({ managedBy: 'admin', updatedAt: new Date() })
+        .where(eq(gateways.managedBy, 'env'));
+    }
     await boss.start();
     await boss.createQueue('send-email');
     const enqueueMail = mailQueue(config, boss);
     const auth = createAuth(db, config, enqueueMail);
+    if (
+      config.ADMIN_EMAIL &&
+      config.ADMIN_PASSWORD &&
+      !(await adminExists(db))
+    ) {
+      try {
+        await createFirstAdmin(db, auth, {
+          email: config.ADMIN_EMAIL,
+          password: config.ADMIN_PASSWORD,
+        });
+      } catch (error) {
+        if (!(
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'setup-complete'
+        ))
+          throw error;
+      }
+    }
+    const setupToken =
+      config.NODE_ENV === 'production' && !(await adminExists(db))
+        ? randomBytes(32).toString('hex')
+        : undefined;
     const { app } = await createApp({
       db,
       config,
-      adapter,
-      gatewayId: gateway.id,
       auth,
+      setupToken,
       enqueueMail,
+      enqueueReconcile: () =>
+        boss.send(
+          'gateway-reconcile',
+          {},
+          { singletonKey: 'gateway-reconcile' },
+        ),
     });
-    await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(71833003)`);
-      const [admin] = await tx
-        .select({ id: user.id })
-        .from(user)
-        .where(eq(user.role, 'admin'))
-        .limit(1);
-      if (!admin) {
-        const [existing] = await tx
-          .select({ id: user.id })
-          .from(user)
-          .where(eq(user.email, config.ADMIN_EMAIL));
-        if (existing)
-          throw new Error(
-            'Admin bootstrap email already belongs to a developer; configure another email',
-          );
-        const context = await auth.$context;
-        const created = await context.internalAdapter.createUser({
-          email: config.ADMIN_EMAIL,
-          name: 'Administrator',
-          role: 'admin',
-          emailVerified: true,
-        });
-        await context.internalAdapter.linkAccount({
-          userId: created.id,
-          providerId: 'credential',
-          accountId: created.id,
-          password: await context.password.hash(config.ADMIN_PASSWORD),
-        });
-        app.log.info({ email: config.ADMIN_EMAIL }, 'admin created');
-      }
-    });
+    if (setupToken)
+      app.log.info(`Setup token for the first admin: ${setupToken}`);
+    const connection = gatewayConnection(
+      db,
+      config,
+      instance.instanceId,
+      app.log,
+    );
+    async function seedIfEnabled() {
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+        const loaded = await connection.load(tx);
+        if (!loaded || !loaded.row.enabled) {
+          app.log.warn('Sample seed skipped: no enabled gateway is connected');
+          return;
+        }
+        const gateway = requireEnabled(loaded);
+        await seedSample(
+          tx,
+          gateway.adapter as KongAdapter,
+          gateway.row.id,
+          instance!.instanceId,
+        );
+      });
+    }
+
     let seedPending = false;
     if (config.SEED_SAMPLE)
       try {
-        await seedSample(db, adapter, gateway.id, instance.instanceId);
+        await seedIfEnabled();
       } catch (err) {
         seedPending = true;
         app.log.warn(
@@ -140,14 +167,12 @@ export async function start(config: Config) {
     await boss.work(
       'gateway-reconcile',
       backgroundJob('gateway-reconcile', app.log, () =>
-        reconcile(db, adapter, app.log),
+        reconcile(db, connection, app.log),
       ),
     );
     await boss.work(
       'seed-sample',
-      backgroundJob('seed-sample', app.log, () =>
-        seedSample(db, adapter, gateway.id, instance.instanceId),
-      ),
+      backgroundJob('seed-sample', app.log, () => seedIfEnabled()),
     );
     await boss.schedule(
       'gateway-reconcile',

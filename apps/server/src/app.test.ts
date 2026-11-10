@@ -9,6 +9,7 @@ import {
   migrate,
   gateways,
   apis,
+  apiVersions,
   apps,
   credentials,
   user,
@@ -18,6 +19,9 @@ import {
 } from '@portal/db';
 import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   GatewayUnavailableError,
   GatewayServiceConflictError,
@@ -26,7 +30,18 @@ import {
 import { KongAdapter } from '@portal/adapter-kong';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
+import { seedSample } from './seed.js';
+import { createAuth } from './auth.js';
 import { reconcile } from './reconcile.js';
+import { gatewayConnection } from './gateway-connection.js';
+const runtime = () =>
+  gatewayConnection(
+    connection.db,
+    loadConfig({}),
+    'test',
+    { error: () => {} },
+    () => adapter,
+  );
 let container: StartedPostgreSqlContainer;
 let connection: ReturnType<typeof connect>;
 let server: Awaited<ReturnType<typeof createApp>>['app'];
@@ -54,6 +69,8 @@ const adapter: GatewayAdapter = {
     plans: false,
     usage: false,
   }),
+  checkConnection: async () => ({ outcome: 'ok', version: '3.9.4' }),
+  checkProxy: async () => true,
   health: async () => ({ reachable: true, latencyMs: 1 }),
   listServices: async () => [
     {
@@ -70,6 +87,7 @@ const adapter: GatewayAdapter = {
     keyAuth: true,
   }),
   ensureConsumer: vi.fn(async (app) => {
+    if (owned.has(app.id)) return owned.get(app.id)!;
     const value = {
       id: uuidv7(),
       username: `portal-app-${app.id}`,
@@ -133,23 +151,30 @@ beforeAll(async () => {
   await connection.db.insert(apis).values({
     id: apiId,
     slug: 'sample',
-    title: 'Sample',
-    version: '1',
     gatewayId,
     gatewayServiceId: 'service',
     gatewayServiceName: 'pets',
     routePath: '/sample',
+  });
+  await connection.db.insert(apiVersions).values({
+    id: apiId,
+    apiId,
+    title: 'Sample',
+    version: '0.1.0',
     document: {
       openapi: '3.1.0',
-      info: { title: 'Sample', version: '1' },
+      info: { title: 'Sample', version: '0.1.0' },
       paths: {},
     },
   });
+  await connection.db
+    .update(apis)
+    .set({ latestVersionId: apiId })
+    .where(eq(apis.id, apiId));
   ({ app: server } = await createApp({
     db: connection.db,
     config: loadConfig({ DATABASE_URL: url }),
-    adapter,
-    gatewayId,
+    adapterFor: () => adapter,
     proxyFetch,
     logger: {
       stream: {
@@ -159,6 +184,11 @@ beforeAll(async () => {
       },
     },
   }));
+  await server.inject({
+    method: 'POST',
+    url: '/api/v1/setup/admin',
+    payload: { email: 'bootstrap@example.com', password: 'test-password-123' },
+  });
   const signup = await server.inject({
     method: 'POST',
     url: '/api/auth/sign-up/email',
@@ -578,12 +608,8 @@ info: {}`,
         'application/problem+json',
       );
       expect(missingInfo.json()).toMatchObject({
-        type: '/problems/invalid-openapi',
-        detail:
-          "Invalid OpenAPI document: must have required property 'info' at /",
-        errors: [
-          { message: "must have required property 'info'", pointer: '' },
-        ],
+        type: '/problems/invalid-api-version',
+        errors: [{ message: 'Invalid API version', pointer: '/info/version' }],
       });
       expect(await connection.db.select().from(apis)).toHaveLength(1);
     }
@@ -693,7 +719,7 @@ info: {}`,
         (c) => c.id !== key.id,
       );
     const warn = vi.fn();
-    await reconcile(connection.db, adapter, { warn });
+    await reconcile(connection.db, runtime(), { warn });
     expect(owned.has(orphan)).toBe(false);
     expect(adapter.applyAccessPolicy).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -719,7 +745,7 @@ info: {}`,
       .spyOn(adapter, 'listOwnedConsumers')
       .mockRejectedValueOnce(new GatewayUnavailableError());
     await expect(
-      reconcile(connection.db, adapter, { warn }),
+      reconcile(connection.db, runtime(), { warn }),
     ).rejects.toBeInstanceOf(GatewayUnavailableError);
     expect(await connection.db.select().from(apps)).toEqual(before.apps);
     expect(await connection.db.select().from(credentials)).toEqual(before.keys);
@@ -727,7 +753,7 @@ info: {}`,
       before.subscriptions,
     );
     list.mockRestore();
-    await reconcile(connection.db, adapter, { warn });
+    await reconcile(connection.db, runtime(), { warn });
     expect(adapter.applyAccessPolicy).toHaveBeenLastCalledWith(
       expect.objectContaining({
         apps: expect.arrayContaining(
@@ -752,8 +778,7 @@ info: {}`,
     const { app: fresh } = await createApp({
       db: connection.db,
       config,
-      adapter,
-      gatewayId,
+      adapterFor: () => adapter,
       proxyFetch: fetchGateway,
     });
     const id = uuidv7(),
@@ -772,18 +797,26 @@ info: {}`,
       await connection.db.insert(apis).values({
         id,
         slug,
-        title: 'Newly published',
-        version: '1',
         gatewayId,
         gatewayServiceId: id,
         gatewayServiceName: slug,
         routePath: `/${slug}`,
+      });
+      await connection.db.insert(apiVersions).values({
+        id,
+        apiId: id,
+        version: '1',
+        title: 'Newly published',
         document: {
           openapi: '3.1.0',
           info: { title: slug, version: '1' },
           paths: {},
         },
       });
+      await connection.db
+        .update(apis)
+        .set({ latestVersionId: id })
+        .where(eq(apis.id, id));
       const result = await fresh.inject(target);
       expect(result.statusCode, result.body).toBe(403);
       expect(result.json().type).toBe('/problems/api-access-denied');
@@ -833,5 +866,453 @@ info: {}`,
       }
     }
     expect(limited).toBe(true);
+  });
+});
+describe('API versions and changelog', () => {
+  const endpoint = '/api/v1/admin/apis/sample';
+  const spec = (version: string, paths: Record<string, unknown> = {}) => ({
+    content: JSON.stringify({
+      openapi: '3.1.0',
+      info: { title: `Sample ${version}`, version },
+      paths,
+    }),
+  });
+  const publish = (version: string, extra = {}, paths = {}) =>
+    server.inject({
+      method: 'POST',
+      url: endpoint + '/versions',
+      headers: { cookie },
+      payload: { spec: spec(version, paths), ...extra },
+    });
+  it('publishes versions without gateway calls, switches latest, rejects duplicates and preserves stable documents', async () => {
+    const getService = vi.spyOn(adapter, 'getService');
+    getService.mockClear();
+    vi.mocked(adapter.protectService).mockClear();
+    const v1 = await publish(
+      '1.0.0',
+      {},
+      { '/orders': { get: { responses: { '200': { description: 'OK' } } } } },
+    );
+    expect(v1.statusCode, v1.body).toBe(201);
+    const v2 = await publish(
+      '2.0.0',
+      { releaseNote: 'Orders can now be created' },
+      {
+        '/orders': {
+          post: { responses: { '201': { description: 'Created' } } },
+        },
+      },
+    );
+    expect(v2.statusCode, v2.body).toBe(201);
+    expect(v2.json().version).toMatchObject({
+      releaseNote: 'Orders can now be created',
+      changes: {
+        comparedTo: '1.0.0',
+        added: [
+          expect.objectContaining({
+            method: 'POST',
+            path: '/orders',
+            breaking: false,
+          }),
+        ],
+        removed: [expect.objectContaining({ method: 'GET', breaking: true })],
+        breaking: true,
+      },
+    });
+    const patch = await publish('1.1.0', { makeLatest: false });
+    expect(patch.statusCode, patch.body).toBe(201);
+    expect(patch.json().api.version).toBe('2.0.0');
+    expect(patch.json().version.changes.comparedTo).toBe('1.0.0');
+    const newerPatch = await publish('1.2.0');
+    expect(newerPatch.json().api.version).toBe('1.2.0');
+    expect(
+      newerPatch.json().api.versions.map((v: { version: string }) => v.version),
+    ).toEqual(['2.0.0', '1.2.0', '1.1.0', '1.0.0', '0.1.0']);
+    const duplicate = await publish('2.0.0');
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json().type).toBe('/problems/api-version-exists');
+    const parallel = await Promise.all([publish('3.0.0'), publish('3.0.0')]);
+    expect(parallel.map((r) => r.statusCode).sort()).toEqual([201, 409]);
+    const latest = await server.inject({
+      method: 'PUT',
+      url: endpoint + '/latest-version',
+      headers: { cookie },
+      payload: { version: '2.0.0' },
+    });
+    expect(latest.statusCode, latest.body).toBe(200);
+    expect(latest.json().version).toBe('2.0.0');
+    expect(
+      latest.json().versions.filter((v: { isLatest: boolean }) => v.isLatest),
+    ).toHaveLength(1);
+    const stable = await server.inject(
+      '/api/v1/apis/sample/versions/1.0.0/openapi.json',
+    );
+    expect(stable.json().info.version).toBe('1.0.0');
+    expect(stable.json().servers).toEqual([
+      { url: 'http://localhost:8000/sample' },
+    ]);
+    expect(
+      (await server.inject('/api/v1/apis/sample/openapi.json')).json().info
+        .version,
+    ).toBe('2.0.0');
+    expect(
+      (await server.inject('/api/v1/apis/sample/changelog'))
+        .json()
+        .items.find((v: { version: string }) => v.version === '2.0.0')
+        .releaseNote,
+    ).toBe('Orders can now be created');
+    expect(getService).not.toHaveBeenCalled();
+    expect(adapter.protectService).not.toHaveBeenCalled();
+    getService.mockRestore();
+  });
+  it('012 failure paths: invalid bodies, expired admin session and gateway outage leave version state safe', async () => {
+    const before = await connection.db.select().from(apiVersions);
+    for (const payload of [
+      {},
+      { spec: spec('invalid/name') },
+      { spec: spec('valid'), releaseNote: 'x'.repeat(5001) },
+      { spec: spec('valid'), makeLatest: 'false' },
+    ]) {
+      const result = await server.inject({
+        method: 'POST',
+        url: endpoint + '/versions',
+        headers: { cookie },
+        payload,
+      });
+      expect(result.statusCode).toBeGreaterThanOrEqual(400);
+      expect(result.statusCode).toBeLessThan(500);
+      expect(result.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+    }
+    const signed = await server.inject({
+      method: 'POST',
+      url: '/api/auth/sign-up/email',
+      payload: {
+        name: 'Expired version admin',
+        email: 'expired-versions@example.com',
+        password: 'test-password-123',
+      },
+    });
+    expect(signed.statusCode).toBe(200);
+    await connection.db
+      .update(user)
+      .set({ role: 'admin' })
+      .where(eq(user.id, signed.json().user.id));
+    await connection.db
+      .update(session)
+      .set({ expiresAt: new Date(0) })
+      .where(eq(session.userId, signed.json().user.id));
+    const expiredCookie =
+      signed.headers['set-cookie']?.toString().split(';')[0] ?? '';
+    for (const method of ['POST', 'PUT'] as const) {
+      const result = await server.inject({
+        method,
+        url: endpoint + (method === 'POST' ? '/versions' : '/latest-version'),
+        headers: { cookie: expiredCookie },
+        payload:
+          method === 'POST' ? { spec: spec('expired') } : { version: '1.0.0' },
+      });
+      expect(result.statusCode).toBe(401);
+      expect(result.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+    }
+    expect(await connection.db.select().from(apiVersions)).toEqual(before);
+    const outage = vi
+      .spyOn(adapter, 'getService')
+      .mockRejectedValue(new GatewayUnavailableError());
+    try {
+      const result = await publish('outage-qa', { makeLatest: false });
+      expect(result.statusCode, result.body).toBe(201);
+      expect(outage).not.toHaveBeenCalled();
+    } finally {
+      outage.mockRestore();
+    }
+  });
+  it('012 AC7-8: operator replacement reaches HTTP imports; invalid rulesets log and fail closed', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'portal-qa-rules-'));
+    try {
+      for (const mode of ['custom', 'missing', 'invalid']) {
+        const path = join(dir, mode + '.yaml');
+        if (mode === 'custom')
+          await writeFile(
+            path,
+            'extends: []\nrules:\n  operation-description:\n    given: $.paths[*].get\n    severity: error\n    then:\n      field: description\n      function: truthy\n',
+          );
+        if (mode === 'invalid') await writeFile(path, 'rules: [');
+        const entries: string[] = [];
+        const { app } = await createApp({
+          db: connection.db,
+          config: loadConfig({ PORTAL_LINT_RULESET: path }),
+          adapterFor: () => adapter,
+          auth: createAuth(connection.db, loadConfig({})),
+          logger: {
+            stream: {
+              write: (line: string) => {
+                entries.push(line);
+              },
+            },
+          },
+        });
+        try {
+          for (const target of ['/api/v1/admin/apis', endpoint + '/versions']) {
+            const result = await app.inject({
+              method: 'POST',
+              url: target,
+              headers: { cookie },
+              payload: {
+                spec: spec('operator-' + mode, {
+                  '/orders': {
+                    get: { responses: { '200': { description: 'OK' } } },
+                  },
+                }),
+                ...(target.endsWith('/apis')
+                  ? {
+                      slug: 'operator-' + mode,
+                      gatewayServiceId: 'operator-' + mode,
+                    }
+                  : {}),
+              },
+            });
+            expect(result.statusCode, result.body).toBe(
+              mode === 'custom' ? 422 : 503,
+            );
+            expect(result.headers['content-type']).toContain(
+              'application/problem+json',
+            );
+            if (mode === 'custom')
+              expect(result.json().errors).toEqual(
+                expect.arrayContaining([
+                  expect.objectContaining({
+                    rule: 'operation-description',
+                    message: expect.any(String),
+                    line: 1,
+                    pointer: '/paths/~1orders/get',
+                  }),
+                ]),
+              );
+          }
+          if (mode === 'custom') {
+            // An undeclared path parameter is a portal-default error omitted by the operator file.
+            const result = await app.inject({
+              method: 'POST',
+              url: endpoint + '/versions',
+              headers: { cookie },
+              payload: {
+                spec: spec('operator-replacement', {
+                  '/orders/{id}': {
+                    get: {
+                      description: 'Present',
+                      responses: { '200': { description: 'OK' } },
+                    },
+                  },
+                }),
+                makeLatest: false,
+              },
+            });
+            expect(result.statusCode, result.body).toBe(201);
+            expect(result.json().lintWarnings).toEqual([]);
+          } else {
+            expect((await app.inject('/api/v1/health')).json()).toMatchObject({
+              status: 'degraded',
+              lint: {
+                status: 'error',
+                path,
+                error: expect.stringContaining(path),
+              },
+            });
+            const entry = entries
+              .map((line) => JSON.parse(line))
+              .find((item) => item.msg === 'Lint ruleset unavailable');
+            expect(entry).toMatchObject({
+              level: 50,
+              lint: { path, error: expect.any(String) },
+            });
+            expect((await app.inject('/api/v1/apis/sample')).statusCode).toBe(
+              200,
+            );
+          }
+        } finally {
+          await app.close();
+        }
+      }
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+  it('sample seeding retains an administrator latest choice', async () => {
+    const seedAdapter = {
+      ...adapter,
+      request: vi.fn(async () => ({})),
+    } as unknown as KongAdapter;
+    await seedSample(connection.db, seedAdapter, gatewayId, 'test-instance');
+    const detail = (await server.inject('/api/v1/apis/sample')).json();
+    expect(detail.version).toBe('2.0.0');
+    expect(
+      detail.versions.filter((v: { version: string }) => v.version === '1.0.0'),
+    ).toHaveLength(1);
+  });
+  it('returns URL-encoded stable documents for version names containing plus', async () => {
+    const response = await publish('2024+build', { makeLatest: false });
+    expect(response.statusCode, response.body).toBe(201);
+    expect(response.headers.location).toBe(
+      '/api/v1/apis/sample/versions/2024%2Bbuild/openapi.json',
+    );
+    expect(
+      (await server.inject(response.headers.location!)).json().info.version,
+    ).toBe('2024+build');
+  });
+  it('enforces admin permissions and unknown API/version 404s', async () => {
+    for (const method of ['POST', 'PUT'] as const) {
+      const url =
+        endpoint + (method === 'POST' ? '/versions' : '/latest-version');
+      const payload =
+        method === 'POST' ? { spec: spec('4.0.0') } : { version: '1.0.0' };
+      expect((await server.inject({ method, url, payload })).statusCode).toBe(
+        401,
+      );
+      expect(
+        (
+          await server.inject({
+            method,
+            url,
+            headers: { cookie: secondCookie },
+            payload,
+          })
+        ).statusCode,
+      ).toBe(403);
+    }
+    for (const url of [
+      endpoint + '/latest-version',
+      '/api/v1/admin/apis/unknown/latest-version',
+    ])
+      expect(
+        (
+          await server.inject({
+            method: 'PUT',
+            url,
+            headers: { cookie },
+            payload: { version: 'unknown' },
+          })
+        ).statusCode,
+      ).toBe(404);
+    expect(
+      (await server.inject('/api/v1/apis/sample/versions/unknown/openapi.json'))
+        .statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await server.inject({
+          method: 'POST',
+          url: '/api/v1/admin/apis/unknown/versions',
+          headers: { cookie },
+          payload: { spec: spec('1.0.0') },
+        })
+      ).statusCode,
+    ).toBe(404);
+  });
+  it('refuses each blocking lint finding on new APIs and versions without modifying stored versions', async () => {
+    for (const [rule, paths] of [
+      [
+        'path-params',
+        {
+          '/orders/{id}': {
+            get: { responses: { '200': { description: 'OK' } } },
+          },
+        },
+      ],
+      [
+        'invalid-ref',
+        {
+          '/orders': {
+            get: {
+              responses: { '200': { $ref: '#/components/responses/Missing' } },
+            },
+          },
+        },
+      ],
+      [
+        'operation-operationId-unique',
+        {
+          '/a': {
+            get: {
+              operationId: 'same',
+              responses: { '200': { description: 'OK' } },
+            },
+          },
+          '/b': {
+            get: {
+              operationId: 'same',
+              responses: { '200': { description: 'OK' } },
+            },
+          },
+        },
+      ],
+    ] as const) {
+      const before = await connection.db.select().from(apiVersions);
+      for (const url of ['/api/v1/admin/apis', endpoint + '/versions']) {
+        const response = await server.inject({
+          method: 'POST',
+          url,
+          headers: { cookie },
+          payload: {
+            spec: spec('bad-lint', paths),
+            ...(url.endsWith('/apis')
+              ? { gatewayServiceId: 'unused', slug: 'bad-lint' }
+              : {}),
+          },
+        });
+        expect(response.statusCode, response.body).toBe(422);
+        expect(response.json()).toMatchObject({
+          type: '/problems/openapi-lint-failed',
+          errorCount: expect.any(Number),
+          errors: expect.arrayContaining([
+            expect.objectContaining({
+              rule,
+              line: 1,
+              pointer: expect.any(String),
+            }),
+          ]),
+        });
+      }
+      expect(await connection.db.select().from(apiVersions)).toHaveLength(
+        before.length,
+      );
+    }
+  });
+  it('keeps docs available and imports unavailable when an operator ruleset cannot load', async () => {
+    const { app } = await createApp({
+      db: connection.db,
+      config: loadConfig({
+        PORTAL_LINT_RULESET: '/missing/operator.spectral.yaml',
+      }),
+      adapterFor: () => adapter,
+      auth: createAuth(connection.db, loadConfig({})),
+      logger: false,
+    });
+    try {
+      const health = (await app.inject('/api/v1/health')).json();
+      expect(health).toMatchObject({
+        status: 'degraded',
+        lint: {
+          ruleset: 'custom',
+          status: 'error',
+          path: '/missing/operator.spectral.yaml',
+          error: expect.stringContaining('/missing/operator.spectral.yaml'),
+        },
+      });
+      expect((await app.inject('/api/v1/apis/sample')).statusCode).toBe(200);
+      const response = await app.inject({
+        method: 'POST',
+        url: endpoint + '/versions',
+        headers: { cookie },
+        payload: { spec: spec('4.0.0') },
+      });
+      expect(response.statusCode, response.body).toBe(503);
+      expect(response.json().type).toBe('/problems/lint-ruleset-unavailable');
+    } finally {
+      await app.close();
+    }
   });
 });

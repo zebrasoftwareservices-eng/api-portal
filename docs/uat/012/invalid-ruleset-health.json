@@ -1,0 +1,1 @@
+{"status":"degraded","lint":{"ruleset":"custom","path":"/etc/portal/uat012-invalid.yaml","status":"error","error":"/etc/portal/uat012-invalid.yaml: Invalid ruleset provided"},"version":"0.1.0","gateway":{"kind":"kong","reachable":true,"version":"3.9.4"}}

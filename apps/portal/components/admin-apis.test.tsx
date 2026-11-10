@@ -22,7 +22,7 @@ function mockServices(items: (typeof service & { linkedApiSlug?: string })[]) {
   );
 }
 async function fillUrlImport(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByLabelText('From a URL'));
+  await user.click(await screen.findByLabelText('From a URL'));
   await user.type(
     screen.getByLabelText('Document URL'),
     'https://example.com/openapi.yaml',
@@ -58,7 +58,7 @@ describe('admin import', () => {
       response: new Response(null, { status: 422 }),
     });
     render(<AdminApis />);
-    await user.click(screen.getByLabelText('From a URL'));
+    await user.click(await screen.findByLabelText('From a URL'));
     await user.type(
       screen.getByLabelText('Document URL'),
       'https://example.com/openapi.yaml',
@@ -97,7 +97,7 @@ describe('admin import', () => {
     Object.defineProperty(file, 'text', {
       value: async () => 'openapi: 3.1.0',
     });
-    await user.upload(screen.getByLabelText('OpenAPI file'), file);
+    await user.upload(await screen.findByLabelText('OpenAPI file'), file);
     await user.selectOptions(screen.getByLabelText('Kong service'), 'svc');
     await user.click(
       screen.getByRole('button', { name: 'Import and publish' }),
@@ -127,7 +127,7 @@ describe('admin import', () => {
       detail:
         'This Kong service already serves /apis/orders. A Kong service can serve only one published API, because access is granted per service.',
       field:
-        'This service already serves a published API. Choose another service.',
+        'This service already serves a published API. Choose another service, or add a version to that API.',
     },
   ])(
     'keeps values and focuses the service for $type, then clears the refusal on selection',
@@ -253,7 +253,7 @@ describe('admin import', () => {
     await screen.findByRole('option', { name: /sample-svc/ });
     await user.selectOptions(screen.getByLabelText('Kong service'), 'svc');
     expect(screen.getByText(/This service already serves/)).toHaveTextContent(
-      '⚠ This service already serves /apis/orders. A Kong service can serve only one published API, so this import will be refused. Choose another one.',
+      '⚠ This service already serves /apis/orders. To publish a new version of that API, add a version to it instead.',
     );
     expect(
       screen.queryByText(/This API will be public/),
@@ -357,4 +357,164 @@ describe('admin import', () => {
       screen.queryByText(/Publishing limits this service/),
     ).not.toBeInTheDocument();
   });
+  it.each(['gateway-disabled', 'gateway-not-connected'])(
+    'blocks the initial form for %s and keeps the catalog',
+    async (code) => {
+      mocks.get.mockImplementation((path: string) =>
+        Promise.resolve(
+          path.includes('services')
+            ? { error: { type: `/problems/${code}`, status: 409, title: code } }
+            : {
+                data: path.includes('health')
+                  ? { gateway: null }
+                  : { items: [] },
+              },
+        ),
+      );
+      render(<AdminApis />);
+      expect(screen.queryByLabelText('OpenAPI file')).not.toBeInTheDocument();
+      expect(
+        await screen.findByRole('link', { name: 'Go to Gateways' }),
+      ).toHaveAttribute('href', '/admin/gateways');
+      expect(screen.queryByLabelText('Kong service')).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('heading', { name: 'Published APIs' }),
+      ).toBeInTheDocument();
+    },
+  );
+  it('keeps all entries through failed service refresh and a stale disabled submit', async () => {
+    const user = userEvent.setup();
+    render(<AdminApis />);
+    await fillUrlImport(user);
+    mocks.get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.includes('services')
+          ? {
+              error: {
+                type: '/problems/gateway-unavailable',
+                title: 'Gateway unavailable',
+                status: 503,
+              },
+            }
+          : { data: { items: [] } },
+      ),
+    );
+    await user.click(screen.getByRole('button', { name: 'Refresh list' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Nothing you entered is lost.',
+    );
+    expect(screen.getByLabelText('Document URL')).toHaveValue(
+      'https://example.com/openapi.yaml',
+    );
+    expect(screen.getByLabelText('Kong service')).toHaveValue('svc');
+    mockServices([service]);
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument(),
+    );
+    mocks.post.mockResolvedValue({
+      error: {
+        type: '/problems/gateway-disabled',
+        title: 'Gateway disabled',
+        status: 409,
+      },
+      response: new Response(null, { status: 409 }),
+    });
+    await user.click(
+      screen.getByRole('button', { name: 'Import and publish' }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Nothing was published, and your entries are still here.',
+    );
+    expect(screen.getByLabelText('Document URL')).toHaveValue(
+      'https://example.com/openapi.yaml',
+    );
+  });
+  it('shows all route paths in the selected-service hint', async () => {
+    mockServices([
+      {
+        ...service,
+        routes: [{ id: 'route', paths: ['/one', '/two', '/three'] }],
+      },
+    ]);
+    render(<AdminApis />);
+    const user = userEvent.setup();
+    await user.selectOptions(
+      await screen.findByLabelText('Kong service'),
+      'svc',
+    );
+    expect(
+      screen.getByRole('option', {
+        name: /sample-svc — \/one, \/two \+1 more/,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Routes: /one, /two, /three.')).toBeInTheDocument();
+  });
+});
+
+it('shows lint locations in the original import form and keeps source values', async () => {
+  mockServices([service]);
+  const user = userEvent.setup();
+  mocks.post.mockResolvedValue({
+    error: {
+      type: '/problems/openapi-lint-failed',
+      title: 'Lint failed',
+      status: 422,
+      errorCount: 1,
+      errors: [
+        {
+          rule: 'path-params',
+          message: 'Declare id',
+          pointer: '/paths/~1orders~1{id}',
+          line: 7,
+          column: 3,
+        },
+      ],
+    },
+    response: new Response(null, { status: 422 }),
+  });
+  render(<AdminApis />);
+  await fillUrlImport(user);
+  await user.click(screen.getByRole('button', { name: 'Import and publish' }));
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('1 error stops this document');
+  expect(alert).toHaveTextContent('path-params');
+  expect(alert).toHaveTextContent('Line 7, column 3');
+  expect(alert).toHaveTextContent('/paths/~1orders~1{id}');
+  expect(alert).toHaveFocus();
+  expect(screen.getByLabelText('Document URL')).toHaveValue(
+    'https://example.com/openapi.yaml',
+  );
+});
+it('offers a URL-preserving link to add a version to an already linked service', async () => {
+  mockServices([{ ...service, linkedApiSlug: 'orders' }]);
+  const user = userEvent.setup();
+  render(<AdminApis />);
+  await fillUrlImport(user);
+  expect(
+    screen.getByRole('link', { name: 'Add a version to /apis/orders' }),
+  ).toHaveAttribute(
+    'href',
+    '/admin/apis/orders?url=https%3A%2F%2Fexample.com%2Fopenapi.yaml#add-version',
+  );
+});
+it('shows the ruleset banner and refuses retry for ruleset failures', async () => {
+  mockServices([service]);
+  const user = userEvent.setup();
+  mocks.post.mockResolvedValue({
+    error: {
+      type: '/problems/lint-ruleset-unavailable',
+      status: 503,
+      title: 'Unavailable',
+      detail: '/rules.yaml missing',
+    },
+    response: new Response(null, { status: 503 }),
+  });
+  render(<AdminApis />);
+  await fillUrlImport(user);
+  await user.click(screen.getByRole('button', { name: 'Import and publish' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Imports are paused',
+  );
+  expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
 });

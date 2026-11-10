@@ -7,6 +7,8 @@ import {
 } from '@testcontainers/postgresql';
 import {
   connect,
+  instanceSettings,
+  gateways,
   migrate,
   user,
   apps,
@@ -45,18 +47,34 @@ const adapter = {
   deleteConsumer: vi.fn(async () => {}),
   kind: 'kong',
 } as unknown as GatewayAdapter;
+const replacementAdapter = {
+  health: vi.fn(async () => ({ reachable: true })),
+  deleteConsumer: vi.fn(async () => {}),
+  kind: 'kong',
+} as unknown as GatewayAdapter;
 beforeAll(async () => {
   container = await new PostgreSqlContainer('postgres:17-alpine').start();
   connection = connect(container.getConnectionUri());
   await migrate(container.getConnectionUri());
+  await connection.db
+    .insert(instanceSettings)
+    .values({ id: 1, instanceId: uuidv7() });
+  await connection.db.insert(gateways).values({
+    id: uuidv7(),
+    name: 'default',
+    kind: 'kong',
+    adminUrl: 'http://kong:8001',
+    proxyInternalUrl: 'http://kong:8000',
+    proxyPublicUrl: 'http://localhost:8000',
+  });
   auth = createAuth(connection.db, config, enqueue);
   ({ app: server } = await createApp({
     db: connection.db,
     config,
     auth,
     enqueueMail: enqueue,
-    adapter,
-    gatewayId: uuidv7(),
+    adapterFor: (row) =>
+      row.adminUrl === 'http://replacement:8001' ? replacementAdapter : adapter,
     logger: false,
   }));
   listeningUrl = new URL(await server.listen({ host: '127.0.0.1', port: 0 }));
@@ -68,6 +86,10 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   queued.length = 0;
+  vi.mocked(replacementAdapter.deleteConsumer).mockReset().mockResolvedValue();
+  await connection.db
+    .update(gateways)
+    .set({ adminUrl: 'http://kong:8001', enabled: true });
   vi.mocked(adapter.health).mockResolvedValue({
     reachable: true,
     latencyMs: 1,
@@ -83,11 +105,22 @@ beforeEach(async () => {
   });
 });
 async function signup(email = 'person@example.com') {
+  // Production requires first-admin setup before public signup; keep that fixture
+  // temporary so deletion tests still assert exactly their own users.
+  const bootstrapId = uuidv7();
+  await connection.db.insert(user).values({
+    id: bootstrapId,
+    name: 'Bootstrap',
+    email: `${bootstrapId}@example.com`,
+    role: 'admin',
+    emailVerified: true,
+  });
   const response = await server.inject({
     method: 'POST',
     url: '/api/auth/sign-up/email',
     payload: { email, name: 'Person', password: 'password123' },
   });
+  await connection.db.delete(user).where(eq(user.id, bootstrapId));
   expect(response.statusCode, response.body).toBe(200);
   const cookie = response.cookies.map((c) => `${c.name}=${c.value}`).join('; ');
   return {
@@ -990,4 +1023,26 @@ it('rejects an already-owned email neutrally and keeps the old address until con
       })
     ).statusCode,
   ).toBe(401);
+});
+
+it('deletes through the current gateway configuration even while new keys are disabled', async () => {
+  const person = await signup();
+  const appId = uuidv7();
+  await connection.db
+    .insert(apps)
+    .values({ id: appId, ownerId: person.id, name: 'current gateway' });
+  await connection.db
+    .update(gateways)
+    .set({ adminUrl: 'http://replacement:8001', enabled: false });
+  const response = await request(
+    'DELETE',
+    '/api/v1/me',
+    { password: 'password123' },
+    person.cookie,
+  );
+  expect(response.statusCode, response.body).toBe(204);
+  expect(replacementAdapter.health).toHaveBeenCalled();
+  expect(replacementAdapter.deleteConsumer).toHaveBeenCalledWith({ id: appId });
+  expect(adapter.deleteConsumer).not.toHaveBeenCalled();
+  expect(await connection.db.select().from(user)).toHaveLength(0);
 });

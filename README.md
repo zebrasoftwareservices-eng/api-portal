@@ -21,16 +21,50 @@ cd api-portal
 docker compose -f deploy/docker-compose.yml up --build
 ```
 
-Open http://localhost:3000. The seeded Sample HTTP API uses Kong at
-http://localhost:8000/sample. Admin login: `admin@example.com` / `change-me-now`.
-These defaults are for local evaluation; production refuses default secrets.
-Create a developer account, create an app subscribed to the sample API, and save
-its key when shown. Send it as the `apikey` header in the reference console.
-Keys are shown once; only their last four characters are stored by the portal.
-Kong key-auth currently accepts any portal key on all key-auth services; subscriptions
-do not yet enforce per-API access (see ADR 0002).
+Open http://localhost:3000. The setup screen creates your first admin and signs you in.
+Connect the bundled Kong using the pre-filled values, press **Test**, then **Save**.
+You can skip connecting and return to **Admin → Gateways** later. The sample API is
+optional: choose it in the wizard, or keep an empty catalog and import your own OpenAPI
+spec linked to a service already in Kong. The bundled sample runs at
+http://localhost:8000/sample.
+
+Create a developer account, create an app subscribed to the sample or an imported API,
+and save its key when shown. Send it as the `apikey` header in the reference console.
+Keys are shown once; only their last four characters are stored by the portal. A key
+works only on the APIs subscribed to by its app.
+
+The default Compose file is for local evaluation. **Do not expose it to the internet:**
+it sets `NODE_ENV=development`, so anyone who reaches a fresh install can claim its
+first admin without a setup token. Production requires non-default authentication,
+encryption and database secrets. Until an admin exists, a production server prints a
+random single-use setup token at each start; enter that token in setup. Persist your
+`PORTAL_ENCRYPTION_KEY`: changing it makes stored gateway tokens unreadable until you
+enter them again. See [reaching the Kong Admin API](docs/connect-kong.md) for networking,
+a protected-route recipe, moving a connection and cleanup.
+
+For declarative configuration, set **both** `ADMIN_EMAIL` and `ADMIN_PASSWORD`, plus
+`KONG_ADMIN_URL` and the proxy URLs. In Compose the bundled Admin API is
+`http://kong:8001`, and the internal proxy is `http://kong:8000`; `localhost` is resolved
+from the server container. An environment-managed gateway can't be edited, disabled
+or removed in the UI. Remove `KONG_ADMIN_URL` and restart to manage the saved connection
+from the UI. Existing v0.2 admins and keys remain valid on upgrade.
+
+```sh
+ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD='<choose-a-password>' \
+KONG_ADMIN_URL=http://kong:8001 SEED_SAMPLE=true \
+docker compose -f deploy/docker-compose.yml up --build
+```
+
+Set `SEED_SAMPLE=true` only to opt in to startup seeding. With no gateway, or with a
+disabled connection, seeding logs a warning and skips without preventing startup.
+The next start with an enabled connection can seed. A published `sample` slug is
+preserved. The default install creates no admin, API, consumer, key, route or service.
 
 For local development use Node 22, `corepack enable`, `pnpm install`, and `pnpm dev`.
+Start Postgres first and apply the connection settings in `deploy/.env.example` as
+needed. Local development also opens the wizard unless you supply the admin and Kong
+environment variables. The bundled hint is Compose-only; when developing on the host,
+use `http://localhost:8001` for Admin and `http://localhost:8000` for both proxy URLs.
 Run `pnpm lint`, `pnpm typecheck`, and `pnpm test` before committing.
 Integration tests require a running Docker daemon.
 
@@ -108,3 +142,52 @@ port on localhost (for example `docker run --rm -p 127.0.0.1:1025:1025 -p
 127.0.0.1:8025:8025 axllent/mailpit:v1.27.10`). Production installs use their own
 SMTP provider and should use STARTTLS or TLS. `PORTAL_PUBLIC_URL` determines the
 origin of links in all account emails.
+### API versions and import linting
+
+Each API has one gateway service and catalog entry, with a stored OpenAPI document per version.
+Use **Manage versions** in the API admin area to publish another `info.version`, supply a plain-text
+release note, or set an existing version as latest. Uploads become latest by default; select
+**Don't make this the default version** for an older patch. Version names must match
+`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`; duplicate versions are refused. Stable documents are served at
+`/api/v1/apis/{slug}/versions/{version}/openapi.json` and changes at `/api/v1/apis/{slug}/changelog`.
+All versions share subscriptions, keys and gateway routing.
+
+Imports use the packaged `apps/server/rulesets/portal.spectral.yaml` ruleset. Its blocking rules
+are `oas3-schema`, `invalid-ref` (Spectral core), `operation-operationId-unique`, `path-params`,
+`path-declarations-must-exist`, `path-not-include-query`, `operation-parameters` and
+`oas3-operation-security-defined`. Every other shipped rule is a warning. Errors return a 422
+problem with rule, message, JSON pointer, 1-based line/column and external source URL when applicable;
+successful imports return warnings.
+
+To replace the ruleset, mount a YAML or JSON Spectral ruleset in the server container and set
+`PORTAL_LINT_RULESET` to its **absolute container path**. For example, in a Compose override:
+
+```yaml
+services:
+  server:
+    environment:
+      PORTAL_LINT_RULESET: /etc/portal/ruleset.yaml
+    volumes:
+      - ./ruleset.yaml:/etc/portal/ruleset.yaml:ro
+```
+
+The file replaces the default ruleset. To retain the portal defaults and promote a warning:
+
+```yaml
+extends: /app/apps/server/rulesets/portal.spectral.yaml
+rules:
+  operation-description: error
+```
+
+Local files and `spectral:*` built-ins can be extended; network rulesets are refused. Restart the
+server after changing the file. A missing or invalid ruleset is logged with its path and reported
+by `/api/v1/health` as `status: degraded`, `lint.status: error`; docs remain readable and imports
+return 503 until the configuration is fixed. There is no automatic fallback.
+
+**Upgrading existing installations:** migration `0002_api_versions.sql` runs automatically at
+server startup. Back up PostgreSQL before upgrading. It moves each existing document into its
+first `api_versions` row, preserves API IDs, subscriptions and publication dates, and sets the latest
+pointer. Existing documents remain published without re-linting (`lint_warnings = null`). The
+migration drops the old per-document `apis` columns; rollback requires restoring the backup and
+previous image together. Sample seeding refreshes only its `1.0.0` document and retains the latest
+version chosen by an administrator.

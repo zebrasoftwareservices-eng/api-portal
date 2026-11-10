@@ -32,3 +32,21 @@ it('honors Retry-After and enables retry only when the countdown ends', async ()
   fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
   expect(retry).toHaveBeenCalledOnce();
 });
+
+it.each([
+  ['validation', 'Check the highlighted fields and try again'],
+  ['gateway unavailable', 'Gateway unavailable'],
+  ['unknown-code', 'Something went wrong'],
+])('replaces raw problem title %s with reader-facing copy', (raw, heading) => {
+  render(
+    <ProblemAlert
+      problem={{
+        type: `/problems/${raw.replaceAll(' ', '-')}`,
+        title: raw,
+        status: 503,
+      }}
+    />,
+  );
+  expect(screen.getByRole('alert')).toHaveTextContent(`⚠ ${heading}`);
+  expect(screen.getByRole('alert')).not.toHaveTextContent(`⚠ ${raw}`);
+});

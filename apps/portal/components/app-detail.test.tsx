@@ -44,19 +44,19 @@ const app = {
   subscriptions: [{ apiId: 'api', slug: 'sample', title: 'Sample HTTP API' }],
   credentials: [credential],
 };
+beforeEach(() => {
+  vi.resetAllMocks();
+  mocks.portalUser = undefined;
+  mocks.get.mockResolvedValue({ data: app });
+});
 describe('app keys', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    mocks.portalUser = undefined;
-    mocks.get.mockResolvedValue({ data: app });
-  });
   it('keeps a key active after a failed revoke and only marks it revoked after retry succeeds', async () => {
     const user = userEvent.setup();
     mocks.del
       .mockResolvedValueOnce({
         error: {
           type: '/problems/gateway-unavailable',
-          title: 'Gateway unavailable',
+          title: 'gateway unavailable',
           status: 503,
         },
         response: new Response(null, { status: 503 }),
@@ -73,6 +73,12 @@ describe('app keys', () => {
     );
     expect(await within(dialog).findByRole('alert')).toHaveTextContent(
       'the key is still active',
+    );
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      '⚠ Gateway unavailable',
+    );
+    expect(within(dialog).getByRole('alert')).not.toHaveTextContent(
+      '⚠ gateway unavailable',
     );
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
     expect(screen.getByText('● Active')).toBeInTheDocument();
@@ -110,6 +116,27 @@ describe('app keys', () => {
     await user.click(button);
     expect(mocks.post).not.toHaveBeenCalled();
   });
+  it.each(['gateway-disabled', 'gateway-not-connected'])(
+    'shows the right new-key refusal for %s',
+    async (code) => {
+      mocks.post.mockResolvedValue({
+        error: { type: `/problems/${code}`, title: code, status: 409 },
+        response: new Response(null, { status: 409 }),
+      });
+      render(<AppDetail appId="app-1" />);
+      const user = userEvent.setup();
+      await user.click(
+        await screen.findByRole('button', { name: 'Create key' }),
+      );
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        code === 'gateway-disabled'
+          ? 'New apps and keys are paused'
+          : 'No API gateway is connected',
+      );
+      expect(screen.getByRole('alert')).not.toHaveTextContent('5 active keys');
+      expect(mocks.setReveal).not.toHaveBeenCalled();
+    },
+  );
 });
 
 it.each([true, false])(

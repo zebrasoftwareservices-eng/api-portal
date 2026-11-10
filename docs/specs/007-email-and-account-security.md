@@ -261,7 +261,7 @@ Problem titles for the new codes go in `problem.ts`'s title map. Every `detail` 
 the UX design. SMTP errors never include the server's reply, the username or the password.
 
 ### Data model
-Migration `0001_email_and_account_security` (Drizzle, generated then checked by hand):
+Migration `0003_email_and_account_security` (Drizzle, generated then checked by hand):
 
 | Table | Columns | Notes |
 | --- | --- | --- |
@@ -273,7 +273,7 @@ Migration `0001_email_and_account_security` (Drizzle, generated then checked by 
 The same migration also:
 - runs `update "user" set email_verified = true`, so accounts from before the upgrade count as
   verified (AC 3);
-- changes `apis.created_by` to `on delete set null`.
+- changes `apis.created_by` and the API-version author reference added on main to `on delete set null`, preserving published versions after account deletion.
 
 Nothing else changes: `user.email_verified` already exists, and sessions, accounts, apps, keys and
 consumers already cascade from `user`.
@@ -407,7 +407,7 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [x] [qa] AC 8: 10 failed sign-ins then 429 with `Retry-After`; fourth reset and fourth verification request give 429 with no extra Mailpit message, and the reset page still confirms; an admin change applies to the next request.
 - [x] [qa] AC 9: two apps with live keys → delete → both keys 401 in Kong, no consumer tagged with those apps, signed out, can't sign in, same address can sign up again; Kong stopped → 503 with keys still working; only admin → 409.
 - [x] [qa] Playwright journeys for forgot/reset password, profile and admin settings; update existing e2e helpers that sign up and create apps (users are unverified by default but the setting is off, so they should still pass).
-- [ ] [backend] Merge `origin/main` into this branch (108 commits behind, 26 conflicting files) with a merge commit, no rebase. Resolve every conflict, frontend files included, keeping both sides' behaviour: renumber this spec's migration after main's and regenerate its snapshot and journal, merge `openapi.yaml` and regenerate `packages/sdk`, merge compose/env, and regenerate `pnpm-lock.yaml` with `pnpm install`. Then `pnpm lint`, `pnpm typecheck` and `pnpm test` pass, and `node scripts/factory.mjs` still works after main's factory changes. Push the branch.
+- [x] [backend] Merge `origin/main` into this branch (108 commits behind, 26 conflicting files) with a merge commit, no rebase. Resolve every conflict, frontend files included, keeping both sides' behaviour: renumber this spec's migration after main's and regenerate its snapshot and journal, merge `openapi.yaml` and regenerate `packages/sdk`, merge compose/env, and regenerate `pnpm-lock.yaml` with `pnpm install`. Then `pnpm lint`, `pnpm typecheck` and `pnpm test` pass, and `node scripts/factory.mjs` still works after main's factory changes. Push the branch.
 
 ## UX  _(ui-designer)_
 Design: [docs/design/007-email-and-account-security.md](../design/007-email-and-account-security.md).
@@ -437,6 +437,13 @@ No new tokens; one shadcn component (`Switch`) and a few small portal components
   `autocomplete` values, no per-second announcements) and the 375px and 1280px layouts are in §7–§8.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Backend merge from main — 2026-11-10
+- Resolved the 26 conflicting files from `origin/main`, retaining account-security behavior alongside first-admin setup, dynamic gateway connections, API versions and import linting. Where defaults conflicted, kept main's explicit setup flow (no default admin credentials or auto-connected gateway); declarative `ADMIN_*` / `KONG_*` configuration still works and Mailpit remains the SMTP fallback. Frontend conflict resolution preserves verification gates, account errors and profile protection alongside setup redirects, gateway refusals and version components.
+- Regenerated migration `0003_email_and_account_security`, its snapshot/journal, the SDK from the merged OpenAPI contract, and `pnpm-lock.yaml` using `pnpm install`. Main's applied migrations are unchanged. Both API and API-version authors now become null on account deletion; the upgrade regression preserves their published documents. QA should use a fresh volume for databases from the unmerged branch's former `0001_email_and_account_security` migration.
+- Account deletion resolves the current gateway configuration for cleanup and still permits revocation while new apps/keys are disabled. Added a real-Postgres regression for a changed gateway URL; first-admin setup creates verified admins without sending verification mail. Adapted account-security fixtures to the setup prerequisite and fixed auto-merged portal mock cleanup without removing either side's assertions.
+- Validation: `pnpm lint` (7 tasks), `pnpm typecheck` (12 tasks), and `pnpm test` (12 tasks; 185 server, 212 portal, 55 adapter-kong and 5 database tests) pass. `node scripts/factory.mjs` and `node scripts/factory.mjs plan 007 --json` work with main's factory configuration. Evidence: `/tmp/007-merge-lint.log`, `/tmp/007-merge-typecheck.log`, `/tmp/007-merge-test.log`, `/tmp/007-merge-factory-plan.json`. Docker tests required sandbox escalation; the frontend test merge resolution was accepted after presenting Elango's explicit exception to automatic approval review.
+- Fresh isolated Compose smoke passed in 221.4 seconds (build/start/setup), then the environment-configured path seeded the sample. A live HTTP/Mailpit check confirmed the bootstrap admin is verified, mail reports the environment source, and a signup verification email arrived in 1,143 ms. Evidence: `/tmp/007-merge-quickstart.log`, `/tmp/007-merge-mail-smoke.log`. The isolated `spec007-merge` stack was removed afterward; the two pre-existing untracked UAT folders were left untouched. No spec status, Bugs checkbox or approval gate changed; coordinator owns QA/review after this merge.
 
 ### Backend re-review fixes — 2026-11-09
 - R1: `app.ts` passes the already-resolved `url.pathname` to `limitedAuth`, which drops empty segments before matching rules. The limiter and Better Auth now share dot-segment resolution. Eleven new regressions use `server.listen()` and `node:http` raw paths (not `inject`): sign-in/reset limits for `/./`, `/x/../`, `%2e` and `%2E%2E`, plus the disabled reset alias. Canonical and noncanonical requests share one hit, return 429 problem+json with `Retry-After`, and don't send extra mail.

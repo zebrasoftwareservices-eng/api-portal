@@ -31,10 +31,13 @@ beforeAll(async () => {
   boss.on('error', (err) => infrastructureErrors.push(err));
   await boss.start();
   ({ app } = await createApp({
-    db: {} as Database,
+    db: {
+      select: () => ({
+        from: () => ({ limit: async () => [{ instanceId: 'test' }] }),
+      }),
+    } as unknown as Database,
     config: loadConfig(),
-    adapter: {} as GatewayAdapter,
-    gatewayId: 'test',
+    adapterFor: () => ({}) as GatewayAdapter,
     auth: {} as Auth,
     logger: { stream: { write: (line: string) => logs.push(line) } },
   }));

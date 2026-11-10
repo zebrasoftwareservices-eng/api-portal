@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Card, Input, PasswordInput } from '@portal/ui';
 import { toast } from '@portal/ui';
 import { waitTime } from './account-shared';
-import { auth, retrySeconds } from '../lib/client';
+import { api, auth, retrySeconds } from '../lib/client';
 import { safeNext, signInLink, signUpLink } from '../lib/navigation';
 import { Field, focusInvalid } from './field';
 export function AuthForm({
@@ -146,7 +146,17 @@ export function AuthForm({
                 toast.success(
                   `Check ${email} for a link to verify your address.`,
                 );
-              router.replace(safeNext(next));
+              let destination = safeNext(next);
+              if (!next && !signup) {
+                // Better Auth's sign-in response omits the portal role.
+                const { data: user } = await api.GET('/v1/me');
+                if (user?.role === 'admin') {
+                  const { data } = await api.GET('/v1/admin/gateways');
+                  if (data && !data.items.length)
+                    destination = '/setup/gateway';
+                }
+              }
+              router.replace(destination);
               router.refresh();
             }
           } catch {

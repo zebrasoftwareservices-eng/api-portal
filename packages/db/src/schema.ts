@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   pgTable,
+  boolean,
   text,
   timestamp,
   uuid,
@@ -10,7 +11,8 @@ import {
   uniqueIndex,
   index,
   integer,
-  boolean,
+  foreignKey,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 import { user } from './auth-schema.js';
@@ -33,6 +35,8 @@ export const gateways = pgTable(
     id: uuid('id').primaryKey(),
     name: text('name').notNull().unique(),
     kind: text('kind').notNull(),
+    managedBy: text('managed_by').notNull().default('admin'),
+    enabled: boolean('enabled').notNull().default(true),
     adminUrl: text('admin_url').notNull(),
     adminTokenCiphertext: text('admin_token_ciphertext'),
     proxyPublicUrl: text('proxy_public_url').notNull(),
@@ -40,24 +44,24 @@ export const gateways = pgTable(
     createdAt: created(),
     updatedAt: updated(),
   },
-  (t) => [check('gateway_kind_check', sql`${t.kind} in ('kong')`)],
+  (t) => [
+    check('gateway_kind_check', sql`${t.kind} in ('kong')`),
+    check('gateway_managed_by_check', sql`${t.managedBy} in ('admin','env')`),
+    uniqueIndex('gateway_singleton').on(sql`(1)`),
+  ],
 );
 export const apis = pgTable(
   'apis',
   {
     id: uuid('id').primaryKey(),
     slug: text('slug').notNull().unique(),
-    title: text('title').notNull(),
-    version: text('version').notNull(),
-    description: text('description'),
+    latestVersionId: uuid('latest_version_id'),
     gatewayId: uuid('gateway_id')
       .notNull()
       .references(() => gateways.id),
     gatewayServiceId: text('gateway_service_id').notNull(),
     gatewayServiceName: text('gateway_service_name').notNull(),
     routePath: text('route_path').notNull(),
-    document: jsonb('document').$type<Record<string, unknown>>().notNull(),
-    sourceUrl: text('source_url'),
     createdBy: uuid('created_by').references(() => user.id, {
       onDelete: 'set null',
     }),
@@ -65,7 +69,45 @@ export const apis = pgTable(
     createdAt: created(),
     updatedAt: updated(),
   },
-  (t) => [index('api_published_idx').on(t.publishedAt.desc())],
+  (t) => [
+    index('api_published_idx').on(t.publishedAt.desc()),
+    foreignKey({
+      columns: [t.id, t.latestVersionId],
+      foreignColumns: [apiVersions.apiId, apiVersions.id],
+      name: 'api_latest_version_fk',
+    }),
+  ],
+);
+export const apiVersions = pgTable(
+  'api_versions',
+  {
+    id: uuid('id').primaryKey(),
+    apiId: uuid('api_id')
+      .notNull()
+      .references((): AnyPgColumn => apis.id, { onDelete: 'cascade' }),
+    version: text('version').notNull(),
+    title: text('title').notNull(),
+    description: text('description'),
+    document: jsonb('document').$type<Record<string, unknown>>().notNull(),
+    sourceUrl: text('source_url'),
+    sourceContent: text('source_content'),
+    sourceFormat: text('source_format'),
+    releaseNote: text('release_note'),
+    changeSummary: jsonb('change_summary').$type<Record<string, unknown>>(),
+    lintWarnings: jsonb('lint_warnings').$type<Record<string, unknown>[]>(),
+    createdBy: uuid('created_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    publishedAt: time('published_at').notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('api_version_unique').on(t.apiId, t.version),
+    uniqueIndex('api_version_id_unique').on(t.apiId, t.id),
+    check(
+      'api_version_source_format',
+      sql`${t.sourceFormat} in ('json', 'yaml')`,
+    ),
+  ],
 );
 export const apps = pgTable(
   'apps',
@@ -104,7 +146,7 @@ export const gatewayConsumers = pgTable(
       .references(() => apps.id, { onDelete: 'cascade' }),
     gatewayId: uuid('gateway_id')
       .notNull()
-      .references(() => gateways.id),
+      .references(() => gateways.id, { onDelete: 'cascade' }),
     externalId: text('external_id').notNull(),
     username: text('username').notNull(),
     createdAt: created(),
@@ -118,9 +160,9 @@ export const credentials = pgTable(
     appId: uuid('app_id')
       .notNull()
       .references(() => apps.id, { onDelete: 'cascade' }),
-    gatewayId: uuid('gateway_id')
-      .notNull()
-      .references(() => gateways.id),
+    gatewayId: uuid('gateway_id').references(() => gateways.id, {
+      onDelete: 'set null',
+    }),
     kind: text('kind').notNull().default('api-key'),
     keyHint: text('key_hint').notNull(),
     status: text('status').notNull(),
@@ -128,6 +170,10 @@ export const credentials = pgTable(
     revokedAt: time('revoked_at'),
   },
   (t) => [
+    check(
+      'credential_active_has_gateway',
+      sql`${t.status} <> 'active' or ${t.gatewayId} is not null`,
+    ),
     check('credential_status_check', sql`${t.status} in ('active','revoked')`),
     index('credential_app_status_idx').on(t.appId, t.status),
   ],

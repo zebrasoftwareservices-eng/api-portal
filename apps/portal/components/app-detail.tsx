@@ -78,7 +78,7 @@ export function AppDetail({ appId }: { appId: string }) {
           if (current.data) setUser(current.data);
         }
         setRetry(retrySeconds(response));
-        if (error.status === 409) await reload();
+        if (error.type.endsWith('/credential-limit')) await reload();
       } else if (data) {
         const summary: Credential = {
           id: data.id,
@@ -251,13 +251,25 @@ export function AppDetail({ appId }: { appId: string }) {
         {problem && (
           <ProblemAlert
             problem={problem}
+            title={
+              problem.type.endsWith('/gateway-disabled')
+                ? 'New apps and keys are paused'
+                : problem.type.endsWith('/gateway-not-connected')
+                  ? 'No API gateway is connected'
+                  : undefined
+            }
             message={
               problem.type.endsWith('/email-not-verified') ? (
                 <>
+                  {' '}
                   <p>{problem.detail}</p>
                   <ResendVerification email={user?.email || ''} />
                 </>
-              ) : problem.status === 409 ? (
+              ) : problem.type.endsWith('/gateway-disabled') ? (
+                'The portal admin has turned off new apps and keys for now. Keys you already have keep working. No key was created.'
+              ) : problem.type.endsWith('/gateway-not-connected') ? (
+                "This portal isn't connected to an API gateway right now. No key was created. Tell the portal admin."
+              ) : problem.type.endsWith('/credential-limit') ? (
                 'This app already has 5 active keys. Revoke one, then create a new key.'
               ) : problem.status === 502 ? (
                 'The gateway rejected the request. No key was created. Try again, and if it keeps happening, tell the portal admin.'

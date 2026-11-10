@@ -50,3 +50,20 @@ it('uses the SDK document with safe display examples for the live reference', as
     document.paths['/post'].post.requestBody.content['application/json'],
   ).not.toHaveProperty('example');
 });
+
+it('uses the per-version SDK operation rather than inferring a slug from the document URL', async () => {
+  get.mockResolvedValue({ data: {} });
+  render(
+    <Reference
+      documentUrl="/api/v1/apis/orders/versions/1.0.0%2Bbuild.1/openapi.json"
+      slug="orders"
+      version="1.0.0+build.1"
+    />,
+  );
+  await waitFor(() =>
+    expect(get).toHaveBeenCalledWith(
+      '/v1/apis/{slug}/versions/{version}/openapi.json',
+      { params: { path: { slug: 'orders', version: '1.0.0+build.1' } } },
+    ),
+  );
+});

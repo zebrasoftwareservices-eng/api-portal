@@ -139,6 +139,31 @@ describe('create app', () => {
       screen.queryByText(/This app's keys work only/),
     ).not.toBeInTheDocument();
   });
+  it('shows gateway-disabled as paused creation rather than a duplicate name', async () => {
+    mocks.post.mockResolvedValue({
+      error: {
+        type: '/problems/gateway-disabled',
+        status: 409,
+        title: 'Gateway disabled',
+      },
+      response: new Response(null, { status: 409 }),
+    });
+    const user = userEvent.setup();
+    render(<CreateApp slug="sample" />);
+    await waitFor(() => expect(screen.getByRole('checkbox')).toBeChecked());
+    await user.type(screen.getByLabelText('App name'), 'Bot');
+    await user.click(
+      screen.getByRole('button', { name: 'Create app and get key' }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'New apps and keys are paused',
+    );
+    expect(screen.getByLabelText('App name')).not.toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(screen.getByLabelText('App name')).toHaveValue('Bot');
+  });
 });
 
 it('focuses the preselected app name once and leaves focus there when APIs load', async () => {

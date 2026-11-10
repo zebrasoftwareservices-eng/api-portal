@@ -8,6 +8,7 @@ import {
   ApiAccessStatus,
   TryItRecovery,
 } from '../../../components/api-access';
+import { VersionRow } from '../../../components/version-row';
 import { Reference } from '../../../components/reference';
 import { DemoReference } from '../../../components/demo-reference';
 import { isDemo } from '../../../lib/demo';
@@ -42,7 +43,7 @@ export default async function ApiPage({
           title={api.title}
           breadcrumb={[{ label: 'APIs', href: '/' }, { label: api.title }]}
         />
-        <span className="badge">v{api.version}</span>
+        <VersionRow api={api} />
         <CodeValue
           value={api.gatewayBaseUrl}
           label="Base URL in a local quickstart"
@@ -71,7 +72,7 @@ export default async function ApiPage({
           breadcrumb={[{ label: 'APIs', href: '/' }, { label: data.title }]}
           actions={<ApiAccessAction />}
         />
-        <span className="badge">v{data.version}</span>
+        <VersionRow api={data} />
         <CodeValue value={data.gatewayBaseUrl} label="Base URL" />
         <ApiAccessStatus />
         <div className="alert">

@@ -52,13 +52,15 @@ CREATE TABLE "rate_limit_hits" (
 	CONSTRAINT "rate_bucket" CHECK ("rate_limit_hits"."bucket" in ('sign-in-failure','password-reset','verification-email'))
 );
 --> statement-breakpoint
+ALTER TABLE "api_versions" DROP CONSTRAINT "api_versions_created_by_user_id_fk";
+--> statement-breakpoint
 ALTER TABLE "apis" DROP CONSTRAINT "apis_created_by_user_id_fk";
 --> statement-breakpoint
 ALTER TABLE "email_change_requests" ADD CONSTRAINT "email_change_requests_user_id_user_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."user"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "mail_settings" ADD CONSTRAINT "mail_settings_updated_by_user_id_fk" FOREIGN KEY ("updated_by") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "rate_limit_window_idx" ON "rate_limit_hits" USING btree ("bucket","subject_hash","created_at");--> statement-breakpoint
-ALTER TABLE "apis" ADD CONSTRAINT "apis_created_by_user_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;
---> statement-breakpoint
+ALTER TABLE "api_versions" ADD CONSTRAINT "api_versions_created_by_user_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "apis" ADD CONSTRAINT "apis_created_by_user_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."user"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 INSERT INTO "account_settings" ("id") VALUES (1);
 --> statement-breakpoint
 UPDATE "user" SET "email_verified" = true;

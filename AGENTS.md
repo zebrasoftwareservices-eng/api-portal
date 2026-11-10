@@ -117,7 +117,7 @@ Codex custom agents (`.codex/agents/`), the Claude copy of the factory skill and
 | backend-developer | Codex | Server, database, gateway adapters |
 | frontend-developer | Codex | Portal UI |
 | qa-tester | Codex | Integration + e2e tests, test report, bugs |
-| user-tester | Antigravity (Gemini 3.8 Flash) | Real-user testing in Orca's built-in browser, screenshots, bugs |
+| user-tester | Codex | Real-user testing in Orca's built-in browser, screenshots, bugs |
 
 A spec's `status` moves: `draft` → **Elango approves** → `ready` → tech-lead → `designed`
 → ui-designer → `building` → backend + frontend → `testing` → qa-tester → `uat`

@@ -198,3 +198,4 @@ export function Switch(props: ComponentProps<typeof SwitchPrimitive.Root>) {
     </SwitchPrimitive.Root>
   );
 }
+export { VersionSwitcher } from './version-switcher';

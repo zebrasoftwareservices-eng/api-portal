@@ -11,7 +11,8 @@ export const document = {
   paths: { '/pets': { get: { responses: { '200': { description: 'OK' } } } } },
 };
 export const row = {
-  api: { document, routePath: '/sample' },
+  version: { document },
+  api: { routePath: '/sample' },
   gateway: {
     proxyPublicUrl: 'http://localhost:8000',
     proxyInternalUrl: 'http://kong:8000',
@@ -74,7 +75,7 @@ describe('security boundaries', () => {
     ])
       await expect(importDocument({ content })).rejects.toMatchObject({
         status: 422,
-        code: 'invalid-openapi',
+        code: content === 'a: [' ? 'invalid-openapi' : 'openapi-lint-failed',
         errors: expect.any(Array),
       });
     await expect(
@@ -90,51 +91,41 @@ describe('security boundaries', () => {
     ).rejects.toMatchObject({ code: 'invalid-openapi' });
   });
   it.each(['3.0.3', '3.1.0'])(
-    'names missing info in JSON and YAML OpenAPI %s imports',
+    'reports invalid version names before lint on OpenAPI %s',
     async (openapi) => {
-      for (const content of [
-        JSON.stringify({ openapi, paths: {} }),
-        `openapi: ${openapi}\npaths: {}`,
-      ]) {
-        await expect(importDocument({ content })).rejects.toMatchObject({
+      for (const info of [
+        undefined,
+        null,
+        { title: 'Pets' },
+        { title: 'Pets', version: '../bad' },
+      ])
+        await expect(
+          importDocument({
+            content: JSON.stringify({ openapi, info, paths: {} }),
+          }),
+        ).rejects.toMatchObject({
           status: 422,
-          code: 'invalid-openapi',
-          message:
-            "Invalid OpenAPI document: must have required property 'info' at /",
+          code: 'invalid-api-version',
           errors: [
-            { message: "must have required property 'info'", pointer: '' },
+            { pointer: '/info/version', message: 'Invalid API version' },
           ],
         });
-      }
     },
   );
-  it('reports other schema paths and still requires an explicit info.version', async () => {
-    for (const [input, message, pointer] of [
-      [
-        { openapi: '3.0.3', info: document.info },
-        "must have required property 'paths'",
-        '',
-      ],
-      [{ ...document, info: null }, 'type must be object', '/info'],
-      [
-        { ...document, info: { version: '1' } },
-        "must have required property 'title'",
-        '/info',
-      ],
-      [
-        { ...document, info: { title: 'Pets' } },
-        'info.version is required',
-        '/info/version',
-      ],
-    ] as const) {
+  it('reports structural schema errors through Spectral', async () => {
+    for (const input of [
+      { openapi: '3.0.3', info: document.info },
+      { ...document, info: { version: '1' } },
+    ])
       await expect(
         importDocument({ content: JSON.stringify(input) }),
       ).rejects.toMatchObject({
         status: 422,
-        code: 'invalid-openapi',
-        errors: [{ message, pointer }],
+        code: 'openapi-lint-failed',
+        errors: expect.arrayContaining([
+          expect.objectContaining({ rule: 'oas3-schema' }),
+        ]),
       });
-    }
   });
   it('caps URL imports and rejects schemes, redirect loops and oversized responses', async () => {
     const fetcher = vi
@@ -168,16 +159,14 @@ describe('security boundaries', () => {
       ...document,
       components: { schemas: { Pet: { $ref: './pet.json' } } },
     };
-    const fetcher = vi
-      .fn()
-      .mockImplementation(async (url: URL) =>
-        url.pathname === '/spec.json'
-          ? Response.json(root)
-          : Response.json({
-              type: 'object',
-              properties: { name: { type: 'string' } },
-            }),
-      );
+    const fetcher = vi.fn().mockImplementation(async (url: URL) =>
+      url.pathname === '/spec.json'
+        ? Response.json(root)
+        : Response.json({
+            type: 'object',
+            properties: { name: { type: 'string' } },
+          }),
+    );
     const bundled = await importDocument(
       { url: 'http://example.test/spec.json' },
       fetcher,
@@ -192,5 +181,70 @@ describe('security boundaries', () => {
       importDocument({ url: 'http://example.test/spec.json' }, other),
     ).rejects.toMatchObject({ code: 'invalid-openapi' });
     expect(other).toHaveBeenCalledTimes(1);
+  });
+});
+describe('version import lint pipeline', () => {
+  it.each([
+    [
+      'operation-operationId-unique',
+      {
+        '/a': {
+          get: {
+            operationId: 'same',
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+        '/b': {
+          get: {
+            operationId: 'same',
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      },
+    ],
+    [
+      'invalid-ref',
+      {
+        '/a': {
+          get: {
+            responses: { '200': { $ref: '#/components/responses/Missing' } },
+          },
+        },
+      },
+    ],
+    [
+      'path-params',
+      {
+        '/pets/{id}': { get: { responses: { '200': { description: 'OK' } } } },
+      },
+    ],
+  ])('reports %s before storage with source locations', async (rule, paths) => {
+    await expect(
+      importDocument({ content: JSON.stringify({ ...document, paths }) }),
+    ).rejects.toMatchObject({
+      code: 'openapi-lint-failed',
+      errors: expect.arrayContaining([
+        expect.objectContaining({
+          rule,
+          line: 1,
+          pointer: expect.any(String),
+          column: expect.any(Number),
+          source: null,
+        }),
+      ]),
+    });
+  });
+  it('lints a 2 MiB import in under ten seconds', async () => {
+    const content = JSON.stringify({
+      ...document,
+      info: { ...document.info, description: 'x'.repeat(2 * 1024 * 1024) },
+    });
+    const start = performance.now();
+    const result = await importDocument({ content });
+    const elapsed = performance.now() - start;
+    console.info(`2 MiB OpenAPI lint pipeline: ${Math.round(elapsed)} ms`);
+    expect(elapsed).toBeLessThan(10000);
+    expect(result.lintWarnings.length).toBeGreaterThan(0);
+    expect(result.sourceContent).toBe(content);
   });
 });

@@ -21,6 +21,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether this install still needs its first admin
+         * @description Public, so the portal can send every page to the setup screen. Reveals nothing secret.
+         */
+        get: operations["getSetupStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/setup/admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create the first admin and sign them in
+         * @description Atomic and serialized: of any number of submissions, at the same time or later, exactly
+         *     one creates an admin. The response sets the session cookie. When
+         *     `NODE_ENV=production`, `setupToken` must match the token this server start wrote to its
+         *     logs. The token lives only in memory, is replaced on each start and stops working once an
+         *     admin exists. Rate-limited to 10 requests per minute per IP.
+         */
+        post: operations["createFirstAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apis": {
         parameters: {
             query?: never;
@@ -63,13 +107,58 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Published OpenAPI document, ready for the API reference
-         * @description The stored, validated document, with two changes made when it is served:
+         * OpenAPI document of the latest version, ready for the API reference
+         * @description The latest version's stored, validated document, with two changes made when it is served:
          *     `servers` is replaced by a single entry with the API's public gateway base URL, and
          *     if the document has no `apiKey` security scheme, a `portalApiKey` scheme
          *     (`in: header`, `name: apikey`, Kong's default) is added and applied at the top level.
          */
         get: operations["getApiDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apis/{slug}/versions/{version}/openapi.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * OpenAPI document of one version, ready for the API reference
+         * @description Same transformation as `getApiDocument` (servers replaced, `portalApiKey` added when
+         *     needed). Every version shares the API's gateway base URL: the portal documents versions,
+         *     it doesn't route them (spec 012, out of scope).
+         */
+        get: operations["getApiVersionDocument"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apis/{slug}/changelog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The API's changelog, one entry per version
+         * @description Newest import first. Each entry's `changes` was computed once, when that version was
+         *     imported, against the version just below it in the version order (see
+         *     `ApiDetail.versions`); it never changes afterwards, including when the latest version
+         *     changes.
+         */
+        get: operations["getApiChangelog"];
         put?: never;
         post?: never;
         delete?: never;
@@ -205,7 +294,9 @@ export interface paths {
         put?: never;
         /**
          * Issue another API key for an app
-         * @description The returned `key` is shown once and never stored by the portal.
+         * @description The returned `key` is shown once and never stored by the portal. The consumer and its
+         *     access are upserted first, so this also works when the connection now points at a Kong
+         *     that doesn't have the app's consumer yet (spec 005 AC 7(e)).
          */
         post: operations["createCredential"];
         delete?: never;
@@ -244,7 +335,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Kong services that an imported spec can be linked to */
+        /**
+         * List Kong services that an imported spec can be linked to
+         * @description Leaves out services tagged `portal-internal`, such as the protected Admin API route from
+         *     the docs recipe. The import screen calls this before showing its form. On a disabled
+         *     connection it makes no request to Kong and returns `/problems/gateway-disabled`, so the
+         *     service list isn't offered (spec 005 AC 7(b)).
+         */
         get: operations["listGatewayServices"];
         put?: never;
         post?: never;
@@ -265,18 +362,178 @@ export interface paths {
         put?: never;
         /**
          * Import an OpenAPI 3.x document, link it to a Kong service and publish it
-         * @description Validates the document (OpenAPI 3.0 or 3.1 only; Swagger 2.0 is rejected) and
-         *     bundles external `$ref`s. On success the API is published to the public catalog.
-         *     On a validation failure nothing is stored, and the response `detail` names the
-         *     first error (spec 001 AC 4).
+         * @description Validates the document (OpenAPI 3.0 or 3.1 only; Swagger 2.0 is rejected), lints it
+         *     with the active Spectral ruleset (spec 012, ADR 0007) and bundles external `$ref`s. On
+         *     success the API is published to the public catalog with the document as its first and
+         *     latest version. On a validation or lint error nothing is stored. Lint warnings don't
+         *     block; they are returned in `lintWarnings`.
+         *
+         *     If the service is already linked to a published API, the refusal
+         *     (`/problems/gateway-service-already-linked`) names that API; publish the document as a
+         *     new version of it with `POST /v1/admin/apis/{slug}/versions` instead.
          *
          *     Publishing applies access control to the linked service (ADR 0005): an `allow` ACL for
          *     the service's portal group, and `hide_credentials` on its key-auth plugins. Existing keys
          *     get 403 until their app subscribes, and so do non-portal consumers until the operator adds
          *     them to the group `portal-svc-<serviceId>`. A service without key-auth gets no ACL and
          *     publishes with an `api-public` warning. Kong applies plugin changes within about 5 seconds.
+         *
+         *     On a disabled connection the import is refused with `/problems/gateway-disabled` before the
+         *     body is validated, `spec.url` is fetched or Kong is called, and nothing is left behind
+         *     (spec 005 AC 7(b)).
          */
         post: operations["importApi"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/apis/{slug}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish a new version of an existing API
+         * @description Validates and lints the document exactly like `importApi`, computes the change summary
+         *     against the previous version (see `ChangelogEntry`), and stores the version. No gateway
+         *     call is made: every version shares the API's Kong service and route, and access is per
+         *     API, so this works while Kong is unreachable.
+         *
+         *     With `makeLatest` true (the default) the new version becomes the latest, even when its
+         *     number is lower than the current latest (spec 012 AC 2). With `makeLatest` false it is
+         *     published and listed, and the latest is unchanged. On any refusal nothing is stored.
+         */
+        post: operations["importApiVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/apis/{slug}/latest-version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Make an existing version the latest
+         * @description "Set as latest" (spec 012 AC 9). Idempotent: naming the current latest returns 200 and
+         *     changes nothing. The catalog title and description follow the latest version's `info`.
+         *     No gateway call is made. Changelog entries are not recomputed.
+         */
+        put: operations["setLatestApiVersion"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gateways": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The gateway connection, and the bundled Kong's values if this install has one */
+        get: operations["listGateways"];
+        put?: never;
+        /**
+         * Check and save the gateway connection
+         * @description Runs the same checks as `testGateway`, then saves. The portal uses the connection from the
+         *     next request, with no restart, and queues a reconcile. On any failure nothing is saved.
+         *     A refused second add makes no request to the supplied URL.
+         */
+        post: operations["createGateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gateways/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check connection values without saving anything
+         * @description Read-only: it makes GET requests only and changes nothing in Kong or Postgres. Failure
+         *     messages never contain the token or a response body. Rate-limited to 30 requests per minute
+         *     per admin. Pass `gatewayId` when editing, so a blank token can use the stored one if the
+         *     Admin API URL is unchanged. With a changed URL and a stored token, a blank token gets
+         *     `/problems/gateway-token-required` and the stored token is never sent.
+         */
+        post: operations["testGateway"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/gateways/{gatewayId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove the connection and its stored token
+         * @description Makes no request to Kong. The portal's objects stay there, including its ACLs, so traffic is
+         *     unchanged; the docs describe tag-based cleanup.
+         */
+        delete: operations["deleteGateway"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit, disable or re-enable the connection
+         * @description A change to only `enabled: false` makes no request to Kong, so a connection to a Kong that
+         *     is down can still be disabled. Every other change runs the same checks as `testGateway`
+         *     first. On any failure nothing is saved and the existing connection keeps working. That
+         *     includes `enabled: true`: if a check fails, the response names that case and the connection
+         *     stays disabled.
+         */
+        patch: operations["updateGateway"];
+        trace?: never;
+    };
+    "/v1/admin/gateways/{gatewayId}/sample": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish the sample API on the bundled Kong
+         * @description Only when the connection is enabled, its Admin API URL equals the bundled Kong's and no API
+         *     has the slug `sample` (`Gateway.sampleAvailable`). The sample's upstream exists only in the
+         *     bundled compose network.
+         */
+        post: operations["addSampleApi"];
         delete?: never;
         options?: never;
         head?: never;
@@ -406,24 +663,156 @@ export interface components {
             /** @example The API gateway didn't respond. Nothing was created. Try again in a moment. */
             detail?: string;
             instance?: string;
-            /** @description Field or document errors. For `/problems/invalid-openapi`, only the first error is returned. */
+            /** @description With `/problems/gateway-in-use`: published APIs on this gateway */
+            apis?: number;
+            /** @description With `/problems/gateway-in-use`: active keys on this gateway */
+            activeKeys?: number;
+            /** @description With `/problems/gateway-keys-missing`: active keys with no consumer on the new Kong */
+            affectedKeys?: number;
+            /**
+             * @description Field or document errors. For `/problems/invalid-openapi`, only the first error is
+             *     returned. For `/problems/openapi-lint-failed`, every error-severity finding up to 100;
+             *     `errorCount` holds the full number.
+             */
             errors?: {
                 /** @description JSON Pointer into the request body or the OpenAPI document, e.g. /paths/~1pets/get/responses */
                 pointer?: string;
                 message: string;
+                /** @description Lint findings only. The Spectral rule name, e.g. operation-operationId-unique */
+                rule?: string;
+                /** @description Lint findings only. 1-based line in `source` */
+                line?: number;
+                /** @description Lint findings only. 1-based column in `source` */
+                column?: number;
+                /** @description Lint findings only. URL of the external file the finding is in; null for the imported document itself */
+                source?: string | null;
             }[];
+            /** @description Only on `/problems/openapi-lint-failed`: total number of error findings */
+            errorCount?: number;
         };
         Slug: string;
         Health: {
             /** @enum {string} */
-            status: "ok";
+            status: "ok" | "degraded";
             version: string;
-            gateway: {
+            lint: {
+                /** @enum {string} */
+                ruleset: "default" | "custom";
+                /** @description The configured ruleset file (custom only) */
+                path?: string;
+                /** @enum {string} */
+                status: "ok" | "error";
+                /**
+                 * @description Why the custom ruleset failed to load, naming the file. Present only when status is error.
+                 * @example /etc/portal/ruleset.yaml: file not found
+                 */
+                error?: string;
+            };
+            gateway: null | {
                 /** @enum {string} */
                 kind: "kong";
                 reachable: boolean;
                 version?: string;
             };
+        };
+        SetupStatus: {
+            /** @description True until the first admin exists */
+            adminRequired: boolean;
+            /** @description True while an admin is required and `NODE_ENV=production` */
+            setupTokenRequired: boolean;
+        };
+        CreateFirstAdminRequest: {
+            /** Format: email */
+            email: string;
+            password: string;
+            /** @description Defaults to Administrator */
+            name?: string;
+            /** @description Required when `setupTokenRequired` is true */
+            setupToken?: string;
+        };
+        GatewayUrls: {
+            /**
+             * Format: uri
+             * @example http://kong:8001
+             */
+            adminUrl: string;
+            /**
+             * Format: uri
+             * @description Address of Kong's proxy as the server reaches it. Used by try-it. Checked.
+             * @example http://kong:8000
+             */
+            proxyInternalUrl: string;
+            /**
+             * Format: uri
+             * @description Address developers call, shown in the catalog. The server can't check it from inside, so only its form is validated.
+             * @example http://localhost:8000
+             */
+            proxyPublicUrl: string;
+        };
+        Gateway: components["schemas"]["GatewayUrls"] & {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "kong";
+            /** @description Whether a token is stored. The token itself is never returned. */
+            hasAdminToken: boolean;
+            enabled: boolean;
+            /**
+             * @description `env`: set by `KONG_ADMIN_URL`, so editing, disabling and removing are refused.
+             * @enum {string}
+             */
+            managedBy: "admin" | "env";
+            /** @description Whether `addSampleApi` would be accepted */
+            sampleAvailable: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        GatewayList: {
+            items: components["schemas"]["Gateway"][];
+            /** @description The bundled Kong's values for the form. Null when this install has none. */
+            bundled: null | components["schemas"]["GatewayUrls"];
+        };
+        CreateGatewayRequest: components["schemas"]["GatewayUrls"] & {
+            /** @description Optional; sent as `Kong-Admin-Token` */
+            adminToken?: string;
+        };
+        TestGatewayRequest: components["schemas"]["GatewayUrls"] & {
+            /**
+             * Format: uuid
+             * @description The connection being edited. Omit for a new one.
+             */
+            gatewayId?: string;
+            /** @description A new token. Absent or empty keeps the stored one if the URL is unchanged. Null means this connection uses no token. */
+            adminToken?: string | null;
+        };
+        UpdateGatewayRequest: {
+            /** Format: uri */
+            adminUrl?: string;
+            /** @description A new token. Absent or empty keeps the stored one if the URL is unchanged. Null removes it, and the connection uses no token. */
+            adminToken?: string | null;
+            /** Format: uri */
+            proxyInternalUrl?: string;
+            /** Format: uri */
+            proxyPublicUrl?: string;
+            enabled?: boolean;
+            /** @description The admin accepted that active keys won't work on this Kong */
+            confirmMissingKeys?: boolean;
+        };
+        GatewayTestResult: {
+            /**
+             * @description Kong version
+             * @example 3.9.4
+             */
+            version: string;
+            /** @description Empty when there is nothing to report, including when there are no active keys. */
+            warnings: {
+                /** @enum {string} */
+                code: "active-keys-missing";
+                message: string;
+                affectedKeys: number;
+            }[];
         };
         User: {
             /** Format: uuid */
@@ -522,22 +911,35 @@ export interface components {
             /** Format: uuid */
             id: string;
             slug: components["schemas"]["Slug"];
+            /** @description The latest version's info.title */
             title: string;
-            /** @description OpenAPI info.version */
+            /** @description The latest version's info.version */
             version: string;
-            /** @description OpenAPI info.description (Markdown) */
+            /** @description The latest version's info.description (Markdown) */
             description?: string | null;
             /**
              * Format: uri
              * @example http://localhost:8000/sample
              */
             gatewayBaseUrl: string;
-            /** Format: date-time */
+            /**
+             * Format: date-time
+             * @description When the API's first version was published
+             */
             publishedAt: string;
         };
         ApiDetail: components["schemas"]["ApiSummary"] & {
-            /** @example /api/v1/apis/sample/openapi.json */
+            /**
+             * @description The latest version's document
+             * @example /api/v1/apis/sample/openapi.json
+             */
             documentUrl: string;
+            /**
+             * @description Every version, in version order: highest first by semantic-version precedence when
+             *     every version name is a valid SemVer 2.0 string, otherwise newest import first.
+             *     Exactly one has `isLatest` true.
+             */
+            versions: components["schemas"]["ApiVersionSummary"][];
             gatewayService: {
                 id: string;
                 name: string;
@@ -546,6 +948,109 @@ export interface components {
         ImportedApi: components["schemas"]["ApiDetail"] & {
             /** @description Published, but the admin should know this. Empty when there is nothing to report. */
             warnings: components["schemas"]["ImportWarning"][];
+            /** @description Non-blocking lint findings, in document order, up to 200. Empty when there are none. */
+            lintWarnings: components["schemas"]["LintFinding"][];
+        };
+        /**
+         * @description The document's `info.version`. Restricted so it can be used in URLs: starts with a letter
+         *     or digit, then letters, digits, `.`, `_`, `-` or `+`, at most 64 characters.
+         * @example 2.0.0
+         * @example 2024-06-01
+         * @example v2
+         */
+        ApiVersionName: string;
+        ApiVersionSummary: {
+            version: components["schemas"]["ApiVersionName"];
+            isLatest: boolean;
+            /**
+             * Format: date-time
+             * @description When this version was imported
+             */
+            publishedAt: string;
+            /** @example /api/v1/apis/orders/versions/1.0.0/openapi.json */
+            documentUrl: string;
+        };
+        ImportedApiVersion: {
+            api: components["schemas"]["ApiDetail"];
+            version: components["schemas"]["ChangelogEntry"];
+            /** @description Non-blocking lint findings, in document order, up to 200. Empty when there are none. */
+            lintWarnings: components["schemas"]["LintFinding"][];
+        };
+        LintFinding: {
+            /** @example operation-description */
+            rule: string;
+            /**
+             * @description Spectral info and hint findings are reported as warning
+             * @enum {string}
+             */
+            severity: "error" | "warning";
+            message: string;
+            /**
+             * @description JSON Pointer into the document
+             * @example /paths/~1orders/get
+             */
+            pointer: string;
+            line: number;
+            column: number;
+            /** @description URL of the external file the finding is in; null for the imported document itself */
+            source?: string | null;
+        };
+        ChangelogEntry: {
+            version: components["schemas"]["ApiVersionName"];
+            /**
+             * Format: date-time
+             * @description The import date
+             */
+            publishedAt: string;
+            /** @description The admin's note, plain text (rendered without HTML) */
+            releaseNote: string | null;
+            /** @description Null for the first version, or when no version sorted below this one at import time. */
+            changes: null | components["schemas"]["ChangeSummary"];
+        };
+        ChangeSummary: {
+            comparedTo: components["schemas"]["ApiVersionName"];
+            added: components["schemas"]["OperationChange"][];
+            /** @description Every removed operation is breaking. */
+            removed: components["schemas"]["OperationChange"][];
+            changed: components["schemas"]["OperationChange"][];
+            /** @description True if any removed or changed operation is breaking */
+            breaking: boolean;
+        };
+        OperationChange: {
+            /** @enum {string} */
+            method: "GET" | "PUT" | "POST" | "DELETE" | "OPTIONS" | "HEAD" | "PATCH" | "TRACE";
+            /** @example /orders/{id} */
+            path: string;
+            summary?: string | null;
+            breaking: boolean;
+            /** @description Empty for added operations; `operation-removed` for removed ones. */
+            reasons: {
+                /** @enum {string} */
+                code: "operation-removed" | "required-parameter-added" | "parameter-became-required" | "request-body-became-required" | "success-response-removed" | "parameter-removed" | "optional-parameter-added" | "security-changed" | "deprecated";
+                /** @example New required query parameter `status` */
+                message: string;
+            }[];
+        };
+        ImportApiVersionRequest: {
+            spec: components["schemas"]["SpecSource"];
+            /** @description Plain text shown in the changelog */
+            releaseNote?: string;
+            /**
+             * @description False for "Don't make this the default version"
+             * @default true
+             */
+            makeLatest: boolean;
+        };
+        SetLatestVersionRequest: {
+            version: components["schemas"]["ApiVersionName"];
+        };
+        /** @description Exactly one of `url` or `content` */
+        SpecSource: {
+            /** Format: uri */
+            url: string;
+        } | {
+            /** @description OpenAPI document as YAML or JSON text (5 MiB max) */
+            content: string;
         };
         ImportWarning: {
             /**
@@ -557,14 +1062,9 @@ export interface components {
             message: string;
         };
         ImportApiRequest: {
-            /** @description Exactly one of `url` or `content` */
-            spec: {
-                /** Format: uri */
-                url: string;
-            } | {
-                /** @description OpenAPI document as YAML or JSON text (5 MiB max) */
-                content: string;
-            };
+            spec: components["schemas"]["SpecSource"];
+            /** @description Plain text shown in the changelog for the first version */
+            releaseNote?: string;
             /** @description Kong service ID or name, from GET /v1/admin/gateway/services */
             gatewayServiceId: string;
             /** @description Defaults to a slug of info.title */
@@ -580,9 +1080,9 @@ export interface components {
                 name?: string | null;
                 paths: string[];
             }[];
-            /** @description True if an enabled key-auth plugin applies to the service, one of its routes, or globally */
+            /** @description True if an enabled key-auth plugin applies to the service */
             keyAuth: boolean;
-            /** @description Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`. */
+            /** @description Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`; add a version to that API instead (`importApiVersion`). */
             linkedApiSlug?: string | null;
         };
         CreateAppRequest: {
@@ -704,6 +1204,38 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /**
+         * @description A field is malformed, isn't http(s), carries credentials, a query or a fragment, or resolves
+         *     to a link-local or cloud metadata address (`/problems/validation`). `errors[].pointer` names
+         *     the field, such as `/adminUrl`. The portal made no request to a refused address.
+         */
+        GatewayFieldInvalid: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description A connection check failed and nothing was saved. Messages contain neither the token nor a
+         *     response body. `type` is one of:
+         *     `/problems/gateway-unreachable` (network error, 5 s timeout or 5xx; for `localhost`, the detail
+         *     says the address is resolved from the server),
+         *     `/problems/gateway-token-refused` (401 or 403),
+         *     `/problems/gateway-not-kong` (the URL answers but isn't a Kong Admin API),
+         *     `/problems/gateway-read-only` (DB-less mode or a data plane node),
+         *     `/problems/gateway-proxy-unreachable` (the Admin API passed but the internal proxy URL failed),
+         *     `/problems/gateway-token-required` (URL changed with a stored token; enter it again).
+         */
+        GatewayCheckFailed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description Missing `scalar_url`, or it isn't under a published API's base URL (`/problems/try-it-target-not-allowed`) */
         TryItNotAllowed: {
             headers: {
@@ -768,6 +1300,9 @@ export interface components {
         Slug: components["schemas"]["Slug"];
         AppId: string;
         CredentialId: string;
+        /** @description A version's `info.version`, URL-encoded (`+` becomes `%2B`) */
+        Version: components["schemas"]["ApiVersionName"];
+        GatewayId: string;
     };
     requestBodies: never;
     headers: never;
@@ -784,7 +1319,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Server is up. `gateway.reachable` reports Kong's Admin API. */
+            /**
+             * @description Server is up, with or without a gateway. `gateway` is null when none is connected;
+             *     otherwise `gateway.reachable` reports Kong's Admin API. `status` is `degraded`
+             *     when the operator's lint ruleset (`PORTAL_LINT_RULESET`) failed to load; `lint.error`
+             *     names the file and the problem, and imports answer 503 until it is fixed and the server
+             *     restarted. The status code stays 200 so the published docs keep being served.
+             */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -793,6 +1334,72 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
+        };
+    };
+    getSetupStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Setup status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    createFirstAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFirstAdminRequest"];
+            };
+        };
+        responses: {
+            /** @description Admin created and signed in */
+            201: {
+                headers: {
+                    /** @description Better Auth session cookie */
+                    "Set-Cookie"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            /** @description The setup token is missing or wrong (`/problems/setup-token-invalid`). No admin was created. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description An admin already exists (`/problems/setup-complete`). Nothing was changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
         };
     };
     listApis: {
@@ -859,6 +1466,58 @@ export interface operations {
                 content: {
                     "application/json": {
                         [key: string]: unknown;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getApiVersionDocument: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+                /** @description A version's `info.version`, URL-encoded (`+` becomes `%2B`) */
+                version: components["parameters"]["Version"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OpenAPI 3.x document as JSON */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getApiChangelog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Changelog entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ChangelogEntry"][];
                     };
                 };
             };
@@ -1116,7 +1775,11 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The developer already has an app with this name (`/problems/app-name-taken`) */
+            /**
+             * @description The developer already has an app with this name (`/problems/app-name-taken`), or the
+             *     API's gateway connection is disabled (`/problems/gateway-disabled`). When disabled,
+             *     nothing is created in Kong or Postgres.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1176,7 +1839,11 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["EmailNotVerified"];
             404: components["responses"]["NotFound"];
-            /** @description The app already has 5 active keys (`/problems/credential-limit`) */
+            /**
+             * @description `type` is one of `/problems/credential-limit` (the app already has 5 active keys),
+             *     `/problems/gateway-disabled` (the connection is disabled) or
+             *     `/problems/gateway-not-connected` (no gateway exists). Nothing was created.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1236,6 +1903,18 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
+            /**
+             * @description `type` is one of `/problems/gateway-not-connected` (no gateway exists; the detail points
+             *     to Admin → Gateways) or `/problems/gateway-disabled` (the connection is disabled).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             502: components["responses"]["GatewayRejected"];
             503: components["responses"]["GatewayUnavailable"];
         };
@@ -1267,7 +1946,11 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
-            /** @description Slug already used (`/problems/api-slug-taken`) */
+            /**
+             * @description Slug already used (`/problems/api-slug-taken`), no gateway is connected
+             *     (`/problems/gateway-not-connected`), or the connection is disabled
+             *     (`/problems/gateway-disabled`). Nothing was created in Kong or Postgres.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1287,8 +1970,12 @@ export interface operations {
             };
             /**
              * @description The document cannot be published. `type` is one of
+             *     `/problems/openapi-lint-failed` (one or more error-severity lint findings; `errors`
+             *     lists each with `rule`, `message`, `pointer`, `line` and `column`, up to 100),
              *     `/problems/invalid-openapi` (parse or schema error; `errors[0]` is the first one),
              *     `/problems/unsupported-openapi-version` (not 3.0.x or 3.1.x),
+             *     `/problems/invalid-api-version` (`info.version` is missing or doesn't match
+             *     `ApiVersionName`; it is used in URLs),
              *     `/problems/spec-url-unreachable` (fetching `spec.url` failed or timed out after 10 s),
              *     `/problems/gateway-service-not-found`,
              *     `/problems/gateway-service-has-no-route` (no route with a path, and no `routePath` given),
@@ -1299,6 +1986,360 @@ export interface operations {
              *     `detail` names that API's slug).
              */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["GatewayRejected"];
+            /**
+             * @description `/problems/gateway-unavailable` (see `GatewayUnavailable`), or
+             *     `/problems/lint-ruleset-unavailable`: the operator's ruleset failed to load at startup,
+             *     so nothing can be imported until it is fixed and the server restarted. The portal never
+             *     falls back to the default ruleset.
+             */
+            503: {
+                headers: {
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    importApiVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportApiVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Version published */
+            201: {
+                headers: {
+                    /** @description /api/v1/apis/{slug}/versions/{version}/openapi.json */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImportedApiVersion"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description The API already has a version with this `info.version` (`/problems/api-version-exists`;
+             *     `detail` names it). The published version is unchanged.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Document larger than 5 MiB (`/problems/document-too-large`) */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description The document cannot be published: `/problems/openapi-lint-failed`,
+             *     `/problems/invalid-openapi`, `/problems/unsupported-openapi-version`,
+             *     `/problems/invalid-api-version` or `/problems/spec-url-unreachable`, as for `importApi`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `/problems/lint-ruleset-unavailable` (see `importApi`) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    setLatestApiVersion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetLatestVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description The API, with its new latest version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description No such API, or it has no version with that name (`/problems/not-found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listGateways: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description At most one item until spec 017. Never includes the admin token. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayList"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateGatewayRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Gateway"];
+                };
+            };
+            400: components["responses"]["GatewayFieldInvalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description A gateway already exists; a portal connects to one (`/problems/gateway-exists`). It is unchanged. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: components["responses"]["GatewayCheckFailed"];
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    testGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TestGatewayRequest"];
+            };
+        };
+        responses: {
+            /** @description All checks passed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GatewayTestResult"];
+                };
+            };
+            400: components["responses"]["GatewayFieldInvalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["GatewayCheckFailed"];
+            429: components["responses"]["RateLimited"];
+            /** @description The stored admin token cannot be decrypted (`/problems/gateway-unavailable`). Enter the token again before testing or saving. No outbound request is made. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    deleteGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `type` is `/problems/gateway-env-managed` or `/problems/gateway-in-use`. For the second,
+             *     `apis` and `activeKeys` say how many depend on it. Nothing was removed.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateGateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateGatewayRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Gateway"];
+                };
+            };
+            400: components["responses"]["GatewayFieldInvalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `type` is `/problems/gateway-env-managed` (set by environment variables, so read-only)
+             *     or `/problems/gateway-keys-missing` (`affectedKeys` active keys have no consumer on this
+             *     Kong; send `confirmMissingKeys: true` to save anyway). Nothing was saved.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            422: components["responses"]["GatewayCheckFailed"];
+            429: components["responses"]["RateLimited"];
+            /** @description The stored admin token cannot be decrypted (`/problems/gateway-unavailable`). Enter the token again before testing or saving. No outbound request is made. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    addSampleApi: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                gatewayId: components["parameters"]["GatewayId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Published */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `type` is `/problems/gateway-disabled` (the connection is disabled; this is checked first)
+             *     or `/problems/sample-not-available` (this gateway can't take the sample). Nothing was created.
+             */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

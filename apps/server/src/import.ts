@@ -3,23 +3,38 @@ import { parse } from 'yaml';
 import { bundle, validate } from '@scalar/openapi-parser';
 import { z } from 'zod';
 import { uuidv7 } from 'uuidv7';
-import { apis, type Database } from '@portal/db';
+import { apis, apiVersions, type Database } from '@portal/db';
 import { eq, and, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import {
-  GatewayServiceConflictError,
-  type GatewayAdapter,
-} from '@portal/adapter-sdk';
+import { GatewayServiceConflictError } from '@portal/adapter-sdk';
 import { requireUser, type Auth } from './auth.js';
 import { Problem } from './problem.js';
+import {
+  requireEnabled,
+  type GatewayConnection,
+} from './gateway-connection.js';
 import { apiDetail, publishedApis } from './catalog.js';
+import {
+  getDefaultLinter,
+  lintDocument,
+  requireLinter,
+  type Linter,
+} from './lint/index.js';
 const LIMIT = 5 * 1024 * 1024;
 const slugSchema = z
   .string()
   .min(2)
   .max(64)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+export const specSchema = z.union([
+  z.strictObject({ url: z.url().regex(/^https?:\/\//) }),
+  z.strictObject({ content: z.string() }),
+]);
+export const versionName = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$/);
 const inputSchema = z.strictObject({
+  releaseNote: z.string().max(5000).optional(),
   spec: z.union([
     z.strictObject({ url: z.url().regex(/^https?:\/\//) }),
     z.strictObject({ content: z.string() }),
@@ -154,6 +169,8 @@ function prepareRefs(value: unknown, source?: string) {
 export async function importDocument(
   spec: { content: string } | { url: string },
   fetcher: typeof fetch = fetch,
+  linter?: Linter,
+  precheck?: (version: string) => Promise<void>,
 ) {
   let content: string, source: string | undefined;
   if ('content' in spec) content = spec.content;
@@ -184,6 +201,20 @@ export async function importDocument(
       'unsupported-openapi-version',
       'Only OpenAPI 3.0.x and 3.1.x documents are supported.',
     );
+  const infoVersion = (document.info as { version?: unknown } | undefined)
+    ?.version;
+  if (!versionName.safeParse(infoVersion).success)
+    throw new Problem(
+      422,
+      'invalid-api-version',
+      'info.version must be a URL-safe version name of 1–64 characters.',
+      [{ message: 'Invalid API version', pointer: '/info/version' }],
+    );
+  await precheck?.(infoVersion as string);
+  linter ??= await getDefaultLinter();
+  requireLinter(linter);
+  const files = new Map<string, string>();
+  if (source) files.set(source, content);
   prepareRefs(document, source);
   try {
     let refs = 0;
@@ -207,6 +238,8 @@ export async function importDocument(
                 fetcher,
                 new URL(source).host,
               );
+              files.set(target.href.split('#')[0]!, fetched.content);
+              files.set(fetched.url, fetched.content);
               const data = object(parse(fetched.content));
               prepareRefs(data, fetched.url);
               return { ok: true as const, data };
@@ -214,12 +247,14 @@ export async function importDocument(
           },
         ],
         hooks: {
-          onResolveError: () => {
-            throw invalid('Unresolved external reference', '/$ref');
+          onResolveError: (node) => {
+            if (typeof node.$ref === 'string' && !node.$ref.startsWith('#'))
+              throw invalid('Unresolved external reference', '/$ref');
           },
         },
       }),
     );
+    const lintWarnings = await lintDocument(linter, content, source, files);
     const result = await validate(structuredClone(document));
     if (!result.valid) {
       const message = result.errors?.[0]?.message ?? 'Schema validation failed';
@@ -230,26 +265,28 @@ export async function importDocument(
           : '';
       throw invalid(message, pointer);
     }
+    return {
+      document,
+      sourceUrl: source ?? null,
+      sourceContent: content,
+      sourceFormat: content.trimStart().startsWith('{') ? 'json' : 'yaml',
+      lintWarnings,
+    };
   } catch (error) {
     if (error instanceof Problem) throw error;
     throw invalid('Document references could not be resolved', '/$ref');
   }
-  // Validate the schema first so missing or malformed info gets its real path.
-  // Scalar may default info.version on its clone; require it in the import itself.
-  const info = object(document.info);
-  if (typeof info.version !== 'string' || !info.version)
-    throw invalid('info.version is required', '/info/version');
-  return { document, sourceUrl: source ?? null };
 }
 export function registerImport(
   server: FastifyInstance,
   db: Database,
   auth: Auth,
-  adapter: GatewayAdapter,
-  gatewayId: string,
+  connection: GatewayConnection,
+  linter: Linter,
 ) {
   server.get('/api/v1/admin/gateway/services', async (request) => {
     await requireUser(auth, request, true);
+    const { adapter } = requireEnabled(await connection.load());
     const [services, linked] = await Promise.all([
       adapter.listServices(),
       db.select().from(apis),
@@ -267,8 +304,12 @@ export function registerImport(
     { bodyLimit: 6 * 1024 * 1024 },
     async (request, reply) => {
       const user = await requireUser(auth, request, true);
+      let { adapter, row: gateway } = requireEnabled(await connection.load());
+      let gatewayId = gateway.id;
       const input = inputSchema.parse(request.body);
-      const { document, sourceUrl } = await importDocument(input.spec);
+      const imported = await importDocument(input.spec, fetch, linter);
+      const { document, sourceUrl, sourceContent, sourceFormat, lintWarnings } =
+        imported;
       const service = await adapter.getService(input.gatewayServiceId);
       if (!service)
         throw new Problem(
@@ -312,6 +353,8 @@ export function registerImport(
           sql`select pg_advisory_xact_lock(hashtextextended(${'service:' + service.id}, 0))`,
         );
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+        ({ adapter, row: gateway } = requireEnabled(await connection.load(tx)));
+        gatewayId = gateway.id;
         const [linked] = await tx
           .select({ slug: apis.slug })
           .from(apis)
@@ -343,11 +386,6 @@ export function registerImport(
           .values({
             id: uuidv7(),
             slug,
-            title: info.title,
-            version: info.version,
-            description: info.description,
-            document,
-            sourceUrl,
             gatewayId,
             gatewayServiceId: service.id,
             gatewayServiceName: service.name,
@@ -362,6 +400,25 @@ export function registerImport(
             'api-slug-taken',
             'An API with this slug is already published.',
           );
+        const versionId = uuidv7();
+        await tx.insert(apiVersions).values({
+          id: versionId,
+          apiId: inserted[0]!.id,
+          title: info.title,
+          version: info.version,
+          description: info.description,
+          document,
+          sourceUrl,
+          sourceContent,
+          sourceFormat,
+          releaseNote: input.releaseNote,
+          lintWarnings,
+          createdBy: user.id,
+        });
+        await tx
+          .update(apis)
+          .set({ latestVersionId: versionId })
+          .where(eq(apis.id, inserted[0]!.id));
         return { inserted, protection };
       });
       const row = (await publishedApis(db)).find(
@@ -372,7 +429,8 @@ export function registerImport(
         .code(201)
         .header('Location', `/api/v1/apis/${slug}`)
         .send({
-          ...apiDetail(row),
+          ...(await apiDetail(db, row)),
+          lintWarnings,
           warnings: protection.findings
             .filter((f) => ['api-public', 'partial-key-auth'].includes(f.code))
             .map(({ code, message }) => ({ code, message })),

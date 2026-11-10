@@ -12,8 +12,22 @@
     {
       "idx": 1,
       "version": "7",
-      "when": 1794177858202,
-      "tag": "0001_email_and_account_security",
+      "when": 1794071263387,
+      "tag": "0001_gateway_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794233681901,
+      "tag": "0002_api_versions",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794297361532,
+      "tag": "0003_email_and_account_security",
       "breakpoints": true
     }
   ]
