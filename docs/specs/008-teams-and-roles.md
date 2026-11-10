@@ -1,7 +1,7 @@
 ---
 id: 008
 title: Teams and roles
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-10
 linear: JSO-236
@@ -359,6 +359,23 @@ No product finding or open blocker/major. Console returned `"entries": []`; no e
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/008.md`.
+
+2026-11-10 · Reviewed `main...9419408`. The Test report covers `33d1b18`. Later commits change docs only, so the suite was not re-run, and CI is the second run.
+
+**Result: approved. No blocking findings.**
+
+All nine acceptance criteria are implemented, and each has a server or migration test plus an e2e test. Checked against the design:
+- **Contract and data model** match `openapi.yaml` and the design. Migration `0004_teams.sql` backfills personal teams and changes `apps` without touching `credentials` or `gateway_consumers`. `apps.team_id` is `on delete restrict`.
+- **Access** goes through one place, `teamAccess`/`appAccess` (`apps/server/src/teams.ts:60-95`). A non-member gets 404, and too low a role gets 403 `team-role-forbidden`. On app and key writes, the role is checked before `requireVerified` and before `connection.load`/Kong (`apps/server/src/apps.ts:131-133`, `:238-239`, `:315`).
+- **Last-Admin rule** runs under the team row's `FOR UPDATE` lock (`teams.ts:273-292`). Account deletion re-checks the teams under the `71833004` lock and deletes only the apps of teams where the user is the only member (`apps/server/src/account.ts:117-152`, `:197-222`).
+- **Invitations:** the token is stored only as a SHA-256 hash. It goes in POST bodies and is never returned by the API. The emailed link is encrypted in the queue. The accept page sends `Referrer-Policy: no-referrer` (`apps/portal/next.config.ts:15-22`). Accept checks state, then email, and a failed check writes nothing (`teams.ts:444-501`). Mail HTML is escaped.
+- **Gateway:** membership changes make no Kong call. Key create and revoke keep their existing idempotent, tagged calls.
+
+Suggestions (no Fix task):
+- `suggestion` — `ensurePersonalTeam` runs a write transaction on every `GET /v1/me`, `GET /v1/teams` and `GET/POST /v1/apps` (`apps/server/src/account.ts:57`, `apps/server/src/apps.ts:92`, `:115`, `apps/server/src/teams.ts:190`). A plain select first, inserting only when the personal team is missing, would keep read paths read-only.
+- `suggestion` — The invitation limit is a bare `[20, 60]` inside the bucket ternary (`apps/server/src/auth-limits.ts:42-43`). A named constant beside `INVITATION_TTL_DAYS` would document it.
+- `suggestion` — The invitation subject and body include the team name and inviter name as the Admin wrote them (`apps/server/src/mail/templates.ts:30-31`). They are HTML-escaped and rate-limited. Still, a team name could read like a phishing message to any address. Consider limiting team names to one line of plain characters.
+- `suggestion` — The full e2e run had five fixture failures, which passed on a targeted re-run after `33d1b18`. CI's full e2e run on the pushed branch should be the confirming green run before merge.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
