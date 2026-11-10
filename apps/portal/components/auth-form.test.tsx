@@ -161,3 +161,25 @@ describe('account forms', () => {
     expect(mocks.get).not.toHaveBeenCalled();
   });
 });
+
+it.each(['sign-up', 'sign-in'] as const)(
+  'prefills the invited email and retains its return link for %s',
+  (mode) => {
+    render(
+      <AuthForm
+        mode={mode}
+        email="invitee@example.com"
+        next="/invitations/accept?token=secret"
+      />,
+    );
+    expect(screen.getByLabelText('Email')).toHaveValue('invitee@example.com');
+    const link = screen.getByRole('link', {
+      name: mode === 'sign-up' ? 'Sign in' : 'Create an account',
+    });
+    const url = new URL(link.getAttribute('href')!, 'https://portal.test');
+    expect(url.searchParams.get('email')).toBe('invitee@example.com');
+    expect(url.searchParams.get('next')).toBe(
+      '/invitations/accept?token=secret',
+    );
+  },
+);

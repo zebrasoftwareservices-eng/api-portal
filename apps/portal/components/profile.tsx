@@ -34,7 +34,25 @@ export function Profile({
   const router = useRouter();
   const { setUser, setReveal } = usePortal();
   const resource = useResource(() => api.GET('/v1/me'));
-  const apps = useResource(() => api.GET('/v1/apps'));
+  const teams = useResource(() => api.GET('/v1/teams'));
+  const apps = useResource(async () => {
+    const result = await api.GET('/v1/teams');
+    if (result.error || !result.data)
+      return { error: result.error || networkProblem() };
+    const counts = await Promise.all(
+      result.data.items
+        .filter((t) => t.memberCount === 1)
+        .map(async (team) => {
+          const result = await api.GET('/v1/apps', {
+            params: { query: { teamId: team.id } },
+          });
+          if (result.error || !result.data)
+            throw new Error('Could not load app counts');
+          return { team, count: result.data.items.length };
+        }),
+    );
+    return { data: { counts } };
+  });
   const user = resource.data;
   const [name, setName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -461,7 +479,10 @@ export function Profile({
       </Card>
       <Card className="stack delete-account">
         <h2>Delete account</h2>
-        <p>Deletes your account, apps and API keys. This can't be undone.</p>
+        <p>
+          Deletes your account and the apps and API keys of teams where you are
+          the only member. This can't be undone.
+        </p>
         <AlertDialog.Root
           open={open}
           onOpenChange={(value) => {
@@ -495,17 +516,35 @@ export function Profile({
                   <p>This deletes:</p>
                   <ul>
                     <li>your account, {user.email}</li>
-                    {apps.data?.items.length !== 0 && (
-                      <li>
-                        {apps.data
-                          ? `your ${apps.data.items.length} apps and all their API keys`
-                          : 'all your apps and their API keys'}
-                      </li>
+                    {apps.data ? (
+                      apps.data.counts
+                        .filter(
+                          ({ team, count }) => !team.personal || count > 0,
+                        )
+                        .map(({ team, count }) => (
+                          <li key={team.id}>
+                            {team.personal
+                              ? `your ${count} personal apps and their API keys`
+                              : `${team.name}, where you're the only member${count ? `, with ${count} ${count === 1 ? 'app' : 'apps'} and its keys` : ''}`}
+                          </li>
+                        ))
+                    ) : (
+                      <li>your personal apps and their API keys</li>
                     )}
                   </ul>
+                  {!!teams.data?.items.some((t) => t.memberCount > 1) && (
+                    <p>
+                      You'll leave{' '}
+                      {teams.data.items
+                        .filter((t) => t.memberCount > 1)
+                        .map((t) => t.name)
+                        .join(', ')}
+                      . Their apps and keys keep working.
+                    </p>
+                  )}
                   <p>
-                    Keys stop working in the gateway straight away. This can't
-                    be undone.
+                    Keys that are deleted stop working in the gateway straight
+                    away. This can't be undone.
                   </p>
                 </div>
               </AlertDialog.Description>
@@ -528,6 +567,34 @@ export function Profile({
               {problems.delete && (
                 <ProblemAlert
                   problem={problems.delete}
+                  title={
+                    problems.delete.type.endsWith('/team-needs-admin')
+                      ? 'Make someone else an Admin first'
+                      : undefined
+                  }
+                  message={
+                    problems.delete.type.endsWith('/team-needs-admin') ? (
+                      <>
+                        You're the only Admin of{' '}
+                        {(problems.delete.teams || []).map(
+                          (team, index, list) => (
+                            <span key={team.id}>
+                              {index
+                                ? index === list.length - 1
+                                  ? ' and '
+                                  : ', '
+                                : ''}
+                              <a href={`/dashboard/teams/${team.id}`}>
+                                {team.name}
+                              </a>
+                            </span>
+                          ),
+                        )}
+                        . Make another member an Admin in each, then delete your
+                        account. Your account was not deleted.
+                      </>
+                    ) : undefined
+                  }
                   retryAfterSeconds={retry}
                   onRetry={
                     problems.delete.status === 503 ? deleteAccount : undefined

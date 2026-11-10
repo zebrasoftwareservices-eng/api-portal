@@ -27,7 +27,8 @@ api.use({
         .catch(() => ({}))) as { type?: string };
       if (
         !problem.type?.endsWith('/email-not-verified') &&
-        !problem.type?.endsWith('/invalid-password')
+        !problem.type?.endsWith('/invalid-password') &&
+        !problem.type?.endsWith('/team-role-forbidden')
       )
         window.location.assign('/not-found');
     }

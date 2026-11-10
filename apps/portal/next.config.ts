@@ -12,6 +12,14 @@ export default async function config(): Promise<NextConfig> {
         ? JSON.stringify(await loadSampleDocument())
         : '',
     },
+    async headers() {
+      return [
+        {
+          source: '/invitations/accept',
+          headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],
+        },
+      ];
+    },
     async rewrites() {
       if (demo)
         return {

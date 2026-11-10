@@ -199,3 +199,4 @@ export function Switch(props: ComponentProps<typeof SwitchPrimitive.Root>) {
   );
 }
 export { VersionSwitcher } from './version-switcher';
+export * as DropdownMenu from '@radix-ui/react-dropdown-menu';

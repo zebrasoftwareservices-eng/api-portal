@@ -277,19 +277,19 @@ health check, 503 and retry behaviour.
 - **Quickstart.** The e2e invite flow runs against Mailpit in `docker compose up`.
 
 ### Tasks
-- [ ] [backend] Schema and `0004_teams.sql`: tables, `apps.team_id`/`created_by`, backfill with temporary UUIDv7 function, rate-limit bucket; `teams-migration.test.ts`
-- [ ] [backend] `ensurePersonalTeam`, wired into Better Auth `user.create.after` and the first-use endpoints; `currentTeamId` on `GET /v1/me`
-- [ ] [backend] `teams.ts`: `teamAccess`/`appAccess`, `GET/POST /v1/teams`, `GET /v1/teams/{teamId}`, `PUT /v1/me/current-team`
-- [ ] [backend] Members: `PATCH` and `DELETE /v1/teams/{teamId}/members/{userId}` with the team-row lock and last-Admin rule
-- [ ] [backend] Invitations: create (checks, rate limit, mail), cancel, preview, accept (verifies email); `team-invitation` mail template and `MailPayload` union
-- [ ] [backend] `apps.ts`: team access on every app route, `teamId` on list and create, per-team name lock and uniqueness, `teamId` and `role` on `App`
-- [ ] [backend] `deleteAccount`: `team-needs-admin` refusal, delete sole-member teams' apps through Kong, then the teams; update spec 007 tests for the new ownership
-- [ ] [backend] New problem types and copy; regenerate `packages/sdk`
-- [ ] [frontend] Team switcher in the dashboard header (personal team first); switching calls `PUT /v1/me/current-team` and reloads My apps with `teamId`
-- [ ] [frontend] Create team form; team page with members, roles, pending invitations; invite, cancel, change role, remove, leave, all hidden by role
-- [ ] [frontend] `/invitations/accept?token=` page: preview states, sign in or sign up with the invited address and return, accept, and every refusal message
-- [ ] [frontend] App pages read `app.role`: Read-only sees keys' metadata without create or revoke controls; create app goes to the current team
-- [ ] [frontend] Account deletion shows `team-needs-admin` with the named teams
+- [x] [backend] Schema and `0004_teams.sql`: tables, `apps.team_id`/`created_by`, backfill with temporary UUIDv7 function, rate-limit bucket; `teams-migration.test.ts`
+- [x] [backend] `ensurePersonalTeam`, wired into Better Auth `user.create.after` and the first-use endpoints; `currentTeamId` on `GET /v1/me`
+- [x] [backend] `teams.ts`: `teamAccess`/`appAccess`, `GET/POST /v1/teams`, `GET /v1/teams/{teamId}`, `PUT /v1/me/current-team`
+- [x] [backend] Members: `PATCH` and `DELETE /v1/teams/{teamId}/members/{userId}` with the team-row lock and last-Admin rule
+- [x] [backend] Invitations: create (checks, rate limit, mail), cancel, preview, accept (verifies email); `team-invitation` mail template and `MailPayload` union
+- [x] [backend] `apps.ts`: team access on every app route, `teamId` on list and create, per-team name lock and uniqueness, `teamId` and `role` on `App`
+- [x] [backend] `deleteAccount`: `team-needs-admin` refusal, delete sole-member teams' apps through Kong, then the teams; update spec 007 tests for the new ownership
+- [x] [backend] New problem types and copy; regenerate `packages/sdk`
+- [x] [frontend] Team switcher in the dashboard header (personal team first); switching calls `PUT /v1/me/current-team` and reloads My apps with `teamId`
+- [x] [frontend] Create team form; team page with members, roles, pending invitations; invite, cancel, change role, remove, leave, all hidden by role
+- [x] [frontend] `/invitations/accept?token=` page: preview states, sign in or sign up with the invited address and return, accept, and every refusal message
+- [x] [frontend] App pages read `app.role`: Read-only sees keys' metadata without create or revoke controls; create app goes to the current team
+- [x] [frontend] Account deletion shows `team-needs-admin` with the named teams
 - [ ] [qa] Upgrade test (AC 1): pre-008 data, a key still works through real Kong after migrating; a new sign-up gets a current personal team
 - [ ] [qa] Role matrix API test (AC 4, 5, 7) with Kong and Postgres unchanged after every 403/404
 - [ ] [qa] Invitation e2e against Mailpit (AC 3) and the refusal cases (AC 6)
@@ -313,6 +313,10 @@ Design: [docs/design/008-teams-and-roles.md](../design/008-teams-and-roles.md). 
   Sign-up and sign-in read an optional `email` query parameter to prefill the invited address.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+Frontend: implemented the dashboard team switcher, team creation and member/invitation management, public invitation acceptance with all refusal states and auth email prefill, role-aware app controls, and account-deletion team summaries/links. All five frontend tasks are ticked; portal lint/typecheck and 249 tests pass, and UI lint/typecheck/test pass (UI has no standalone tests). The portal test run needs local sockets for the existing ingress tests; browser, full workspace suite, and quickstart remain for QA.
+
+- Backend (2026-11-10): Implemented migration/backfill, personal teams and selection, team/member/invitation endpoints, hashed invitation tokens with encrypted queued links, role-based app access, per-team app names, and account deletion that preserves shared apps. Membership writes and app/key writes coordinate with the final account-deletion lock; last-Admin checks serialize on the team row. Regenerated SDK types from the existing contract. Validation: server lint/typecheck and 198 tests passed; database lint/typecheck and 6 tests passed; SDK lint/typecheck/test passed (no SDK tests). QA still owns the real-Kong upgrade/shared-key checks, full suite, browser, and quickstart.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
