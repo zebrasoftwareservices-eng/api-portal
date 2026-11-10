@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
+status: done   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
