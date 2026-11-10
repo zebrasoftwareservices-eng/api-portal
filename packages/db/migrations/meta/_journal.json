@@ -29,6 +29,13 @@
       "when": 1794297361532,
       "tag": "0003_email_and_account_security",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794300000000,
+      "tag": "0004_teams",
+      "breakpoints": true
     }
   ]
 }

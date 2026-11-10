@@ -22,10 +22,18 @@ import {
 import { requireUser, type Auth } from './auth.js';
 import { Problem, notFound } from './problem.js';
 import { requireVerified } from './verified.js';
+import {
+  ensurePersonalTeam,
+  currentTeamId,
+  teamAccess,
+  appAccess,
+  type TeamRole,
+} from './teams.js';
 import { generateKey } from './crypto.js';
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 const createSchema = z.strictObject({
   name: z.string().min(1).max(80),
+  teamId: z.uuid().optional(),
   description: z.string().max(500).optional(),
   apiIds: z
     .array(z.uuid())
@@ -44,7 +52,11 @@ function credentialView(c: typeof credentials.$inferSelect) {
     revokedAt: c.revokedAt?.toISOString() ?? null,
   };
 }
-async function view(db: Database | Tx, app: typeof apps.$inferSelect) {
+async function view(
+  db: Database | Tx,
+  app: typeof apps.$inferSelect,
+  role: TeamRole,
+) {
   const [subs, keys] = await Promise.all([
     db
       .select({ apiId: apis.id, slug: apis.slug, title: apiVersions.title })
@@ -60,26 +72,14 @@ async function view(db: Database | Tx, app: typeof apps.$inferSelect) {
   ]);
   return {
     id: app.id,
+    teamId: app.teamId,
+    role,
     name: app.name,
     description: app.description,
     subscriptions: subs,
     credentials: keys.map(credentialView),
     createdAt: app.createdAt.toISOString(),
   };
-}
-async function owned(
-  db: Database | Tx,
-  id: string,
-  ownerId: string,
-  lock = false,
-) {
-  const q = db
-    .select()
-    .from(apps)
-    .where(and(eq(apps.id, id), eq(apps.ownerId, ownerId)));
-  const [app] = await (lock ? q.for('update') : q);
-  if (!app) throw notFound();
-  return app;
 }
 export function registerApps(
   server: FastifyInstance,
@@ -89,22 +89,30 @@ export function registerApps(
 ) {
   server.get('/api/v1/apps', async (request) => {
     const user = await requireUser(auth, request);
+    await db.transaction((tx) => ensurePersonalTeam(tx, user.id));
+    const query = z
+      .object({ teamId: z.uuid().optional() })
+      .parse(request.query);
+    const teamId = query.teamId ?? (await currentTeamId(db, user.id));
+    const membership = await teamAccess(db, teamId, user.id);
     const rows = await db
       .select()
       .from(apps)
-      .where(eq(apps.ownerId, user.id))
+      .where(eq(apps.teamId, teamId))
       .orderBy(desc(apps.createdAt));
-    return { items: await Promise.all(rows.map((a) => view(db, a))) };
+    return {
+      items: await Promise.all(rows.map((a) => view(db, a, membership.role))),
+    };
   });
   server.get('/api/v1/apps/:appId', async (request) => {
     const user = await requireUser(auth, request);
     const { appId } = appParams.parse(request.params);
-    return view(db, await owned(db, appId, user.id));
+    const { app, role } = await appAccess(db, appId, user.id);
+    return view(db, app, role);
   });
   server.post('/api/v1/apps', async (request, reply) => {
     const user = await requireUser(auth, request);
-    await requireVerified(db, user);
-    requireEnabled(await connection.load());
+    await db.transaction((tx) => ensurePersonalTeam(tx, user.id));
     const input = createSchema.parse(request.body);
     const appId = uuidv7(),
       id = uuidv7(),
@@ -113,25 +121,29 @@ export function registerApps(
     let adapter: GatewayAdapter | undefined;
     try {
       const result = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
         const [owner] = await tx
           .select({ id: users.id })
           .from(users)
           .where(eq(users.id, user.id))
           .for('key share');
         if (!owner) throw notFound();
+        const teamId = input.teamId ?? (await currentTeamId(tx, user.id));
+        const membership = await teamAccess(tx, teamId, user.id, 'write');
+        await requireVerified(tx, user);
         // Serialize names before gateway writes, including simultaneous identical submissions.
         await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtextextended(${user.id + ':' + input.name},0))`,
+          sql`select pg_advisory_xact_lock(hashtextextended(${teamId + ':' + input.name},0))`,
         );
         const [duplicate] = await tx
           .select({ id: apps.id })
           .from(apps)
-          .where(and(eq(apps.ownerId, user.id), eq(apps.name, input.name)));
+          .where(and(eq(apps.teamId, teamId), eq(apps.name, input.name)));
         if (duplicate)
           throw new Problem(
             409,
             'app-name-taken',
-            'You already have an app with this name.',
+            'This team already has an app with this name.',
           );
         const selected = await tx
           .select()
@@ -159,7 +171,8 @@ export function registerApps(
           .insert(apps)
           .values({
             id: appId,
-            ownerId: user.id,
+            teamId,
+            createdBy: user.id,
             name: input.name,
             description: input.description,
           })
@@ -187,7 +200,7 @@ export function registerApps(
           .returning();
         if (!credential) throw new Error('Insert failed');
         return {
-          app: await view(tx, app),
+          app: await view(tx, app, membership.role),
           credential: {
             ...credentialView(credential),
             key,
@@ -214,16 +227,16 @@ export function registerApps(
   });
   server.post('/api/v1/apps/:appId/credentials', async (request, reply) => {
     const user = await requireUser(auth, request);
-    await requireVerified(db, user);
     const { appId } = appParams.parse(request.params);
-    requireEnabled(await connection.load());
     const id = uuidv7(),
       key = generateKey();
     let attempted = false;
     let adapter: GatewayAdapter | undefined;
     try {
       const result = await db.transaction(async (tx) => {
-        await owned(tx, appId, user.id, true);
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
+        await appAccess(tx, appId, user.id, 'write');
+        await requireVerified(tx, user);
         const active = await tx
           .select({ id: credentials.id })
           .from(credentials)
@@ -298,7 +311,8 @@ export function registerApps(
         .extend({ credentialId: z.uuid() })
         .parse(request.params);
       await db.transaction(async (tx) => {
-        await owned(tx, appId, user.id, true);
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
+        await appAccess(tx, appId, user.id, 'write');
         const [credential] = await tx
           .select()
           .from(credentials)

@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import PgBoss from 'pg-boss';
-import { user, emailChangeRequests, type Database } from '@portal/db';
+import {
+  user,
+  emailChangeRequests,
+  teamInvitations,
+  teams,
+  type Database,
+} from '@portal/db';
 import { eq, and, gt } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Config } from '../config.js';
@@ -9,12 +15,19 @@ import { createHash } from 'node:crypto';
 import { effectiveSettings } from './settings.js';
 import { sendMail } from './transport.js';
 import { renderMail, type Template } from './templates.js';
-export type MailPayload = {
-  template: Exclude<Template, 'test'>;
-  userId: string;
-  to: string;
-  link: string;
-};
+export type MailPayload =
+  | {
+      template: Exclude<Template, 'test' | 'team-invitation'>;
+      userId: string;
+      to: string;
+      link: string;
+    }
+  | {
+      template: 'team-invitation';
+      invitationId: string;
+      to: string;
+      link: string;
+    };
 export type EnqueueMail = (payload: MailPayload) => Promise<void>;
 export function mailQueue(config: Config, sharedBoss?: PgBoss): EnqueueMail {
   return async (payload) => {
@@ -56,29 +69,69 @@ export async function processMail(
   job: { id: string; data: MailPayload },
 ) {
   const { data } = job;
-  const [recipient] = await db
-    .select()
-    .from(user)
-    .where(eq(user.id, data.userId));
-  if (!recipient || (data.template === 'verify' && recipient.emailVerified))
-    return;
-  const link = decrypt(data.link, config.PORTAL_ENCRYPTION_KEY);
-  if (data.template === 'confirm-email') {
-    const token = new URL(link).searchParams.get('token') ?? '';
-    const [pending] = await db
+  let rendered: ReturnType<typeof renderMail>;
+  if (data.template === 'team-invitation') {
+    const [invitation] = await db
       .select()
-      .from(emailChangeRequests)
-      .where(
-        and(
-          eq(emailChangeRequests.userId, data.userId),
-          eq(
-            emailChangeRequests.tokenHash,
-            createHash('sha256').update(token).digest('hex'),
+      .from(teamInvitations)
+      .where(eq(teamInvitations.id, data.invitationId));
+    if (
+      !invitation ||
+      invitation.acceptedAt ||
+      invitation.cancelledAt ||
+      invitation.expiresAt <= new Date()
+    )
+      return;
+    const [team] = await db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, invitation.teamId));
+    const [inviter] = invitation.invitedBy
+      ? await db.select().from(user).where(eq(user.id, invitation.invitedBy))
+      : [];
+    if (!team) return;
+    const link = decrypt(data.link, config.PORTAL_ENCRYPTION_KEY);
+    rendered = renderMail(data.template, {
+      name: '',
+      email: data.to,
+      link,
+      portalUrl: config.PORTAL_PUBLIC_URL,
+      teamName: team.name,
+      inviterName: inviter?.name ?? 'A team Admin',
+      role: invitation.role,
+      expiresAt: invitation.expiresAt.toISOString(),
+    });
+  } else {
+    const [recipient] = await db
+      .select()
+      .from(user)
+      .where(eq(user.id, data.userId));
+    if (!recipient || (data.template === 'verify' && recipient.emailVerified))
+      return;
+    const link = decrypt(data.link, config.PORTAL_ENCRYPTION_KEY);
+    if (data.template === 'confirm-email') {
+      const token = new URL(link).searchParams.get('token') ?? '';
+      const [pending] = await db
+        .select()
+        .from(emailChangeRequests)
+        .where(
+          and(
+            eq(emailChangeRequests.userId, data.userId),
+            eq(
+              emailChangeRequests.tokenHash,
+              createHash('sha256').update(token).digest('hex'),
+            ),
+            gt(emailChangeRequests.expiresAt, new Date()),
           ),
-          gt(emailChangeRequests.expiresAt, new Date()),
-        ),
-      );
-    if (!pending) return;
+        );
+      if (!pending) return;
+    }
+    rendered = renderMail(data.template, {
+      name: recipient.name,
+      email: data.to,
+      link,
+      portalUrl: config.PORTAL_PUBLIC_URL,
+    });
   }
   const metadata = {
     jobId: job.id,
@@ -91,16 +144,7 @@ export async function processMail(
     return;
   }
   try {
-    await sendMail(
-      settings,
-      data.to,
-      renderMail(data.template, {
-        name: recipient.name,
-        email: data.to,
-        link,
-        portalUrl: config.PORTAL_PUBLIC_URL,
-      }),
-    );
+    await sendMail(settings, data.to, rendered);
   } catch {
     log.warn(metadata, 'mail delivery failed');
     throw new Error('Mail delivery failed');

@@ -13,6 +13,7 @@ export class Problem extends Error {
     detail: string,
     readonly errors?: { message: string; pointer?: string }[],
     readonly fields?: {
+      teams?: { id: string; name: string }[];
       apis?: number;
       activeKeys?: number;
       affectedKeys?: number;

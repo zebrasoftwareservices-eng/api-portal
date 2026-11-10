@@ -14,7 +14,10 @@ import { type Auth, requireUser } from './auth.js';
 import { securityProblem } from './security-problems.js';
 export type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 export type Bucket =
-  'sign-in-failure' | 'password-reset' | 'verification-email';
+  | 'sign-in-failure'
+  | 'password-reset'
+  | 'verification-email'
+  | 'team-invitation';
 export const hashSubject = (subject: string) =>
   createHash('sha256').update(subject.trim().toLowerCase()).digest('hex');
 export async function readAccountSettings(db: Database | Tx) {
@@ -36,14 +39,16 @@ export async function limitLock(
   const now = clock ?? new Date();
   const settings = await readAccountSettings(tx);
   const [max, minutes] =
-    bucket === 'sign-in-failure'
-      ? [settings.signInFailureMax, settings.signInFailureWindowMinutes]
-      : bucket === 'password-reset'
-        ? [settings.resetEmailMax, settings.resetEmailWindowMinutes]
-        : [
-            settings.verificationEmailMax,
-            settings.verificationEmailWindowMinutes,
-          ];
+    bucket === 'team-invitation'
+      ? [20, 60]
+      : bucket === 'sign-in-failure'
+        ? [settings.signInFailureMax, settings.signInFailureWindowMinutes]
+        : bucket === 'password-reset'
+          ? [settings.resetEmailMax, settings.resetEmailWindowMinutes]
+          : [
+              settings.verificationEmailMax,
+              settings.verificationEmailWindowMinutes,
+            ];
   const hits = await tx
     .select({ createdAt: rateLimitHits.createdAt })
     .from(rateLimitHits)

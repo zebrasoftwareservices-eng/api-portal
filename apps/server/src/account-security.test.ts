@@ -28,6 +28,7 @@ import {
 import { createApp } from './app.js';
 import { createAuth } from './auth.js';
 import { loadConfig } from './config.js';
+import { ensurePersonalTeam } from './teams.js';
 import { deleteAccount } from './account.js';
 import { storedTokenUnavailable } from './gateway-connection.js';
 import { housekeeping } from './auth-limits.js';
@@ -212,8 +213,16 @@ it('guards apps and keys before gateway writes, and refuses enabling mail-less v
   await connection.db
     .update(accountSettings)
     .set({ requireVerifiedEmail: true });
-  for (const url of ['/api/v1/apps', `/api/v1/apps/${uuidv7()}/credentials`]) {
-    const response = await request('POST', url, {}, person.cookie);
+  const appId = uuidv7();
+  const teamId = await ensurePersonalTeam(connection.db, person.id);
+  await connection.db
+    .insert(apps)
+    .values({ id: appId, teamId, createdBy: person.id, name: 'Guarded' });
+  for (const [url, body] of [
+    ['/api/v1/apps', { name: 'New', teamId, apiIds: [uuidv7()] }],
+    [`/api/v1/apps/${appId}/credentials`, {}],
+  ] as const) {
+    const response = await request('POST', url, body, person.cookie);
     expect(response.statusCode).toBe(403);
     expect(response.json().type).toBe('/problems/email-not-verified');
   }
@@ -750,8 +759,18 @@ it('saves encrypted SMTP credentials, keeps and removes passwords and protects t
 it('deletion refuses bad passwords and gateway outages, then revokes all apps and allows signup again', async () => {
   const person = await signup();
   await connection.db.insert(apps).values([
-    { id: uuidv7(), ownerId: person.id, name: 'first' },
-    { id: uuidv7(), ownerId: person.id, name: 'second' },
+    {
+      id: uuidv7(),
+      teamId: await ensurePersonalTeam(connection.db, person.id),
+      createdBy: person.id,
+      name: 'first',
+    },
+    {
+      id: uuidv7(),
+      teamId: await ensurePersonalTeam(connection.db, person.id),
+      createdBy: person.id,
+      name: 'second',
+    },
   ]);
   expect(
     (
@@ -794,8 +813,18 @@ it('deletion refuses bad passwords and gateway outages, then revokes all apps an
 it('part-way deletion commits removed apps and retries the remainder', async () => {
   const person = await signup();
   await connection.db.insert(apps).values([
-    { id: uuidv7(), ownerId: person.id, name: 'first' },
-    { id: uuidv7(), ownerId: person.id, name: 'second' },
+    {
+      id: uuidv7(),
+      teamId: await ensurePersonalTeam(connection.db, person.id),
+      createdBy: person.id,
+      name: 'first',
+    },
+    {
+      id: uuidv7(),
+      teamId: await ensurePersonalTeam(connection.db, person.id),
+      createdBy: person.id,
+      name: 'second',
+    },
   ]);
   vi.mocked(adapter.deleteConsumer)
     .mockResolvedValueOnce()
@@ -810,15 +839,29 @@ it('part-way deletion commits removed apps and retries the remainder', async () 
 });
 it('sweeps apps created during deletion and serializes the last two admins', async () => {
   const person = await signup();
-  await connection.db
-    .insert(apps)
-    .values({ id: uuidv7(), ownerId: person.id, name: 'original' });
+  await connection.db.insert(apps).values({
+    id: uuidv7(),
+    teamId: await ensurePersonalTeam(connection.db, person.id),
+    createdBy: person.id,
+    name: 'original',
+  });
+  const personalTeamId = await ensurePersonalTeam(connection.db, person.id);
+  let lateInsert: Promise<unknown> | undefined;
   vi.mocked(adapter.deleteConsumer).mockImplementationOnce(async () => {
-    await connection.db
+    // A team FK waits for the deletion transaction's team lock. Start the
+    // insert in flight, then let deletion commit and sweep the new app.
+    lateInsert = connection.db
       .insert(apps)
-      .values({ id: uuidv7(), ownerId: person.id, name: 'late' });
+      .values({
+        id: uuidv7(),
+        teamId: personalTeamId,
+        createdBy: person.id,
+        name: 'late',
+      })
+      .execute();
   });
   await deleteAccount(connection.db, adapter, person);
+  await lateInsert;
   expect(adapter.deleteConsumer).toHaveBeenCalledTimes(2);
   expect(await connection.db.select().from(apps)).toHaveLength(0);
   const first = await signup('first@example.com');
@@ -1029,9 +1072,12 @@ it('rejects an already-owned email neutrally and keeps the old address until con
 it('deletes through the current gateway configuration even while new keys are disabled', async () => {
   const person = await signup();
   const appId = uuidv7();
-  await connection.db
-    .insert(apps)
-    .values({ id: appId, ownerId: person.id, name: 'current gateway' });
+  await connection.db.insert(apps).values({
+    id: appId,
+    teamId: await ensurePersonalTeam(connection.db, person.id),
+    createdBy: person.id,
+    name: 'current gateway',
+  });
   await connection.db
     .update(gateways)
     .set({ adminUrl: 'http://replacement:8001', enabled: false });
@@ -1078,7 +1124,8 @@ it('deletes an account and its local apps when no gateway is connected', async (
   const person = await signup();
   await connection.db.insert(apps).values({
     id: uuidv7(),
-    ownerId: person.id,
+    teamId: await ensurePersonalTeam(connection.db, person.id),
+    createdBy: person.id,
     name: 'local app',
   });
   const removed = await connection.db.delete(gateways).returning();
@@ -1117,7 +1164,8 @@ it('keeps the account and apps and returns the stored-token problem when the gat
   const person = await signup();
   await connection.db.insert(apps).values({
     id: uuidv7(),
-    ownerId: person.id,
+    teamId: await ensurePersonalTeam(connection.db, person.id),
+    createdBy: person.id,
     name: 'retained app',
   });
   await connection.db

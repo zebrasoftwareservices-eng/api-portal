@@ -180,11 +180,16 @@ export interface paths {
         post?: never;
         /**
          * Delete the signed-in user's account, its apps and their keys
-         * @description Spec 007 AC 9. Checks in this order: password (403 `/problems/invalid-password`, counted
-         *     as a failed sign-in), last admin (409 `/problems/last-admin`), then a gateway health check
-         *     (503 `/problems/gateway-unavailable`, nothing deleted). It then deletes each app's Kong
-         *     consumer (with its keys and ACL memberships) and that app's rows, one app at a time, and
-         *     finally the user with their sessions. If Kong fails part way, apps already removed stay
+         * @description Spec 007 AC 9 and spec 008 AC 8. Checks in this order: password (403
+         *     `/problems/invalid-password`, counted as a failed sign-in), last portal admin (409
+         *     `/problems/last-admin`), last Admin of a team that has other members (409
+         *     `/problems/team-needs-admin`, with `teams` naming them), then a gateway health check
+         *     (503 `/problems/gateway-unavailable`, nothing deleted). It then deletes the teams where
+         *     the user is the only member (their personal team, and any shared team they are alone in):
+         *     each of those teams' apps loses its Kong consumer (with its keys and ACL memberships) and
+         *     its rows, one app at a time, then the team. Finally it deletes the user with their
+         *     sessions and their other memberships. Apps of teams with other members are not touched,
+         *     and their keys keep working. If Kong fails part way, apps already removed stay
          *     removed (their keys no longer work), the account and the remaining apps stay, and the
          *     call returns 503 so a retry finishes the job. On success the session cookie is cleared and
          *     the email address can sign up again as a new account.
@@ -194,6 +199,28 @@ export interface paths {
         head?: never;
         /** Change the signed-in user's name */
         patch: operations["updateMe"];
+        trace?: never;
+    };
+    "/v1/me/current-team": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Switch the signed-in user's current team
+         * @description Spec 008 AC 2. The current team is the membership selected most recently. It is stored
+         *     server-side, so it survives sign-out and is the same on every device. API calls still
+         *     name their team explicitly.
+         */
+        put: operations["setCurrentTeam"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/me/email": {
@@ -247,7 +274,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the signed-in developer's apps */
+        /**
+         * List a team's apps
+         * @description Any role. Without `teamId`, lists the caller's current team.
+         */
         get: operations["listApps"];
         put?: never;
         /**
@@ -258,6 +288,9 @@ export interface paths {
          *     whatever it created in Kong and stores nothing, so a retry creates exactly one consumer.
          *     The returned `credential.key` is never shown again. The key works only on the APIs in
          *     `apiIds`; Kong answers 403 on every other key-auth service (ADR 0005).
+         *     The app belongs to `teamId` (default: the caller's current team), and needs the
+         *     `admin` or `member` role there (spec 008). The role is checked before email verification
+         *     and before any gateway call.
          */
         post: operations["createApp"];
         delete?: never;
@@ -273,7 +306,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get one of the signed-in developer's apps */
+        /**
+         * Get one of a team's apps
+         * @description Any role in the app's team. Anyone else gets 404, including a removed member.
+         */
         get: operations["getApp"];
         put?: never;
         post?: never;
@@ -296,7 +332,9 @@ export interface paths {
          * Issue another API key for an app
          * @description The returned `key` is shown once and never stored by the portal. The consumer and its
          *     access are upserted first, so this also works when the connection now points at a Kong
-         *     that doesn't have the app's consumer yet (spec 005 AC 7(e)).
+         *     that doesn't have the app's consumer yet (spec 005 AC 7(e)). Needs the `admin` or
+         *     `member` role in the app's team; `read-only` gets 403 and nothing changes in Kong or
+         *     Postgres (spec 008 AC 4).
          */
         post: operations["createCredential"];
         delete?: never;
@@ -320,9 +358,178 @@ export interface paths {
          * @description Deletes the key-auth credential in Kong, then marks the credential `revoked`.
          *     Idempotent: revoking an already revoked key returns 204. If Kong is unreachable
          *     the key stays `active` and the call returns 503, so the UI never shows a key as
-         *     revoked while Kong still accepts it.
+         *     revoked while Kong still accepts it. Needs the `admin` or `member` role in the app's
+         *     team; `read-only` gets 403 and the key stays active (spec 008 AC 4). Any member may
+         *     revoke any of the team's keys, whoever created them.
          */
         delete: operations["revokeCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's teams
+         * @description Personal team first, then by name. Creates the personal team if it is missing.
+         */
+        get: operations["listTeams"];
+        put?: never;
+        /**
+         * Create a team
+         * @description Spec 008 AC 2. The caller becomes its Admin, and it becomes their current team.
+         */
+        post: operations["createTeam"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{teamId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: components["parameters"]["TeamId"];
+            };
+            cookie?: never;
+        };
+        /** A team with its members and, for Admins, its pending invitations */
+        get: operations["getTeam"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{teamId}/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: components["parameters"]["TeamId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invite someone to the team by email
+         * @description Spec 008 AC 3. Admin only. Emails a single-use link, valid 7 days, to `email` (trimmed and
+         *     lowercased). Checks in this order: validation, membership (404) and role (403
+         *     `/problems/team-role-forbidden`), personal team, mail settings, rate limit (20 an hour per
+         *     user), already a member, pending invitation. A refused request stores nothing and
+         *     sends nothing.
+         */
+        post: operations["createInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{teamId}/invitations/{invitationId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: components["parameters"]["TeamId"];
+                invitationId: components["parameters"]["InvitationId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Cancel a pending invitation
+         * @description Admin only. Its link stops working at once. Cancelling a cancelled or expired invitation returns 204.
+         */
+        delete: operations["cancelInvitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/teams/{teamId}/members/{userId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: components["parameters"]["TeamId"];
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a member, or leave the team
+         * @description An Admin may remove anyone; any member may remove themselves (leave). Only the
+         *     membership is deleted: the team's apps, keys and Kong consumers are unchanged, including
+         *     keys this member created (spec 008 AC 7). Refused with `/problems/team-needs-admin` for
+         *     the last Admin.
+         */
+        delete: operations["removeTeamMember"];
+        options?: never;
+        head?: never;
+        /**
+         * Change a member's role
+         * @description Admin only (spec 008 AC 9). Applies on the member's next request. Refused with
+         *     `/problems/team-needs-admin` if it would leave the team with no Admin.
+         */
+        patch: operations["updateTeamMember"];
+        trace?: never;
+    };
+    "/v1/invitations/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Show what an invitation link is for
+         * @description No session needed: the invitee may not have an account yet. The token is in the body so
+         *     it never appears in access logs. Changes nothing.
+         */
+        post: operations["previewInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept an invitation and join the team
+         * @description Spec 008 AC 3 and 6. The signed-in account's email must equal the invited address
+         *     (case-insensitive). On success the membership is created with the invited role, the team
+         *     becomes the current team, and the account's email is marked verified (the token reached
+         *     that inbox). On any refusal nothing changes.
+         */
+        post: operations["acceptInvitation"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -689,6 +896,12 @@ export interface components {
             }[];
             /** @description Only on `/problems/openapi-lint-failed`: total number of error findings */
             errorCount?: number;
+            /** @description With `/problems/team-needs-admin` from `DELETE /v1/me`: the teams where the caller is the only Admin and others are members */
+            teams?: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            }[];
         };
         Slug: string;
         Health: {
@@ -833,6 +1046,11 @@ export interface components {
             pendingEmail: string | null;
             /** @description The admin's "Require a verified email" setting. With `emailVerified` false, creating apps and keys is refused. */
             verificationRequired: boolean;
+            /**
+             * Format: uuid
+             * @description The team picked most recently in the switcher; the personal team for a new account (spec 008)
+             */
+            currentTeamId: string;
         };
         UpdateMeRequest: {
             /** @description Trimmed before saving */
@@ -1085,14 +1303,109 @@ export interface components {
             /** @description Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`; add a version to that API instead (`importApiVersion`). */
             linkedApiSlug?: string | null;
         };
+        /** @enum {string} */
+        TeamRole: "admin" | "member" | "read-only";
+        CreateTeamRequest: {
+            /** @description Trimmed before saving; need not be unique */
+            name: string;
+        };
+        SetCurrentTeamRequest: {
+            /** Format: uuid */
+            teamId: string;
+        };
+        TeamSummary: {
+            /** Format: uuid */
+            id: string;
+            /** @description `Personal` for a personal team */
+            name: string;
+            /** @description The caller's personal team. Single-member; takes no invitations. */
+            personal: boolean;
+            role: components["schemas"]["TeamRole"];
+            memberCount: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        TeamMember: {
+            /** Format: uuid */
+            userId: string;
+            name: string;
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["TeamRole"];
+            /** Format: date-time */
+            joinedAt: string;
+        };
+        TeamDetail: components["schemas"]["TeamSummary"] & {
+            /** @description Admins first, then by name */
+            members: components["schemas"]["TeamMember"][];
+            /** @description Pending, unexpired invitations, newest first. `null` unless the caller is an Admin. */
+            invitations: components["schemas"]["Invitation"][] | null;
+        };
+        CreateInvitationRequest: {
+            /**
+             * Format: email
+             * @description Trimmed and lowercased
+             */
+            email: string;
+            role: components["schemas"]["TeamRole"];
+        };
+        UpdateTeamMemberRequest: {
+            role: components["schemas"]["TeamRole"];
+        };
+        Invitation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: email */
+            email: string;
+            role: components["schemas"]["TeamRole"];
+            /** @description `null` if the inviter's account was deleted */
+            invitedBy: {
+                /** Format: uuid */
+                userId: string;
+                name: string;
+            } | null;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description 7 days after `createdAt`
+             */
+            expiresAt: string;
+        };
+        InvitationTokenRequest: {
+            token: string;
+        };
+        InvitationPreview: {
+            teamName: string;
+            role: components["schemas"]["TeamRole"];
+            /**
+             * Format: email
+             * @description The invited address; sign in or sign up with it to accept
+             */
+            email: string;
+            invitedByName: string | null;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @enum {string} */
+            state: "pending" | "accepted" | "cancelled" | "expired";
+        };
         CreateAppRequest: {
             name: string;
             description?: string;
+            /**
+             * Format: uuid
+             * @description The team the app belongs to. Defaults to the caller's current team; the portal always sends it.
+             */
+            teamId?: string;
             apiIds: string[];
         };
         App: {
             /** Format: uuid */
             id: string;
+            /** Format: uuid */
+            teamId: string;
+            /** @description The caller's role in the app's team. `read-only` can't create or revoke keys. */
+            role: components["schemas"]["TeamRole"];
             name: string;
             description?: string | null;
             subscriptions: {
@@ -1178,13 +1491,11 @@ export interface components {
             };
         };
         /**
-         * @description Kong's Admin API is unreachable, timed out (5 s) or returned 5xx
-         *     (`/problems/gateway-unavailable`). Nothing was changed; it is safe to retry.
-         *     Includes `Retry-After: 5`.
+         * @description The caller is a member of the team but their role doesn't allow this
+         *     (`/problems/team-role-forbidden`). Nothing was changed, in Kong or the portal.
          */
-        GatewayUnavailable: {
+        TeamRoleForbidden: {
             headers: {
-                "Retry-After"?: number;
                 [name: string]: unknown;
             };
             content: {
@@ -1192,12 +1503,39 @@ export interface components {
             };
         };
         /**
-         * @description The admin requires a verified email and the user hasn't verified theirs
-         *     (`/problems/email-not-verified`). Nothing was created, in Kong or the portal. The UI offers
-         *     to resend the verification email (`POST /api/auth/send-verification-email`).
+         * @description `/problems/team-role-forbidden` (the caller is `read-only` in the team; checked first) or
+         *     `/problems/email-not-verified` (the admin requires a verified email and the user hasn't
+         *     verified theirs; the UI offers to resend it with `POST /api/auth/send-verification-email`).
+         *     Nothing was created, in Kong or the portal.
          */
-        EmailNotVerified: {
+        TeamForbiddenOrNotVerified: {
             headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description This would leave the team with no Admin (`/problems/team-needs-admin`). Make another member
+         *     an Admin first. Nothing was changed.
+         */
+        TeamNeedsAdmin: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /**
+         * @description Kong's Admin API is unreachable, timed out (5 s) or returned 5xx
+         *     (`/problems/gateway-unavailable`). Nothing was changed; it is safe to retry.
+         *     Includes `Retry-After: 5`.
+         */
+        GatewayUnavailable: {
+            headers: {
+                "Retry-After"?: number;
                 [name: string]: unknown;
             };
             content: {
@@ -1303,6 +1641,9 @@ export interface components {
         /** @description A version's `info.version`, URL-encoded (`+` becomes `%2B`) */
         Version: components["schemas"]["ApiVersionName"];
         GatewayId: string;
+        TeamId: string;
+        UserId: string;
+        InvitationId: string;
     };
     requestBodies: never;
     headers: never;
@@ -1578,7 +1919,11 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description This is the only admin (`/problems/last-admin`); another admin must exist first. */
+            /**
+             * @description This is the only portal admin (`/problems/last-admin`); another admin must exist first.
+             *     Or this is the only Admin of a team that has other members
+             *     (`/problems/team-needs-admin`; `teams` lists them). Nothing was deleted.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1628,6 +1973,31 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    setCurrentTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetCurrentTeamRequest"];
+            };
+        };
+        responses: {
+            /** @description Current team changed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     requestEmailChange: {
@@ -1718,7 +2088,9 @@ export interface operations {
     };
     listApps: {
         parameters: {
-            query?: never;
+            query?: {
+                teamId?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -1736,7 +2108,9 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
         };
     };
     createApp: {
@@ -1765,8 +2139,8 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["EmailNotVerified"];
-            /** @description One of `apiIds` is not a published API */
+            403: components["responses"]["TeamForbiddenOrNotVerified"];
+            /** @description One of `apiIds` is not a published API, or the caller isn't a member of `teamId` */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -1776,7 +2150,7 @@ export interface operations {
                 };
             };
             /**
-             * @description The developer already has an app with this name (`/problems/app-name-taken`), or the
+             * @description The team already has an app with this name (`/problems/app-name-taken`), or the
              *     API's gateway connection is disabled (`/problems/gateway-disabled`). When disabled,
              *     nothing is created in Kong or Postgres.
              */
@@ -1837,7 +2211,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["EmailNotVerified"];
+            403: components["responses"]["TeamForbiddenOrNotVerified"];
             404: components["responses"]["NotFound"];
             /**
              * @description `type` is one of `/problems/credential-limit` (the app already has 5 active keys),
@@ -1876,9 +2250,289 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["TeamRoleForbidden"];
             404: components["responses"]["NotFound"];
             502: components["responses"]["GatewayRejected"];
             503: components["responses"]["GatewayUnavailable"];
+        };
+    };
+    listTeams: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Teams and the current one */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["TeamSummary"][];
+                        /** Format: uuid */
+                        currentTeamId: string;
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    createTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTeamRequest"];
+            };
+        };
+        responses: {
+            /** @description Team created */
+            201: {
+                headers: {
+                    /** @description /api/v1/teams/{teamId} */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamSummary"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getTeam: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: components["parameters"]["TeamId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The team */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: components["parameters"]["TeamId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInvitationRequest"];
+            };
+        };
+        responses: {
+            /** @description Invitation created and email queued */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invitation"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["TeamRoleForbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `type` is one of `/problems/personal-team` (personal teams take no invitations),
+             *     `/problems/mail-not-configured` (no mail settings, so nobody would get the email),
+             *     `/problems/already-member` (the address belongs to a member) or
+             *     `/problems/invitation-pending` (that address already has a pending invitation to this
+             *     team; cancel it to invite again).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    cancelInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: components["parameters"]["TeamId"];
+                invitationId: components["parameters"]["InvitationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["TeamRoleForbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Already accepted (`/problems/invitation-used`). Remove the member instead. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeTeamMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: components["parameters"]["TeamId"];
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["TeamRoleForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TeamNeedsAdmin"];
+        };
+    };
+    updateTeamMember: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                teamId: components["parameters"]["TeamId"];
+                userId: components["parameters"]["UserId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTeamMemberRequest"];
+            };
+        };
+        responses: {
+            /** @description The member with the new role */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamMember"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["TeamRoleForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["TeamNeedsAdmin"];
+        };
+    };
+    previewInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description The invitation, in any state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationPreview"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    acceptInvitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvitationTokenRequest"];
+            };
+        };
+        responses: {
+            /** @description Joined */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamSummary"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `type` is one of `/problems/invitation-cancelled`, `/problems/invitation-used`,
+             *     `/problems/invitation-expired` or `/problems/invitation-wrong-account` (signed in with
+             *     another address; the invitation stays pending).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listGatewayServices: {

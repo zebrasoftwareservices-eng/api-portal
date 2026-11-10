@@ -19,6 +19,7 @@ import { loadLinter } from './lint/index.js';
 import { registerVersions } from './versions.js';
 import { registerCatalog } from './catalog.js';
 import { registerImport } from './import.js';
+import { registerTeams } from './teams.js';
 import { registerApps } from './apps.js';
 import { registerSetup } from './setup.js';
 import { registerGateways } from './gateways.js';
@@ -179,6 +180,7 @@ export async function createApp(options: AppOptions) {
   registerCatalog(app, db);
   registerImport(app, db, auth, connection, linter);
   registerVersions(app, db, auth, linter);
+  registerTeams(app, db, auth, config, enqueue);
   registerApps(app, db, auth, connection);
   await registerProxy(app, db, connection.adapterFor, options.proxyFetch);
   return { app, auth };

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-export type Template = 'verify' | 'reset-password' | 'confirm-email' | 'test';
+export type Template =
+  'verify' | 'reset-password' | 'confirm-email' | 'test' | 'team-invitation';
 const escape = (s: string) =>
   s.replace(
     /[&<>"']/g,
@@ -15,12 +16,22 @@ export function renderMail(
     email: string;
     link: string;
     portalUrl: string;
+    teamName?: string;
+    inviterName?: string;
+    role?: string;
+    expiresAt?: string;
     source?: string;
     adminEmail?: string;
   },
 ) {
   const host = new URL(data.portalUrl).host;
   const content = {
+    'team-invitation': {
+      subject: `Join ${data.teamName} on ${host}`,
+      body: `${data.inviterName} invited you to join ${data.teamName} as ${data.role}. Sign in or create an account with ${data.email} to accept.`,
+      label: 'Accept invitation',
+      footer: `This invitation expires at ${data.expiresAt}. If you were not expecting it, you can ignore this email.`,
+    },
     verify: {
       subject: `Verify your email for ${host}`,
       body: `Hi ${data.name},\n\nConfirm that ${data.email} is your address for the developer portal at ${host}.`,
