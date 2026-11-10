@@ -1,7 +1,7 @@
 ---
 id: 008
 title: Teams and roles
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-10
 linear: JSO-236
