@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -1021,6 +1021,61 @@ Earlier UAT evidence remains in `run-2026-11-09-final/` and
 superseded by this re-test and QA's closure above.
 
 ## Review  _(tech-lead)_
+### Final review — 2026-11-10 at `8705875`
+**Result: nothing is blocking, so the status is `approved`.** M1, M2 and M3/U4 from the merge
+review are fixed, and so are U2 and U3. Each fix has a test that would catch a regression. QA
+(`e76b0e6`) and the final UAT (`8705875`) both passed. The branch still merges cleanly into
+current `origin/main`. The two suggestions below are small, and neither one blocks a journey.
+
+#### Checks
+| Check | Result |
+| --- | --- |
+| `pnpm lint`, `pnpm typecheck` | Pass (7 and 12 tasks) |
+| `pnpm test --force` | Pass, 12 of 12 tasks: 188 server, 223 portal, 55 adapter-kong and 5 database tests |
+| Fix diff (`git diff 1088c74..HEAD`) | Application changes are limited to `account.ts`, the admin nav, `account-shared.tsx`, `account-settings.tsx`, `mail-settings.tsx`, `profile.tsx`, `setup-form.tsx`, `app-detail.tsx` and `admin/apis/page.tsx`, plus their tests. `openapi.yaml`, `packages/sdk`, `packages/db` and `deploy/` are unchanged, so there's no contract or migration drift |
+| Merge with main | After `git fetch`, `origin/main` (`bedaab4`) is the merge base, so the branch already contains all of main. `git merge-tree origin/main HEAD` is clean. `git diff origin/main...HEAD` is 254 files, all this spec's work and evidence |
+| Quickstart and `pnpm test:e2e` | Not re-run here. QA's run at `e76b0e6` stands: fresh compose in 146.83 s, and 68 e2e results (65 passes plus 3 known expected failures from other specs: JSO-399, JSO-405, JSO-406). UAT confirmed every story in the browser |
+
+#### Fixes verified
+- **M1** (`apps/server/src/account.ts:119`–`130`): fixed. The gateway is loaded once. With no
+  row, the health check and `deleteConsumer` are skipped, and the apps go by cascade. A row
+  with `adapter: null` throws `storedTokenUnavailable()` before anything is deleted. The
+  existing paths (connected, disabled, outage) are unchanged. New `DELETE /v1/me` tests cover
+  "no gateway" (204, user, apps, account and sessions gone, a replayed session gets 401),
+  "bad token" (503 problem+json, everything kept, no gateway calls) and malformed bodies with
+  no gateway (400, nothing changed) (`account-security.test.ts:1051`–`1151`).
+- **M2** (`apps/portal/components/admin-nav.tsx`): fixed. There's one nav in
+  `app/admin/layout.tsx` with APIs, Gateways, Mail and Accounts. `aria-current` uses a prefix
+  match, so nested routes such as `/admin/apis/<id>/versions` mark the right section. The small-screen
+  `<select>` moved into the shared nav. The duplicate `AdminNav` and its three uses are gone.
+  This is covered by `admin-nav.test.tsx` and by Playwright at 1280 and 390 px.
+- **M3 / U4** (`setup-form.tsx:156`): fixed. The hint is now "At least 8 characters.", and
+  `setup-form.test.tsx` asserts it.
+- **U2** (`profile.tsx:128`) and **U3** (`mail-settings.tsx:62`): fixed. Their expected-failure
+  markers are removed, and the e2e cases pass normally. The stray `{' '}` in `app-detail.tsx` is gone.
+
+#### Blocking
+None.
+
+#### Suggestions
+- **S1. Account deletion now uses a gateway loaded before the lock** (`apps/server/src/account.ts:121`–`136`).
+  Before M1, `remove` loaded the gateway again under `pg_advisory_xact_lock_shared(71833002)` in each
+  transaction. Now the adapter loaded at the start is used for every app. If an admin connects or
+  edits the gateway (`gateways.ts:257`, `:301`) while a deletion is running, that deletion calls
+  the old URL or token. The window is under a second, and a failed call still keeps the account.
+  This is the same exposure every non-transactional health check has, so it doesn't block.
+  *Fix later:* keep the up-front check, and inside `remove`, call `connection.load(tx)` after the
+  shared lock. Skip when there's no row, and throw `storedTokenUnavailable()` when the adapter is
+  null. Backlog follow-up, label **Code Review**, priority Low, no parent.
+- **S2. Dead CSS** (`packages/ui/src/styles.css:521`–`529`). Nothing uses the `.admin-nav` rules now,
+  because the shared nav uses `.admin-tabs` and `.admin-select`. Remove them in the next portal change.
+- The three follow-ups carried from the second re-review still stand: count email-change attempts
+  before the address-taken check (`account.ts:218`), make the last-admin check exact when two admins
+  delete at once, and require a shared enqueue in `mailQueue` (`mail/queue.ts:19`). Add S1 as a
+  fourth. On 2026-11-10 Linear again refused to create one (`Usage limit exceeded`: free issue limit),
+  so none of them exist yet. Create each one once there's room: team JSO, project API Portal, state
+  Backlog, priority Low, label **Code Review**, **no parent**. U2 and U3 are fixed, so they don't need issues.
+
 ### Merge review — 2026-11-10 at `24f05bd`
 **Result: three blocking findings, so the status goes back to `building`.** Most of the merge
 is right: the migration, `openapi.yaml`, `app.ts`, `config.ts`, `startup.ts`, compose and most
