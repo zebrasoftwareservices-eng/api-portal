@@ -61,11 +61,12 @@ Long notes go in `docs/specs/log/NNN.md`, not here.
 - [ ] …
 
 ## User testing  _(user-tester)_
-| User story | Result | Screenshot |
+| User story | Result | Evidence |
 | --- | --- | --- |
 
-One row per user-visible criterion. On a retest, change only the failed rows.
-Earlier rounds go in `docs/specs/log/NNN.md`.
+One row per user-visible criterion. Evidence is a short quote of what was on the screen.
+Name an image only for an open failure. On a retest, change only the failed rows.
+Earlier rounds go in `docs/specs/log/NNN.md`. The full report is `docs/uat/NNN/report.md`.
 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not

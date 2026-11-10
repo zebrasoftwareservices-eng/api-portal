@@ -28,6 +28,8 @@ rate-limit buckets shared across live runs), and JSO-410 (portal unit tests on N
 - Developers run tests for the packages they changed and push the feature branch. QA runs the
   full suite and the quickstart once, and leaves that stack up. The user-tester reuses it and
   walks each user-visible acceptance criterion once, plus one mobile pass and one keyboard pass.
+  It writes `docs/uat/<id>/report.md`. It keeps a screenshot only for a failure, plus one
+  desktop and one mobile shot of the main success, at most 12 images, and does not commit them.
   Review reads the test report and the diff. CI on the pushed branch is the second full run.
 - A minor finding or a review suggestion stays in the spec. It does not create a Fix task and
   does not send the spec back to building.

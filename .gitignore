@@ -25,3 +25,9 @@ test-results/
 # agents (personal settings and local worktrees)
 .claude/settings.local.json
 .claude/worktrees/
+
+# UAT evidence. The report is committed. Pictures and session dumps are not.
+docs/uat/**/*.png
+docs/uat/**/*.jsonl
+docs/uat/**/network.json
+docs/uat/**/console.json

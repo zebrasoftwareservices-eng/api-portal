@@ -77,7 +77,7 @@ const OWNERSHIP = {
   'backend-developer': 'apps/server, packages/db, packages/adapter-*, packages/sdk, deploy/, docs/specs/log/, and root workspace config (package.json, pnpm-workspace.yaml, turbo.json). Do not edit apps/portal or packages/ui.',
   'frontend-developer': 'apps/portal, packages/ui, and docs/specs/log/. Do not edit apps/server, packages/db or adapters.',
   'qa-tester': "test files (**/*.test.ts, apps/portal/e2e/, tests/), docs/specs/log/, and the spec's Test report and Bugs sections. Do not fix application code.",
-  'user-tester': "docs/uat/ (screenshots and notes), docs/specs/log/, and the spec's User testing and Bugs sections. Do not edit application code or tests.",
+  'user-tester': "docs/uat/<spec-id>/report.md, docs/specs/log/, and the spec's User testing and Bugs sections. A failure screenshot stays local and goes on the Linear bug. Do not edit application code or tests.",
   researcher: 'docs/research/ only. On a board pass you may append one follow-up per real out-of-scope item with the factory follow-up command. Do not edit application code, spec status, or any other spec section.',
 };
 // ---------- helpers ----------
@@ -523,8 +523,8 @@ function jobFor(role, spec, opts = {}) {
       };
     case 'user-tester':
       return {
-        change: `Reuse the stack QA left up. Read the portal URL in the Test report, or run \`node scripts/worktree-compose.mjs env\`. Start it with \`node scripts/worktree-compose.mjs up -d --wait\` only when that URL is not healthy. Walk each user-visible acceptance criterion once, then one mobile pass and one keyboard pass of the main journey. On a retest, walk only the rows that failed. Record problems under docs/uat/ and a short User testing table. Re-test open bugs with \`node scripts/factory.mjs linear bug ${spec?.id ?? '<id>'} done|open "<match>"\`. Create a Bug issue with \`linear issue ${spec?.id ?? '<id>'} bug --severity blocker|major\` only for blocker/major, cross-owner/release, or post-spec work. A minor finding does not set status to building. Set status: review if no blocker or major is open, otherwise building. Stop the stack with \`node scripts/worktree-compose.mjs down\` when you finish.`,
-        acceptance: 'Each user-visible acceptance criterion was walked once, with one mobile pass and one keyboard pass, evidence is in docs/uat/, minor findings did not return the spec to building, and status is review or building.',
+        change: `Reuse the stack QA left up. Read the portal URL in the Test report, or run \`node scripts/worktree-compose.mjs env\`. Start it with \`node scripts/worktree-compose.mjs up -d --wait\` only when that URL is not healthy. Walk each user-visible acceptance criterion once, then one mobile pass and one keyboard pass of the main journey. On a retest, walk only the rows that failed. Write docs/uat/${spec?.id ?? '<id>'}/report.md. Screenshot only a failure, plus at most one desktop and one mobile shot of the main success, at most 12 images, in that one flat folder. Do not add a round prefix or a retest directory, and do not commit PNGs or browser logs. Quote a console error in the report. Re-test open bugs with \`node scripts/factory.mjs linear bug ${spec?.id ?? '<id>'} done|open "<match>"\`. Create a Bug issue with \`linear issue ${spec?.id ?? '<id>'} bug --severity blocker|major\` only for blocker/major, cross-owner/release, or post-spec work, and attach a failure image there. A minor finding does not set status to building. Set status: review if no blocker or major is open, otherwise building. Stop the stack with \`node scripts/worktree-compose.mjs down\` when you finish.`,
+        acceptance: `Each user-visible acceptance criterion was walked once, with one mobile pass and one keyboard pass. docs/uat/${spec?.id ?? '<id>'}/report.md is the evidence. The folder has no new round directory and no more than 12 images. Minor findings did not return the spec to building, and status is review or building.`,
       };
     case 'researcher':
       if (opts.board) {
@@ -581,7 +581,7 @@ function readScope(role, spec, stageKey) {
     case 'qa-tester':
       return 'Read only the spec Acceptance criteria, Technical design, Build notes, and open Bugs. Do not open docs/uat/ or old review notes.';
     case 'user-tester':
-      return 'Read only the spec Summary, User stories, Acceptance criteria, UX section, and open Bugs. On a retest, walk only the failed rows. Do not read the code, docs/specs/log/, or old screenshots.';
+      return 'Read only the spec Summary, User stories, Acceptance criteria, UX section, and open Bugs. On a retest, walk only the failed rows. Do not read the code, docs/specs/log/, old screenshots, or browser logs.';
     default:
       return 'Read only the sections named in your role file.';
   }

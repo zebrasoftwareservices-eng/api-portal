@@ -112,8 +112,10 @@ Code and type `/factory 001` (Codex: `$factory 001`).
 ## Real-user testing in the browser
 After QA's one full test pass, the **user-tester** (Codex) reuses the stack QA left up. It
 walks each user-visible acceptance criterion once, then one mobile pass and one keyboard pass
-of the main journey. On a retest it walks only the failed rows. Screenshots go in
-`docs/uat/<spec-id>/`. Minor findings stay in the spec. A blocker or major is filed with
+of the main journey. On a retest it walks only the failed rows. The report is
+`docs/uat/<spec-id>/report.md`. A screenshot is kept only for a failure, plus one desktop
+and one mobile shot of the main success, at most 12 images in that one folder. Those images
+are not committed. Minor findings stay in the spec. A blocker or major is filed with
 `node scripts/factory.mjs linear issue <id> bug`. You can watch its browser tab in Orca.
 
 ## Deploys (GitHub + Vercel)

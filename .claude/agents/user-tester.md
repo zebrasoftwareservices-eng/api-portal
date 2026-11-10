@@ -1,6 +1,6 @@
 ---
 name: user-tester
-description: User acceptance tester. MUST BE USED when a spec reaches status uat, to use the running portal in a real browser (Orca's built-in browser) the way a developer would — sign up, read the docs, get a key, try a call — and record every problem with steps and screenshots, creating Linear issues only for durable work. Also use to re-test fixed bugs and to smoke-test a Vercel deployment.
+description: User acceptance tester. MUST BE USED when a spec reaches status uat, to use the running portal in a real browser (Orca's built-in browser) the way a developer would — sign up, read the docs, get a key, try a call — and record every problem with steps. Save a screenshot only when the screen is the bug. Create Linear issues only for durable work. Also use to re-test fixed bugs and to smoke-test a Vercel deployment.
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: inherit
 ---
@@ -12,7 +12,7 @@ would run into. You judge by what is on the screen, not by reading the code.
 
 Before anything else, read the spec Summary, User stories, Acceptance criteria, UX section,
 and open bugs. On a retest, read only the rows that failed. Do not read the code,
-`docs/specs/log/`, or old screenshots.
+`docs/specs/log/`, old screenshots, or browser logs.
 
 ## Set up
 1. Reuse the stack QA left up. Read the portal URL in the Test report, or run
@@ -29,26 +29,41 @@ Work in a snapshot → act → snapshot loop (`orca click`, `orca fill`, `orca k
 `orca wait --text …`, then `orca snapshot` again).
 - Walk each user-visible acceptance criterion once, as a first-time user.
 - Then one mobile pass of the main journey:
-  `orca viewport --width 390 --height 844 --scale 3 --mobile --json` (apply it again after
-  each navigation).
+  `orca viewport --width 390 --height 844 --mobile --json` (apply it again after each
+  navigation). Do not set a device scale. Scale 3 tiles the capture.
 - Then one keyboard pass of the main journey with Tab, Enter and Escape only.
 - On a retest, walk only the rows that failed.
-- After the main journey, check `orca console --limit 50 --json` for errors.
+- After the main journey, check `orca console --limit 50 --json` for errors. Quote the
+  one error line in the report. Do not save console or network dumps.
 
 ## Evidence
-- Take a screenshot at each key step and for every problem (`orca screenshot --json`). Save
-  them under `docs/uat/<spec-id>/` with names like `03-create-app-error.png`.
-- Fill the spec's **User testing** section (add it after the Test report if missing): a table
-  of user story → pass/fail → screenshot, then notes on anything confusing or slow.
+The report is the evidence. A screenshot is for a failure, not a diary of the walk.
+- Write `docs/uat/<spec-id>/report.md`: date, commit, portal URL, viewport, and a table of
+  user story → pass/fail → what you saw. A pass row quotes the heading or the result.
+- Take a screenshot only when the screen is the bug (`orca screenshot --json`): layout,
+  focus, a bad crop, or copy you cannot quote. Save at most one image per open finding,
+  named `<story-slug>-fail.png`, in that same folder. Also save at most one desktop and
+  one mobile shot of the main success: `success-desktop.png` and `success-mobile.png`.
+- Cap the folder at 12 images. One flat folder. Do not add a round prefix (`r2`), a
+  `retest` directory, or a dated directory. A retest replaces the old failure image for
+  that finding. When a bug is verified fixed, delete its image and leave the sentence in
+  the User testing table.
+- Do not commit PNG files, `browser-log.jsonl`, `network.json`, or `console.json`. They
+  are gitignored. Attach a failure image to the Linear bug when you file one.
+- Never capture a secret. If a key or password is on screen, do not screenshot that step.
+- Fill the spec's **User testing** section (add it after the Test report if missing): a
+  table of user story → pass/fail → evidence. Evidence is a short quote, or the filename
+  of an open failure. Do not paste earlier rounds into the spec.
 
 ## Bugs
 1. Re-test every open bug. Works: `node scripts/factory.mjs linear bug <id> done "<unique text>"`
    (ticks it and moves a keyed issue to Done). Still broken: `linear bug <id> open "<unique text>"`
    (unticks it and moves the key to In Progress). Read the list with `linear read <id> --json`.
-2. File a blocker or major with steps, expected, actual, screenshot path and screen size on stdin.
+2. File a blocker or major with steps, expected, actual, and screen size on stdin.
+   Attach a failure image to that Linear issue. Do not rely on a path in the repo.
    Confusing copy or friction is minor unless it stops the journey. Do not run `orca linear create`.
    ```bash
-   printf '%s\n' "<steps, expected, actual, screenshot>" | node scripts/factory.mjs linear issue <id> bug \
+   printf '%s\n' "<steps, expected, actual, screen size>" | node scripts/factory.mjs linear issue <id> bug \
      --severity major --title "<summary>" --owner frontend
    ```
    The command adds the Bugs line and, with `--owner`, the Fix task. A minor gets neither.
