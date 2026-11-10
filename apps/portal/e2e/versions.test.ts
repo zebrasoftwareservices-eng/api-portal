@@ -424,6 +424,8 @@ for (const mode of ['custom', 'missing', 'invalid'] as const) {
         `${dir}:/qa:ro`,
         '-e',
         `PORTAL_LINT_RULESET=${mountedPath}`,
+        '-e',
+        'KONG_ADMIN_URL=http://kong:8001',
         'server',
       ]);
       const port = (await run('docker', ['port', name, '4000/tcp'])).stdout
