@@ -91,7 +91,7 @@ describe('account forms', () => {
         expect(mocks.replace).toHaveBeenCalledWith('/dashboard'),
       );
       expect(submitAuth).toHaveBeenCalledTimes(2);
-      expect(submitAuth).toHaveBeenLastCalledWith({
+      expect(submitAuth.mock.calls.at(-1)?.[0]).toEqual({
         ...(mode === 'sign-up' ? { name: 'Ana' } : {}),
         email: 'ana@example.com',
         password: 'password123',

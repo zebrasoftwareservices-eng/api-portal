@@ -79,7 +79,13 @@ export async function createFirstAdmin(
     const password = await (await auth.$context).password.hash(values.password);
     await tx
       .insert(user)
-      .values({ id, email, name: values.name, role: 'admin' });
+      .values({
+        id,
+        email,
+        name: values.name,
+        role: 'admin',
+        emailVerified: true,
+      });
     await tx.insert(account).values({
       id: uuidv7(),
       accountId: id,

@@ -8,10 +8,13 @@ import type { Problem } from '../lib/types';
 import { useResource } from './use-resource';
 import { usePortal } from './providers';
 import { Field, focusInvalid } from './field';
+import { ResendVerification } from './account-shared';
 import { ProblemAlert } from './problem-alert';
 export function CreateApp({ slug }: { slug?: string }) {
   const router = useRouter();
-  const { setReveal } = usePortal();
+  const { setReveal, user, setUser } = usePortal();
+  const verificationBlocked =
+    !!user?.verificationRequired && !user.emailVerified;
   const resource = useResource(() => api.GET('/v1/apis'));
   const { data, loading, error, reload } = resource;
   const [name, setName] = useState('');
@@ -49,6 +52,10 @@ export function CreateApp({ slug }: { slug?: string }) {
     initialized.current = true;
   }, [data, slug]);
   async function submit() {
+    if (verificationBlocked) {
+      document.getElementById('verification-banner')?.focus();
+      return;
+    }
     if (locked.current) return;
     const invalid: Record<string, string> = {};
     if (!name.trim()) invalid.name = 'Give your app a name.';
@@ -78,6 +85,10 @@ export function CreateApp({ slug }: { slug?: string }) {
         },
       });
       if (error) {
+        if (error.type.endsWith('/email-not-verified')) {
+          const current = await api.GET('/v1/me');
+          if (current.data) setUser(current.data);
+        }
         setRetry(retrySeconds(response));
         if (error.type.endsWith('/app-name-taken')) {
           setErrors({
@@ -149,7 +160,12 @@ export function CreateApp({ slug }: { slug?: string }) {
                       : undefined
               }
               message={
-                problem.type.endsWith('/gateway-disabled') ? (
+                problem.type.endsWith('/email-not-verified') ? (
+                  <>
+                    <p>{problem.detail}</p>
+                    <ResendVerification email={user?.email || ''} />
+                  </>
+                ) : problem.type.endsWith('/gateway-disabled') ? (
                   'The portal admin has turned off new apps and keys for now. Keys you already have keep working. Nothing was created.'
                 ) : problem.status === 502 ? (
                   <>
@@ -280,9 +296,19 @@ export function CreateApp({ slug }: { slug?: string }) {
                 type="submit"
                 disabled={pending || loading || !!error || !data?.items.length}
                 aria-busy={pending}
+                aria-disabled={verificationBlocked}
+                aria-describedby={
+                  verificationBlocked ? 'verification-reason' : undefined
+                }
               >
                 {pending ? 'Creating app…' : 'Create app and get key'}
               </Button>
+              {verificationBlocked && (
+                <p id="verification-reason">
+                  Verify your email address first. Use the button at the top of
+                  the page.
+                </p>
+              )}
               <a href="/dashboard">Cancel</a>
             </div>
           </form>

@@ -1,0 +1,60 @@
+{
+  "console": {
+    "id": "696f7ed4-26fa-43b8-8132-affcc84746a0",
+    "ok": true,
+    "result": {
+      "entries": [],
+      "truncated": false
+    },
+    "_meta": {
+      "runtimeId": "4486995f-eed8-419b-a291-cc5a36effff6"
+    }
+  },
+  "network": {
+    "id": "64a36f2d-4760-4f0d-978d-6dcb8e84e98a",
+    "ok": true,
+    "result": {
+      "entries": [
+        {
+          "url": "http://localhost:3000/api/auth/request-password-reset",
+          "method": "POST",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794299109730
+        },
+        {
+          "url": "http://localhost:3000/api/auth/request-password-reset",
+          "method": "POST",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794299222730
+        },
+        {
+          "url": "http://localhost:3000/api/auth/request-password-reset",
+          "method": "POST",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794299250331
+        },
+        {
+          "url": "http://localhost:3000/api/auth/request-password-reset",
+          "method": "POST",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794299463531
+        },
+        {
+          "url": "http://localhost:3000/api/auth/request-password-reset",
+          "method": "POST",
+          "status": 429,
+          "mimeType": "application/problem+json",
+          "timestamp": 1794299466230
+        }
+      ],
+      "truncated": false
+    },
+    "_meta": {
+      "runtimeId": "4486995f-eed8-419b-a291-cc5a36effff6"
+    }
+  }
+}

@@ -1,0 +1,831 @@
+{
+  "24ee4fef-92f4-40b0-a759-02ded966ee76": {
+    "console": {
+      "entries": [],
+      "truncated": false
+    },
+    "network": {
+      "entries": [
+        {
+          "url": "http://localhost:3000/_next/static/chunks/378eqysch12_l.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ymdpl2hp44w1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/1_uyae28ag1gn.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2w66u-664pdat.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/turbopack-2u1d16houkiyo.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2hc8oukwvo3le.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ez5ea5h735-1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/44puu9_3lowmh.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/00iu1813z4xm2.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/3tz3_8yf6914f.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0ic_a6cb8azgj.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/api/v1/me",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/api/v1/apps",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302530078
+        },
+        {
+          "url": "http://localhost:3000/api/auth/send-verification-email",
+          "method": "POST",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302531278
+        },
+        {
+          "url": "http://localhost:3000/profile",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/html",
+          "timestamp": 1794302531878
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0vcw3xg6z028m.css",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/css",
+          "timestamp": 1794302531977
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/378eqysch12_l.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302531977
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ymdpl2hp44w1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302531977
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/1_uyae28ag1gn.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302531977
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2w66u-664pdat.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302531978
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/turbopack-2u1d16houkiyo.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302531978
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2hc8oukwvo3le.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302531978
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ez5ea5h735-1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302531978
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/44puu9_3lowmh.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302531978
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/00iu1813z4xm2.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302531978
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/3tz3_8yf6914f.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302531978
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0ic_a6cb8azgj.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302531978
+        },
+        {
+          "url": "http://localhost:3000/api/v1/me",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302531978
+        },
+        {
+          "url": "http://localhost:3000/api/v1/apps",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302531978
+        },
+        {
+          "url": "http://localhost:3000/api/auth/send-verification-email",
+          "method": "POST",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302532878
+        },
+        {
+          "url": "http://localhost:3000/profile",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/html",
+          "timestamp": 1794302533578
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0vcw3xg6z028m.css",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/css",
+          "timestamp": 1794302533678
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/378eqysch12_l.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302533678
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ymdpl2hp44w1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302533678
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/1_uyae28ag1gn.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302533678
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2w66u-664pdat.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302533678
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/turbopack-2u1d16houkiyo.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302533679
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2hc8oukwvo3le.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302533679
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ez5ea5h735-1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302533679
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/44puu9_3lowmh.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302533679
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/00iu1813z4xm2.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302533679
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/3tz3_8yf6914f.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302533679
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0ic_a6cb8azgj.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302533679
+        },
+        {
+          "url": "http://localhost:3000/api/v1/me",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302533679
+        },
+        {
+          "url": "http://localhost:3000/api/v1/apps",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302533679
+        },
+        {
+          "url": "http://localhost:3000/api/auth/send-verification-email",
+          "method": "POST",
+          "status": 429,
+          "mimeType": "application/problem+json",
+          "timestamp": 1794302534678
+        },
+        {
+          "url": "http://localhost:3000/api/v1/me",
+          "method": "DELETE",
+          "status": 204,
+          "mimeType": "",
+          "timestamp": 1794302594378
+        },
+        {
+          "url": "http://localhost:3000/?[redacted]",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/x-component",
+          "timestamp": 1794302594773
+        },
+        {
+          "url": "http://localhost:3000/?[redacted]",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/x-component",
+          "timestamp": 1794302594773
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/1v6qljjz0l0n8.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302594773
+        }
+      ],
+      "truncated": true
+    }
+  },
+  "117ef1e9-b760-4e41-b5f3-432a3aecbe7f": {
+    "console": {
+      "entries": [],
+      "truncated": false
+    },
+    "network": {
+      "entries": [
+        {
+          "url": "http://localhost:3000/profile",
+          "method": "GET",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/sign-in?[redacted]",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/html",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0vcw3xg6z028m.css",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/css",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/378eqysch12_l.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ymdpl2hp44w1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/1_uyae28ag1gn.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2w66u-664pdat.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/turbopack-2u1d16houkiyo.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2hc8oukwvo3le.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ez5ea5h735-1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/44puu9_3lowmh.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0n_m5f7f33jlm.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/3tz3_8yf6914f.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302064388
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0ic_a6cb8azgj.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302064388
+        }
+      ],
+      "truncated": false
+    }
+  },
+  "6e514a5f-6318-4565-ac87-93945570bd9d": {
+    "console": {
+      "entries": [],
+      "truncated": false
+    },
+    "network": {
+      "entries": [
+        {
+          "url": "http://localhost:13000/_next/static/chunks/44puu9_3lowmh.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302351213
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/3jn1471cb7_er.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302351213
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/32u7d8a7mmit0.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302351213
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/3tz3_8yf6914f.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302351213
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/0ic_a6cb8azgj.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302351213
+        },
+        {
+          "url": "http://localhost:13000/api/v1/admin/gateways",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302351213
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/0p3dm5buhp5q1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364112
+        },
+        {
+          "url": "http://localhost:13000/api/auth/sign-out",
+          "method": "POST",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302364113
+        },
+        {
+          "url": "http://localhost:13000/?[redacted]",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/x-component",
+          "timestamp": 1794302364113
+        },
+        {
+          "url": "http://localhost:13000/?[redacted]",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/x-component",
+          "timestamp": 1794302364113
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/1v6qljjz0l0n8.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364113
+        },
+        {
+          "url": "http://localhost:13000/sign-up",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/html",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/0vcw3xg6z028m.css",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/css",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/378eqysch12_l.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/2ymdpl2hp44w1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/1_uyae28ag1gn.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/2w66u-664pdat.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/turbopack-2u1d16houkiyo.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/2hc8oukwvo3le.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/2ez5ea5h735-1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/44puu9_3lowmh.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/0n_m5f7f33jlm.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/3tz3_8yf6914f.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/0ic_a6cb8azgj.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302364513
+        },
+        {
+          "url": "http://localhost:13000/api/auth/sign-up/email",
+          "method": "POST",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302385313
+        },
+        {
+          "url": "http://localhost:13000/dashboard?[redacted]",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/x-component",
+          "timestamp": 1794302385512
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/18p04r8ijz8c-.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302385614
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/1n48hjonb01zd.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302385614
+        },
+        {
+          "url": "http://localhost:13000/dashboard?[redacted]",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/x-component",
+          "timestamp": 1794302385614
+        },
+        {
+          "url": "http://localhost:13000/api/v1/apps",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302385614
+        },
+        {
+          "url": "http://localhost:13000/profile",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/html",
+          "timestamp": 1794302385913
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/0vcw3xg6z028m.css",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/css",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/378eqysch12_l.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/2ymdpl2hp44w1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/1_uyae28ag1gn.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/2w66u-664pdat.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/turbopack-2u1d16houkiyo.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/2hc8oukwvo3le.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/2ez5ea5h735-1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/44puu9_3lowmh.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/00iu1813z4xm2.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/3tz3_8yf6914f.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/0ic_a6cb8azgj.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/api/v1/me",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/api/v1/apps",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302386013
+        },
+        {
+          "url": "http://localhost:13000/api/auth/send-verification-email",
+          "method": "POST",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794302402913
+        },
+        {
+          "url": "http://localhost:13000/api/v1/me",
+          "method": "DELETE",
+          "status": 204,
+          "mimeType": "",
+          "timestamp": 1794302428013
+        },
+        {
+          "url": "http://localhost:13000/?[redacted]",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/x-component",
+          "timestamp": 1794302428313
+        },
+        {
+          "url": "http://localhost:13000/_next/static/chunks/1v6qljjz0l0n8.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794302428382
+        },
+        {
+          "url": "http://localhost:13000/?[redacted]",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/x-component",
+          "timestamp": 1794302428382
+        }
+      ],
+      "truncated": true
+    }
+  }
+}

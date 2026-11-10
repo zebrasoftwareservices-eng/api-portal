@@ -1,0 +1,23 @@
+{
+  "before-deletion": {
+    "app1": 200,
+    "app2": 200,
+    "portalConsumers": [
+      "portal-app-01a1c48d-249d-7a7e-969d-c98967d947da",
+      "portal-app-01a1c48e-71e9-74de-bfa9-87757b2d0b64"
+    ]
+  },
+  "after-refused-deletion": {
+    "app1": 200,
+    "app2": 200,
+    "portalConsumers": [
+      "portal-app-01a1c48d-249d-7a7e-969d-c98967d947da",
+      "portal-app-01a1c48e-71e9-74de-bfa9-87757b2d0b64"
+    ]
+  },
+  "after-deletion": {
+    "app1": 401,
+    "app2": 401,
+    "portalConsumers": []
+  }
+}

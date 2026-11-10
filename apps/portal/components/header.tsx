@@ -53,7 +53,16 @@ export function Header() {
             </a>
           )}
           <details>
-            <summary>{user.email}</summary>
+            <summary title={user.email}>{user.email}</summary>
+            <p className="account-name" title={user.name}>
+              {user.name}
+            </p>
+            <a
+              href="/profile"
+              aria-current={pathname === '/profile' ? 'page' : undefined}
+            >
+              Profile
+            </a>
             <Button
               variant="ghost"
               onClick={async () => {

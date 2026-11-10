@@ -1,0 +1,28 @@
+[
+  {
+    "subject": "Verify your email for localhost:13000",
+    "from": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "to": [
+      {
+        "Name": "",
+        "Address": "no-gateway-final@example.com"
+      }
+    ]
+  },
+  {
+    "subject": "Verify your email for localhost:13000",
+    "from": {
+      "Name": "Developer Portal",
+      "Address": "noreply@example.com"
+    },
+    "to": [
+      {
+        "Name": "",
+        "Address": "no-gateway-final@example.com"
+      }
+    ]
+  }
+]

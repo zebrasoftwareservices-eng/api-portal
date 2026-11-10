@@ -1,0 +1,408 @@
+{
+  "console": {
+    "id": "55eafa45-a9c0-4dcd-bb09-52f7cc2bf1f8",
+    "ok": true,
+    "result": {
+      "entries": [
+        {
+          "level": "info",
+          "text": "loadDocument: 11 ms"
+        },
+        {
+          "level": "info",
+          "text": "deepClone: 0 ms"
+        },
+        {
+          "level": "info",
+          "text": "initialize: 0 ms"
+        },
+        {
+          "level": "info",
+          "text": "upgrade: 0 ms"
+        },
+        {
+          "level": "info",
+          "text": "bundle: 0 ms"
+        },
+        {
+          "level": "info",
+          "text": "coerceValue: 2 ms"
+        },
+        {
+          "level": "info",
+          "text": "mergeObjects: 0 ms"
+        },
+        {
+          "level": "info",
+          "text": "addDocument: 35 ms"
+        }
+      ],
+      "truncated": false
+    },
+    "_meta": {
+      "runtimeId": "4486995f-eed8-419b-a291-cc5a36effff6"
+    }
+  },
+  "network": {
+    "id": "46d5c09b-25fb-482f-b222-2b03e1e4198d",
+    "ok": true,
+    "result": {
+      "entries": [
+        {
+          "url": "http://localhost:3000/api/v1/apis",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794298935850
+        },
+        {
+          "url": "http://localhost:3000/api/v1/apps",
+          "method": "POST",
+          "status": 201,
+          "mimeType": "application/json",
+          "timestamp": 1794298946749
+        },
+        {
+          "url": "http://localhost:3000/dashboard/apps/01a1c48d-249d-7a7e-969d-c98967d947da?_rsc=hLSvP3blCYJQ8dQl",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/x-component",
+          "timestamp": 1794298946851
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/023ghd8n9z3z5.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298946851
+        },
+        {
+          "url": "http://localhost:3000/api/v1/apps/01a1c48d-249d-7a7e-969d-c98967d947da",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794298947142
+        },
+        {
+          "url": "http://localhost:3000/api/v1/apps/01a1c48d-249d-7a7e-969d-c98967d947da",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794298960050
+        },
+        {
+          "url": "http://localhost:3000/apis/sample",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/html",
+          "timestamp": 1794298982251
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0vcw3xg6z028m.css",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/css",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/3vhrb-ve8aw-a.css",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/css",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/378eqysch12_l.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ymdpl2hp44w1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/1_uyae28ag1gn.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2w66u-664pdat.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/turbopack-2u1d16houkiyo.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2hc8oukwvo3le.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ez5ea5h735-1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/44puu9_3lowmh.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/3dtt3hql0l2_7.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0lr_bv3spxasb.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982350
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0ic_a6cb8azgj.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982351
+        },
+        {
+          "url": "http://localhost:3000/api/v1/apis/sample/openapi.json",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794298982351
+        },
+        {
+          "url": "http://localhost:3000/api/v1/apps",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794298982351
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0x65c5c3k-v45.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982351
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/3wcv4ryz8_lf6.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982351
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/3khc3kfbcz4a_.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982351
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/43hc_-fl4i7ll.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982351
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/3lq7e4-n19trh.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982351
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/17hillqq3n98w.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982351
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/098ne2mi26yk9.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982351
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/1yobjxskrzc8s.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982352
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/1muvsuwq3wfbb.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982352
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2iihg-d9610fz.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982352
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/3pza2es7nhajy.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982352
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/3ss9t26z9_fi-.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794298982352
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2_d01qlnxrj7z.css",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/css",
+          "timestamp": 1794298982352
+        },
+        {
+          "url": "http://localhost:3000/api/v1/try-it?scalar_url=http%3A%2F%2Flocalhost%3A8000%2Fsample%2Fget",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794299011651
+        },
+        {
+          "url": "http://localhost:3000/dashboard/apps/new",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/html",
+          "timestamp": 1794299013451
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0vcw3xg6z028m.css",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "text/css",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/378eqysch12_l.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ymdpl2hp44w1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/1_uyae28ag1gn.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2w66u-664pdat.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/turbopack-2u1d16houkiyo.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2hc8oukwvo3le.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/2ez5ea5h735-1.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/44puu9_3lowmh.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/1wnpdpo8a0qmf.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/1mf6b0_2mn89y.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/_next/static/chunks/0ic_a6cb8azgj.js",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/javascript",
+          "timestamp": 1794299013551
+        },
+        {
+          "url": "http://localhost:3000/api/v1/apis",
+          "method": "GET",
+          "status": 200,
+          "mimeType": "application/json",
+          "timestamp": 1794299013551
+        }
+      ],
+      "truncated": true
+    },
+    "_meta": {
+      "runtimeId": "4486995f-eed8-419b-a291-cc5a36effff6"
+    }
+  }
+}

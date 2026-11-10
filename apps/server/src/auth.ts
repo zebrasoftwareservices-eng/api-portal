@@ -7,8 +7,13 @@ import { uuidv7 } from 'uuidv7';
 import { schema, user, type Database } from '@portal/db';
 import type { Config } from './config.js';
 import type { FastifyRequest } from 'fastify';
+import { mailQueue, type EnqueueMail } from './mail/queue.js';
 import { Problem } from './problem.js';
-export function createAuth(db: Database, config: Config) {
+export function createAuth(
+  db: Database,
+  config: Config,
+  enqueue: EnqueueMail = mailQueue(config),
+) {
   return betterAuth({
     baseURL: config.PORTAL_PUBLIC_URL,
     basePath: '/api/auth',
@@ -37,6 +42,37 @@ export function createAuth(db: Database, config: Config) {
       enabled: true,
       autoSignIn: true,
       requireEmailVerification: false,
+      resetPasswordTokenExpiresIn: 3600,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({ user, url }) => {
+        await enqueue({
+          template: 'reset-password',
+          userId: user.id,
+          to: user.email,
+          link: (() => {
+            const link = new URL(url);
+            link.searchParams.set('callbackURL', '/reset-password');
+            return link.href;
+          })(),
+        });
+      },
+    },
+    emailVerification: {
+      sendOnSignUp: true,
+      expiresIn: 86400,
+      autoSignInAfterVerification: true,
+      sendVerificationEmail: async ({ user, url }) => {
+        await enqueue({
+          template: 'verify',
+          userId: user.id,
+          to: user.email,
+          link: (() => {
+            const link = new URL(url);
+            link.searchParams.set('callbackURL', '/profile?verified=1');
+            return link.href;
+          })(),
+        });
+      },
     },
     user: {
       additionalFields: {

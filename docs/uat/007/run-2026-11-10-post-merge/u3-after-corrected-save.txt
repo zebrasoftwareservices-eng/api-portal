@@ -1,0 +1,89 @@
+- link "Skip to content" [ref=e964]
+- banner
+  - link "Developer Portal" [ref=e966]
+  - navigation "Main navigation" [ref=e967]
+    - link "APIs" [ref=e974]
+    - link "My apps" [ref=e975]
+    - link "Admin" [ref=e976]
+    - group
+      - DisclosureTriangle "admin-007@example.com" [expanded=false]
+        - StaticText "admin-007@example.com"
+- main
+  - navigation "Admin" [ref=e968]
+    - link "APIs" [ref=e977]
+    - link "Gateways" [ref=e978]
+  - navigation "Admin section" [ref=e969]
+    - link "APIs" [ref=e979]
+    - link "Mail" [ref=e980]
+    - link "Accounts" [ref=e981]
+  - navigation "Breadcrumb" [ref=e970]
+  - heading "Mail" [level=1, ref=e971]
+  - paragraph
+    - StaticText "How the portal sends verification and password reset emails."
+  - strong
+    - StaticText "✓ Portal email uses the settings saved here."
+  - paragraph
+    - StaticText "Last saved "
+    - time
+      - StaticText "11/10/2026, 12:39:48 AM"
+    - StaticText "."
+  - paragraph
+    - StaticText "The server's environment settings are ignored while these are saved."
+  - heading "SMTP settings" [level=2, ref=e972]
+  - form
+    - group
+      - LabelText
+        - StaticText "Host"
+      - textbox "Host" [ref=e984]: mailpit
+        - StaticText "mailpit"
+      - LabelText
+        - StaticText "Port"
+      - spinbutton "Port" [ref=e985]: 1025
+        - StaticText "1025"
+      - group "Security"
+        - Legend
+          - StaticText "Security"
+        - radio "STARTTLS — usually port 587" [checked=false, ref=e992]
+        - radio "TLS — usually port 465" [checked=false, ref=e993]
+        - radio "None — only for a local test server" [checked=true, ref=e994]
+      - LabelText
+        - StaticText "Username (optional)"
+      - textbox "Username (optional)" [ref=e986]
+      - LabelText
+        - StaticText "Password (optional)"
+      - textbox "Password (optional)" [ref=e1000]
+      - button "Show" [ref=e1001]
+      - paragraph
+        - StaticText "Stored encrypted. It's never shown again after you save."
+      - LabelText
+        - StaticText "Sender name"
+      - textbox "Sender name" [ref=e989]: Post Merge UAT
+        - StaticText "Post Merge UAT"
+      - LabelText
+        - StaticText "Sender address"
+      - textbox "Sender address" [ref=e990]: uat007@example.com
+        - StaticText "uat007@example.com"
+      - button "Save mail settings" [ref=e991]
+  - heading "Send a test email" [level=2, ref=e973]
+  - paragraph
+    - StaticText "Sends with the settings in use now. Save your changes first."
+  - form
+    - LabelText
+      - StaticText "Send to"
+    - textbox "Send to" [ref=e982]: admin-007@example.com
+      - StaticText "admin-007@example.com"
+    - button "Send test email" [ref=e983]
+  - alert
+    - strong
+      - StaticText "⚠ Can't reach the mail server"
+    - StaticText "The portal couldn't connect to the mail server. Check the host, port and security setting, and that the server allows connections from the portal."
+  - button "Remove saved settings" [expanded=false, ref=e995]
+- contentinfo
+  - StaticText "Powered by Developer Portal · Apache 2.0"
+- region "Notifications alt+T" [ref=e965]
+  - list
+    - listitem [level=1, ref=e999] focusable [tabindex]
+      - StaticText "Mail settings saved."
+    - listitem [level=1, ref=e996] focusable [tabindex]
+      - StaticText "Mail settings saved."
+- alert

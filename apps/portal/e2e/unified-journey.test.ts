@@ -50,7 +50,7 @@ async function preselected(page: Page) {
   await expect(page.getByLabel('App name')).toBeFocused();
   await expect(
     page.getByRole('checkbox', {
-      name: /Sample HTTP API v1\.0\.0 http:\/\/localhost:8000\/sample$/,
+      name: /Sample HTTP API v1\.0\.0 http:\/\/localhost:\d+\/sample$/,
       exact: true,
     }),
   ).toBeChecked();
@@ -333,7 +333,12 @@ test('019 AC5,7: delayed check keeps title, base URL and real reference availabl
         .first(),
     ).toBeVisible();
     await expect(
-      page.getByText('http://localhost:8000/sample', { exact: true }).first(),
+      page
+        .getByText(
+          `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/sample`,
+          { exact: true },
+        )
+        .first(),
     ).toBeVisible();
     await expect(
       page.getByRole('button', { name: /Test Request/ }).first(),
@@ -419,7 +424,12 @@ for (const failure of [401, 403, 500, 503, 'network', 'timeout'] as const) {
           .first(),
       ).toBeVisible();
       await expect(
-        page.getByText('http://localhost:8000/sample', { exact: true }).first(),
+        page
+          .getByText(
+            `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/sample`,
+            { exact: true },
+          )
+          .first(),
       ).toBeVisible();
       // The sample's global security form has an unnamed region; its Value field is unique.
       const value = page.getByRole('textbox', { name: 'Value', exact: true });
@@ -507,16 +517,22 @@ test('019 AC1,4,9: real app links work with and without active keys', async ({
       const id = crypto.randomUUID();
       expect(
         (
-          await admin.put(`http://localhost:8001/services/${id}`, {
-            data: { name: `journey-${id}`, url: 'http://httpbin:8080' },
-          })
+          await admin.put(
+            `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${id}`,
+            {
+              data: { name: `journey-${id}`, url: 'http://httpbin:8080' },
+            },
+          )
         ).ok(),
       ).toBe(true);
       expect(
         (
-          await admin.post(`http://localhost:8001/services/${id}/routes`, {
-            data: { paths: [`/journey-${id}`] },
-          })
+          await admin.post(
+            `${process.env.KONG_ADMIN_URL ?? 'http://localhost:8001'}/services/${id}/routes`,
+            {
+              data: { paths: [`/journey-${id}`] },
+            },
+          )
         ).ok(),
       ).toBe(true);
       const imported = await admin.post('/api/v1/admin/apis', {

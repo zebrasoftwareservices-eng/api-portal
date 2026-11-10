@@ -16,6 +16,7 @@ const credential: IssuedCredential = {
 };
 describe('one-time key handover', () => {
   it('traps focus, ignores Escape and backdrop, copies the exact key and removes it on acknowledgment', async () => {
+    const persist = vi.spyOn(Storage.prototype, 'setItem');
     const user = userEvent.setup();
     const write = vi
       .spyOn(navigator.clipboard, 'writeText')
@@ -54,8 +55,7 @@ describe('one-time key handover', () => {
     await user.click(screen.getByRole('button', { name: "I've saved it" }));
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(container.innerHTML).not.toContain(credential.key);
-    expect(localStorage.length).toBe(0);
-    expect(sessionStorage.length).toBe(0);
+    expect(persist).not.toHaveBeenCalled();
   });
   it('selects the key for manual copying when clipboard access fails', async () => {
     const user = userEvent.setup();

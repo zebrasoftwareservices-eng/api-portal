@@ -14,11 +14,18 @@ import { createAuth } from './auth.js';
 import { createApp } from './app.js';
 import { seedSample } from './seed.js';
 import { reconcile } from './reconcile.js';
+import { mailQueue, processMail } from './mail/queue.js';
+import { housekeeping } from './auth-limits.js';
 import { backgroundJob } from './background-job.js';
 export async function start(config: Config) {
   await migrate(config.DATABASE_URL);
   const { db, client } = connect(config.DATABASE_URL);
-  const boss = new PgBoss(config.DATABASE_URL);
+  const boss = new PgBoss({
+    connectionString: config.DATABASE_URL,
+    deleteAfterSeconds: 3600,
+    archiveCompletedAfterSeconds: 60,
+    archiveFailedAfterSeconds: 60,
+  });
   try {
     await db
       .insert(instanceSettings)
@@ -51,7 +58,10 @@ export async function start(config: Config) {
         .set({ managedBy: 'admin', updatedAt: new Date() })
         .where(eq(gateways.managedBy, 'env'));
     }
-    const auth = createAuth(db, config);
+    await boss.start();
+    await boss.createQueue('send-email');
+    const enqueueMail = mailQueue(config, boss);
+    const auth = createAuth(db, config, enqueueMail);
     if (
       config.ADMIN_EMAIL &&
       config.ADMIN_PASSWORD &&
@@ -80,6 +90,7 @@ export async function start(config: Config) {
       config,
       auth,
       setupToken,
+      enqueueMail,
       enqueueReconcile: () =>
         boss.send(
           'gateway-reconcile',
@@ -127,7 +138,24 @@ export async function start(config: Config) {
         );
       }
     boss.on('error', (err) => app.log.error({ err }, 'Background job failed'));
-    await boss.start();
+    await boss.work(
+      'send-email',
+      { pollingIntervalSeconds: 2 },
+      async (jobs) => {
+        for (const job of jobs)
+          await processMail(
+            db,
+            config,
+            app.log,
+            job as Parameters<typeof processMail>[3],
+          );
+      },
+    );
+    await boss.createQueue('auth-housekeeping');
+    await boss.work('auth-housekeeping', async () => {
+      await housekeeping(db);
+    });
+    await boss.schedule('auth-housekeeping', '0 * * * *', {});
     await boss.createQueue('gateway-reconcile', {
       name: 'gateway-reconcile',
       policy: 'singleton',

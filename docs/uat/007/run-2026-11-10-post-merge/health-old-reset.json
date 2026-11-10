@@ -1,0 +1,32 @@
+{
+  "console": {
+    "id": "4f187584-0975-4bc5-91b7-3e3aca7f6403",
+    "ok": true,
+    "result": {
+      "entries": [],
+      "truncated": false
+    },
+    "_meta": {
+      "runtimeId": "4486995f-eed8-419b-a291-cc5a36effff6"
+    }
+  },
+  "network": {
+    "id": "46855d84-6681-42b6-89f4-60309015f529",
+    "ok": true,
+    "result": {
+      "entries": [
+        {
+          "url": "http://localhost:3000/api/auth/reset-password",
+          "method": "POST",
+          "status": 400,
+          "mimeType": "application/json",
+          "timestamp": 1794299189881
+        }
+      ],
+      "truncated": false
+    },
+    "_meta": {
+      "runtimeId": "4486995f-eed8-419b-a291-cc5a36effff6"
+    }
+  }
+}

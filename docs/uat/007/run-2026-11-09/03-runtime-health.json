@@ -1,0 +1,85 @@
+{
+  "console": {
+    "entries": [],
+    "truncated": false
+  },
+  "network": {
+    "entries": [
+      {
+        "url": "http://localhost:13000/_next/static/chunks/1392t6mqhj1ev.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/sign-in",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/01iq99bb_32_n.css",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/378eqysch12_l.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/2ymdpl2hp44w1.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/1_uyae28ag1gn.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/2w66u-664pdat.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/turbopack-2u1d16houkiyo.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/2jr3o4m66g7rs.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/3061kbtf3gtug.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/37h-n1s4-t1c_.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/1sf4up-wfz6jg.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/2i4xj00tsjlxo.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/_next/static/chunks/0ic_a6cb8azgj.js",
+        "method": "GET",
+        "status": 200
+      },
+      {
+        "url": "http://localhost:13000/api/auth/sign-in/email",
+        "method": "POST",
+        "status": 500
+      }
+    ]
+  }
+}

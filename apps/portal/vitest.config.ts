@@ -27,6 +27,8 @@ export default defineConfig({
       forks: { execArgv },
     },
     testTimeout: 15000,
+    // Keep browser component workers within the quickstart test stack's CPU budget.
+    maxWorkers: 2,
     name: 'portal',
     environment: 'jsdom',
     setupFiles: ['./test-setup.ts'],

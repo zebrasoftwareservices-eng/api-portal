@@ -27,25 +27,25 @@ it.each([
   [
     '/apis/orders',
     { role: 'developer', email: 'dev@example.com' },
-    ['APIs', 'My apps'],
+    ['APIs', 'My apps', 'Profile'],
     'APIs',
   ],
   [
     '/dashboard',
     { role: 'developer', email: 'dev@example.com' },
-    ['APIs', 'My apps'],
+    ['APIs', 'My apps', 'Profile'],
     'My apps',
   ],
   [
     '/dashboard/apps/one',
     { role: 'admin', email: 'admin@example.com' },
-    ['APIs', 'My apps', 'Admin'],
+    ['APIs', 'My apps', 'Admin', 'Profile'],
     'My apps',
   ],
   [
     '/admin/apis',
     { role: 'admin', email: 'admin@example.com' },
-    ['APIs', 'My apps', 'Admin'],
+    ['APIs', 'My apps', 'Admin', 'Profile'],
     'Admin',
   ],
 ] as const)(

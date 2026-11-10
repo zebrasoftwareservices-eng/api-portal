@@ -7,5 +7,9 @@ export default async function Page() {
   const user = await currentUser();
   if (!user) redirect('/sign-in?next=%2Fadmin%2Fapis');
   if (user.role !== 'admin') notFound();
-  return <AdminApis />;
+  return (
+    <div className="stack">
+      <AdminApis />
+    </div>
+  );
 }
