@@ -1,7 +1,7 @@
 ---
 id: 008
 title: Teams and roles
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-10
 linear: JSO-236
@@ -296,7 +296,21 @@ health check, 503 and retry behaviour.
 - [ ] [qa] Removal and account deletion keep shared keys working through Kong (AC 7, 8); last-Admin guards and concurrent demotion (AC 9); switcher e2e (AC 2)
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/008-*.md`
+Design: [docs/design/008-teams-and-roles.md](../design/008-teams-and-roles.md). No new tokens.
+- **Team switcher** above the `h1` on every `/dashboard/*` page ("Team: Personal ▾"), personal team
+  first, with **Team settings** and **Create team**. Working alone looks as it does today.
+- **New pages:** create team (`/dashboard/teams/new`); team page (`/dashboard/teams/{id}`) with
+  invite form, members, pending invitations and leave; accept invitation (`/invitations/accept`)
+  with a view for each preview state, signed out, signed in, and signed in with the wrong address.
+- **Dialogs:** change role, remove member, leave team. Only-Admin cases show the "needs another
+  Admin" message before calling the server, and the 409 shows the same copy.
+- **Role-aware UI:** controls a role can't use are hidden, not disabled, with one line saying who
+  can. Read-only sees key metadata with no New key or Revoke. The App page names the app's team and
+  your role. A non-member gets "We can't find this…", never "no access".
+- **Delete account (007)** now lists sole-member teams that go with the account and shared teams
+  that stay, and shows `team-needs-admin` with links to the named teams.
+- Copy for the invitation email and every new problem type is in design §3.12 and §5.2.
+  Sign-up and sign-in read an optional `email` query parameter to prefill the invited address.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
