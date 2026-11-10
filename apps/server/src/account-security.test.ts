@@ -29,6 +29,7 @@ import { createApp } from './app.js';
 import { createAuth } from './auth.js';
 import { loadConfig } from './config.js';
 import { deleteAccount } from './account.js';
+import { storedTokenUnavailable } from './gateway-connection.js';
 import { housekeeping } from './auth-limits.js';
 import { mailQueue, processMail, type MailPayload } from './mail/queue.js';
 import { decrypt, encrypt } from './crypto.js';
@@ -1045,4 +1046,69 @@ it('deletes through the current gateway configuration even while new keys are di
   expect(replacementAdapter.deleteConsumer).toHaveBeenCalledWith({ id: appId });
   expect(adapter.deleteConsumer).not.toHaveBeenCalled();
   expect(await connection.db.select().from(user)).toHaveLength(0);
+});
+
+it('deletes an account and its local apps when no gateway is connected', async () => {
+  const person = await signup();
+  await connection.db.insert(apps).values({
+    id: uuidv7(),
+    ownerId: person.id,
+    name: 'local app',
+  });
+  const removed = await connection.db.delete(gateways).returning();
+  vi.mocked(adapter.health).mockClear();
+  try {
+    const response = await request(
+      'DELETE',
+      '/api/v1/me',
+      { password: 'password123' },
+      person.cookie,
+    );
+    expect(response.statusCode, response.body).toBe(204);
+    expect(response.headers['set-cookie']).toContain('Max-Age=0');
+    expect(adapter.health).not.toHaveBeenCalled();
+    expect(adapter.deleteConsumer).not.toHaveBeenCalled();
+    expect(await connection.db.select().from(user)).toHaveLength(0);
+    expect(await connection.db.select().from(apps)).toHaveLength(0);
+    expect(await connection.db.select().from(account)).toHaveLength(0);
+    expect(await connection.db.select().from(session)).toHaveLength(0);
+  } finally {
+    await connection.db.insert(gateways).values(removed);
+  }
+});
+it('keeps the account and apps and returns the stored-token problem when the gateway token cannot be decrypted', async () => {
+  const person = await signup();
+  await connection.db.insert(apps).values({
+    id: uuidv7(),
+    ownerId: person.id,
+    name: 'retained app',
+  });
+  await connection.db
+    .update(gateways)
+    .set({ adminTokenCiphertext: 'invalid-ciphertext' });
+  vi.mocked(adapter.health).mockClear();
+  try {
+    const response = await request(
+      'DELETE',
+      '/api/v1/me',
+      { password: 'password123' },
+      person.cookie,
+    );
+    expect(response.statusCode, response.body).toBe(503);
+    expect(response.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(response.json()).toMatchObject({
+      type: '/problems/gateway-unavailable',
+      detail: storedTokenUnavailable().message,
+    });
+    expect(adapter.health).not.toHaveBeenCalled();
+    expect(adapter.deleteConsumer).not.toHaveBeenCalled();
+    expect(await connection.db.select().from(user)).toHaveLength(1);
+    expect(await connection.db.select().from(apps)).toHaveLength(1);
+    expect(await connection.db.select().from(account)).toHaveLength(1);
+    expect(await connection.db.select().from(session)).toHaveLength(1);
+  } finally {
+    await connection.db.update(gateways).set({ adminTokenCiphertext: null });
+  }
 });

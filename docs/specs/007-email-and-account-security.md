@@ -408,7 +408,7 @@ consumer left behind if the server dies between the Kong delete and the row dele
 - [x] [qa] AC 9: two apps with live keys → delete → both keys 401 in Kong, no consumer tagged with those apps, signed out, can't sign in, same address can sign up again; Kong stopped → 503 with keys still working; only admin → 409.
 - [x] [qa] Playwright journeys for forgot/reset password, profile and admin settings; update existing e2e helpers that sign up and create apps (users are unverified by default but the setting is off, so they should still pass).
 - [x] [backend] Merge `origin/main` into this branch (108 commits behind, 26 conflicting files) with a merge commit, no rebase. Resolve every conflict, frontend files included, keeping both sides' behaviour: renumber this spec's migration after main's and regenerate its snapshot and journal, merge `openapi.yaml` and regenerate `packages/sdk`, merge compose/env, and regenerate `pnpm-lock.yaml` with `pnpm install`. Then `pnpm lint`, `pnpm typecheck` and `pnpm test` pass, and `node scripts/factory.mjs` still works after main's factory changes. Push the branch.
-- [ ] [backend] Fix: let a developer delete their account when no gateway is connected. `deleteAccount` must not refuse with "gateway didn't respond" when `connection.load()` returns no row; return the stored-token problem when the token can't be decrypted; add server tests through `DELETE /v1/me` for both (Merge review M1).
+- [x] [backend] Fix: let a developer delete their account when no gateway is connected. `deleteAccount` must not refuse with "gateway didn't respond" when `connection.load()` returns no row; return the stored-token problem when the token can't be decrypted; add server tests through `DELETE /v1/me` for both (Merge review M1).
 - [ ] [frontend] Fix: show one admin navigation (APIs · Gateways · Mail · Accounts) on every admin page, instead of main's `AdminNav` and this spec's `AdminNav` stacked on top of each other (Merge review M2).
 - [ ] [frontend] Fix: remove "the portal can't reset passwords yet" from the first-admin password hint in `setup-form.tsx` (U4; Merge review M3).
 
@@ -440,6 +440,12 @@ No new tokens; one shadcn component (`Switch`) and a few small portal components
   `autocomplete` values, no per-second announcements) and the 375px and 1280px layouts are in §7–§8.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Backend merge-review fix M1 — 2026-11-10
+- Resolve the gateway once for account deletion. With no connection, skip health and consumer calls and remove the account and local apps; an unreadable stored token returns `storedTokenUnavailable()` before any deletion. Existing connected/disabled gateway revocation and outage behavior remain covered.
+- Added `DELETE /v1/me` integration regressions using real Postgres for an absent gateway row (204, session cookie cleared, user/apps/credentials/sessions removed) and corrupt token ciphertext (503 problem+json with stored-token guidance, all account state retained, no gateway calls). The account-security suite passes 43/43 tests.
+- Validation: `pnpm lint` (7 tasks), `pnpm typecheck` (12 tasks), and `pnpm test` (12 tasks; 187 server, 212 portal, 55 adapter-kong and 5 database tests) pass. Full-suite evidence: `/tmp/007-backend-m1-test.log`; lint/typecheck evidence: `/tmp/007-backend-m1-lint.log`, `/tmp/007-backend-m1-typecheck.log`. Docker-dependent tests need sandbox escalation; the initial sandbox run could not find its container runtime.
+- M1 is an unkeyed Fix task, so no durable issue was created or moved. QA/tech lead should verify the fix; spec status, Bugs checkboxes and approval gates are unchanged.
 
 ### Backend merge from main — 2026-11-10
 - Resolved the 26 conflicting files from `origin/main`, retaining account-security behavior alongside first-admin setup, dynamic gateway connections, API versions and import linting. Where defaults conflicted, kept main's explicit setup flow (no default admin credentials or auto-connected gateway); declarative `ADMIN_*` / `KONG_*` configuration still works and Mailpit remains the SMTP fallback. Frontend conflict resolution preserves verification gates, account errors and profile protection alongside setup redirects, gateway refusals and version components.

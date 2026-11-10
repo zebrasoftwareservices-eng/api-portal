@@ -21,7 +21,10 @@ import { type Auth, requireUser } from './auth.js';
 import { limitLock, readAccountSettings, type Tx } from './auth-limits.js';
 import { securityProblem } from './security-problems.js';
 import { Problem } from './problem.js';
-import type { GatewayConnection } from './gateway-connection.js';
+import {
+  storedTokenUnavailable,
+  type GatewayConnection,
+} from './gateway-connection.js';
 import type { EnqueueMail } from './mail/queue.js';
 import type { Config } from './config.js';
 const emailSchema = z.strictObject({
@@ -113,23 +116,22 @@ export async function deleteAccount(
       'gateway-unavailable',
       "The API gateway didn't respond, so your keys can't be removed yet. Your account was not deleted. Try again in a moment.",
     );
-  const loadAdapter = async (tx: Database | Tx) => {
-    if (!('load' in connection)) return connection;
-    const gateway = await connection.load(tx);
-    if (!gateway?.adapter) throw unavailable();
-    return gateway.adapter;
-  };
-  try {
-    const adapter = await loadAdapter(db);
-    if (!(await adapter.health()).reachable) throw unavailable();
-  } catch {
-    throw unavailable();
+  // No connection means there are no gateway credentials to revoke. A stored
+  // connection with an unreadable token must still prevent account deletion.
+  const gateway = 'load' in connection ? await connection.load(db) : null;
+  if (gateway && !gateway.adapter) throw storedTokenUnavailable();
+  const adapter = 'load' in connection ? gateway?.adapter : connection;
+  if (adapter) {
+    try {
+      if (!(await adapter.health()).reachable) throw unavailable();
+    } catch {
+      throw unavailable();
+    }
   }
   const remove = async (tx: Tx, app: { id: string }) => {
     await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
     try {
-      const adapter = await loadAdapter(tx);
-      await adapter.deleteConsumer(app);
+      await adapter?.deleteConsumer(app);
     } catch (error) {
       if (error instanceof GatewayUnavailableError) throw unavailable();
       throw error;
