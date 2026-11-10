@@ -1048,6 +1048,32 @@ it('deletes through the current gateway configuration even while new keys are di
   expect(await connection.db.select().from(user)).toHaveLength(0);
 });
 
+it('refuses malformed deletion confirmation without changing an account when no gateway exists', async () => {
+  const person = await signup();
+  const removed = await connection.db.delete(gateways).returning();
+  vi.mocked(adapter.health).mockClear();
+  try {
+    for (const payload of [{}, { password: 123 }, { password: '' }]) {
+      const response = await request(
+        'DELETE',
+        '/api/v1/me',
+        payload,
+        person.cookie,
+      );
+      expect(response.statusCode, response.body).toBe(400);
+      expect(response.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(await connection.db.select().from(user)).toHaveLength(1);
+      expect(await connection.db.select().from(session)).toHaveLength(1);
+    }
+    expect(adapter.health).not.toHaveBeenCalled();
+    expect(adapter.deleteConsumer).not.toHaveBeenCalled();
+  } finally {
+    await connection.db.insert(gateways).values(removed);
+  }
+});
+
 it('deletes an account and its local apps when no gateway is connected', async () => {
   const person = await signup();
   await connection.db.insert(apps).values({
@@ -1072,6 +1098,17 @@ it('deletes an account and its local apps when no gateway is connected', async (
     expect(await connection.db.select().from(apps)).toHaveLength(0);
     expect(await connection.db.select().from(account)).toHaveLength(0);
     expect(await connection.db.select().from(session)).toHaveLength(0);
+    // A repeated request using the deleted session cannot delete anything else.
+    const repeated = await request(
+      'DELETE',
+      '/api/v1/me',
+      { password: 'password123' },
+      person.cookie,
+    );
+    expect(repeated.statusCode).toBe(401);
+    expect(repeated.headers['content-type']).toContain(
+      'application/problem+json',
+    );
   } finally {
     await connection.db.insert(gateways).values(removed);
   }

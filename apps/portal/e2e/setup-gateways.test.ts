@@ -47,6 +47,12 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
       await expect(page).toHaveURL(/\/setup$/);
     }
     expect(Date.now() - started).toBeLessThan(300000);
+    await expect(
+      page.getByText('At least 8 characters.', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/portal can.t reset passwords yet/),
+    ).toHaveCount(0);
     await expect(page.getByLabel('Setup token', { exact: true })).toHaveCount(
       0,
     );

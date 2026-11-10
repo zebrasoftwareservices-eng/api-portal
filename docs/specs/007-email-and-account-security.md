@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -501,6 +501,57 @@ No new tokens; one shadcn component (`Switch`) and a few small portal components
 
 ## Test report  _(qa-tester)_
 
+### Merge-fix QA verification — 2026-11-10 (`ea909d0`, `249023f`)
+
+**Result: PASS; status `uat`.** This current run supersedes the historical QA outcomes
+below. All nine acceptance criteria and all spec-007 bug regressions pass; M1, M2,
+M3/U4, U2 and U3 are verified closed. No new blocker, major or minor was discovered,
+so no new durable Bug issue or Fix task is needed; requirements and merge gates remain Elango's.
+
+- Fresh quickstart: **PASS in 146.83 seconds**, including image builds, using a new
+  `qa007verify` project and `qa007verify_postgres-data` volume. Before initialization,
+  the database contained zero users and four applied migrations; `/` returned 307 to
+  `/setup`. Existing projects/volumes and the two excluded untracked UAT folders are untouched.
+- Final `pnpm lint`: **7/7 tasks PASS**; `pnpm typecheck`: **12/12 PASS**;
+  `pnpm test --force`: **12/12 uncached tasks PASS** in 2m6.588s (**188 server,
+  223 portal, 55 adapter-kong, 5 database tests**).
+- Added real-Postgres malformed-delete confirmation coverage with no gateway, verifying
+  400 problem+json, retained user/session and zero gateway calls. Extended M1's successful
+  deletion test to verify a repeated request using the removed session receives 401.
+  Existing failures cover bad passwords, missing permission, expired sessions, gateway
+  outages, duplicate/replaced/expired tokens and concurrent auth requests.
+- Added Playwright M2 checks across APIs, Gateways, Mail and Accounts at **1280 and 390 px**,
+  checking one shared navigation, four destinations, current-section state and working
+  mobile selection. The fresh setup journey now checks the corrected password hint (M3/U4).
+- Full `pnpm test:e2e`: **68 reported passes in 5.1m**, exit 0, on the first invocation:
+  **65 normal passes plus 3 existing expected failures** (JSO-399, JSO-405, JSO-406 from
+  gateway setup). All 13 spec-007 browser cases pass normally, including U2/U3 with no
+  expected-failure markers, M2 desktop/mobile and all AC journeys. These pre-existing
+  gateway findings remain tracked outside this spec; no new flake or retry was observed.
+- The initialized `qa007verify` stack is left running for UAT at `http://localhost:3000`,
+  with Mailpit at `http://localhost:8025`; database volume retained.
+- Evidence: `/tmp/007-final-{lint2,types2,tests2,compose,seed,e2e}.log`.
+  Compose override `/tmp/007-final-compose.yaml` changes only the two application image
+  names to `qa007verify-server` and `qa007verify-web`; ports/configuration remain standard.
+- Commands: `docker compose -p qa007verify -f deploy/docker-compose.yml
+  -f /tmp/007-final-compose.yaml up --build -d --wait`; browser command:
+  `COMPOSE_PROJECT_NAME=qa007verify SPEC005_COMPOSE_OVERRIDE=/tmp/007-final-compose.yaml
+  QA_COMPOSE_PROJECT=qa007verify QA_COMPOSE_OVERRIDE=/tmp/007-final-compose.yaml pnpm test:e2e`.
+
+Current acceptance coverage (all file paths are relative to the repository root):
+
+| Criterion | Automated test coverage in this run | Result |
+| --- | --- | --- |
+| AC1 | `apps/portal/e2e/account-security.test.ts` AC1/3 and admin-settings cases: Mailpit delivery, fresh verification and environment source; `apps/portal/e2e/setup-gateways.test.ts` fresh setup/first key; fresh-volume timing above | PASS |
+| AC2 | `apps/portal/e2e/account-security.test.ts` AC2/8 and security cases: saved sender/precedence, auth/unreachable deadlines, logs/encrypted jobs; `apps/server/src/account-security.test.ts` encrypted credential persistence; `apps/server/src/mail/transport.test.ts` SMTP failure mapping | PASS |
+| AC3 | Browser AC1/3: verification gate, resend, real Kong write after verification; server account-security app/key guards and mail-less settings refusal; `packages/db/src/migrate.test.ts` pre-upgrade verification | PASS |
+| AC4 | Browser AC4/5/6/7 and AC4/5: reset, changed password, revoked sessions, neutral unknown-address response/no mail; server account-security reset/session cases | PASS |
+| AC5 | Browser AC4/5/6/7 reused link and AC4/5 expired link/unchanged password; server account-security expired/reset reuse tests; `apps/portal/components/account-security.test.tsx` INVALID_TOKEN rendering | PASS |
+| AC6 | Browser AC4/5/6/7 correct/wrong current password and other-session revocation; server account-security forced session revocation/incorrect-password counting | PASS |
+| AC7 | Browser AC4/5/6/7 name/header and old/new email sign-in lifecycle; server account-security neutral taken address, replaced/expired/reused tokens and old-mailbox reset invalidation | PASS |
+| AC8 | Browser AC2/8, admin-settings and review-blockers: 429/Retry-After, exact delivered email counts, neutral reset page and live limits; server account-security raw HTTP path normalization/concurrency and housekeeping | PASS |
+| AC9 | Browser AC9: two live keys revoked/consumers removed, real Admin API outage preserves both keys/account, re-signup and last-admin refusal; server account-security partial/late deletion, no-gateway M1 and corrupt stored-token refusal | PASS |
+
 ### Post-merge QA — 2026-11-10 (`ff5b773`)
 
 This run uses a new `qa007merge` Compose project and Postgres volume; old
@@ -711,6 +762,22 @@ Only tests and this spec changed; application code was not modified.
 
 ### Bugs
 
+- [x] **M1 — Account deletion with no connected gateway (merge-review blocker, backend).**
+  Verified `ea909d0` with real-Postgres `DELETE /v1/me` tests: no gateway returns 204,
+  clears the cookie and cascades local account state without gateway calls; a repeated
+  deleted-session request returns 401. Corrupt stored-token ciphertext returns the specific
+  stored-token guidance in 503 problem+json and retains user/apps/credentials/sessions.
+  New malformed confirmation cases return 400 and preserve state. Existing real Kong AC9
+  browser outage/revocation and disabled/current-gateway regressions also pass. Fix task verified.
+- [x] **M2 — Duplicate/incomplete admin navigation (merge-review blocker, frontend).**
+  Verified `249023f` with normal Playwright assertions across all four admin sections at
+  1280×844 and 390×844: one navigation, all four destinations, correct current section,
+  desktop links and working mobile select; no stacked second navigation. Fix task verified.
+- [x] **M3 — Obsolete first-admin password-reset hint (merge-review blocker, frontend).**
+  Same finding as U4 below. Fresh-setup browser assertions pass against `249023f`;
+  the password hint says "At least 8 characters." and contains no reset-unavailable copy.
+  Fix task verified.
+
 - [x] **T4 — New error assertions omit warning-icon prefixes (minor, QA tests).**
   The first full run's U2/U3 tests could not locate their prerequisite error titles because
   `getByText(..., { exact: true })` omitted the displayed `⚠` prefix. Switched those two
@@ -806,6 +873,11 @@ Only tests and this spec changed; application code was not modified.
   then returned 401 for both and removed both consumers. Evidence:
   `docs/uat/007/run-2026-11-10-post-merge/24-u2-gateway-refusal-stale-password.png` (806×812).
 
+  **Merge-fix QA closure, 2026-11-10:** `007 U2` passes without an expected-failure marker
+  against rebuilt `249023f`: real wrong-password refusal followed by the deterministic
+  gateway refusal shows only the current error. Component cases also verify the last-admin
+  retry; real gateway outage and key retention pass independently in browser AC9.
+
 - [x] **U3 — SMTP test error persists after corrected settings are saved (minor, frontend).**
   Save `mailpit:1` with None security and send a test, producing the unreachable error.
   Change port to `1025` and save. The old “Can't reach the mail server” error remains under
@@ -824,7 +896,11 @@ Only tests and this spec changed; application code was not modified.
   the corrected port and stale error:
   `docs/uat/007/run-2026-11-10-post-merge/42-u3-full-page.png` (1280×2200 viewport).
 
-- [ ] **U4 — First-admin setup says password reset is unavailable (minor, frontend copy).**
+  **Merge-fix QA closure, 2026-11-10:** `007 U3` passes without an expected-failure marker:
+  after a real SMTP-unreachable error and successful corrected-settings save, the stale
+  error disappears. The component regression and U1 saved-settings removal case also pass.
+
+- [x] **U4 — First-admin setup says password reset is unavailable (minor, frontend copy).**
   On a fresh install, open `/setup`. The password hint says “At least 8 characters. Keep it
   safe: the portal can't reset passwords yet.” Password recovery now works end to end, so
   this hint contradicts the available account feature. Expected: remove/update the stale
@@ -832,6 +908,9 @@ Only tests and this spec changed; application code was not modified.
   `docs/uat/007/run-2026-11-10-post-merge/01-setup-stale-copy.png` (806×812).
   Setup and recovery both complete; transient in-spec minor for the current loop, no blocker
   or major and no separate stage/task issue.
+  **QA closure, 2026-11-10:** the fresh Compose setup browser journey now asserts the exact
+  "At least 8 characters." hint and absence of the obsolete reset sentence; both pass.
+  This verifies the completed M3 Fix task in `249023f` and closes U4.
 
 ## User testing  _(user-tester)_
 

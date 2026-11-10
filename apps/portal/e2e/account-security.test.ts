@@ -922,3 +922,59 @@ test('007 AC4/5: unknown reset sends no mail and over-one-hour reset shows expir
     person.id,
   );
 });
+
+for (const width of [1280, 390]) {
+  test(`007 M2: one admin navigation across every section at ${width}px`, async ({
+    page,
+    context,
+  }) => {
+    await page.setViewportSize({ width, height: 844 });
+    expect(
+      (
+        await signin(context.request, 'admin@example.com', 'change-me-now')
+      ).status(),
+    ).toBe(200);
+    const sections = [
+      ['/admin/apis', 'APIs'],
+      ['/admin/gateways', 'Gateways'],
+      ['/admin/settings/mail', 'Mail'],
+      ['/admin/settings/accounts', 'Accounts'],
+    ] as const;
+    for (const [path, label] of sections) {
+      await page.goto(path);
+      const nav = page.getByRole('navigation', {
+        name: 'Admin section',
+        includeHidden: true,
+      });
+      const select = page.getByRole('combobox', {
+        name: 'Admin section',
+        includeHidden: true,
+      });
+      await expect(nav).toHaveCount(1);
+      await expect(select).toHaveCount(1);
+      await expect(nav.locator('a')).toHaveCount(4);
+      await expect(nav.locator('[aria-current="page"]')).toHaveText(label);
+      await expect(select).toHaveValue(path);
+      if (width === 390) {
+        await expect(nav).toBeHidden();
+        await expect(select).toBeVisible();
+        // Exercise the selector rather than just checking its rendered options.
+        const next =
+          sections[
+            (sections.findIndex(([href]) => href === path) + 1) %
+              sections.length
+          ]!;
+        await select.selectOption(next[0]);
+        await expect(page).toHaveURL(new RegExp(`${next[0]}$`));
+        await expect(select).toHaveValue(next[0]);
+      } else {
+        await expect(nav).toBeVisible();
+        await expect(select).toBeHidden();
+        for (const [href, name] of sections)
+          await expect(
+            nav.getByRole('link', { name, exact: true }),
+          ).toHaveAttribute('href', href);
+      }
+    }
+  });
+}
