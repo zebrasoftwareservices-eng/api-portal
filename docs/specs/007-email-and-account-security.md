@@ -767,7 +767,7 @@ None.
 Linear refused new issues again today (`linear_write_failed`: free issue limit exceeded), so none
 of these exist yet. Once there's room, create each one in team JSO, project API Portal, state
 Backlog, priority Low, **no parent**. Use label **Bug** for U2 and U3 and **Code Review** for the rest.
-- **U2:** `apps/portal/components/profile.tsx` delete-account dialog. A wrong-password error stays on screen
+- **U2:** `apps/portal/components/profile.tsx:134` delete-account dialog. A wrong-password error stays on screen
   after a retry with the correct password fails for another reason (gateway unavailable). Clear the
   field error on each submit.
 - **U3:** `apps/portal/components/mail-settings.tsx:61`. The `useEffect` that clears `testResult`
