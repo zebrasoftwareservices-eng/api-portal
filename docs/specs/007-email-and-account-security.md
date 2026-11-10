@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -743,6 +743,40 @@ Earlier UAT evidence remains in `run-2026-11-09-final/` and
 superseded by this re-test and QA's closure above.
 
 ## Review  _(tech-lead)_
+### Second re-review — 2026-11-09 at `e02128f`
+**Result: nothing is blocking, so the status is `approved`.** R1, R2 and R3 are all fixed, and
+their tests would catch a regression. U2 and U3 are minor UI issues with no security impact and
+don't block a journey. They become Backlog follow-ups, with the three suggestions from the last
+round. Merging is Elango's call.
+
+#### Checks
+| Check | Result |
+| --- | --- |
+| `pnpm lint`, `pnpm typecheck` | Pass (7 and 12 tasks) |
+| `pnpm test --force` | Pass, 12 of 12 tasks: 95 server, 137 portal, 39 adapter-kong and 2 database tests |
+| Quickstart and `pnpm test:e2e` | Not re-run here. QA's results at `37ed904` stand: fresh compose healthy in 107.19 s, and e2e 51 of 51. Only UAT docs changed since then |
+| R1 (`app.ts:94`–`111`, `auth-limits.ts:96`–`102`) | **Fixed.** `app.ts` builds the `URL` once and passes `url.pathname` to `limitedAuth`, which drops empty segments. I checked the router: better-call 1.0.19 takes `url.pathname` from that same `Request`, strips the base path, and rou3 0.5.1 matches it case-sensitively with no percent-decoding, splitting on `/` and dropping empty segments. So the limiter and Better Auth now match the same route. The new tests use `server.listen()` and `node:http` with literal `/./`, `/x/../`, `%2e` and `%2E%2E` paths on all four limited routes and on the `forget-password` 404 |
+| R2 (`account.ts:305`–`312`) | **Fixed.** Confirming the change deletes `reset-password:%` rows whose `value` is the user's ID, in the same transaction as the email update. The test checks that two old links are refused with `INVALID_TOKEN`, another account's link still works, and a fresh link to the new address works |
+| R3 / U1 (`mail-settings.tsx:61`) | **Fixed.** `setTestResult('')` runs whenever `resource.data` changes. Three component tests cover it, and the U1 e2e case no longer has its expected-failure marker |
+| UAT | Pass (`docs/uat/007/run-2026-11-09-current/README.md`). Every story passes; U2 and U3 are open minors |
+
+#### Blocking
+None.
+
+#### Suggestions (Backlog follow-ups, no parent)
+Linear refused new issues again today (`linear_write_failed`: free issue limit exceeded), so none
+of these exist yet. Once there's room, create each one in team JSO, project API Portal, state
+Backlog, priority Low, **no parent**. Use label **Bug** for U2 and U3 and **Code Review** for the rest.
+- **U2:** `apps/portal/components/profile.tsx` delete-account dialog. A wrong-password error stays on screen
+  after a retry with the correct password fails for another reason (gateway unavailable). Clear the
+  field error on each submit.
+- **U3:** `apps/portal/components/mail-settings.tsx:61`. The `useEffect` that clears `testResult`
+  should also call `setTestProblem(undefined)`. Otherwise an old SMTP test error stays visible after
+  the settings change, which is U1 again for errors.
+- Carried over from the last re-review: *count email-change attempts before the address-taken
+  check* (`account.ts:218`); *make the last-admin check exact when two admins delete at once*
+  (`account.ts:108`, `:134`, `:157`); *require a shared enqueue in `mailQueue`* (`mail/queue.ts:19`).
+
 ### Re-review — 2026-11-09 at `1eefe69`
 **Result: three blocking findings, so the status goes back to `building`.** Blocking 2 (pool
 deadlock) is fixed. Blocking 1 (the sign-in limit bypass) is only partly fixed: dot segments still
