@@ -1,7 +1,7 @@
 ---
 id: 007
 title: Email and account security
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear: JSO-235
@@ -762,6 +762,11 @@ Only tests and this spec changed; application code was not modified.
 
 ### Bugs
 
+**Final UAT confirmation, 2026-11-10 (`e76b0e6`):** M1, M2, M3/U4, U2 and U3
+remain closed after real-browser re-tests. No new product finding or open blocker/major.
+Evidence: `docs/uat/007/run-2026-11-10-final/README.md`; M1 `30`/`32`, M2 `01`/`03`,
+M3/U4 `29`, U2 `10`/`23`/`24`, U3 `04`/`05`/`06`. Historical findings below are preserved.
+
 - [x] **M1 — Account deletion with no connected gateway (merge-review blocker, backend).**
   Verified `ea909d0` with real-Postgres `DELETE /v1/me` tests: no gateway returns 204,
   clears the cookie and cascades local account state without gateway calls; a repeated
@@ -914,7 +919,35 @@ Only tests and this spec changed; application code was not modified.
 
 ## User testing  _(user-tester)_
 
-### Current post-merge UAT — 2026-11-10 (`c653c63`)
+### Final merge-fix UAT — 2026-11-10 (`e76b0e6`)
+
+All nine stories pass in Orca's built-in browser. M1 (deletion with no gateway), M2
+(single admin navigation at 1280 px and 390 px), M3/U4 (setup password hint), U2
+(delete retry clears stale password error) and U3 (SMTP save clears stale test error)
+are confirmed fixed; no new product problem or open blocker/major was found. Status is
+**review**; no approval or merge gate has been passed. Full walkthrough, screenshots,
+health evidence and scope limits: `docs/uat/007/run-2026-11-10-final/README.md`.
+
+| User story | Result | Screenshot in `docs/uat/007/run-2026-11-10-final/` |
+| --- | --- | --- |
+| Quickstart environment email | PASS — environment source; fresh isolated signup/resend delivered to Mailpit | `01-environment-desktop.png`, `31-environment-resend.png`; `environment-mail.json` |
+| Admin SMTP and test email | PASS — saved source delivers; unreachable error clears after corrected save; environment restored | `04-smtp-error.png`, `05-smtp-error-cleared.png`, `06-smtp-test-success.png`, `28-mail-fallback-restored.png` |
+| Require verified email | PASS — default off/admin Verified; mobile unverified app gate; verification permits creation | `07-account-defaults.png`, `11-mobile-verification-gate.png`, `13-verified-profile.png` |
+| Configure limits | PASS — reset maximum 2 saved/persisted without restart, restored 3; fourth verification resend gets 429 | `08-policy-saved.png`, `27-policy-restored.png`, `35-verification-limit.png` |
+| Signup, verify and resend | PASS — mobile keyboard signup; delivered verification link marks Verified; resend delivers | `13-verified-profile.png`, `31-environment-resend.png`, `34-mobile-recreated-account.png` |
+| Forgotten password | PASS — neutral known/unknown result; reset succeeds; old password fails/new works; prior session signs out; used link refused | `18-reset-known.png`, `19-reset-unknown.png`, `20-reset-success.png`, `21-prior-session-signed-out.png`, `22-old-password-refused.png`, `33-used-reset-link.png` |
+| Signed-in password change | PASS — wrong current password refused; correct change clears fields with success | `15-name-password-updated.png` |
+| Name/email changes | PASS — saved name; old email stays pending; explicit confirmation changes address | `15-name-password-updated.png`, `16-email-pending.png`, `17-email-confirmed.png` |
+| Delete/revoke | PASS — wrong password/outage refused; keys survive (200), then revoke (401); last admin protected; same email re-registers; no-gateway deletion works | `10-delete-error-cleared-last-admin.png`, `24-gateway-refusal-error-cleared.png`, `25-account-deleted.png`, `32-no-gateway-account-deleted.png`, `34-mobile-recreated-account.png`; `gateway-results.json` |
+
+QA stack reused as directed; the isolated setup/no-gateway check uses separate resources and
+is not a fresh full-Kong quickstart timing claim. Consoles are empty in the bounded sanitized
+health capture. Supplemental HTTP calls verify both UI-issued keys; security internals and
+independent-device assertions retain QA evidence. Defaults/fallback restored, test accounts
+deleted and both stacks stopped with volumes preserved. Existing Nov 9 untracked evidence
+was left untouched. No durable open bug required a Linear state update or new issue.
+
+### Historical post-merge UAT — 2026-11-10 (`c653c63`)
 
 All nine stories pass, with minors U2/U3 still reproducible and new copy minor U4.
 No blocker or major is open, so status is **review**, following this UAT dispatch's
