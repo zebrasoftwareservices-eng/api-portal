@@ -1,7 +1,7 @@
 ---
 id: 008
 title: Teams and roles
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-10
 linear: JSO-236
@@ -341,12 +341,20 @@ Quickstart: `node scripts/worktree-compose.mjs up -d --build --wait` succeeded, 
 No open QA findings.
 
 ## User testing  _(user-tester)_
+2026-11-10 · Commit `6168c836057353cfe07922cec70713fccf34dc01` · [UAT report](../uat/008/report.md).
+
 | User story | Result | Evidence |
 | --- | --- | --- |
+| Personal signup and team isolation | Pass | “Team: Personal”; “Payments is created. You're its Admin.”; switching Personal hid Payments UAT. |
+| Invite, accept and create a shared key | Pass | Mailpit “Join Payments”; “You joined Payments as Member”; Member-created key returned Kong HTTP 200. |
+| Read-only and non-Admin controls | Pass | “You're a Read-only member”; “Only team Admins can invite people or change roles.”; key mutation controls absent. |
+| Invitation refusal states | Pass | Wrong address explained; cancelled, expired and already-used invitation headings shown. |
+| Remove member without breaking keys | Pass | Removed user's switcher contained only Personal; shared URL showed “App not found”; their key still returned HTTP 200. |
+| Account deletion preserves shared team | Pass | “You'll leave Payments. Their apps and keys keep working.”; deleted user's shared key remained HTTP 200. |
+| Last Admin and role refresh | Pass | “Payments needs another Admin”; self role changes blocked; changed Read-only role removed key controls on reload. |
+| Mobile and keyboard journey | Pass | 390 × 844 team switching and shared app view; Tab/Enter opened team and leave dialog; Escape dismissed it. |
 
-One row per user-visible criterion. Evidence is a short quote of what was on the screen.
-Name an image only for an open failure. On a retest, change only the failed rows.
-Earlier rounds go in `docs/specs/log/008.md`. The full report is `docs/uat/008/report.md`.
+No product finding or open blocker/major. Console returned `"entries": []`; no error line existed to quote. Migration, direct API denial/invariance and personal-app deletion remain QA evidence, with those limits stated in the report. Stack stopped; two success images remain local and uncommitted.
 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
