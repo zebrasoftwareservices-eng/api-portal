@@ -496,6 +496,18 @@ describe('contract endpoints', () => {
     expect(logs.join('')).not.toContain('pk_');
     expect(logs.join('')).not.toContain('test-password-123');
   });
+  it('uses action-neutral outage copy when try-it cannot reach the gateway', async () => {
+    proxyFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+    const response = await server.inject(
+      '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get',
+    );
+    expect(response.statusCode).toBe(503);
+    expect(response.json()).toMatchObject({
+      type: '/problems/gateway-unavailable',
+      status: 503,
+      detail: "The API gateway didn't respond. Try again in a moment.",
+    });
+  });
   it('rewrites only gateway ACL 403s with the UX problem and preserves gateway headers', async () => {
     const url = '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get';
     const body = JSON.stringify({ message: 'You cannot consume this service' });

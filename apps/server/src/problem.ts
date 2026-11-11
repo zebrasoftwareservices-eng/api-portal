@@ -44,7 +44,7 @@ export function problemHandler(app: FastifyInstance) {
       p = new Problem(
         503,
         'gateway-unavailable',
-        "The API gateway didn't respond. Nothing was created. Try again in a moment.",
+        "The API gateway didn't respond. Try again in a moment.",
       );
     else if (err instanceof GatewayRejectedError)
       p = new Problem(

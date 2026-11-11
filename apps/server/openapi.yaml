@@ -1604,7 +1604,7 @@ components:
         type: { type: string, format: uri-reference, examples: ['/problems/gateway-unavailable'] }
         title: { type: string, examples: ['Gateway unavailable'] }
         status: { type: integer }
-        detail: { type: string, examples: ["The API gateway didn't respond. Nothing was created. Try again in a moment."] }
+        detail: { type: string, examples: ["The API gateway didn't respond. Try again in a moment."] }
         instance: { type: string }
         apis: { type: integer, description: 'With `/problems/gateway-in-use`: published APIs on this gateway' }
         activeKeys: { type: integer, description: 'With `/problems/gateway-in-use`: active keys on this gateway' }
