@@ -27,6 +27,6 @@ export function referenceOptions(document: Record<string, unknown>) {
       (order.get(`${b.method.toLowerCase()} ${b.path}`) ??
         Number.MAX_SAFE_INTEGER),
     authentication: { securitySchemes },
-    customCss: '.scalar-reference-intro h1 { display: none !important; }',
+    customCss: '.introduction-section h1 { display: none !important; }',
   };
 }

@@ -75,6 +75,7 @@ export function CatalogView({
                 )}
                 <div className="catalog-card-links">
                   <p className="mono muted">{api.gatewayBaseUrl}</p>
+                  {' '}
                   <span>View reference →</span>
                 </div>
               </a>

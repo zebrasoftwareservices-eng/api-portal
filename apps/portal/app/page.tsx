@@ -3,7 +3,8 @@ import { serverClient, signedInUser } from '../lib/server';
 import { isDemo } from '../lib/demo';
 import { demoData } from '../lib/demo-data';
 import { CatalogView } from '../components/catalog-view';
-export const metadata = { title: 'APIs' };
+// The root layout's template only applies to child segments.
+export const metadata = { title: 'APIs · Developer Portal' };
 export default async function Catalog() {
   if (isDemo())
     return <CatalogView items={[demoData().api]} user={null} demo />;

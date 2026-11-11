@@ -27,7 +27,7 @@ export function DemoReference({
           showDeveloperTools: 'never',
           telemetry: false,
           customCss:
-            '.scalar-reference-intro h1, .scalar-reference-intro-auth, .scalar-reference-intro-server { display: none !important; }',
+            `${referenceOptions(document).customCss} .scalar-reference-intro-auth, .scalar-reference-intro-server { display: none !important; }`,
         }}
       />
     </ReferenceBoundary>

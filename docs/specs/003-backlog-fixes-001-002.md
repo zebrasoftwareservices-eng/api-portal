@@ -342,11 +342,11 @@ except for the error *title* the portal shows.
 - [x] [qa] Clean-checkout `pnpm build` and `pnpm dev` start/stop leave `git status --porcelain` empty; `HOSTNAME=myhost pnpm dev` serves on `0.0.0.0` (JSO-230, JSO-188 tooling).
 - [ ] [qa] Full suite plus clean-clone `docker compose up` serves the catalog with the sample API in under five minutes.
 - [x] [backend] Fix: First try-it request returns 200 for an unsubscribed API key after import
-- [ ] [frontend] Fix (Elango, loop 1): catalog card text separates the base URL from View reference at 390 and 1280 px (minor bug JSO-162 line).
-- [ ] [frontend] Fix (Elango, loop 1): catalog tab title reads APIs · Developer Portal in live and demo (minor bug JSO-222 line).
-- [ ] [frontend] Fix (Elango, loop 1): Scalar does not repeat the API title as a second visible H1 in live and demo (minor bug JSO-224 line).
+- [x] [frontend] Fix (Elango, loop 1): catalog card text separates the base URL from View reference at 390 and 1280 px (minor bug JSO-162 line).
+- [x] [frontend] Fix (Elango, loop 1): catalog tab title reads APIs · Developer Portal in live and demo (minor bug JSO-222 line).
+- [x] [frontend] Fix (Elango, loop 1): Scalar does not repeat the API title as a second visible H1 in live and demo (minor bug JSO-224 line).
 - [ ] [frontend] Fix (Elango, loop 1): live sidebar keeps the authored sample operation order (minor bug JSO-225 line).
-- [ ] [frontend] Fix (Elango, loop 1): unknown /apis/<slug> returns HTTP 404 in live and demo (minor bug JSO-228 line).
+- [x] [frontend] Fix (Elango, loop 1): unknown /apis/<slug> returns HTTP 404 in live and demo (minor bug JSO-228 line).
 ## UX  _(ui-designer)_
 Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes-001-002.md). No new tokens.
 - One new screen, **Portal server unavailable** (`ServerUnavailable` in `error.tsx`, `global-error.tsx`
@@ -372,6 +372,10 @@ Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes
 - Backend outage copy: shared gateway errors and try-it now return "The API gateway didn't respond. Try again in a moment." with status 503 and type `gateway-unavailable`; the OpenAPI example matches, revoke/service-discovery/try-it regressions pass, and server lint, typecheck and all 212 tests passed with Docker socket access. The combined outage-copy task is ticked directly as authorized, without moving its linked issue; QA browser checks remain.
 
 - Frontend task tracking: the factory helper rejected the three completed multi-key lines (Reference page, Admin import, Hygiene); the coordinator authorized ticking only their checkboxes directly, without moving those Linear issues.
+
+- Frontend loop 1: catalog cards now include a text-space separator between their existing spaced URL/action blocks; the root catalog explicitly sets `APIs · Developer Portal` because the root layout template applies only to child segments. Scalar's shared title-hiding CSS now targets its installed `.introduction-section h1` markup in live and demo, retaining the description and demo card hiding; the inherited root `app/loading.tsx` is removed so API lookup/notFound completes before streaming (reference-area loading remains).
+- Frontend loop 1 validation: `pnpm --filter @portal/portal lint`, `typecheck` and `test` passed (275 tests across 34 files). Four fix tasks are ticked and their linked issues moved to In Review; no Bugs lines or spec status changed, and no browser, workspace suite or quickstart ran, so QA must verify the existing responsive, title, H1 and HTTP-status browser regressions.
+- JSO-225 diagnosis: `api_versions.document` uses PostgreSQL `jsonb`, the seed writes the parsed document directly, and `publicDocument` clones that stored value, so authored path order is lost before reaching the SDK; Scalar 1.46 additionally applies `operationsSorter` only to tagged operations and leaves untagged operations in received path order. The coordinator directed leaving the fix task unticked and making no frontend ordering change: preserving order requires storage/schema scope that Elango must decide, since the current technical design rules out migrations; no sample paths are hardcoded.
 
 ## Test report  _(qa-tester)_
 Application/image commit tested: `d234c5230e987e14d990ff5256016b60c0bcea46`; final QA tests: `4896235b74860a0542dc84b98df2febc03e31d60`. Portal: **http://localhost:3013** (`worktree-compose env`); worktree Compose stack is healthy and left running.
