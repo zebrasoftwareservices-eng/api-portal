@@ -606,3 +606,5 @@ test('019 AC1,4,9: real app links work with and without active keys', async ({
     await expect(page).toHaveURL(new RegExp(`/dashboard/apps/${app.id}$`));
   }
 });
+
+import './backlog-live.test';
