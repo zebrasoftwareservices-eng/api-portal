@@ -1,7 +1,7 @@
 ---
 id: 003
 title: Backlog fixes from specs 001 and 002
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-232
@@ -415,12 +415,23 @@ All five open bugs were re-tested through `linear bug 003 done`: the major first
 - [x] JSO-228 Unknown API routes return HTTP 200 instead of 404 in live and demo (minor).
 - [x] JSO-181 Mobile app cards label Active keys and Created at 390 px; regression confirms the existing dashboard fix (minor, verified).
 ## User testing  _(user-tester)_
+
+UAT on November 11, 2026, commit `2c3fd54`, against QA's running portal at http://localhost:3013. Full evidence and explicit automated-only variants: [`docs/uat/003/report.md`](../uat/003/report.md). No open blocker or major was found; admin import checks were excluded by Elango.
+
 | User story | Result | Evidence |
 | --- | --- | --- |
+| Browse catalog and reference | Pass, live | `APIs · Developer Portal`; all cards have an 8 px URL/link gap at 390/1280 px; one visible `Sample HTTP API` heading; aligned badge/Copy; empty initial Value; one document request. |
+| Get a key and try a call | Pass | `I've saved it` visible at 1280×800; sample and operation-auth subscribed requests return `200 OK`; an unsubscribed key returns `403 Forbidden`. |
+| Keyboard and screen-reader focus | Pass for handover/navigation | `Header line copied.` and clipboard error replacement; next Tab opens the reference; Cancel/Escape return focus to Revoke; keyboard-confirmed revoke succeeds. Full HTTP request used the mobile pointer pass. |
+| Dashboard and account | Pass | Email/separator/Sign out dropdown; no empty Breadcrumb; mobile `Active keys` and `Created`; real sign-out failure shows retry toast. Code-load failure remains QA-covered. |
+| Sign-in and ended session | Pass | Wrong password clears/focuses; cross-tab sign-out then Create key reaches `/sign-in?next=…` with `Your session has ended. Sign in to continue.` |
+| Admin import failure and recovery | Not tested | Admin login withheld by Elango; covered by QA's automated admin import tests. |
+| Key action outages and server recovery | Pass | `Gateway unavailable`; revoke says `the key is still active`; three route error pages hide auth state; retry recovers in the same document in ≤4.11 s. Try-it/service-picker copy variants remain QA-covered. |
+| Not-found routes | Pass, live | Required paths use `Developer Portal`; unknown API is HTTP 404. Demo variant remains QA-covered. |
+| Local date boundary | Current-date display passed; fixture variants QA-only | App and key dates say `Nov 11, 2026` in Los Angeles; exact November 3/UTC and admin fixtures remain covered by QA's timezone tests. |
+| Mobile and keyboard main journey | Pass for walked scope | Mobile sample request returns `200 OK`; keyboard dashboard → app → key → reference and revoke focus pass; see report for scope. |
 
-One row per user-visible criterion. Evidence is a short quote of what was on the screen.
-Name an image only for an open failure. On a retest, change only the failed rows.
-Earlier rounds go in `docs/specs/log/003.md`. The full report is `docs/uat/003/report.md`.
+Two local success images only; no browser logs or PNGs committed. Console outage error `Minified React error #441` carried `PORTAL_SERVER_UNAVAILABLE`; the portal recovered. No new findings or open bugs; the worktree stack was stopped after testing.
 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
