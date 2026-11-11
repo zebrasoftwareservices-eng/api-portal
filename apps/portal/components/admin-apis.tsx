@@ -652,6 +652,7 @@ export function AdminApis() {
             ) : (
               <ProblemAlert
                 problem={problem}
+                defaultTitle="Import failed"
                 title={
                   problem.type.endsWith('/gateway-disabled')
                     ? 'This gateway is disabled.'

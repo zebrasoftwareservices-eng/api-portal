@@ -36,7 +36,7 @@ it('honors Retry-After and enables retry only when the countdown ends', async ()
 it.each([
   ['validation', 'Check the form'],
   ['gateway unavailable', 'Gateway unavailable'],
-  ['unknown-code', 'Import failed'],
+  ['unknown-code', 'Something went wrong'],
 ])('replaces raw problem title %s with reader-facing copy', (raw, heading) => {
   render(
     <ProblemAlert
@@ -49,4 +49,31 @@ it.each([
   );
   expect(screen.getByRole('alert')).toHaveTextContent(`⚠ ${heading}`);
   expect(screen.getByRole('alert')).not.toHaveTextContent(`⚠ ${raw}`);
+});
+
+it('preserves a designed server title even for a known problem code', () => {
+  render(
+    <ProblemAlert
+      problem={{
+        type: '/problems/validation',
+        title: 'Check your settings',
+        status: 400,
+      }}
+    />,
+  );
+  expect(screen.getByRole('alert')).toHaveTextContent('⚠ Check your settings');
+});
+
+it('allows import callers to supply their own fallback heading', () => {
+  render(
+    <ProblemAlert
+      problem={{
+        type: '/problems/unknown-code',
+        title: 'unknown-code',
+        status: 400,
+      }}
+      defaultTitle="Import failed"
+    />,
+  );
+  expect(screen.getByRole('alert')).toHaveTextContent('⚠ Import failed');
 });

@@ -33,6 +33,19 @@ beforeEach(() => {
   get.mockReset();
   get.mockResolvedValue({ data: { items: apps } });
 });
+it('keeps the server problem title when loading apps fails outside admin import', async () => {
+  get.mockResolvedValue({
+    error: {
+      type: '/problems/team-unavailable',
+      title: 'Team unavailable',
+      status: 503,
+    },
+  });
+  render(<Dashboard />);
+  const alert = await screen.findByRole('alert');
+  expect(alert).toHaveTextContent('⚠ Team unavailable');
+  expect(alert).not.toHaveTextContent('Import failed');
+});
 it('keeps every app in order, highlights only matching apps, and keeps four table columns', async () => {
   render(<Dashboard slug="orders" />);
   const table = within(await screen.findByRole('table', { name: 'My apps' }));

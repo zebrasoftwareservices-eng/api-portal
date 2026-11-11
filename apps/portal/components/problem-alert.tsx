@@ -6,6 +6,7 @@ import type { Problem } from '../lib/types';
 export function ProblemAlert({
   problem,
   title,
+  defaultTitle = 'Something went wrong',
   message,
   onRetry,
   retryAfterSeconds = 0,
@@ -14,6 +15,7 @@ export function ProblemAlert({
 }: {
   problem: Problem;
   title?: string;
+  defaultTitle?: string;
   message?: ReactNode;
   onRetry?: () => void;
   retryAfterSeconds?: number;
@@ -43,15 +45,18 @@ export function ProblemAlert({
       'This service already has a published API',
     'gateway-unavailable': 'Gateway unavailable',
     'gateway-rejected': 'Gateway error',
-    'invalid-openapi': "This isn't a valid OpenAPI document",
-    'unsupported-openapi-version': 'Unsupported OpenAPI version',
     network: "Can't reach the portal server",
   };
   const heading =
     title ||
     titles[code] ||
+    (problem.title &&
+    problem.title !== code &&
+    problem.title !== code.replaceAll('-', ' ')
+      ? problem.title
+      : undefined) ||
     (problem.status === 502 ? 'Gateway error' : friendlyTitles[code]) ||
-    'Import failed';
+    defaultTitle;
   return (
     <div className="alert error stack" role="alert" tabIndex={-1} ref={ref}>
       <strong>⚠ {heading}</strong>

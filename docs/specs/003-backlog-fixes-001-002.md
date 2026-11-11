@@ -349,6 +349,8 @@ except for the error *title* the portal shows.
 - [x] [frontend] Fix (Elango, loop 1): catalog tab title reads APIs · Developer Portal in live and demo (minor bug JSO-222 line).
 - [x] [frontend] Fix (Elango, loop 1): Scalar does not repeat the API title as a second visible H1 in live and demo (minor bug JSO-224 line).
 - [x] [frontend] Fix (Elango, loop 1): unknown /apis/<slug> returns HTTP 404 in live and demo (minor bug JSO-228 line).
+- [x] [frontend] Fix (review): `ProblemAlert` keeps the server's designed `problem.title` (when it isn't the raw code) and falls back to a neutral heading, not "Import failed", outside admin import; admin import passes its own default.
+
 ## UX  _(ui-designer)_
 Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes-001-002.md). No new tokens.
 - One new screen, **Portal server unavailable** (`ServerUnavailable` in `error.tsx`, `global-error.tsx`
@@ -379,7 +381,8 @@ Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes
 - Frontend loop 1 validation: `pnpm --filter @portal/portal lint`, `typecheck` and `test` passed (275 tests across 34 files). Four fix tasks are ticked and their linked issues moved to In Review; no Bugs lines or spec status changed, and no browser, workspace suite or quickstart ran, so QA must verify the existing responsive, title, H1 and HTTP-status browser regressions.
 - JSO-225 diagnosis: `api_versions.document` uses PostgreSQL `jsonb`, the seed writes the parsed document directly, and `publicDocument` clones that stored value, so authored path order is lost before reaching the SDK; Scalar 1.46 additionally applies `operationsSorter` only to tagged operations and leaves untagged operations in received path order. The coordinator directed leaving the fix task unticked and making no frontend ordering change: preserving order requires storage/schema scope that Elango must decide, since the current technical design rules out migrations; no sample paths are hardcoded.
 
-- [ ] [frontend] Fix (review): `ProblemAlert` keeps the server's designed `problem.title` (when it isn't the raw code) and falls back to a neutral heading, not "Import failed", outside admin import; admin import passes its own default.
+- Frontend loop 2: `ProblemAlert` preserves readable server titles and uses "Something went wrong" for unknown raw codes; the admin import form supplies "Import failed" and retains its explicit OpenAPI titles. Added dashboard coverage for a failed app load, plus shared-alert tests for server-title preservation and the import fallback. Portal lint, typecheck and all 278 tests across 34 files pass; moved the review task from Build notes into Tasks for factory tracking and ticked it with the helper.
+
 ## Test report  _(qa-tester)_
 
 Tested commit: `73ca87636dafb266e42834a209132605e6617251` (application fixes through `71740f2135174b37ad8e25c898c3bbaa1b4429ec`). Portal: **http://localhost:3013**, from `node scripts/worktree-compose.mjs env`; project `portal-003-backlog-fixes-001-002-cb68`. Kong was recreated before browser checks and `printenv KONG_WORKER_CONSISTENCY` returned `strict`.
