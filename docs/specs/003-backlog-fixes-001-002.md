@@ -336,10 +336,10 @@ except for the error *title* the portal shows.
 - [x] [frontend] Outage copy: no "Nothing was created" on revoke, admin service picker or try-it (JSO-188 copy item).
 - [x] [frontend] Hygiene: ingress binds `PORTAL_HOST || 0.0.0.0`; ignore `next-env.d.ts` and `apps/portal/AGENTS.md`, typecheck runs `next typegen` first; delete `playwright.reference.config.ts`; CI runs `deploy/server-image-smoke.mjs`; AGENTS.md lists `pnpm test:e2e:demo`; tick spec 001's answered open questions (JSO-188 tooling items, JSO-229, JSO-230).
 - [x] [qa] One regression test per issue in scope (criteria 1–9), named by issue key; JSO-181 test confirms `36f6aa2` and closes it.
-- [ ] [qa] Demo e2e fails on visible Scalar server/auth card text (JSO-226); version-badge test waits for Scalar render and passes `--repeat-each=10` (JSO-231).
+- [x] [qa] Demo e2e fails on visible Scalar server/auth card text (JSO-226); version-badge test waits for Scalar render and passes `--repeat-each=10` (JSO-231).
 - [x] [qa] Outage e2e: stop server, check `/`, `/apis/sample`, `/dashboard` error page and header, restart, **Try again** recovers within 5 s with no navigation (JSO-189, 190, 191).
 - [ ] [qa] Dates in `America/Los_Angeles` and `UTC` via `timezoneId` (JSO-166); 404 status for unknown slug in demo and live (JSO-228).
-- [ ] [qa] Clean-checkout `pnpm build` and `pnpm dev` start/stop leave `git status --porcelain` empty; `HOSTNAME=myhost pnpm dev` serves on `0.0.0.0` (JSO-230, JSO-188 tooling).
+- [x] [qa] Clean-checkout `pnpm build` and `pnpm dev` start/stop leave `git status --porcelain` empty; `HOSTNAME=myhost pnpm dev` serves on `0.0.0.0` (JSO-230, JSO-188 tooling).
 - [ ] [qa] Full suite plus clean-clone `docker compose up` serves the catalog with the sample API in under five minutes.
 - [ ] [backend] Fix: First try-it request returns 200 for an unsubscribed API key after import
 ## UX  _(ui-designer)_
