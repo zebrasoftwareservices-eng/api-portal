@@ -63,7 +63,6 @@ Chromium; "visible" means inside the viewport without scrolling unless a criteri
    - the page has exactly one `h1` and the title isn't shown twice (JSO-224);
    - there is no Developer Tools, Configure, Share or Deploy toolbar (JSO-172, JSO-188);
    - the try-it Authentication **Value** field is empty or shows a hint such as "Paste your API key", never a key-like string (JSO-174);
-   - the sidebar lists operations in the document's `paths` order: `/get`, `/post`, `/status/{code}`, `/uuid`, `/headers` (JSO-225);
    - the browser requests the OpenAPI document once per page load (JSO-188).
    **And given** an imported API with `security` on its operations only and none at the document
    root, **when** a signed-in developer with a key opens it, **then** the hint text names the place
@@ -143,6 +142,9 @@ Chromium; "visible" means inside the viewport without scrolling unless a criteri
   full OpenAPI document. They need real Kong and Postgres integration work and touch key handling,
   so they go to spec 022, built after 004. JSO-188 stays open until that spec ships,
   so no commit in this spec may name JSO-188 (a merged commit naming it would close it).
+- **JSO-225**, sidebar operation order (deferred by Elango, 2026-11-11): `api_versions.document` is
+  `jsonb`, which loses authored path order, so a fix needs a storage change and migration that this
+  spec rules out. It moves to spec 022. JSO-225 stays open, so no commit in this spec may name it.
 - **JSO-213**, spec 002's open Vercel preview check. It is a QA task, not a bug, and it waits for
   the repo to go public.
 - **Issues found after this spec is written.** They go to the spec where they were found or to a
@@ -345,7 +347,6 @@ except for the error *title* the portal shows.
 - [x] [frontend] Fix (Elango, loop 1): catalog card text separates the base URL from View reference at 390 and 1280 px (minor bug JSO-162 line).
 - [x] [frontend] Fix (Elango, loop 1): catalog tab title reads APIs · Developer Portal in live and demo (minor bug JSO-222 line).
 - [x] [frontend] Fix (Elango, loop 1): Scalar does not repeat the API title as a second visible H1 in live and demo (minor bug JSO-224 line).
-- [ ] [frontend] Fix (Elango, loop 1): live sidebar keeps the authored sample operation order (minor bug JSO-225 line).
 - [x] [frontend] Fix (Elango, loop 1): unknown /apis/<slug> returns HTTP 404 in live and demo (minor bug JSO-228 line).
 ## UX  _(ui-designer)_
 Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes-001-002.md). No new tokens.
@@ -403,7 +404,7 @@ A major first-request access refusal failure reproduced twice: try-it returned 2
 - [ ] JSO-162 Catalog cards have separate non-overlapping blocks, but textContent still joins the base URL directly to View reference → at 390 and 1280 px (minor).
 - [ ] JSO-222 Catalog tab title is APIs instead of APIs · Developer Portal in live and demo (minor).
 - [ ] JSO-224 Scalar repeats the API title as a second visible H1 in live and demo (minor).
-- [ ] JSO-225 Live sidebar lists /status/{code} after /uuid and /headers instead of the authored sample order (minor).
+- [ ] JSO-225 Live sidebar lists /status/{code} after /uuid and /headers instead of the authored sample order (minor, deferred to spec 022 by Elango; not fixed here).
 - [ ] JSO-228 Unknown API routes return HTTP 200 instead of 404 in live and demo (minor).
 - [x] JSO-181 Mobile app cards label Active keys and Created at 390 px; regression confirms the existing dashboard fix (minor, verified).
 ## User testing  _(user-tester)_
