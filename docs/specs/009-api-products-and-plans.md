@@ -1,7 +1,7 @@
 ---
 id: 009
 title: API products and free plans with rate limits
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-237
@@ -286,7 +286,13 @@ is in `apps/server/openapi.yaml` (tag `products`, and the changed `apps` operati
 - [ ] [qa] Quickstart `docker compose up` still works, with `cluster` policy, and the spec 004 per-API key flow still works for APIs in no product
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/009-*.md`
+Design: [docs/design/009-api-products-and-plans.md](../design/009-api-products-and-plans.md). No new tokens.
+- **Catalog** gains a Products section (`ProductCard`: APIs and plan counts); the APIs section lists only APIs in no product.
+- **Product page** `/products/{slug}`: description, APIs, and a `PlanTable` (plans as columns; rate limit, monthly quota, included APIs) that becomes one card per plan below 768px. Subscribe buttons per plan; visitors get **Sign in to subscribe**; Read-only members get a line instead.
+- **Subscribe** `/products/{slug}/subscribe?plan=`: plan radios, subscription name, team shown; success opens the existing key dialog on the App page.
+- **App page**: plan card with limits, **Change plan…** dialog (same key, warns about dropped APIs), **Regenerate…** per active key (new key shown once, old one revoked), **Cancel subscription…** in a danger zone; product-plan apps show **New key** only with no active key.
+- **Admin**: `AdminNav` **Products**, product list, product form, product page with plans, and a plan form with an error summary and per-field messages for every AC 2 case (`inputmode="numeric"` text inputs so 2.5 and -1 reach validation).
+- Every gateway error (AC 9) keeps the dialog or form open and says what didn't change; role refusals (AC 10) follow 008.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
