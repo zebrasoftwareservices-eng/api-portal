@@ -27,12 +27,13 @@ green (JSO-232 "Done when").
 
 Issues in scope. Spec 001 UAT: JSO-161, 162, 163, 166, 172, 173, 174, 175, 176, 177, 178, 179,
 180, 181, 182, 183, 184, 189, 190, 191, 192. Spec 002 UAT: JSO-222, 223, 224, 225. Reviews and
-design findings: JSO-188, 214, 215, 226, 227, 228, 229, 230, 231.
+design findings: JSO-188 (portal, copy and tooling items only; see Out of scope), 214, 215, 226,
+227, 228, 229, 230, 231. Spec 019 has merged since these were filed. An issue that is already
+fixed on `main` is closed with the commit that fixed it, and its sub-item needs no new code.
 
 ## Users
 - **API consumer (developer):** catalog, API reference, key dialog, dashboard, sign-in.
 - **Portal admin:** API import screen and its gateway banner.
-- **Platform engineer:** server robustness at boot and during Kong outages.
 - **Contributor:** stable tests and a clean worktree after a build.
 
 ## User stories
@@ -44,37 +45,41 @@ design findings: JSO-188, 214, 215, 226, 227, 228, 229, 230, 231.
   signed out, so that a short outage doesn't look like lost work.
 - As an admin, I want import errors that say what went wrong and where, and that clear on the next
   submit, so that I can fix my document fast.
-- As a platform engineer, I want Kong calls and boot steps that don't leave stuck state, so that a
-  crash or outage heals without manual cleanup.
 - As a contributor, I want tests that don't depend on timing and builds that don't dirty my
   worktree, so that CI failures mean something.
 
 ## Acceptance criteria
 Grouped by screen. Each sub-item names the issue it closes, and QA writes one regression test per
-issue. A fix closes its issue only when its sub-item passes.
+issue. A fix closes its issue only when its sub-item passes. Viewport widths are CSS pixels in
+Chromium; "visible" means inside the viewport without scrolling unless a criterion says otherwise.
 
 1. **Catalog.** **Given** the quickstart or the demo build **When** a visitor opens `/` at 390 px
-   and 1280 px **Then** each card shows the base URL and **View reference →** apart, with no text
-   running together (JSO-162), and the tab title is `APIs · Developer Portal` (JSO-222, JSO-183).
+   and 1280 px **Then** on each card the base URL and **View reference →** are separate elements whose
+   bounding boxes don't overlap, and the card's text content has whitespace between them (JSO-162), and the tab title is `APIs · Developer Portal` (JSO-222, JSO-183).
 
 2. **API reference page.** **Given** `/apis/sample` on the quickstart at 1280 px **When** it loads
    and Scalar has rendered **Then**:
-   - the version badge sits beside the title and **Copy** on the base-URL line, as in design 3.2 (JSO-173);
+   - the version badge's vertical centre lies within the title's bounding box, and **Copy**'s lies within the base-URL line's (design 3.2) (JSO-173);
    - the page has exactly one `h1` and the title isn't shown twice (JSO-224);
    - there is no Developer Tools, Configure, Share or Deploy toolbar (JSO-172, JSO-188);
    - the try-it Authentication **Value** field is empty or shows a hint such as "Paste your API key", never a key-like string (JSO-174);
    - the sidebar lists operations in the document's `paths` order: `/get`, `/post`, `/status/{code}`, `/uuid`, `/headers` (JSO-225);
    - the browser requests the OpenAPI document once per page load (JSO-188).
-   **And given** an imported API with `security` on its operations only, **then** the portal's hint
-   matches where the key field actually appears (JSO-175).
+   **And given** an imported API with `security` on its operations only and none at the document
+   root, **when** a signed-in developer with a key opens it, **then** the hint text names the place
+   where the key field is shown, and that field accepts a pasted key that reaches the request
+   (JSO-175; which fix is an open question).
 
 3. **Key dialog and app page.** **Given** a signed-in developer at 1280×800 **When** they create a
    key **Then** **I've saved it** is visible without scrolling (JSO-192); the header-line copy
-   button announces "Header line copied." and shows a message if the copy fails (JSO-215); after
+   button announces "Header line copied." in a live region, and when the clipboard write is
+   rejected it shows an error message in place of the success text (JSO-215; copy from the
+   ui-designer); after
    **I've saved it**, the next Tab reaches the **Try your key** button (JSO-182). **And when** they
    cancel or press Escape on the revoke confirmation, focus returns to that **Revoke** button
-   (JSO-161). **And given** a browser in America/Los_Angeles, an app created at 2026-11-03T05:24Z
-   shows "Created Nov 2, 2026" in the header, the keys table and the admin APIs table (JSO-166).
+   (JSO-161). **And given** a browser in America/Los_Angeles, an app and an API both created at
+   2026-11-03T05:24Z show "Nov 2, 2026" on the app header, in the keys table and in the admin
+   APIs table; in UTC the same records show "Nov 3, 2026" (JSO-166).
 
 4. **Header and dashboard.** **Given** a signed-in developer **When** they open `/dashboard`
    **Then** the account menu is the designed dropdown (email, separator, **Sign out**) with no
@@ -98,11 +103,12 @@ issue. A fix closes its issue only when its sub-item passes.
    Kong-down banner clears (JSO-178).
 
 7. **Server outage (failure path).** **Given** a signed-in developer and the server stopped
-   **When** they open `/`, `/apis/sample` or `/dashboard` **Then** each shows the styled portal
-   error page with the header (JSO-190), the header shows neither Sign in/Sign up nor an account
+   **When** they open `/`, `/apis/sample` or `/dashboard` **Then** each shows the portal error
+   page — the portal header, a heading and a **Try again** button, not Next.js's default error
+   screen (JSO-190), the header shows neither Sign in/Sign up nor an account
    menu (JSO-191), and error copy never says "Nothing was created" for revoke, the admin service
    picker or try-it (JSO-188). **When** the server is healthy again and they select **Try again**
-   **Then** the page loads without a manual reload (JSO-189).
+   **Then** within 5 seconds the page shows its normal content without a browser reload (JSO-189).
 
 8. **Not-found pages.** **Given** the quickstart **When** a visitor opens `/quickstart-required`,
    `/admin/apis` as a non-admin, or an unknown app ID **Then** each tab title follows design §5:
@@ -110,49 +116,52 @@ issue. A fix closes its issue only when its sub-item passes.
    JSO-183). **Given** the demo build **When** a visitor requests `/apis/nope` **Then** the
    response is HTTP 404, not 200 (JSO-228).
 
-9. **Server robustness (JSO-188).** **Given** the integration suite with real Kong and Postgres
-   **Then**, each as its own test:
-   - no database transaction stays open while a Kong call is in flight during app or key creation;
-   - when the database update fails after a Kong revoke, the next reconcile clears the `drift` warning;
-   - a failed compensation step logs the error object, with no `pk_` value;
-   - restarting the server never overwrites an API an admin published at slug `sample`;
-   - a crash during admin creation doesn't stop the next boot from completing;
-   - listing the catalog and looking up a slug don't load every full OpenAPI document;
-   - `pnpm dev` binds the portal to all interfaces even when `HOSTNAME` is exported.
+9. **Tests and repo hygiene.** **Given** CI on the fix branch **Then**:
+   - the demo e2e fails if Scalar's server card or auth card becomes visible, checked by visible text (JSO-226);
+   - CI runs `deploy/server-image-smoke.mjs`, the duplicate `playwright.reference.config.ts` is gone, and AGENTS.md lists `pnpm test:e2e:demo` (JSO-229);
+   - the version badge test waits for Scalar to render instead of a fixed timeout, and passes 10 runs in a row with `--repeat-each=10` (JSO-231);
+   - on a clean checkout, `pnpm build`, and `pnpm dev` started and stopped, leave `git status --porcelain` empty (JSO-230);
+   - with `HOSTNAME=myhost` exported, `pnpm dev` serves the portal on `0.0.0.0` (JSO-188);
+   - spec 001's answered open questions are ticked (JSO-188).
 
-10. **Tests and repo hygiene.** **Given** CI on the fix branch **Then**: the demo e2e fails if
-    Scalar's server card or auth card becomes visible, checked by visible text (JSO-226); CI runs
-    `deploy/server-image-smoke.mjs`, the duplicate `playwright.reference.config.ts` is gone, and
-    AGENTS.md lists `pnpm test:e2e:demo` (JSO-229); the version badge test passes after waiting
-    for Scalar to render (JSO-231); `pnpm dev` and `pnpm build` leave `git status` clean
-    (JSO-230); spec 001's answered open questions are ticked (JSO-188); and the quickstart
-    reaches a loaded home page in under five minutes.
+   **And given** a clean clone with no portal containers or volumes and the base images already
+   pulled, **when** `docker compose -f deploy/docker-compose.yml up` runs, **then** `/` returns the
+   catalog with the sample API in under five minutes.
 
 ## Out of scope
 - **New features or new screens.** Fixes match the existing designs. Where a design gap exists, the
   ui-designer settles copy and focus order only.
 - **Hosted live demo** (JSO-127, spec 006), **trusted reverse proxy** (JSO-187, spec 006) and
   **hiding credentials from upstreams** (JSO-165, spec 004). JSO-232 moves these out.
-- **Navigation and API-page access redesign** (spec 019). 019 starts when this spec reaches
-  testing and may restyle the same header and API page; this spec fixes them as designed today.
+- **Navigation and API-page access redesign** (spec 019, merged). Fixes here target `main` as it
+  is now, including 019's header, account menu and My apps cards; they don't reopen 019's design.
+- **JSO-188's server robustness items**, cut so this stays one pull request and frontend-led:
+  no open transaction during Kong calls in app and key creation; reconcile clearing `drift` after a
+  failed database update following a Kong revoke; logging the error object (no `pk_` value) when
+  compensation fails; boot never overwriting an admin-published API at slug `sample`; boot
+  completing after a crash during admin creation; catalog list and slug lookup not loading every
+  full OpenAPI document. They need real Kong and Postgres integration work and touch key handling,
+  so they go to a follow-up spec built after this one. JSO-188 stays open until that spec ships,
+  so no commit in this spec may name JSO-188 (a merged commit naming it would close it).
 - **JSO-213**, spec 002's open Vercel preview check. It is a QA task, not a bug, and it waits for
   the repo to go public.
 - **Issues found after this spec is written.** They go to the spec where they were found or to a
   new issue.
 
 ## Open questions
-- [ ] Is 34 issues one pull request? If the tech lead thinks not, split the server items in
-  criterion 9 (JSO-188) into their own spec, built after the frontend fixes. — tech-lead, Elango
+- [ ] Confirm the cut: JSO-188's six server robustness items leave this spec for a follow-up
+  spec after 003 (which number?), and JSO-188 stays open until then. — Elango
+- [ ] Spec 019 merged with an account menu, My apps cards at 375 px and breadcrumb changes. Which
+  of JSO-163, JSO-181, JSO-182 and JSO-214 does `main` already fix? Close those with the fixing
+  commit. — tech-lead
 - [ ] JSO-172 and JSO-173 may already be partly fixed (JSO-221 fixed the badge width; JSO-188
   names the Scalar toolbar option). Confirm what's left, and close the issue with a reason if
   nothing is. — tech-lead
-- [ ] Spec 019 changes the header, account menu, API page action and responsive My apps. Should
-  JSO-163 (account menu) and JSO-181 (mobile cards) move to 019 so the work isn't done twice?
-  — Elango, tech-lead
 - [ ] JSO-191: during an outage, should the header show no account state, or the last known one?
-  The issue offers "neither" as an example. — ui-designer
+  Criterion 7 assumes no account state. — ui-designer, Elango
 - [ ] JSO-175: fix the hint copy, or make the key field appear for operation-level security?
   — tech-lead, ui-designer
+- [ ] JSO-215: what does the copy-failed message say? — ui-designer
 - [ ] JSO-230: commit `apps/portal/AGENTS.md` and `next-env.d.ts` as Next writes them, or
   ignore them? — tech-lead
 - [ ] JSO-228 asks only for the demo build. Should live `/apis/<unknown>` also return 404, since
@@ -207,3 +216,7 @@ return the spec to building. Earlier rounds go in `docs/specs/log/003.md`.
 - [ ] API contract, README and docs updated
 - [ ] Tech-lead review has no blocking findings
 - [ ] Elango merged the PR
+
+### Follow-ups
+- Follow-up spec: JSO-188 server robustness items cut from 003
+  Six server robustness items from the spec 001 review: no open transaction during Kong calls, reconcile clears drift after a failed DB update, compensation logs without secrets, boot never overwrites admin slug sample, boot completes after a crash in admin creation, catalog/slug lookup avoid loading full OpenAPI documents. Cut from 003 to keep one PR.
