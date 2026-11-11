@@ -1,7 +1,7 @@
 ---
 id: 003
 title: Backlog fixes from specs 001 and 002
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-232
@@ -155,22 +155,23 @@ Chromium; "visible" means inside the viewport without scrolling unless a criteri
   spec after 003 (which number?), and JSO-188 stays open until then. — Elango
   **Answer (Elango, 2026-11-11):** cut confirmed. They become spec 022 (`server-robustness`),
   sprint 2, built after 004, because 004 rewrites the same app/key creation and reconcile code.
-- [ ] Spec 019 merged with an account menu, My apps cards at 375 px and breadcrumb changes. Which
+- [x] Spec 019 merged with an account menu, My apps cards at 375 px and breadcrumb changes. Which
   of JSO-163, JSO-181, JSO-182 and JSO-214 does `main` already fix? Close those with the fixing
   commit. — tech-lead
-- [ ] JSO-172 and JSO-173 may already be partly fixed (JSO-221 fixed the badge width; JSO-188
+- [x] JSO-172 and JSO-173 may already be partly fixed (JSO-221 fixed the badge width; JSO-188
   names the Scalar toolbar option). Confirm what's left, and close the issue with a reason if
   nothing is. — tech-lead
 - [x] JSO-191: during an outage, should the header show no account state, or the last known one?
   Criterion 7 assumes no account state. — ui-designer, Elango
   **Answer (Elango, 2026-11-11):** no account state. A last-known signed-in header would offer
   actions that fail while the server is down and could show a session that has since ended.
-- [ ] JSO-175: fix the hint copy, or make the key field appear for operation-level security?
+- [x] JSO-175: fix the hint copy, or make the key field appear for operation-level security?
   — tech-lead, ui-designer
+  **Answer:** see Technical design (tech-lead answers).
 - [ ] JSO-215: what does the copy-failed message say? — ui-designer
-- [ ] JSO-230: commit `apps/portal/AGENTS.md` and `next-env.d.ts` as Next writes them, or
+- [x] JSO-230: commit `apps/portal/AGENTS.md` and `next-env.d.ts` as Next writes them, or
   ignore them? — tech-lead
-- [ ] JSO-228 asks only for the demo build. Should live `/apis/<unknown>` also return 404, since
+- [x] JSO-228 asks only for the demo build. Should live `/apis/<unknown>` also return 404, since
   the same streaming applies? — tech-lead
 
 ---
@@ -378,6 +379,7 @@ Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes
 - Frontend loop 1 validation: `pnpm --filter @portal/portal lint`, `typecheck` and `test` passed (275 tests across 34 files). Four fix tasks are ticked and their linked issues moved to In Review; no Bugs lines or spec status changed, and no browser, workspace suite or quickstart ran, so QA must verify the existing responsive, title, H1 and HTTP-status browser regressions.
 - JSO-225 diagnosis: `api_versions.document` uses PostgreSQL `jsonb`, the seed writes the parsed document directly, and `publicDocument` clones that stored value, so authored path order is lost before reaching the SDK; Scalar 1.46 additionally applies `operationsSorter` only to tagged operations and leaves untagged operations in received path order. The coordinator directed leaving the fix task unticked and making no frontend ordering change: preserving order requires storage/schema scope that Elango must decide, since the current technical design rules out migrations; no sample paths are hardcoded.
 
+- [ ] [frontend] Fix (review): `ProblemAlert` keeps the server's designed `problem.title` (when it isn't the raw code) and falls back to a neutral heading, not "Import failed", outside admin import; admin import passes its own default.
 ## Test report  _(qa-tester)_
 
 Tested commit: `73ca87636dafb266e42834a209132605e6617251` (application fixes through `71740f2135174b37ad8e25c898c3bbaa1b4429ec`). Portal: **http://localhost:3013**, from `node scripts/worktree-compose.mjs env`; project `portal-003-backlog-fixes-001-002-cb68`. Kong was recreated before browser checks and `printenv KONG_WORKER_CONSISTENCY` returned `strict`.
@@ -436,6 +438,29 @@ Two local success images only; no browser logs or PNGs committed. Console outage
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/003.md`.
+
+Reviewed `git diff main...HEAD` at `31fec57`. QA's full run is on `73ca876`; only docs changed
+since, so the suite was not re-run. Contract, data model (none), problem+json, Kong strict
+consistency and quickstart evidence match the design. Criteria 1–9 have tests.
+
+- **blocking** — `apps/portal/components/problem-alert.tsx:50-54`: the heading no longer uses the
+  server's `problem.title`, and any code missing from the local map now reads **"Import failed"**.
+  `ProblemAlert` is shared by about 30 call sites without a `title`, so setup
+  (`setup-form.tsx:103`, "Setup token not accepted"), gateways (`gateway-form.tsx:432`, "Kong
+  refused the token"), profile, teams, invitation, accounts and mail now show "Import failed" for
+  errors that have nothing to do with import. Fix: use `problem.title` when it isn't the raw code
+  (as `main` did), then `friendlyTitles`, then a neutral fallback such as "Something went wrong".
+  Admin import passes its own default through `title`/`titles`. Update
+  `problem-alert.test.tsx:39` and add a case where a non-import code shows the server title.
+- **suggestion** — `packages/ui/src/index.tsx:96`: `EmptyState` declares a `titleSuffix` prop it
+  never reads. Remove it.
+- **suggestion** — `packages/ui/src/index.tsx:79`: `PageHeader` wraps every page's `h1` in
+  `.reference-title`. Rename it to something generic such as `.page-title`.
+- **suggestion** — `apps/portal/components/auth-form.tsx:91`: focus is skipped by comparing the
+  alert text to the copy string. A `wrongPassword` flag would survive a copy change.
+- **suggestion** — `apps/portal/components/date.tsx:8`: in a server-rendered tree
+  (`app/apis/[slug]/changelog/page.tsx`), `suppressHydrationWarning` keeps the server's UTC text,
+  so changelog dates stay in UTC. The criterion 3 surfaces fetch on the client and pass.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
