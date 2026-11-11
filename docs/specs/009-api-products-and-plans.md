@@ -1,7 +1,7 @@
 ---
 id: 009
 title: API products and free plans with rate limits
-status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-237
@@ -114,12 +114,15 @@ Sprint 4 demo steps in `docs/roadmap.md`.
       — Elango
       **Decided (Elango, 2026-11-11):** yes; subscriptions are named (for example `staging`,
       `prod`), each with its own key and limits.
-- [ ] Does a monthly quota reset on the first of the calendar month in UTC, or on a rolling
+- [x] Does a monthly quota reset on the first of the calendar month in UTC, or on a rolling
       30-day window? Kong's `month` window decides what is cheap; the plan table must say which.
       — tech-lead
-- [ ] Which Kong rate-limiting policy (`local`, `cluster` or `redis`) the quickstart uses, and
+      **Decided (tech-lead, ADR 0009):** the calendar month in UTC, Kong's fixed `month` window.
+- [x] Which Kong rate-limiting policy (`local`, `cluster` or `redis`) the quickstart uses, and
       what we tell operators running several Kong nodes, where `local` counts per node. — tech-lead,
       in the plan → Kong mapping ADR
+      **Decided (tech-lead, ADR 0009):** `cluster` by default, counted in Kong's database across
+      nodes; `PORTAL_RATE_LIMIT_POLICY=local` for operators who accept per-node counts.
 
 Kong evidence for scope: the open-source rate-limiting plugin supports per-second, per-minute and
 per-month limits in one plugin and can be scoped to a consumer and a service together
@@ -131,12 +134,156 @@ reuses spec 004's ACL groups.
 <!-- Sections below are filled by later stages. -->
 
 ## Technical design  _(tech-lead)_
-Components · API contract · Data model · Adapter calls · Risks
+Lasting choices are in [ADR 0009](../adr/0009-plans-map-to-kong-rate-limiting.md). The contract
+is in `apps/server/openapi.yaml` (tag `products`, and the changed `apps` operations).
+
+**Components**
+- `packages/db`: tables `products`, `product_apis`, `plans`, `plan_apis`; `apps.plan_id`; one
+  migration that also adds the built-in plan and moves every existing app onto it.
+- `packages/adapter-sdk`: `PlanLimits`, `applyPlanLimits`, `limits` on `AccessPolicy.apps[]`,
+  `capabilities().plans`, conformance cases.
+- `packages/adapter-kong`: the consumer-scoped `rate-limiting` plugin, and its reconcile.
+- `apps/server`: new `products.ts` (public and admin routes), changes to `apps.ts`, `catalog.ts`,
+  `reconcile.ts` and `config.ts` (`PORTAL_RATE_LIMIT_POLICY`).
+- `packages/sdk`: regenerate from the contract.
+- `apps/portal`: catalog with products, product page with the plan table and subscribe, the
+  subscription's plan, change plan, cancel and regenerate on My apps, admin product and plan forms.
+- `deploy/docker-compose.yml`: no change. `cluster` is the default and the quickstart Kong uses
+  Postgres.
+
+**API contract** (all under `/api`; errors are problem+json)
+| Method and path | Who | Success | Errors |
+| --- | --- | --- | --- |
+| `GET /v1/products` | public | 200 `ProductSummary[]` | — |
+| `GET /v1/products/{productSlug}` | public | 200 `ProductDetail` (APIs, plans oldest first) | 404 |
+| `POST /v1/admin/products` | admin | 201 `ProductDetail` | 400, 403 `forbidden`, 404 API, 409 `product-slug-taken` |
+| `PATCH /v1/admin/products/{productId}` | admin | 200 `ProductDetail` | 400, 403, 404, 409 `api-in-plan` |
+| `POST /v1/admin/products/{productId}/plans` | admin | 201 `Plan` | 400 (pointer per field), 403, 404, 409 `plan-name-taken` |
+| `PUT /v1/admin/products/{productId}/plans/{planId}` | admin | 200 `Plan`, then reconcile | same as create |
+| `POST /v1/apps` with `planId` | team admin or member | 201 `CreateAppResponse` | 400, 403, 404, 409, 502, 503 |
+| `PUT /v1/apps/{appId}/plan` | team admin or member | 200 `App` | 400 `/planId`, 403, 404, 409, 502, 503 |
+| `DELETE /v1/apps/{appId}` | team admin or member | 204 | 403, 404, 502, 503 |
+| `POST /v1/apps/{appId}/credentials/{credentialId}/regenerate` | team admin or member | 201 `IssuedCredential` | 403, 404, 409 `credential-revoked`, 502, 503 |
+
+- `CreateAppRequest` takes exactly one of `planId` or `apiIds`. `apiIds` with an API that is in a
+  product is a 400 on `/apiIds`. Subscription names are app names, unique in the team.
+- `PlanInput`: `name` (1–40, unique in the product), `description` (≤ 280), `rateLimit` (integer
+  1–1,000,000), `rateLimitUnit` (`second` | `minute`), `monthlyQuota` (integer 1–2,000,000,000,
+  ≥ `rateLimit`), `apiIds` (1–50, each in the product). Validation collects every failing field
+  into `errors[]` with its JSON pointer (AC 2). Missing, `0`, negative and `2.5` are all 400.
+- `ApiSummary.products` lists the products that include an API. The catalog shows products, plus
+  APIs whose `products` is empty.
+- `App.plan` is `AppPlan`: the built-in plan is `{ name: "Unlimited", builtin: true }` with null
+  product and limits. `App.subscriptions` stays the list of APIs the key reaches.
+- A subscription on a product plan has one active key: `POST /v1/apps/{appId}/credentials` returns
+  409 `credential-limit` when it has one. Built-in-plan apps keep the limit of 5.
+- `PUT /v1/apps/{appId}/plan` accepts only a plan of the app's product. A built-in-plan app gets
+  400 on `/planId`.
+- Roles: product and plan writes use the existing admin check (403 `/problems/forbidden`). App
+  writes use `appAccess(…, 'write')` / `teamAccess(…, 'write')` (403 `team-role-forbidden` for
+  read-only), checked before any Kong call (AC 10). Subscribe, change plan and regenerate also run
+  `requireVerified`, like key creation.
+
+**Data model** (Drizzle, `packages/db/src/schema.ts`; one generated migration)
+- `products`: `id` uuid pk, `slug` text unique, `name` text (check 1–80 after trim), `description`
+  text not null, `created_by` → user (set null), `created_at`, `updated_at`.
+- `product_apis`: `product_id` → products (cascade), `api_id` → apis (restrict), pk
+  (`product_id`, `api_id`). An API can be in more than one product.
+- `plans`: `id` uuid pk, `product_id` → products (restrict, null only for the built-in plan),
+  `name`, `description`, `rate_limit` int, `rate_limit_unit` text, `monthly_quota` int, `builtin`
+  boolean default false, `created_at`, `updated_at`. Checks: `builtin = (product_id is null)`;
+  `builtin or (rate_limit > 0 and rate_limit_unit in ('second','minute') and monthly_quota >=
+  rate_limit)`; built-in has all three null. Unique (`product_id`, `name`); unique (`id`,
+  `product_id`); partial unique index on `builtin` where `builtin` (only one built-in plan).
+- `plan_apis`: `plan_id`, `product_id`, `api_id`, pk (`plan_id`, `api_id`). FK (`plan_id`,
+  `product_id`) → plans (`id`, `product_id`) cascade; FK (`product_id`, `api_id`) →
+  product_apis restrict. Postgres itself refuses an API outside the product, and refuses removing
+  an API from a product while a plan includes it (the server maps that to 409 `api-in-plan`).
+- `apps.plan_id` uuid not null → plans (restrict), index on it.
+- Migration: generate with `pnpm --filter @portal/db exec drizzle-kit generate`, then hand-edit
+  the SQL so it adds `apps.plan_id` as nullable, inserts the built-in plan with the fixed id
+  `01937a00-0000-7000-8000-000000000009` and name `Unlimited`, sets every app's `plan_id` to it,
+  then sets not null. Export the id as `BUILTIN_PLAN_ID` from `@portal/db`.
+- The spec 004 `subscriptions` table (app ↔ API) is unchanged and is used only by built-in-plan
+  apps. A server helper `appApis(tx, app)` returns `plan_apis` for a product plan and
+  `subscriptions` otherwise. Every place that reads `subscriptions` today (`apps.ts` view and key
+  creation, `reconcile.ts`) uses it.
+
+**Gateway adapter calls** (ADR 0009)
+- SDK: `interface PlanLimits { rate: { unit: 'second' | 'minute'; limit: number }; monthlyQuota:
+  number }`; `applyPlanLimits(app: AppRef, limits: PlanLimits | null): Promise<void>`;
+  `AccessPolicy.apps[]` gains `limits: PlanLimits | null`; `AccessFinding.code` may be
+  `foreign-rate-limit`; `Capabilities.plans: boolean`.
+- Kong `applyPlanLimits(app, limits)`: `PUT /plugins/{stableId('rate-limiting', app.id)}` with
+  `{ name: 'rate-limiting', consumer: { id: <consumer id> }, config: { second|minute: limit,
+  month: monthlyQuota, limit_by: 'consumer', policy }, tags: portalTags(instanceId, app) }`. Pass
+  the unit's field only. `null` → `DELETE /plugins/{id}` (404 is fine). The consumer must exist,
+  so call it after `ensureConsumer`. `policy` comes from `KongConfig.rateLimitPolicy`, set from
+  `PORTAL_RATE_LIMIT_POLICY` (`cluster` default, or `local`).
+- Kong `applyAccessPolicy`: after memberships and ACLs, list `/plugins?tags=portal-instance-<id>`
+  filtered to `name = rate-limiting`; PUT any app's plugin whose config differs or is missing,
+  DELETE one whose app is gone or has `limits: null`. Report each as a repair (`object:
+  'plugin'`). Add a `foreign-rate-limit` finding for a managed service where a non-portal
+  `rate-limiting` plugin is scoped to route+service, consumer+service or consumer+route.
+- Server flows (inside the existing transaction and gateway shared lock 71833002):
+  - Subscribe: `ensureConsumer` → `grantAccess` per plan service → `applyPlanLimits` →
+    `issueCredential` → insert rows. On failure `deleteConsumer` (Kong cascades the plugin).
+  - Built-in create (`apiIds`): as today. No plugin.
+  - Change plan: `applyPlanLimits(new)` → `grantAccess` for new services → `revokeAccess` for
+    dropped services → update `apps.plan_id`. On failure, best effort `applyPlanLimits(old)`,
+    `grantAccess(old)`, `revokeAccess(new only)`, then rethrow; reconcile repairs the rest.
+  - Cancel: `deleteConsumer` → delete the app (credentials, consumer rows and spec 004
+    subscriptions cascade). Kong failing means rollback and 503. If the commit fails after Kong
+    succeeded, the key is already dead (fails closed); reconcile logs the missing credentials.
+  - Regenerate: active key check → `ensureConsumer` → `issueCredential(new)` →
+    `revokeCredential(old)` → insert new row and mark old `revoked`, in one transaction. If the
+    revoke or the insert fails, `revokeCredential(new)` and rethrow.
+  - Plan PUT: update rows, commit, then `boss.send('gateway-reconcile', {}, { singletonKey:
+    'gateway-reconcile' })`. Product and plan writes make no other Kong call.
+- Every Kong error maps as today: unreachable or 5xx → 503 `gateway-unavailable` with
+  `Retry-After: 5`; 4xx → 502 `gateway-rejected`; disabled → 409 `gateway-disabled`.
+
+**Risks and how to test them**
+- *Exact 429 on the sixth request (AC 4).* Kong's second window is fixed, so six requests can
+  straddle a boundary. QA starts the burst right after a second boundary, and asserts that the
+  sixth of six fired at once gets 429 and that a request 1.1 s later succeeds. Run on the real
+  quickstart Kong (`cluster`).
+- *Quota test (AC 5) without waiting a month.* Use a plan with quota 10 and rate 5/second, spaced
+  at 300 ms.
+- *Plan change visible at once (AC 6).* The quickstart Kong uses `KONG_WORKER_CONSISTENCY:
+  strict`, so a plugin change applies on the next request. Multi-node Kong takes up to 5 s; the
+  upgrade notes say so.
+- *Counters survive a plan change.* Integration test on real Kong: use 8 of a 10 quota, change to a
+  20-quota plan, and the next 12 succeed and the 13th gets 429.
+- *Half-done Kong writes (AC 9).* Unit tests with a fake adapter that fails on each call in turn
+  assert the database is unchanged and the compensation calls happened. One integration test stops
+  Kong's admin port and checks every flow returns 503 and nothing changed.
+- *Loose apps bypassing plans.* Test that `POST /v1/apps` with `apiIds` containing a product's API
+  returns 400 and calls no adapter method.
+- *Operator rate-limit plugins.* Unit test the `foreign-rate-limit` finding; the portal never edits
+  a plugin it didn't tag.
+- *Migration.* A migration test (like `teams-migration.test.ts`) seeds apps before the migration
+  and asserts each is on the built-in plan afterwards with its subscriptions untouched.
+- *`cluster` writes Kong's database on each request.* Accepted for the quickstart. The
+  `PORTAL_RATE_LIMIT_POLICY` line in the README and `.env.example` explains `local`.
 
 ### Tasks
-- [ ] [backend] …
-- [ ] [frontend] …
-- [ ] [qa] …
+- [ ] [backend] Schema and migration: `products`, `product_apis`, `plans`, `plan_apis`, `apps.plan_id`, the built-in plan and the backfill, `BUILTIN_PLAN_ID`; migration test
+- [ ] [backend] Adapter SDK: `PlanLimits`, `applyPlanLimits`, `AccessPolicy.apps[].limits`, `capabilities().plans`, `foreign-rate-limit`; conformance cases for apply, replace and remove
+- [ ] [backend] Kong adapter: consumer-scoped `rate-limiting` plugin with a stable ID and `rateLimitPolicy`; reconcile of portal rate-limit plugins in `applyAccessPolicy`; unit tests and a real-Kong test
+- [ ] [backend] Config: `PORTAL_RATE_LIMIT_POLICY` (`cluster` default, `local`) passed to the Kong adapter; document it in `.env.example` and the README
+- [ ] [backend] Products API: public list and detail, admin create and update product, create and update plan with per-field validation (AC 2), `api-in-plan`, reconcile job sent after a plan update
+- [ ] [backend] Catalog: `ApiSummary.products` on `GET /v1/apis` and API detail
+- [ ] [backend] Apps: `appApis` helper; `POST /v1/apps` with `planId`, and refusal of product APIs in `apiIds`; `App.plan`; one active key for product-plan apps; reconcile passes plan limits
+- [ ] [backend] Apps: `PUT /v1/apps/{appId}/plan`, `DELETE /v1/apps/{appId}` and `POST …/credentials/{credentialId}/regenerate`, with compensation; unit tests for every failure point (AC 9) and role checks (AC 10)
+- [ ] [backend] Regenerate `packages/sdk` from the contract
+- [ ] [frontend] Catalog lists products and the APIs in no product; product page with description, APIs and the plan comparison table (rate limit, monthly quota "per calendar month, UTC", included APIs)
+- [ ] [frontend] Subscribe on the product page: choose a plan, name the subscription, confirm, show the key once; gateway-unavailable and role errors
+- [ ] [frontend] My apps: show each app's plan and limits; change plan (same product), cancel with confirmation, regenerate key with the key shown once; read-only members see no actions
+- [ ] [frontend] Admin: product list, create and edit product (APIs from the catalog), add and edit plans with field errors beside each field
+- [ ] [qa] Integration tests on real Kong and Postgres for AC 1–10, including the counter carry-over and the migration
+- [ ] [qa] Playwright e2e: admin creates a product and plan; developer subscribes, gets 429 on the sixth call, changes plan, regenerates and cancels
+- [ ] [qa] Quickstart `docker compose up` still works, with `cluster` policy, and the spec 004 per-API key flow still works for APIs in no product
 
 ## UX  _(ui-designer)_
 Summary + link to `docs/design/009-*.md`
@@ -176,3 +323,7 @@ return the spec to building. Earlier rounds go in `docs/specs/log/009.md`.
 - [ ] API contract, README and docs updated
 - [ ] Tech-lead review has no blocking findings
 - [ ] Elango merged the PR
+
+### Follow-ups
+- Redis rate-limiting policy for Kong hybrid and multi-node installs (ADR 0009)
+- Move pre-009 apps on the built-in Unlimited plan onto a product plan
