@@ -321,20 +321,20 @@ except for the error *title* the portal shows.
 - [x] [backend] `import.ts`: YAML/JSON syntax errors return `invalid-openapi` with `errors[0].line`/`column` and "at line L, column C" in `detail` (JSO-184); unit test with malformed YAML.
 - [x] [backend] `catalog.ts`: apply the first `apiKey` scheme at top level when the document has one but no root `security` (JSO-175); unit tests per the risk above.
 - [x] [backend] Regenerate `packages/sdk` (`pnpm --filter @portal/sdk generate`) and typecheck it.
-- [ ] [frontend] Server outage: tri-state `currentUser`, header with no account state when unknown, `ServerUnavailable` in `error.tsx`, new `global-error.tsx` and `/unavailable`, middleware rewrite with 503, **Try again** = refresh + reset (JSO-189, 190, 191).
-- [ ] [frontend] Reference page: `showDeveloperTools: 'never'`, document-order `operationsSorter`, empty auth value, single `h1`, badge/Copy alignment, one document request per load (JSO-172, 173, 174, 224, 225; JSO-188 toolbar and fetch items).
-- [ ] [frontend] 404 status: remove route `loading.tsx` for `apis/[slug]` and its version route, Suspense around `Reference` only (JSO-228, demo and live).
-- [ ] [frontend] Tab titles: catalog `APIs · Developer Portal`; not-found, `/quickstart-required` and unknown app ID use `Developer Portal` (JSO-183, 222, 223).
-- [ ] [frontend] Catalog card: base URL and **View reference →** as separate, spaced elements (JSO-162).
-- [ ] [frontend] `DateValue` in the browser's time zone (JSO-166).
-- [ ] [frontend] Key dialog fits 1280×800 with **I've saved it** visible; focus to **Try your key** after close; revoke dialog returns focus to its **Revoke** button (JSO-192, 182, 161).
-- [ ] [frontend] `CopyButton` live-region announcement and clipboard-failure message (JSO-215; copy from ui-designer).
-- [ ] [frontend] `PageHeader` renders the Breadcrumb nav only with items (JSO-214).
-- [ ] [frontend] Account menu as `DropdownMenu`; sign-out failure toast covers import failure (JSO-163, 227).
-- [ ] [frontend] Sign-in wrong password clears and focuses the field; 401 on app actions → `/sign-in?next=…` with the session-ended toast (JSO-179, 180).
-- [ ] [frontend] Admin import: sentence-case titles, field-only slug/URL errors, clear on submit, line/column display, slug-required on the field, **Refresh list** clears the Kong banner, "Gateway unavailable" for key outages (JSO-176, 177, 178, 184; JSO-188 slug item).
+- [x] [frontend] Server outage: tri-state `currentUser`, header with no account state when unknown, `ServerUnavailable` in `error.tsx`, new `global-error.tsx` and `/unavailable`, middleware rewrite with 503, **Try again** = refresh + reset (JSO-189, 190, 191).
+- [x] [frontend] Reference page: `showDeveloperTools: 'never'`, document-order `operationsSorter`, empty auth value, single `h1`, badge/Copy alignment, one document request per load (JSO-172, 173, 174, 224, 225; JSO-188 toolbar and fetch items).
+- [x] [frontend] 404 status: remove route `loading.tsx` for `apis/[slug]` and its version route, Suspense around `Reference` only (JSO-228, demo and live).
+- [x] [frontend] Tab titles: catalog `APIs · Developer Portal`; not-found, `/quickstart-required` and unknown app ID use `Developer Portal` (JSO-183, 222, 223).
+- [x] [frontend] Catalog card: base URL and **View reference →** as separate, spaced elements (JSO-162).
+- [x] [frontend] `DateValue` in the browser's time zone (JSO-166).
+- [x] [frontend] Key dialog fits 1280×800 with **I've saved it** visible; focus to **Try your key** after close; revoke dialog returns focus to its **Revoke** button (JSO-192, 182, 161).
+- [x] [frontend] `CopyButton` live-region announcement and clipboard-failure message (JSO-215; copy from ui-designer).
+- [x] [frontend] `PageHeader` renders the Breadcrumb nav only with items (JSO-214).
+- [x] [frontend] Account menu as `DropdownMenu`; sign-out failure toast covers import failure (JSO-163, 227).
+- [x] [frontend] Sign-in wrong password clears and focuses the field; 401 on app actions → `/sign-in?next=…` with the session-ended toast (JSO-179, 180).
+- [x] [frontend] Admin import: sentence-case titles, field-only slug/URL errors, clear on submit, line/column display, slug-required on the field, **Refresh list** clears the Kong banner, "Gateway unavailable" for key outages (JSO-176, 177, 178, 184; JSO-188 slug item).
 - [ ] [frontend] Outage copy: no "Nothing was created" on revoke, admin service picker or try-it (JSO-188 copy item).
-- [ ] [frontend] Hygiene: ingress binds `PORTAL_HOST || 0.0.0.0`; ignore `next-env.d.ts` and `apps/portal/AGENTS.md`, typecheck runs `next typegen` first; delete `playwright.reference.config.ts`; CI runs `deploy/server-image-smoke.mjs`; AGENTS.md lists `pnpm test:e2e:demo`; tick spec 001's answered open questions (JSO-188 tooling items, JSO-229, JSO-230).
+- [x] [frontend] Hygiene: ingress binds `PORTAL_HOST || 0.0.0.0`; ignore `next-env.d.ts` and `apps/portal/AGENTS.md`, typecheck runs `next typegen` first; delete `playwright.reference.config.ts`; CI runs `deploy/server-image-smoke.mjs`; AGENTS.md lists `pnpm test:e2e:demo`; tick spec 001's answered open questions (JSO-188 tooling items, JSO-229, JSO-230).
 - [ ] [qa] One regression test per issue in scope (criteria 1–9), named by issue key; JSO-181 test confirms `36f6aa2` and closes it.
 - [ ] [qa] Demo e2e fails on visible Scalar server/auth card text (JSO-226); version-badge test waits for Scalar render and passes `--repeat-each=10` (JSO-231).
 - [ ] [qa] Outage e2e: stop server, check `/`, `/apis/sample`, `/dashboard` error page and header, restart, **Try again** recovers within 5 s with no navigation (JSO-189, 190, 191).
@@ -360,6 +360,13 @@ Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes
 - Backend: import now returns the contracted slug-required problem for generated slugs with fewer than two ASCII letters/digits, and syntax errors include the first YAML parser line/column for both API and version imports. `日本語 API` correctly derives `api`; the no-slug regression uses `日本語`, with mixed-title and explicit-slug coverage too.
 - Backend: public documents without root security now apply their first existing apiKey scheme, preserving explicit root and operation security; the SDK was regenerated from the existing contract. All four backend tasks are complete; no Bugs lines or spec status changed.
 - Backend validation: server and SDK lint/typecheck passed; server tests passed 211/211 across 15 files, including 11 new import/catalog regressions, and SDK test passed with no test files. Build dependency packages first on a clean worktree; local container tests needed Docker Desktop started and `DOCKER_HOST=unix:///Users/elangodhanasekaran/.docker/run/docker.sock` with sandbox access to Docker.
+
+- Frontend: implemented tri-state sessions and shared outage screens/retry, reference ordering/auth/title and document reuse, route-local reference loading, default not-found titles, spaced catalog links, browser-zone dates, key-dialog scrolling/focus, accessible copy feedback, account menus/sign-out recovery, session-ended handoff and admin-import validation/refresh recovery.
+- Frontend hygiene includes `PORTAL_HOST`, generated-file ignores and `next typegen`, removal of the obsolete reference Playwright config, plus coordinator-authorized minimal edits to `.github/workflows/ci.yml`, root `AGENTS.md` and spec 001's answered questions. No spec status or Bugs checkbox changed.
+- Frontend validation: portal/UI lint and typecheck passed; portal tests passed 272/272 across 33 files, including copy, menu/import failures, retry, session state and key/revoke focus tests; UI test command passed with no package-local tests (shared UI behavior is covered by portal component tests). Portal ingress tests require sandbox permission to bind loopback; no browser, quickstart or workspace-wide suite was run.
+- Frontend dependency: revoke and admin-picker outage copy is complete, but the combined outage-copy checkbox remains open for backend's server-owned try-it `gateway-unavailable` detail to remove "Nothing was created", per coordinator instruction. QA still needs the specified production reference request count, viewport, time-zone, HTTP-status and real outage-recovery browser checks.
+
+- Frontend task tracking: the factory helper rejected the three completed multi-key lines (Reference page, Admin import, Hygiene); the coordinator authorized ticking only their checkboxes directly, without moving those Linear issues.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`

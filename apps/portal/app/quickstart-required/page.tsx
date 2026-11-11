@@ -4,7 +4,7 @@ import { isDemo, QUICKSTART_URL } from '../../lib/demo';
 import { QuickstartCommand } from '../../components/quickstart-command';
 // This route has no live data; resolve its non-demo 404 before streaming.
 export const dynamic = 'force-static';
-export const metadata = { title: 'Quickstart required' };
+export const metadata = { title: { absolute: 'Developer Portal' } };
 export default function QuickstartRequired() {
   if (!isDemo()) notFound();
   return (

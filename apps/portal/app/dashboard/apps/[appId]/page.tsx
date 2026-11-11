@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { AppDetail } from '../../../../components/app-detail';
-export const metadata = { title: 'Your app' };
+export const metadata = { title: { absolute: 'Developer Portal' } };
 export default async function Page({
   params,
 }: {

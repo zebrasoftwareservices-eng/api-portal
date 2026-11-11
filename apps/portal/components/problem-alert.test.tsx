@@ -34,9 +34,9 @@ it('honors Retry-After and enables retry only when the countdown ends', async ()
 });
 
 it.each([
-  ['validation', 'Check the highlighted fields and try again'],
+  ['validation', 'Check the form'],
   ['gateway unavailable', 'Gateway unavailable'],
-  ['unknown-code', 'Something went wrong'],
+  ['unknown-code', 'Import failed'],
 ])('replaces raw problem title %s with reader-facing copy', (raw, heading) => {
   render(
     <ProblemAlert

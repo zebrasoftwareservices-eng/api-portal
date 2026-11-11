@@ -49,7 +49,7 @@ scripts/factory.mjs  Factory runner (status, plan, prompts, start)
 
 ## Commands (once spec 001 scaffolds the monorepo)
 - `pnpm install` · `pnpm dev` · `pnpm build`
-- `pnpm test` (unit + integration) · `pnpm test:e2e` (Playwright) · `pnpm lint` · `pnpm typecheck`
+- `pnpm test` (unit + integration) · `pnpm test:e2e` (Playwright) · `pnpm test:e2e:demo` (demo Playwright) · `pnpm lint` · `pnpm typecheck`
 - `docker compose -f deploy/docker-compose.yml up` — portal + server + Postgres + Kong
 
 ## Conventions

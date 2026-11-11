@@ -401,7 +401,7 @@ describe('admin import', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Refresh list' }));
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Nothing you entered is lost.',
+      'Check that Kong is running, then refresh the list.',
     );
     expect(screen.getByLabelText('Document URL')).toHaveValue(
       'https://example.com/openapi.yaml',
@@ -517,4 +517,85 @@ it('shows the ruleset banner and refuses retry for ruleset failures', async () =
     'Imports are paused',
   );
   expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+});
+
+describe('spec 003 import recovery', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockServices([service]);
+  });
+  it('JSO-184 displays syntax-error line and column and clears the alert before client validation', async () => {
+    const user = userEvent.setup();
+    mocks.post.mockResolvedValue({
+      error: {
+        status: 422,
+        type: '/problems/invalid-openapi',
+        title: 'invalid-openapi',
+        errors: [{ line: 12, column: 3, message: 'Unexpected token' }],
+      },
+      response: new Response(null, { status: 422 }),
+    });
+    render(<AdminApis />);
+    await fillUrlImport(user);
+    await user.click(
+      screen.getByRole('button', { name: 'Import and publish' }),
+    );
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Line 12, column 3: Unexpected token',
+    );
+    await user.clear(screen.getByLabelText('Document URL'));
+    await user.click(
+      screen.getByRole('button', { name: 'Import and publish' }),
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Document URL')).toHaveFocus();
+  });
+  it('opens and focuses the required slug field without an alert', async () => {
+    const user = userEvent.setup();
+    mocks.post.mockResolvedValue({
+      error: {
+        status: 422,
+        type: '/problems/slug-required',
+        title: 'Slug required',
+        errors: [
+          {
+            pointer: '/slug',
+            message:
+              'Enter a slug. The title has no letters or digits to make one from.',
+          },
+        ],
+      },
+      response: new Response(null, { status: 422 }),
+    });
+    render(<AdminApis />);
+    await fillUrlImport(user);
+    await user.click(
+      screen.getByRole('button', { name: 'Import and publish' }),
+    );
+    await waitFor(() => expect(screen.getByLabelText('Slug')).toHaveFocus());
+    expect(screen.getByLabelText('Slug')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+  it('JSO-178 refreshes health along with the service list', async () => {
+    const user = userEvent.setup();
+    let reachable = false;
+    mocks.get.mockImplementation(async (path: string) => ({
+      data: path.includes('services')
+        ? { items: [service] }
+        : path.includes('health')
+          ? { gateway: { reachable } }
+          : { items: [] },
+    }));
+    render(<AdminApis />);
+    await screen.findByText(/Admin API isn't responding/);
+    reachable = true;
+    await user.click(screen.getByRole('button', { name: 'Refresh list' }));
+    await screen.findByText('Kong services refreshed.');
+    expect(
+      screen.queryByText(/Admin API isn't responding/),
+    ).not.toBeInTheDocument();
+  });
 });

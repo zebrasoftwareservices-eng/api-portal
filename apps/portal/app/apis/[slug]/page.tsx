@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { CodeValue, PageHeader } from '@portal/ui';
-import { serverClient, currentUser } from '../../../lib/server';
+import { serverClient, signedInUser } from '../../../lib/server';
 import {
   ApiAccessProvider,
   ApiAccessAction,
@@ -19,14 +20,15 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   if (isDemo()) {
-    if ((await params).slug !== 'sample') return { title: 'API not found' };
+    if ((await params).slug !== 'sample')
+      return { title: { absolute: 'Developer Portal' } };
     return { title: demoData().api.title };
   }
   const client = await serverClient();
   const { data } = await client.GET('/v1/apis/{slug}', {
     params: { path: await params },
   });
-  return { title: data?.title || 'API not found' };
+  return { title: data?.title || { absolute: 'Developer Portal' } };
 }
 export default async function ApiPage({
   params,
@@ -41,9 +43,9 @@ export default async function ApiPage({
       <div className="stack">
         <PageHeader
           title={api.title}
+          titleSuffix={<VersionRow api={api} />}
           breadcrumb={[{ label: 'APIs', href: '/' }, { label: api.title }]}
         />
-        <VersionRow api={api} />
         <CodeValue
           value={api.gatewayBaseUrl}
           label="Base URL in a local quickstart"
@@ -53,14 +55,22 @@ export default async function ApiPage({
           you can&apos;t send requests from it. To send real requests, run the
           quickstart.
         </div>
-        <DemoReference document={document} />
+        <Suspense
+          fallback={
+            <p role="status" className="reference-loading">
+              Loading API reference…
+            </p>
+          }
+        >
+          <DemoReference document={document} />
+        </Suspense>
       </div>
     );
   }
   const client = await serverClient();
   const [{ data, error }, user] = await Promise.all([
     client.GET('/v1/apis/{slug}', { params: { path: { slug } } }),
-    currentUser(),
+    signedInUser(),
   ]);
   if (error?.status === 404) notFound();
   if (!data) throw new Error('API unavailable');
@@ -69,10 +79,10 @@ export default async function ApiPage({
       <div className="stack">
         <PageHeader
           title={data.title}
+          titleSuffix={<VersionRow api={data} />}
           breadcrumb={[{ label: 'APIs', href: '/' }, { label: data.title }]}
           actions={<ApiAccessAction />}
         />
-        <VersionRow api={data} />
         <CodeValue value={data.gatewayBaseUrl} label="Base URL" />
         <ApiAccessStatus />
         <div className="alert">
@@ -81,7 +91,15 @@ export default async function ApiPage({
           Type instead, open it and choose this API&apos;s key scheme first.
           Then choose an operation and select Send. <TryItRecovery />
         </div>
-        <Reference documentUrl={data.documentUrl} />
+        <Suspense
+          fallback={
+            <p role="status" className="reference-loading">
+              Loading API reference…
+            </p>
+          }
+        >
+          <Reference documentUrl={data.documentUrl} />
+        </Suspense>
       </div>
     </ApiAccessProvider>
   );

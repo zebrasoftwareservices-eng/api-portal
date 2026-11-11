@@ -40,6 +40,9 @@ export function AppDetail({ appId }: { appId: string }) {
   const [revoke, setRevoke] = useState<Credential>();
   const [revokeProblem, setRevokeProblem] = useState<Problem>();
   const [highlight, setHighlight] = useState<string>();
+  const tryHeading = useRef<HTMLHeadingElement>(null);
+  const revokeTrigger = useRef<HTMLButtonElement | null>(null);
+  const revokedId = useRef<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -125,6 +128,7 @@ export function AppDetail({ appId }: { appId: string }) {
         } else setRevokeProblem(error);
       } else {
         const id = revoke.id;
+        revokedId.current = id;
         const hint = revoke.keyHint;
         setData({
           ...app,
@@ -210,7 +214,9 @@ export function AppDetail({ appId }: { appId: string }) {
       </p>
       {active > 0 && (
         <Card>
-          <h2>Try your key</h2>
+          <h2 ref={tryHeading} tabIndex={-1}>
+            Try your key
+          </h2>
           <p>
             Open an API reference, paste your key into the apikey field and
             select Send.
@@ -307,6 +313,8 @@ export function AppDetail({ appId }: { appId: string }) {
                 "This portal isn't connected to an API gateway right now. No key was created. Tell the portal admin."
               ) : problem.type.endsWith('/credential-limit') ? (
                 'This app already has 5 active keys. Revoke one, then create a new key.'
+              ) : problem.status === 503 ? (
+                "The gateway didn't respond, so no key was created. Try again in a moment."
               ) : problem.status === 502 ? (
                 'The gateway rejected the request. No key was created. Try again, and if it keeps happening, tell the portal admin.'
               ) : undefined
@@ -373,7 +381,9 @@ export function AppDetail({ appId }: { appId: string }) {
                         <Button
                           variant="ghost"
                           disabled={pending}
-                          onClick={() => {
+                          onClick={(event) => {
+                            revokeTrigger.current = event.currentTarget;
+                            revokedId.current = null;
                             setRevoke(c);
                             setRevokeProblem(undefined);
                           }}
@@ -395,10 +405,17 @@ export function AppDetail({ appId }: { appId: string }) {
           appName={app.name}
           apiTitles={app.subscriptions.map((s) => s.title)}
           variant={shown.variant}
+          onCloseAutoFocus={() => tryHeading.current?.focus()}
           onDone={() => {
             const id = shown.credential.id;
             setReveal(null);
-            void reload().then(() => focusRow(id));
+            setHighlight(id);
+            clearTimeout(highlightTimer.current);
+            highlightTimer.current = setTimeout(
+              () => setHighlight(undefined),
+              3000,
+            );
+            void reload();
           }}
         />
       )}
@@ -412,6 +429,12 @@ export function AppDetail({ appId }: { appId: string }) {
           <AlertDialog.Overlay className="overlay" />
           <AlertDialog.Content
             className="dialog stack"
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              if (revokedId.current)
+                document.getElementById(`key-${revokedId.current}`)?.focus();
+              else revokeTrigger.current?.focus();
+            }}
             onEscapeKeyDown={(e) => {
               if (pending) e.preventDefault();
             }}

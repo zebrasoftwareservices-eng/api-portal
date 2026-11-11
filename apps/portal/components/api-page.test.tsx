@@ -11,7 +11,7 @@ const { get, user, apps, referenceRender } = vi.hoisted(() => ({
 }));
 vi.mock('../lib/server', () => ({
   serverClient: async () => ({ GET: get }),
-  currentUser: user,
+  signedInUser: user,
 }));
 vi.mock('../lib/client', () => ({ quietApi: { GET: apps } }));
 vi.mock('./reference', () => ({

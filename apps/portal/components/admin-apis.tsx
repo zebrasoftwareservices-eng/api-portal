@@ -30,6 +30,15 @@ export function AdminApis() {
     services.error?.type.endsWith('/gateway-not-connected');
   const catalog = useResource(() => api.GET('/v1/apis'));
   const health = useResource(() => api.GET('/v1/health'));
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshAnnouncement, setRefreshAnnouncement] = useState('');
+  async function refreshServices() {
+    setRefreshing(true);
+    setRefreshAnnouncement('');
+    await Promise.all([services.reload(), health.reload()]);
+    setRefreshing(false);
+    setRefreshAnnouncement('Kong services refreshed.');
+  }
   const [source, setSource] = useState('file');
   const [file, setFile] = useState<File>();
   const [url, setUrl] = useState('');
@@ -72,6 +81,9 @@ export function AdminApis() {
   }
   async function submit() {
     if (lock.current) return;
+    setProblem(undefined);
+    setPublished(undefined);
+    setErrors({});
     const invalid: Record<string, string> = {};
     if (source === 'file') {
       if (!file) invalid.file = 'Choose an OpenAPI file.';
@@ -153,6 +165,11 @@ export function AdminApis() {
             'routePath',
             'This service has no route path. Enter the path Kong serves this API on.',
           ],
+          'slug-required': [
+            'slug',
+            error.errors?.[0]?.message ||
+              'Enter a slug. The title has no letters or digits to make one from.',
+          ],
           'api-slug-taken': [
             'slug',
             'Another API already uses this slug. Enter a different one.',
@@ -164,20 +181,45 @@ export function AdminApis() {
         };
         const field = type ? mapping[type] : undefined;
         if (field) {
+          if (
+            [
+              'api-slug-taken',
+              'slug-required',
+              'spec-url-unreachable',
+              'document-too-large',
+              'invalid-api-version',
+            ].includes(type || '')
+          )
+            setProblem(undefined);
           setErrors({ [field[0]]: field[1] });
           if (['slug', 'routePath'].includes(field[0])) setOptions(true);
-        } else if (error.status === 400) {
-          setErrors(
-            Object.fromEntries(
-              (error.errors || []).map((e) => [
-                e.pointer === '/spec/url'
-                  ? 'url'
-                  : e.pointer?.slice(1) || 'form',
-                e.message,
-              ]),
-            ),
+        } else if (type === 'validation' || error.status === 400) {
+          const fieldErrors = Object.fromEntries(
+            (error.errors || []).flatMap((e) => {
+              const field =
+                e.pointer === '/spec/url' ? 'url' : e.pointer?.slice(1);
+              return field &&
+                [
+                  'slug',
+                  'url',
+                  'gatewayServiceId',
+                  'routePath',
+                  'releaseNote',
+                ].includes(field)
+                ? [[field, e.message]]
+                : [];
+            }),
           );
-          setOptions(true);
+          if (Object.keys(fieldErrors).length) {
+            setErrors(fieldErrors);
+            setProblem(undefined);
+            if (
+              fieldErrors.slug ||
+              fieldErrors.routePath ||
+              fieldErrors.releaseNote
+            )
+              setOptions(true);
+          }
         }
         if (type === 'gateway-service-not-found') void services.reload();
       } else if (data) {
@@ -229,7 +271,13 @@ export function AdminApis() {
       );
     return (
       <>
-        <p>{problem.detail || problem.title}</p>
+        <p>
+          {problem.errors?.[0]?.line && problem.errors[0].column
+            ? `Line ${problem.errors[0].line}, column ${problem.errors[0].column}: ${problem.errors[0].message}`
+            : problem.type.endsWith('/validation')
+              ? 'Check the highlighted fields and try again.'
+              : problem.detail}
+        </p>
         {problem.errors?.[0]?.pointer && (
           <p className="mono">Location: {problem.errors[0].pointer}</p>
         )}
@@ -330,8 +378,8 @@ export function AdminApis() {
           <ProblemAlert
             problem={services.error}
             title="Gateway unavailable"
-            message="Can't reach Kong's Admin API, so the service list is empty. Check that Kong is running. Nothing you entered is lost."
-            onRetry={services.reload}
+            message="Can't reach Kong's Admin API, so the service list is empty. Check that Kong is running, then refresh the list."
+            onRetry={refreshServices}
           />
         ))}
       {services.data && !blocked && (
@@ -430,8 +478,8 @@ export function AdminApis() {
               <ProblemAlert
                 problem={services.error}
                 title="Gateway unavailable"
-                message="Can't reach Kong's Admin API, so the service list is empty. Check that Kong is running. Nothing you entered is lost."
-                onRetry={services.reload}
+                message="Can't reach Kong's Admin API, so the service list is empty. Check that Kong is running, then refresh the list."
+                onRetry={refreshServices}
                 autoFocus={false}
               />
             )}
@@ -512,11 +560,17 @@ export function AdminApis() {
             <Button
               type="button"
               variant="secondary"
-              disabled={services.loading}
-              onClick={() => void services.reload()}
+              disabled={services.loading || refreshing}
+              aria-busy={refreshing}
+              onClick={() => void refreshServices()}
             >
-              Refresh list
+              {refreshing ? 'Refreshing…' : 'Refresh list'}
             </Button>
+            <p role="status">
+              {!services.error && !health.error && !refreshing
+                ? refreshAnnouncement
+                : ''}
+            </p>
             {selected && (
               <p className="hint">
                 Routes:{' '}

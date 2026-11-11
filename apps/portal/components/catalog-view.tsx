@@ -73,8 +73,10 @@ export function CatalogView({
                 {demo && (
                   <div className="hint">Base URL in a local quickstart</div>
                 )}
-                <code className="muted">{api.gatewayBaseUrl}</code>
-                <span>View reference →</span>
+                <div className="catalog-card-links">
+                  <p className="mono muted">{api.gatewayBaseUrl}</p>
+                  <span>View reference →</span>
+                </div>
               </a>
             ))}
           </div>

@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 import { Button } from '@portal/ui';
-export default function ErrorPage({ reset }: { reset: () => void }) {
+import { ServerUnavailable } from '../components/server-unavailable';
+export default function ErrorPage({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
+  if (error.digest === 'PORTAL_SERVER_UNAVAILABLE')
+    return <ServerUnavailable reset={reset} />;
   return (
     <div className="stack">
       <h1>Something went wrong</h1>

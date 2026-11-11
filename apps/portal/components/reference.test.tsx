@@ -67,3 +67,18 @@ it('uses the per-version SDK operation rather than inferring a slug from the doc
     ),
   );
 });
+
+it('uses an already loaded version document without fetching it again', async () => {
+  get.mockClear();
+  scalar.mockClear();
+  render(
+    <Reference
+      documentUrl="/api/v1/apis/orders/versions/1/openapi.json"
+      slug="orders"
+      version="1"
+      initialDocument={{ openapi: '3.1.0' }}
+    />,
+  );
+  await waitFor(() => expect(scalar).toHaveBeenCalled());
+  expect(get).not.toHaveBeenCalled();
+});

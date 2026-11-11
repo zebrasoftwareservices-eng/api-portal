@@ -2,11 +2,11 @@
 'use client';
 import { useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Button, Dialog, toast } from '@portal/ui';
+import { Button, Dialog, DropdownMenu, toast } from '@portal/ui';
 import { isDemo, QUICKSTART_URL } from '../lib/demo';
 import { usePortal } from './providers';
 export function Header() {
-  const { user } = usePortal();
+  const { user, sessionState } = usePortal();
   const pathname = usePathname();
   const router = useRouter();
   const close = useRef<HTMLButtonElement>(null);
@@ -20,7 +20,19 @@ export function Header() {
         </div>
       </header>
     );
-  const links = (
+  async function signOut() {
+    try {
+      const { auth } = await import('../lib/client');
+      const { error } = await auth.signOut();
+      if (error) throw error;
+      toast.success("You're signed out.");
+      router.push('/');
+      router.refresh();
+    } catch {
+      toast.error("We couldn't sign you out. Try again.");
+    }
+  }
+  const links = (mobile = false) => (
     <>
       <a
         href="/"
@@ -52,36 +64,42 @@ export function Header() {
               Admin
             </a>
           )}
-          <details>
-            <summary title={user.email}>{user.email}</summary>
-            <p className="account-name" title={user.name}>
-              {user.name}
-            </p>
-            <a
-              href="/profile"
-              aria-current={pathname === '/profile' ? 'page' : undefined}
-            >
-              Profile
-            </a>
-            <Button
-              variant="ghost"
-              onClick={async () => {
-                const { auth } = await import('../lib/client');
-                const { error } = await auth.signOut();
-                if (error) {
-                  toast.error("We couldn't sign you out. Try again.");
-                  return;
-                }
-                toast.success("You're signed out.");
-                router.push('/');
-                router.refresh();
-              }}
-            >
-              Sign out
-            </Button>
-          </details>
+          {mobile ? (
+            <div className="stack">
+              <span className="muted">{user.email}</span>
+              <a href="/profile">Profile</a>
+              <Button variant="ghost" onClick={signOut}>
+                Sign out
+              </Button>
+            </div>
+          ) : (
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <Button
+                  variant="ghost"
+                  aria-label={`Account menu for ${user.email}`}
+                >
+                  {user.email} <span aria-hidden="true">⌄</span>
+                </Button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="account-menu" align="end">
+                  <DropdownMenu.Label className="muted">
+                    {user.email}
+                  </DropdownMenu.Label>
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item asChild>
+                    <a href="/profile">Profile</a>
+                  </DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={signOut}>
+                    Sign out
+                  </DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          )}
         </>
-      ) : (
+      ) : sessionState === 'unknown' ? null : (
         <>
           <a href="/sign-in">Sign in</a>
           <a href="/sign-up" className="button">
@@ -98,7 +116,7 @@ export function Header() {
           Developer Portal
         </a>
         <nav className="desktop-nav" aria-label="Main navigation">
-          {links}
+          {links()}
         </nav>
         <div className="mobile-nav">
           <Dialog.Root>
@@ -125,7 +143,7 @@ export function Header() {
                     Close menu
                   </Button>
                 </Dialog.Close>
-                <nav aria-label="Mobile navigation">{links}</nav>
+                <nav aria-label="Mobile navigation">{links(true)}</nav>
               </Dialog.Content>
             </Dialog.Portal>
           </Dialog.Root>

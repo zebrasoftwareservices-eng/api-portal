@@ -10,7 +10,7 @@ const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('server-only', () => ({}));
 vi.mock('../lib/server', () => ({
   serverClient: async () => ({ GET: get }),
-  currentUser: async () => null,
+  signedInUser: async () => null,
 }));
 vi.mock('next/navigation', () => ({
   notFound: () => {

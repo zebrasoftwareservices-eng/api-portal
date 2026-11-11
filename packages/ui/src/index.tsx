@@ -54,25 +54,32 @@ export function PageHeader({
   description,
   actions,
   breadcrumb,
+  titleSuffix,
 }: {
   title: string;
+  titleSuffix?: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
   breadcrumb?: { label: string; href?: string }[];
 }) {
   return (
     <>
-      <nav aria-label="Breadcrumb">
-        {breadcrumb?.map((b, i) => (
-          <span key={i}>
-            {b.href ? <a href={b.href}>{b.label}</a> : b.label}
-            {i < breadcrumb.length - 1 ? ' / ' : ''}
-          </span>
-        ))}
-      </nav>
+      {!!breadcrumb?.length && (
+        <nav aria-label="Breadcrumb">
+          {breadcrumb?.map((b, i) => (
+            <span key={i}>
+              {b.href ? <a href={b.href}>{b.label}</a> : b.label}
+              {i < breadcrumb.length - 1 ? ' / ' : ''}
+            </span>
+          ))}
+        </nav>
+      )}
       <div className="page-header">
         <div>
-          <h1 tabIndex={-1}>{title}</h1>
+          <div className="reference-title">
+            <h1 tabIndex={-1}>{title}</h1>
+            {titleSuffix}
+          </div>
           {description && <p className="muted">{description}</p>}
         </div>
         {actions && <div>{actions}</div>}
@@ -86,6 +93,7 @@ export function EmptyState({
   action,
 }: {
   title: string;
+  titleSuffix?: ReactNode;
   description: string;
   action?: ReactNode;
 }) {
@@ -104,6 +112,9 @@ export function CopyButton({
   onCopyError,
   copiedMessage,
   autoFocus,
+  announce,
+  failedMessage = "Couldn't copy. Select the text and press Ctrl+C (⌘C on Mac).",
+  onFailed,
 }: {
   value: string;
   label?: string;
@@ -111,8 +122,12 @@ export function CopyButton({
   onCopyError?: () => void;
   copiedMessage?: string;
   autoFocus?: boolean;
+  announce?: string;
+  failedMessage?: string;
+  onFailed?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [failed, setFailed] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
   return (
@@ -123,20 +138,39 @@ export function CopyButton({
         autoFocus={autoFocus}
         aria-label={ariaLabel}
         onClick={async () => {
+          setFailed(false);
+          setCopied(false);
+          clearTimeout(timer.current);
           try {
             await navigator.clipboard.writeText(value);
             setCopied(true);
             clearTimeout(timer.current);
             timer.current = setTimeout(() => setCopied(false), 2000);
           } catch {
+            setFailed(true);
             onCopyError?.();
+            onFailed?.();
           }
         }}
       >
         {copied ? '✓ Copied' : label}
       </Button>
-      <span className="sr-only" aria-live="polite">
-        {copied ? copiedMessage || `${ariaLabel || 'API key'} copied.` : ''}
+      <span
+        className={
+          failed
+            ? 'copy-feedback error-text'
+            : announce && copied
+              ? 'copy-feedback muted'
+              : 'sr-only'
+        }
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {failed
+          ? failedMessage
+          : copied
+            ? announce || copiedMessage || 'Copied.'
+            : ''}
       </span>
     </>
   );
@@ -145,7 +179,7 @@ export function CodeValue({ value, label }: { value: string; label: string }) {
   return (
     <div className="field">
       <span>{label}</span>
-      <div className="row">
+      <div className="row code-row">
         <code className="code-value" aria-label={label}>
           {value}
         </code>

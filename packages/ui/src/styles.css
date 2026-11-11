@@ -867,3 +867,116 @@ dd {
     min-height: 44px;
   }
 }
+
+/* Spec 003: compact, accessible recovery and handover states. */
+.catalog-card-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+.catalog-card-links p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.catalog-card-links span {
+  display: block;
+  color: var(--primary);
+}
+.code-row {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.code-row .code-value {
+  flex: 1;
+  min-width: 0;
+}
+.copy-feedback {
+  display: block;
+  font-size: var(--portal-text-sm);
+}
+.error-text {
+  color: var(--destructive);
+}
+.warning-text {
+  color: var(--portal-warning);
+}
+.key-reveal {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 2rem);
+  gap: 16px;
+}
+.key-reveal > h2,
+.key-reveal > p,
+.key-footer {
+  flex-shrink: 0;
+  margin: 0;
+}
+.key-details {
+  min-height: 0;
+  overflow-y: auto;
+}
+.key-footer {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.account-menu {
+  z-index: 60;
+  display: grid;
+  min-width: 200px;
+  padding: 8px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--portal-shadow-overlay);
+}
+.account-menu [role='menuitem'],
+.account-menu [data-radix-dropdown-menu-item] {
+  padding: 8px;
+  cursor: pointer;
+}
+.account-menu [data-highlighted] {
+  outline: 2px solid var(--ring);
+  background: var(--accent);
+}
+.account-menu [role='separator'] {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+.server-unavailable {
+  max-width: var(--portal-form-max-width);
+  padding-top: 64px;
+}
+.reference-loading {
+  min-height: 480px;
+  color: var(--muted-foreground);
+}
+.reference-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.reference-title h1 {
+  margin: 0;
+}
+@media (max-width: 639px) {
+  .catalog-card-links {
+    flex-direction: column;
+  }
+  .server-unavailable {
+    padding-top: 32px;
+  }
+  .server-unavailable .row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .server-unavailable .button {
+    min-height: 44px;
+  }
+  .key-footer .button {
+    width: 100%;
+  }
+}

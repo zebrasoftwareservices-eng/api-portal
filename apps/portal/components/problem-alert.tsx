@@ -10,6 +10,7 @@ export function ProblemAlert({
   onRetry,
   retryAfterSeconds = 0,
   autoFocus = true,
+  titles = {},
 }: {
   problem: Problem;
   title?: string;
@@ -17,6 +18,7 @@ export function ProblemAlert({
   onRetry?: () => void;
   retryAfterSeconds?: number;
   autoFocus?: boolean;
+  titles?: Record<string, string>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [remaining, setRemaining] = useState(retryAfterSeconds);
@@ -30,16 +32,26 @@ export function ProblemAlert({
     return () => clearTimeout(timer);
   }, [remaining]);
   const code = problem.type.split('/').pop() || '';
-  const rawTitle =
-    problem.title === code || problem.title === code.replaceAll('-', ' ');
   const friendlyTitles: Record<string, string> = {
-    validation: 'Check the highlighted fields and try again',
+    validation: 'Check the form',
+    'smtp-unreachable': "Can't reach the mail server",
+    'smtp-auth-failed': 'The mail server rejected the sign-in',
+    'smtp-rejected': 'The mail server refused the message',
+    'last-admin': "You're the only admin",
+    'gateway-service-has-acl': 'Another ACL plugin applies to this service',
+    'gateway-service-already-linked':
+      'This service already has a published API',
     'gateway-unavailable': 'Gateway unavailable',
-    'gateway-rejected': 'The gateway rejected the request',
+    'gateway-rejected': 'Gateway error',
+    'invalid-openapi': "This isn't a valid OpenAPI document",
+    'unsupported-openapi-version': 'Unsupported OpenAPI version',
+    network: "Can't reach the portal server",
   };
   const heading =
     title ||
-    (rawTitle ? friendlyTitles[code] || 'Something went wrong' : problem.title);
+    titles[code] ||
+    (problem.status === 502 ? 'Gateway error' : friendlyTitles[code]) ||
+    'Import failed';
   return (
     <div className="alert error stack" role="alert" tabIndex={-1} ref={ref}>
       <strong>⚠ {heading}</strong>

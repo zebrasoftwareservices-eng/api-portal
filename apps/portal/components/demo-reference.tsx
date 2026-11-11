@@ -2,6 +2,7 @@
 'use client';
 import { useState } from 'react';
 import { Scalar, ReferenceBoundary } from './reference';
+import { referenceOptions } from '../lib/reference-options';
 import { referenceDocument } from '../lib/reference-document';
 export function DemoReference({
   document,
@@ -13,6 +14,7 @@ export function DemoReference({
     <ReferenceBoundary key={attempt} retry={() => setAttempt((n) => n + 1)}>
       <Scalar
         configuration={{
+          ...referenceOptions(document),
           content: referenceDocument(document),
           theme: 'none',
           hideDarkModeToggle: true,
@@ -25,7 +27,7 @@ export function DemoReference({
           showDeveloperTools: 'never',
           telemetry: false,
           customCss:
-            '.scalar-reference-intro-auth, .scalar-reference-intro-server { display: none !important; }',
+            '.scalar-reference-intro h1, .scalar-reference-intro-auth, .scalar-reference-intro-server { display: none !important; }',
         }}
       />
     </ReferenceBoundary>
