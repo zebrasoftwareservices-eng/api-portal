@@ -442,7 +442,7 @@ for (const title of ['Team unavailable', 'unknown-code']) {
     context,
   }) => {
     await account(context.request);
-    await page.route('**/api/v1/apps', (route) =>
+    await page.route(/\/api\/v1\/apps(?:\?.*)?$/, (route) =>
       route.fulfill({
         status: 503,
         contentType: 'application/problem+json',
@@ -450,7 +450,7 @@ for (const title of ['Team unavailable', 'unknown-code']) {
       }),
     );
     await page.goto('/dashboard');
-    const alert = page.getByRole('alert');
+    const alert = page.locator('main').getByRole('alert');
     await expect(alert).toContainText(
       title === 'unknown-code' ? 'Something went wrong' : title,
     );
@@ -514,8 +514,10 @@ test('JSO-176 admin import keeps its fallback for an unknown problem code', asyn
   await page
     .getByRole('button', { name: 'Import and publish', exact: true })
     .click();
-  await expect(page.getByRole('alert')).toContainText('Import failed');
-  await expect(page.getByRole('alert')).not.toContainText(
+  await expect(page.locator('main').getByRole('alert')).toContainText(
+    'Import failed',
+  );
+  await expect(page.locator('main').getByRole('alert')).not.toContainText(
     'Something went wrong',
   );
 });
