@@ -15,12 +15,13 @@ and open bugs. Do not open `docs/uat/` or old review notes.
    - User journeys → Playwright e2e tests in `apps/portal/e2e/`
 2. Add failure-path tests: invalid input, gateway unreachable, duplicate requests,
    missing permission, expired session.
-3. Run the one full pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e`, and
+3. Make the new tests pass locally, then run the browser suite once. That one full pass is
+   `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e`, and
    the quickstart. Start it with `node scripts/worktree-compose.mjs up -d --build --wait`
    and leave that stack up for the user-tester. Record the portal URL from
    `node scripts/worktree-compose.mjs env` and the commit you tested.
 4. Fill the spec's **Test report**: a table of criterion → test file → pass/fail,
-   plus the commit and the portal URL. Put a long narrative in `docs/specs/log/<id>.md`.
+   plus the commit and the portal URL. Append 2–4 sentences to `docs/specs/log/<id>.md` and do not read earlier rounds.
 5. Re-test every open bug. Verified: `node scripts/factory.mjs linear bug <id> done "<unique text>"`
    (ticks the line and moves a keyed issue to Done). Still broken: `linear bug <id> open "<unique text>"`
    (unticks it and moves the key to In Progress).
