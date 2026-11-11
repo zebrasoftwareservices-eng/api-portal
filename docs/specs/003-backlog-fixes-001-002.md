@@ -1,7 +1,7 @@
 ---
 id: 003
 title: Backlog fixes from specs 001 and 002
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-232
@@ -423,7 +423,7 @@ No new blocker or major was found in this retest. UAT should use the running por
 - [x] JSO-181 Mobile app cards label Active keys and Created at 390 px; regression confirms the existing dashboard fix (minor, verified).
 ## User testing  _(user-tester)_
 
-UAT on November 11, 2026, commit `2c3fd54`, against QA's running portal at http://localhost:3013. Full evidence and explicit automated-only variants: [`docs/uat/003/report.md`](../uat/003/report.md). No open blocker or major was found; admin import checks were excluded by Elango.
+UAT baseline on November 11, 2026, commit `2c3fd54`; focused shared-alert retest at `eb12492` against http://localhost:3013. Full evidence and explicit automated-only variants: [`docs/uat/003/report.md`](../uat/003/report.md). No open blocker or major was found; admin import checks were excluded by Elango.
 
 | User story | Result | Evidence |
 | --- | --- | --- |
@@ -431,14 +431,14 @@ UAT on November 11, 2026, commit `2c3fd54`, against QA's running portal at http:
 | Get a key and try a call | Pass | `I've saved it` visible at 1280×800; sample and operation-auth subscribed requests return `200 OK`; an unsubscribed key returns `403 Forbidden`. |
 | Keyboard and screen-reader focus | Pass for handover/navigation | `Header line copied.` and clipboard error replacement; next Tab opens the reference; Cancel/Escape return focus to Revoke; keyboard-confirmed revoke succeeds. Full HTTP request used the mobile pointer pass. |
 | Dashboard and account | Pass | Email/separator/Sign out dropdown; no empty Breadcrumb; mobile `Active keys` and `Created`; real sign-out failure shows retry toast. Code-load failure remains QA-covered. |
-| Sign-in and ended session | Pass | Wrong password clears/focuses; cross-tab sign-out then Create key reaches `/sign-in?next=…` with `Your session has ended. Sign in to continue.` |
+| Sign-in and ended session | Pass | Alert retest: `Email or password is incorrect.` with an empty password field and no import heading. Ended-session baseline remains passed. |
 | Admin import failure and recovery | Not tested | Admin login withheld by Elango; covered by QA's automated admin import tests. |
-| Key action outages and server recovery | Pass | `Gateway unavailable`; revoke says `the key is still active`; three route error pages hide auth state; retry recovers in the same document in ≤4.11 s. Try-it/service-picker copy variants remain QA-covered. |
+| Key action outages and server recovery | Pass | Alert retest: create/revoke preserve `Gateway unavailable`; revoke says `the key is still active` at 390×844. Dashboard outage hides auth state; keyboard retry restores `My apps`. Other route baseline and QA-only variants remain unchanged. |
 | Not-found routes | Pass, live | Required paths use `Developer Portal`; unknown API is HTTP 404. Demo variant remains QA-covered. |
 | Local date boundary | Current-date display passed; fixture variants QA-only | App and key dates say `Nov 11, 2026` in Los Angeles; exact November 3/UTC and admin fixtures remain covered by QA's timezone tests. |
 | Mobile and keyboard main journey | Pass for walked scope | Mobile sample request returns `200 OK`; keyboard dashboard → app → key → reference and revoke focus pass; see report for scope. |
 
-Two local success images only; no browser logs or PNGs committed. Console outage error `Minified React error #441` carried `PORTAL_SERVER_UNAVAILABLE`; the portal recovered. No new findings or open bugs; the worktree stack was stopped after testing.
+No new images or findings in the focused alert retest; no open bugs. Fresh console inspection was rejected by automatic approval review under the no-browser-logs constraint; the report labels its retained console quote as baseline evidence. No browser logs or PNGs committed; the worktree stack was stopped after testing.
 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
