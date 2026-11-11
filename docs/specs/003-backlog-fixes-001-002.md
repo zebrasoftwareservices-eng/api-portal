@@ -1,7 +1,7 @@
 ---
 id: 003
 title: Backlog fixes from specs 001 and 002
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-232
@@ -342,7 +342,7 @@ except for the error *title* the portal shows.
 - [x] [qa] Outage e2e: stop server, check `/`, `/apis/sample`, `/dashboard` error page and header, restart, **Try again** recovers within 5 s with no navigation (JSO-189, 190, 191).
 - [ ] [qa] Dates in `America/Los_Angeles` and `UTC` via `timezoneId` (JSO-166); 404 status for unknown slug in demo and live (JSO-228).
 - [x] [qa] Clean-checkout `pnpm build` and `pnpm dev` start/stop leave `git status --porcelain` empty; `HOSTNAME=myhost pnpm dev` serves on `0.0.0.0` (JSO-230, JSO-188 tooling).
-- [ ] [qa] Full suite plus clean-clone `docker compose up` serves the catalog with the sample API in under five minutes.
+- [x] [qa] Full suite plus clean-clone `docker compose up` serves the catalog with the sample API in under five minutes.
 - [x] [backend] Fix: First try-it request returns 200 for an unsubscribed API key after import
 - [x] [frontend] Fix (Elango, loop 1): catalog card text separates the base URL from View reference at 390 and 1280 px (minor bug JSO-162 line).
 - [x] [frontend] Fix (Elango, loop 1): catalog tab title reads APIs · Developer Portal in live and demo (minor bug JSO-222 line).
@@ -379,32 +379,40 @@ Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes
 - JSO-225 diagnosis: `api_versions.document` uses PostgreSQL `jsonb`, the seed writes the parsed document directly, and `publicDocument` clones that stored value, so authored path order is lost before reaching the SDK; Scalar 1.46 additionally applies `operationsSorter` only to tagged operations and leaves untagged operations in received path order. The coordinator directed leaving the fix task unticked and making no frontend ordering change: preserving order requires storage/schema scope that Elango must decide, since the current technical design rules out migrations; no sample paths are hardcoded.
 
 ## Test report  _(qa-tester)_
-Application/image commit tested: `d234c5230e987e14d990ff5256016b60c0bcea46`; final QA tests: `4896235b74860a0542dc84b98df2febc03e31d60`. Portal: **http://localhost:3013** (`worktree-compose env`); worktree Compose stack is healthy and left running.
 
-| Criterion | Automated tests | Current result |
+Tested commit: `73ca87636dafb266e42834a209132605e6617251` (application fixes through `71740f2135174b37ad8e25c898c3bbaa1b4429ec`). Portal: **http://localhost:3013**, from `node scripts/worktree-compose.mjs env`; project `portal-003-backlog-fixes-001-002-cb68`. Kong was recreated before browser checks and `printenv KONG_WORKER_CONSISTENCY` returned `strict`.
+
+| Acceptance criterion | Automated evidence | Result |
 | --- | --- | --- |
-| 1 — catalog, title | `apps/portal/e2e/backlog-regressions.test.ts` (JSO-162/222/183) | **Fail** live/demo: geometry passes at 390/1280, but textContent has no separating whitespace and title is only `APIs`. |
-| 2 — reference, auth | `backlog-regressions.test.ts`; `apps/portal/e2e/backlog-live.test.ts` (JSO-175); `apps/server/src/catalog.test.ts` | **Partial**: tools hidden, alignment, empty auth, one document fetch, and operation-only key reaching a real request pass. Duplicate visible H1 fails in both builds; authored sidebar order passes in demo but fails live (status operation last). |
-| 3 — keys, focus, dates | `backlog-live.test.ts` (JSO-192/215/182/161/166); `apps/portal/components/shared-ui.test.tsx` | **Pass**: footer in viewport, success/error live announcements, next-Tab reference link, Cancel/Escape focus return, app/key/admin dates in LA and UTC. |
-| 4 — header/dashboard | `backlog-live.test.ts` (JSO-163/181/214/227); `apps/portal/components/header.test.tsx` (import failure) | **Pass**: dropdown, mobile labels, no empty Breadcrumb landmark, sign-out network/import failure toast. JSO-181 verified and moved to Done. |
-| 5 — sign-in/session | `backlog-live.test.ts` (JSO-179/180) | **Pass** wrong-password clearing/focus and expired-session redirect/toast. |
-| 6 — import/key failures | `apps/portal/e2e/journeys.ts` (JSO-176/177/184); `apps/portal/components/admin-apis.test.tsx`, `problem-alert.test.tsx`, `app-detail.test.tsx`; `apps/server/src/import.test.ts`, `app.test.ts` | **Pass** after updating old alert assertions: malformed YAML coordinates, field-only validation, cleared previous feedback, non-ASCII slug refusal, gateway error titles and refresh recovery. |
-| 7 — server outage | `backlog-live.test.ts` (JSO-189/190/191); `apps/server/src/app.test.ts` (gateway copy) | **Pass** all three routes with real stop/start: portal header/error, unknown account state, recovery within 5 seconds, no document request/reload and preserved page marker. Same-document history/hash events are recorded, not misclassified as reloads. |
-| 8 — 404/title | `backlog-regressions.test.ts`; `backlog-live.test.ts`; `deploy/e2e-demo/demo.test.ts` | **Partial**: default titles and non-admin/unknown-app cases pass; unknown API returns HTTP **200** in live and demo. |
-| 9 — tests/hygiene/quickstart | `backlog-regressions.test.ts` (JSO-226); `apps/portal/e2e/reference-snippets.test.ts` (JSO-231); `apps/portal/lib/backlog-hygiene.test.ts`; `tests/spec003-hygiene.test.ts`; `apps/portal/e2e/setup-gateways.test.ts`; `deploy/e2e/quickstart.spec.ts` | **Partial**: demo visible-text guards pass; badge **20/20** (`--repeat-each=10`, two viewports); CI/config/answered questions pass. Clean committed checkout `27882e6` build/dev stays clean and HOSTNAME=myhost binds wildcard/serves HTTP 200. Fresh wizard/sample-opt-in journey passes in **47.5s**; literal default catalog-with-sample criterion is unmet because current defaults open setup and require sample opt-in. |
+| 1 — catalog spacing, whitespace and full tab title at 390/1280 px | `apps/portal/e2e/backlog-regressions.test.ts`: JSO-162, JSO-222/183 in live and demo | Pass |
+| 2 — title/badge and base-URL/Copy alignment; one visible H1; toolbar absent; empty authentication; one document request | `apps/portal/e2e/backlog-regressions.test.ts`: JSO-173, 224, 172, 174 and document-request regression | Pass |
+| 2 — operation-only security, hint, pasted key reaches request; first unauthorized try-it refuses access | `apps/portal/e2e/backlog-live.test.ts`: JSO-175; `apps/portal/e2e/journeys.ts`: JSON/XML/plain/HTML refusal; `apps/server/src/catalog.test.ts` | Pass; first-request assertion has no Kong polling or retry warm-up |
+| 3 — reveal dialog fits, copy success/failure, saved-key Tab order, revoke Cancel/Escape focus | `apps/portal/e2e/backlog-live.test.ts`: JSO-192/182/161/215; `components/key-handover.test.tsx`, `app-detail.test.tsx`, `shared-ui.test.tsx` | Pass |
+| 3 — app header, keys and admin dates in Los Angeles and UTC | `apps/portal/e2e/backlog-live.test.ts`: two JSO-166 timezone projects | Pass |
+| 4 — account dropdown, mobile labels, absent empty breadcrumb, sign-out API/import failures | `apps/portal/e2e/backlog-live.test.ts`: JSO-163/181/214/227; `apps/portal/components/header.test.tsx` | Pass |
+| 5 — wrong-password focus/clear and expired-session create-key redirect/toast | `apps/portal/e2e/backlog-live.test.ts`: JSO-179 and 180 | Pass |
+| 6 — sentence-case outages; field-only slug/URL errors; previous result cleared; malformed YAML coordinates; non-ASCII slug; recovered service refresh | `apps/portal/components/admin-apis.test.tsx`, `problem-alert.test.tsx`, `account-security.test.tsx`; `apps/server/src/import.test.ts`; `apps/portal/e2e/journeys.ts` | Pass |
+| 7 — real server stop/start on catalog, reference and dashboard; unknown header auth; retry within 5 s without document reload; action-neutral copy | `apps/portal/e2e/backlog-live.test.ts`: three JSO-189/190/191 cases; `apps/server/src/app.test.ts`, `apps/portal/components/problem-alert.test.tsx` | Pass |
+| 8 — default not-found titles, non-admin denial, unknown-app title, live/demo HTTP 404 | `apps/portal/e2e/backlog-live.test.ts`: JSO-223/183; `backlog-regressions.test.ts`: JSO-223/228 in both modes | Pass |
+| 9 — visible-text demo server/auth-card guard; no fixed badge wait; ten consecutive badge runs | `apps/portal/e2e/backlog-regressions.test.ts`: JSO-226 and JSO-173; `reference-snippets.test.ts`: JSO-231 with `--repeat-each=10` | Pass (20/20 JSO-231; 10/10 alignment) |
+| 9 — image smoke registered in CI, obsolete config absent, demo command documented, answered questions ticked | `apps/portal/lib/backlog-hygiene.test.ts` | Pass |
+| 9 — clean build and dev start/stop stay clean; exported HOSTNAME does not change wildcard bind | `tests/spec003-hygiene.test.ts` | Pass; explicit test environment forwarded through Turbo using `--env-mode=loose` |
+| 9 — fresh seeded Compose quickstart under five minutes | `tests/spec003-quickstart.test.ts`: deletes only this worktree QA stack/volume, then `node scripts/worktree-compose.mjs up -d --build --wait` | Pass: catalog and sample API in **88.0 s**; fresh-volume current checkout, not a separate clone |
 
-One full pass: `pnpm lint`, `pnpm typecheck`, `pnpm test` **passed** (portal 272, server 212, Kong adapter 55, DB 6); `pnpm test:e2e` **77 passed / 9 failed** in 8.8 minutes; `pnpm test:e2e:demo` **31 passed / 5 failed**. Later focused reruns verified corrected legacy account-menu, import-error and demo-title assertions, all three added hygiene assertions, mobile keyboard trapping and the independent JSO-175 authenticated request; no second full pass was run. Badge measurements include border widths and wait for rendered Scalar; product failures remain asserted rather than marked expected.
+Validation: `pnpm lint` and `pnpm typecheck` passed; `pnpm test` passed **549 tests** (275 portal, 212 server, 56 Kong adapter, 6 database; 12 successful Turbo tasks, 8 cached). Focused live Playwright passed **21** with 2 intentional skips; focused demo passed **9** with 2 intentional skips; first-request refusals passed **4/4**, and the issue-specific badge repeat passed **20/20** (10 per viewport), plus **10/10** alignment repeats. Skips cover mode-specific behavior and operation-order work deferred by Elango; deferred work was not tested or reopened.
 
-A major first-request access refusal failure reproduced twice: try-it returned 200 for an unsubscribed key after direct Kong had returned 403; retry recovered to 403 (121ms in HTML case, 5.276s in JSON case). Backend Fix task and Deferred Linear evidence are preserved because Linear rejected creation at its free issue limit; **status is building**. No application code was changed, and minors have no Fix tasks. The helper rejects completed multi-key Demo/badge and Clean-checkout task lines; those checkboxes remain open for coordinator bookkeeping, while the dates/404 and full-pass tasks remain incomplete on their merits.
+`pnpm test:e2e` completed successfully: **92 passed, 2 skipped** in **6.2 minutes**. Existing expected-failure annotations for JSO-399, JSO-405 and JSO-406 remain unchanged; they are outside this spec. An initial run was interrupted after missing Compose project/image/port variables caused setup failures; the complete pass used all matching worktree variables plus `SERVER_URL=http://localhost:4013`, and confirmed disposable leftovers from the interrupted attempt were removed. The worktree stack remains running for UAT.
+
+All five open bugs were re-tested through `linear bug 003 done`: the major first-request refusal and minor JSO-162, JSO-222, JSO-224 and JSO-228. There are no open blocker/major findings and no new minor findings or Fix tasks. The dates/404 QA task helper rejects its existing multi-key line (JSO-166 and JSO-228); its passing evidence is recorded above for coordinator bookkeeping.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] First try-it request returns 200 for an unsubscribed API key after import (major)
-- [ ] JSO-162 Catalog cards have separate non-overlapping blocks, but textContent still joins the base URL directly to View reference → at 390 and 1280 px (minor).
-- [ ] JSO-222 Catalog tab title is APIs instead of APIs · Developer Portal in live and demo (minor).
-- [ ] JSO-224 Scalar repeats the API title as a second visible H1 in live and demo (minor).
-- [ ] JSO-228 Unknown API routes return HTTP 200 instead of 404 in live and demo (minor).
+- [x] First try-it request returns 200 for an unsubscribed API key after import (major)
+- [x] JSO-162 Catalog cards have separate non-overlapping blocks, but textContent still joins the base URL directly to View reference → at 390 and 1280 px (minor).
+- [x] JSO-222 Catalog tab title is APIs instead of APIs · Developer Portal in live and demo (minor).
+- [x] JSO-224 Scalar repeats the API title as a second visible H1 in live and demo (minor).
+- [x] JSO-228 Unknown API routes return HTTP 200 instead of 404 in live and demo (minor).
 - [x] JSO-181 Mobile app cards label Active keys and Created at 390 px; regression confirms the existing dashboard fix (minor, verified).
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
