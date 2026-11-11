@@ -342,6 +342,11 @@ except for the error *title* the portal shows.
 - [x] [qa] Clean-checkout `pnpm build` and `pnpm dev` start/stop leave `git status --porcelain` empty; `HOSTNAME=myhost pnpm dev` serves on `0.0.0.0` (JSO-230, JSO-188 tooling).
 - [ ] [qa] Full suite plus clean-clone `docker compose up` serves the catalog with the sample API in under five minutes.
 - [x] [backend] Fix: First try-it request returns 200 for an unsubscribed API key after import
+- [ ] [frontend] Fix (Elango, loop 1): catalog card text separates the base URL from View reference at 390 and 1280 px (minor bug JSO-162 line).
+- [ ] [frontend] Fix (Elango, loop 1): catalog tab title reads APIs · Developer Portal in live and demo (minor bug JSO-222 line).
+- [ ] [frontend] Fix (Elango, loop 1): Scalar does not repeat the API title as a second visible H1 in live and demo (minor bug JSO-224 line).
+- [ ] [frontend] Fix (Elango, loop 1): live sidebar keeps the authored sample operation order (minor bug JSO-225 line).
+- [ ] [frontend] Fix (Elango, loop 1): unknown /apis/<slug> returns HTTP 404 in live and demo (minor bug JSO-228 line).
 ## UX  _(ui-designer)_
 Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes-001-002.md). No new tokens.
 - One new screen, **Portal server unavailable** (`ServerUnavailable` in `error.tsx`, `global-error.tsx`
