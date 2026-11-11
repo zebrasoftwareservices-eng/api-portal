@@ -340,7 +340,7 @@ except for the error *title* the portal shows.
 - [x] [qa] One regression test per issue in scope (criteria 1–9), named by issue key; JSO-181 test confirms `36f6aa2` and closes it.
 - [x] [qa] Demo e2e fails on visible Scalar server/auth card text (JSO-226); version-badge test waits for Scalar render and passes `--repeat-each=10` (JSO-231).
 - [x] [qa] Outage e2e: stop server, check `/`, `/apis/sample`, `/dashboard` error page and header, restart, **Try again** recovers within 5 s with no navigation (JSO-189, 190, 191).
-- [ ] [qa] Dates in `America/Los_Angeles` and `UTC` via `timezoneId` (JSO-166); 404 status for unknown slug in demo and live (JSO-228).
+- [x] [qa] Dates in `America/Los_Angeles` and `UTC` via `timezoneId` (JSO-166); 404 status for unknown slug in demo and live (JSO-228).
 - [x] [qa] Clean-checkout `pnpm build` and `pnpm dev` start/stop leave `git status --porcelain` empty; `HOSTNAME=myhost pnpm dev` serves on `0.0.0.0` (JSO-230, JSO-188 tooling).
 - [x] [qa] Full suite plus clean-clone `docker compose up` serves the catalog with the sample API in under five minutes.
 - [x] [backend] Fix: First try-it request returns 200 for an unsubscribed API key after import
