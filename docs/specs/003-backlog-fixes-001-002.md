@@ -1,7 +1,7 @@
 ---
 id: 003
 title: Backlog fixes from specs 001 and 002
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-232
@@ -335,13 +335,13 @@ except for the error *title* the portal shows.
 - [x] [frontend] Admin import: sentence-case titles, field-only slug/URL errors, clear on submit, line/column display, slug-required on the field, **Refresh list** clears the Kong banner, "Gateway unavailable" for key outages (JSO-176, 177, 178, 184; JSO-188 slug item).
 - [x] [frontend] Outage copy: no "Nothing was created" on revoke, admin service picker or try-it (JSO-188 copy item).
 - [x] [frontend] Hygiene: ingress binds `PORTAL_HOST || 0.0.0.0`; ignore `next-env.d.ts` and `apps/portal/AGENTS.md`, typecheck runs `next typegen` first; delete `playwright.reference.config.ts`; CI runs `deploy/server-image-smoke.mjs`; AGENTS.md lists `pnpm test:e2e:demo`; tick spec 001's answered open questions (JSO-188 tooling items, JSO-229, JSO-230).
-- [ ] [qa] One regression test per issue in scope (criteria 1–9), named by issue key; JSO-181 test confirms `36f6aa2` and closes it.
+- [x] [qa] One regression test per issue in scope (criteria 1–9), named by issue key; JSO-181 test confirms `36f6aa2` and closes it.
 - [ ] [qa] Demo e2e fails on visible Scalar server/auth card text (JSO-226); version-badge test waits for Scalar render and passes `--repeat-each=10` (JSO-231).
-- [ ] [qa] Outage e2e: stop server, check `/`, `/apis/sample`, `/dashboard` error page and header, restart, **Try again** recovers within 5 s with no navigation (JSO-189, 190, 191).
+- [x] [qa] Outage e2e: stop server, check `/`, `/apis/sample`, `/dashboard` error page and header, restart, **Try again** recovers within 5 s with no navigation (JSO-189, 190, 191).
 - [ ] [qa] Dates in `America/Los_Angeles` and `UTC` via `timezoneId` (JSO-166); 404 status for unknown slug in demo and live (JSO-228).
 - [ ] [qa] Clean-checkout `pnpm build` and `pnpm dev` start/stop leave `git status --porcelain` empty; `HOSTNAME=myhost pnpm dev` serves on `0.0.0.0` (JSO-230, JSO-188 tooling).
 - [ ] [qa] Full suite plus clean-clone `docker compose up` serves the catalog with the sample API in under five minutes.
-
+- [ ] [backend] Fix: First try-it request returns 200 for an unsubscribed API key after import
 ## UX  _(ui-designer)_
 Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes-001-002.md). No new tokens.
 - One new screen, **Portal server unavailable** (`ServerUnavailable` in `error.tsx`, `global-error.tsx`
@@ -369,18 +369,34 @@ Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes
 - Frontend task tracking: the factory helper rejected the three completed multi-key lines (Reference page, Admin import, Hygiene); the coordinator authorized ticking only their checkboxes directly, without moving those Linear issues.
 
 ## Test report  _(qa-tester)_
-Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
+Application/image commit tested: `d234c5230e987e14d990ff5256016b60c0bcea46`; final QA tests: `4896235b74860a0542dc84b98df2febc03e31d60`. Portal: **http://localhost:3013** (`worktree-compose env`); worktree Compose stack is healthy and left running.
 
-| Criterion | Test file | Result |
+| Criterion | Automated tests | Current result |
 | --- | --- | --- |
+| 1 — catalog, title | `apps/portal/e2e/backlog-regressions.test.ts` (JSO-162/222/183) | **Fail** live/demo: geometry passes at 390/1280, but textContent has no separating whitespace and title is only `APIs`. |
+| 2 — reference, auth | `backlog-regressions.test.ts`; `apps/portal/e2e/backlog-live.test.ts` (JSO-175); `apps/server/src/catalog.test.ts` | **Partial**: tools hidden, alignment, empty auth, one document fetch, and operation-only key reaching a real request pass. Duplicate visible H1 fails in both builds; authored sidebar order passes in demo but fails live (status operation last). |
+| 3 — keys, focus, dates | `backlog-live.test.ts` (JSO-192/215/182/161/166); `apps/portal/components/shared-ui.test.tsx` | **Pass**: footer in viewport, success/error live announcements, next-Tab reference link, Cancel/Escape focus return, app/key/admin dates in LA and UTC. |
+| 4 — header/dashboard | `backlog-live.test.ts` (JSO-163/181/214/227); `apps/portal/components/header.test.tsx` (import failure) | **Pass**: dropdown, mobile labels, no empty Breadcrumb landmark, sign-out network/import failure toast. JSO-181 verified and moved to Done. |
+| 5 — sign-in/session | `backlog-live.test.ts` (JSO-179/180) | **Pass** wrong-password clearing/focus and expired-session redirect/toast. |
+| 6 — import/key failures | `apps/portal/e2e/journeys.ts` (JSO-176/177/184); `apps/portal/components/admin-apis.test.tsx`, `problem-alert.test.tsx`, `app-detail.test.tsx`; `apps/server/src/import.test.ts`, `app.test.ts` | **Pass** after updating old alert assertions: malformed YAML coordinates, field-only validation, cleared previous feedback, non-ASCII slug refusal, gateway error titles and refresh recovery. |
+| 7 — server outage | `backlog-live.test.ts` (JSO-189/190/191); `apps/server/src/app.test.ts` (gateway copy) | **Pass** all three routes with real stop/start: portal header/error, unknown account state, recovery within 5 seconds, no document request/reload and preserved page marker. Same-document history/hash events are recorded, not misclassified as reloads. |
+| 8 — 404/title | `backlog-regressions.test.ts`; `backlog-live.test.ts`; `deploy/e2e-demo/demo.test.ts` | **Partial**: default titles and non-admin/unknown-app cases pass; unknown API returns HTTP **200** in live and demo. |
+| 9 — tests/hygiene/quickstart | `backlog-regressions.test.ts` (JSO-226); `apps/portal/e2e/reference-snippets.test.ts` (JSO-231); `apps/portal/lib/backlog-hygiene.test.ts`; `tests/spec003-hygiene.test.ts`; `apps/portal/e2e/setup-gateways.test.ts`; `deploy/e2e/quickstart.spec.ts` | **Partial**: demo visible-text guards pass; badge **20/20** (`--repeat-each=10`, two viewports); CI/config/answered questions pass. Clean committed checkout `27882e6` build/dev stays clean and HOSTNAME=myhost binds wildcard/serves HTTP 200. Fresh wizard/sample-opt-in journey passes in **47.5s**; literal default catalog-with-sample criterion is unmet because current defaults open setup and require sample opt-in. |
 
-Long notes go in `docs/specs/log/003.md`, not here.
+One full pass: `pnpm lint`, `pnpm typecheck`, `pnpm test` **passed** (portal 272, server 212, Kong adapter 55, DB 6); `pnpm test:e2e` **77 passed / 9 failed** in 8.8 minutes; `pnpm test:e2e:demo` **31 passed / 5 failed**. Later focused reruns verified corrected legacy account-menu, import-error and demo-title assertions, all three added hygiene assertions, mobile keyboard trapping and the independent JSO-175 authenticated request; no second full pass was run. Badge measurements include border widths and wait for rendered Scalar; product failures remain asserted rather than marked expected.
+
+A major first-request access refusal failure reproduced twice: try-it returned 200 for an unsubscribed key after direct Kong had returned 403; retry recovered to 403 (121ms in HTML case, 5.276s in JSON case). Backend Fix task and Deferred Linear evidence are preserved because Linear rejected creation at its free issue limit; **status is building**. No application code was changed, and minors have no Fix tasks. The helper rejects completed multi-key Demo/badge and Clean-checkout task lines; those checkboxes remain open for coordinator bookkeeping, while the dates/404 and full-pass tasks remain incomplete on their merits.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
-
+- [ ] First try-it request returns 200 for an unsubscribed API key after import (major)
+- [ ] JSO-162 Catalog cards have separate non-overlapping blocks, but textContent still joins the base URL directly to View reference → at 390 and 1280 px (minor).
+- [ ] JSO-222 Catalog tab title is APIs instead of APIs · Developer Portal in live and demo (minor).
+- [ ] JSO-224 Scalar repeats the API title as a second visible H1 in live and demo (minor).
+- [ ] JSO-225 Live sidebar lists /status/{code} after /uuid and /headers instead of the authored sample order (minor).
+- [ ] JSO-228 Unknown API routes return HTTP 200 instead of 404 in live and demo (minor).
+- [x] JSO-181 Mobile app cards label Active keys and Created at 390 px; regression confirms the existing dashboard fix (minor, verified).
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
@@ -405,3 +421,10 @@ return the spec to building. Earlier rounds go in `docs/specs/log/003.md`.
 ### Follow-ups
 - Follow-up spec: JSO-188 server robustness items cut from 003
   Six server robustness items from the spec 001 review: no open transaction during Kong calls, reconcile clears drift after a failed DB update, compensation logs without secrets, boot never overwrites admin slug sample, boot completes after a crash in admin creation, catalog/slug lookup avoid loading full OpenAPI documents. Cut from 003 to keep one PR.
+
+### Deferred Linear
+- **Bug** — Bug: First try-it request returns 200 for an unsubscribed API key after import (major)
+  - parent: JSO-232
+  - priority: high
+  - create when the Linear limit allows
+  - body: During the spec 003 full browser pass on application commit d234c5230e987e14d990ff5256016b60c0bcea46, apps/portal/e2e/journeys.ts (text/html access-refusal case, JSO-277 first-request regression) returned HTTP 200 for the first same-origin try-it request using a key whose app subscribes only to sample, not the newly imported API. The test first polls the direct Kong target until it returns HTTP 403; the subsequent first /api/v1/try-it request must also return 403, but returned 200. A retry returned 403 after two requests in 121 ms. Reproduce: warm try-it with /sample/get; import a unique protected service/OpenAPI document; create an app subscribed only to sample; poll direct Kong /<new-api>/get with that key until 403; then issue one same-origin try-it GET for that target with the same key. Preserve the first-request assertion: a later retry must not hide an authorization failure. The observed full-suite log is /tmp/qa003-e2e.log and the test error is test-results/journeys-AC-2-Scalar-shows-531af-d-preserves-an-upstream-403/error-context.md. This is intermittent and the root cause is unconfirmed; investigate whether authorization is bypassed or the wrong target/response is served on the first request. It blocks a green security regression run and needs backend ownership; no application change was made by QA.
