@@ -45,6 +45,7 @@ node scripts/factory.mjs next
 | 1      | 004  | per-api-access-control               | JSO-233 | —                                      | Per-API access control on Kong: ACL groups and hidden credentials                |
 | 1      | 019  | unified-portal-developer-journey     | JSO-316 | 003 at testing                         | Unified portal: navigation, API-page access action and responsive My apps        |
 | 2      | 005  | setup-wizard-and-gateway-connections | JSO-234 | 004                                    | First-run setup and gateway connections in the admin UI                          |
+| 2      | 022  | server-robustness                    | pending | 004                                    | Server robustness from JSO-188: Kong calls outside transactions, safe boot       |
 | 2      | 006  | hosted-live-demo                     | JSO-127 | Elango: choose hosting and set secrets | Hosted live demo behind the Vercel portal                                        |
 | 3      | 007  | email-and-account-security           | JSO-235 | —                                      | Email delivery, verification, password reset and account deletion                |
 | 3      | 008  | teams-and-roles                      | JSO-236 | 007                                    | Teams own apps and keys: invites and roles                                       |

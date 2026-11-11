@@ -141,7 +141,7 @@ Chromium; "visible" means inside the viewport without scrolling unless a criteri
   compensation fails; boot never overwriting an admin-published API at slug `sample`; boot
   completing after a crash during admin creation; catalog list and slug lookup not loading every
   full OpenAPI document. They need real Kong and Postgres integration work and touch key handling,
-  so they go to a follow-up spec built after this one. JSO-188 stays open until that spec ships,
+  so they go to spec 022, built after 004. JSO-188 stays open until that spec ships,
   so no commit in this spec may name JSO-188 (a merged commit naming it would close it).
 - **JSO-213**, spec 002's open Vercel preview check. It is a QA task, not a bug, and it waits for
   the repo to go public.
@@ -149,16 +149,20 @@ Chromium; "visible" means inside the viewport without scrolling unless a criteri
   new issue.
 
 ## Open questions
-- [ ] Confirm the cut: JSO-188's six server robustness items leave this spec for a follow-up
+- [x] Confirm the cut: JSO-188's six server robustness items leave this spec for a follow-up
   spec after 003 (which number?), and JSO-188 stays open until then. — Elango
+  **Answer (Elango, 2026-11-11):** cut confirmed. They become spec 022 (`server-robustness`),
+  sprint 2, built after 004, because 004 rewrites the same app/key creation and reconcile code.
 - [ ] Spec 019 merged with an account menu, My apps cards at 375 px and breadcrumb changes. Which
   of JSO-163, JSO-181, JSO-182 and JSO-214 does `main` already fix? Close those with the fixing
   commit. — tech-lead
 - [ ] JSO-172 and JSO-173 may already be partly fixed (JSO-221 fixed the badge width; JSO-188
   names the Scalar toolbar option). Confirm what's left, and close the issue with a reason if
   nothing is. — tech-lead
-- [ ] JSO-191: during an outage, should the header show no account state, or the last known one?
+- [x] JSO-191: during an outage, should the header show no account state, or the last known one?
   Criterion 7 assumes no account state. — ui-designer, Elango
+  **Answer (Elango, 2026-11-11):** no account state. A last-known signed-in header would offer
+  actions that fail while the server is down and could show a session that has since ended.
 - [ ] JSO-175: fix the hint copy, or make the key field appear for operation-level security?
   — tech-lead, ui-designer
 - [ ] JSO-215: what does the copy-failed message say? — ui-designer
