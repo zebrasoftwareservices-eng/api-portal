@@ -9,6 +9,7 @@ export function KeyRevealDialog({
   appName,
   apiTitles,
   variant,
+  notice,
   onDone,
   onCloseAutoFocus,
 }: {
@@ -17,6 +18,7 @@ export function KeyRevealDialog({
   appName: string;
   apiTitles: string[];
   variant: 'first' | 'additional';
+  notice?: string;
   onDone: () => void;
   onCloseAutoFocus?: () => void;
 }) {
@@ -68,6 +70,7 @@ export function KeyRevealDialog({
               ⚠ Copy this key now. We won&apos;t show it again. If you lose it,
               create a new key.
             </div>
+            {notice && <p role="status">{notice}</p>}
             <label htmlFor="revealed-key">API key</label>
             <textarea
               ref={key}

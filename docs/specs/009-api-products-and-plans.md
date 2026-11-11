@@ -268,19 +268,19 @@ is in `apps/server/openapi.yaml` (tag `products`, and the changed `apps` operati
   `PORTAL_RATE_LIMIT_POLICY` line in the README and `.env.example` explains `local`.
 
 ### Tasks
-- [ ] [backend] Schema and migration: `products`, `product_apis`, `plans`, `plan_apis`, `apps.plan_id`, the built-in plan and the backfill, `BUILTIN_PLAN_ID`; migration test
-- [ ] [backend] Adapter SDK: `PlanLimits`, `applyPlanLimits`, `AccessPolicy.apps[].limits`, `capabilities().plans`, `foreign-rate-limit`; conformance cases for apply, replace and remove
-- [ ] [backend] Kong adapter: consumer-scoped `rate-limiting` plugin with a stable ID and `rateLimitPolicy`; reconcile of portal rate-limit plugins in `applyAccessPolicy`; unit tests and a real-Kong test
-- [ ] [backend] Config: `PORTAL_RATE_LIMIT_POLICY` (`cluster` default, `local`) passed to the Kong adapter; document it in `.env.example` and the README
-- [ ] [backend] Products API: public list and detail, admin create and update product, create and update plan with per-field validation (AC 2), `api-in-plan`, reconcile job sent after a plan update
-- [ ] [backend] Catalog: `ApiSummary.products` on `GET /v1/apis` and API detail
-- [ ] [backend] Apps: `appApis` helper; `POST /v1/apps` with `planId`, and refusal of product APIs in `apiIds`; `App.plan`; one active key for product-plan apps; reconcile passes plan limits
-- [ ] [backend] Apps: `PUT /v1/apps/{appId}/plan`, `DELETE /v1/apps/{appId}` and `POST …/credentials/{credentialId}/regenerate`, with compensation; unit tests for every failure point (AC 9) and role checks (AC 10)
-- [ ] [backend] Regenerate `packages/sdk` from the contract
-- [ ] [frontend] Catalog lists products and the APIs in no product; product page with description, APIs and the plan comparison table (rate limit, monthly quota "per calendar month, UTC", included APIs)
-- [ ] [frontend] Subscribe on the product page: choose a plan, name the subscription, confirm, show the key once; gateway-unavailable and role errors
-- [ ] [frontend] My apps: show each app's plan and limits; change plan (same product), cancel with confirmation, regenerate key with the key shown once; read-only members see no actions
-- [ ] [frontend] Admin: product list, create and edit product (APIs from the catalog), add and edit plans with field errors beside each field
+- [x] [backend] Schema and migration: `products`, `product_apis`, `plans`, `plan_apis`, `apps.plan_id`, the built-in plan and the backfill, `BUILTIN_PLAN_ID`; migration test
+- [x] [backend] Adapter SDK: `PlanLimits`, `applyPlanLimits`, `AccessPolicy.apps[].limits`, `capabilities().plans`, `foreign-rate-limit`; conformance cases for apply, replace and remove
+- [x] [backend] Kong adapter: consumer-scoped `rate-limiting` plugin with a stable ID and `rateLimitPolicy`; reconcile of portal rate-limit plugins in `applyAccessPolicy`; unit tests and a real-Kong test
+- [x] [backend] Config: `PORTAL_RATE_LIMIT_POLICY` (`cluster` default, `local`) passed to the Kong adapter; document it in `.env.example` and the README
+- [x] [backend] Products API: public list and detail, admin create and update product, create and update plan with per-field validation (AC 2), `api-in-plan`, reconcile job sent after a plan update
+- [x] [backend] Catalog: `ApiSummary.products` on `GET /v1/apis` and API detail
+- [x] [backend] Apps: `appApis` helper; `POST /v1/apps` with `planId`, and refusal of product APIs in `apiIds`; `App.plan`; one active key for product-plan apps; reconcile passes plan limits
+- [x] [backend] Apps: `PUT /v1/apps/{appId}/plan`, `DELETE /v1/apps/{appId}` and `POST …/credentials/{credentialId}/regenerate`, with compensation; unit tests for every failure point (AC 9) and role checks (AC 10)
+- [x] [backend] Regenerate `packages/sdk` from the contract
+- [x] [frontend] Catalog lists products and the APIs in no product; product page with description, APIs and the plan comparison table (rate limit, monthly quota "per calendar month, UTC", included APIs)
+- [x] [frontend] Subscribe on the product page: choose a plan, name the subscription, confirm, show the key once; gateway-unavailable and role errors
+- [x] [frontend] My apps: show each app's plan and limits; change plan (same product), cancel with confirmation, regenerate key with the key shown once; read-only members see no actions
+- [x] [frontend] Admin: product list, create and edit product (APIs from the catalog), add and edit plans with field errors beside each field
 - [ ] [qa] Integration tests on real Kong and Postgres for AC 1–10, including the counter carry-over and the migration
 - [ ] [qa] Playwright e2e: admin creates a product and plan; developer subscribes, gets 429 on the sixth call, changes plan, regenerates and cancels
 - [ ] [qa] Quickstart `docker compose up` still works, with `cluster` policy, and the spec 004 per-API key flow still works for APIs in no product
@@ -295,6 +295,16 @@ Design: [docs/design/009-api-products-and-plans.md](../design/009-api-products-a
 - Every gateway error (AC 9) keeps the dialog or form open and says what didn't change; role refusals (AC 10) follow 008.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend: implemented the product catalog and server-rendered product pages, responsive plan comparison, team-scoped subscriptions with one-time key handover, My apps plan details, plan change/cancel/regenerate dialogs, and admin product/plan forms with collected field errors. Standalone app creation excludes product APIs; read-only members see no write controls. `@portal/portal` lint, typecheck and all 306 tests pass, including retries, dropped-API warnings, confirmations, catalog partial failures and numeric validation. The branch-wide ownership guard flags sibling backend/design files; the coordinator authorized checking and committing only frontend/spec/log paths instead.
+
+### Backend — products, plans and subscriptions
+
+Implemented the product/plan schema with a generated forward migration and Unlimited backfill, consumer-scoped Kong limits and reconcile repairs, product/catalog APIs, plan subscriptions, plan changes, cancellation, regeneration and the generated SDK. Validation collects all invalid plan fields (including product membership and quota errors), and gateway/database failure tests cover compensation and read-only role checks.
+
+Validation: all changed packages pass lint and typecheck; `@portal/db` passes 7 tests, `@portal/server` passes 234 tests, and `@portal/adapter-kong` passes 60 tests including real-Kong quota counter carry-over. `@portal/adapter-sdk` and `@portal/sdk` test commands pass with no standalone tests; adapter SDK conformance runs in the Kong package. No workspace-wide suite, browser or quickstart was run.
+
+`PORTAL_RATE_LIMIT_POLICY` is documented in `deploy/.env.example` and `deploy/README.md`; the coordinator leaves the root README addition for the tech lead. Existing test fixtures that truncate user-linked tables now restore the built-in plan. The coordinator authorized bypassing the broad guard using an explicit backend-only staged path list because frontend and earlier design changes share this branch; no other worker’s files were restored or included in the backend commit.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`

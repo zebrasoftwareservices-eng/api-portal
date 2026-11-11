@@ -18,6 +18,7 @@ import { usePortal } from './providers';
 import { ResendVerification } from './account-shared';
 import { ProblemAlert } from './problem-alert';
 import { KeyRevealDialog } from './key-reveal-dialog';
+import { AppPlanActions, RegenerateKeyButton } from './app-plan-actions';
 import { DateValue } from './date';
 export function AppDetail({ appId }: { appId: string }) {
   const { teams } = useTeams();
@@ -67,7 +68,13 @@ export function AppDetail({ appId }: { appId: string }) {
       document.getElementById('verification-banner')?.focus();
       return;
     }
-    if (lock.current || !app || app.role === 'read-only' || active >= 5) return;
+    if (
+      lock.current ||
+      !app ||
+      app.role === 'read-only' ||
+      active >= (app?.plan?.builtin === false ? 1 : 5)
+    )
+      return;
     lock.current = true;
     setPending(true);
     setProblem(undefined);
@@ -204,10 +211,16 @@ export function AppDetail({ appId }: { appId: string }) {
       )}
       {app.role === 'read-only' && (
         <div className="alert" role="note">
-          ⓘ You have Read-only access. Ask a team Admin to create or revoke
-          keys.
+          ⓘ You have Read-only access. Ask a team Admin or Member to change the
+          plan or keys.
         </div>
       )}
+      <AppPlanActions
+        app={app}
+        reload={reload}
+        setApp={setData}
+        section="plan"
+      />
       {app.description && <p>{app.description}</p>}
       <p className="muted">
         Created <DateValue value={app.createdAt} />
@@ -256,25 +269,35 @@ export function AppDetail({ appId }: { appId: string }) {
           <div>
             <h2>API keys</h2>
             <p id="key-limit" className="muted">
-              {active >= 5
-                ? 'This app has 5 active keys, the maximum. Revoke one to create another.'
-                : "Keys are shown once, when they're created. Up to 5 can be active."}
+              {app.plan?.builtin === false
+                ? 'A subscription has one active key. Regenerate it to get a new one.'
+                : active >= 5
+                  ? 'This app has 5 active keys, the maximum. Revoke one to create another.'
+                  : "Keys are shown once, when they're created. Up to 5 can be active."}
             </p>
           </div>
-          {app.role !== 'read-only' && (
-            <Button
-              variant="secondary"
-              aria-describedby={
-                verificationBlocked ? 'verification-reason' : 'key-limit'
-              }
-              aria-disabled={verificationBlocked || active >= 5}
-              disabled={pending}
-              aria-busy={pending && !revoke}
-              onClick={createKey}
-            >
-              {pending && !revoke ? 'Creating key…' : 'Create key'}
-            </Button>
-          )}
+          {app.role !== 'read-only' &&
+            !(app.plan?.builtin === false && active > 0) && (
+              <Button
+                variant="secondary"
+                aria-describedby={
+                  verificationBlocked ? 'verification-reason' : 'key-limit'
+                }
+                aria-disabled={
+                  verificationBlocked ||
+                  active >= (app?.plan?.builtin === false ? 1 : 5)
+                }
+                disabled={pending}
+                aria-busy={pending && !revoke}
+                onClick={createKey}
+              >
+                {pending && !revoke
+                  ? 'Creating key…'
+                  : app.plan?.builtin === false
+                    ? 'New key'
+                    : 'Create key'}
+              </Button>
+            )}
         </div>
         {verificationBlocked && (
           <p id="verification-reason">
@@ -312,7 +335,11 @@ export function AppDetail({ appId }: { appId: string }) {
               ) : problem.type.endsWith('/gateway-not-connected') ? (
                 "This portal isn't connected to an API gateway right now. No key was created. Tell the portal admin."
               ) : problem.type.endsWith('/credential-limit') ? (
-                'This app already has 5 active keys. Revoke one, then create a new key.'
+                app.plan?.builtin === false ? (
+                  'A subscription has one active key. Regenerate it to get a new one.'
+                ) : (
+                  'This app already has 5 active keys. Revoke one, then create a new key.'
+                )
               ) : problem.status === 503 ? (
                 "The gateway didn't respond, so no key was created. Try again in a moment."
               ) : problem.status === 502 ? (
@@ -378,6 +405,13 @@ export function AppDetail({ appId }: { appId: string }) {
                   {app.role !== 'read-only' && (
                     <td>
                       {c.status === 'active' && (
+                        <RegenerateKeyButton
+                          app={app}
+                          credential={c}
+                          reload={reload}
+                        />
+                      )}
+                      {c.status === 'active' && (
                         <Button
                           variant="ghost"
                           disabled={pending}
@@ -398,6 +432,12 @@ export function AppDetail({ appId }: { appId: string }) {
           </tbody>
         </Table>
       </section>
+      <AppPlanActions
+        app={app}
+        reload={reload}
+        setApp={setData}
+        section="danger"
+      />
       {shown && app.role !== 'read-only' && (
         <KeyRevealDialog
           open
@@ -405,7 +445,15 @@ export function AppDetail({ appId }: { appId: string }) {
           appName={app.name}
           apiTitles={app.subscriptions.map((s) => s.title)}
           variant={shown.variant}
-          onCloseAutoFocus={() => tryHeading.current?.focus()}
+          notice={shown.notice}
+          onCloseAutoFocus={() =>
+            shown.notice
+              ? document
+                  .getElementById(`key-${shown.credential.id}`)
+                  ?.parentElement?.querySelector<HTMLButtonElement>('button')
+                  ?.focus()
+              : tryHeading.current?.focus()
+          }
           onDone={() => {
             const id = shown.credential.id;
             setReveal(null);
