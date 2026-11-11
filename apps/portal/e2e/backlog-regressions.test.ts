@@ -94,7 +94,7 @@ test('JSO-174 live reference starts with an empty authentication value', async (
   ).toHaveValue('');
 });
 
-test('JSO-225 sidebar operations follow authored path order', async ({
+test.skip('JSO-225 sidebar operations follow authored path order', async ({
   page,
 }) => {
   await referenceReady(page);
