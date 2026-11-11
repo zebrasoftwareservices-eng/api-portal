@@ -1,7 +1,7 @@
 ---
 id: 003
 title: Backlog fixes from specs 001 and 002
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-232
@@ -444,28 +444,21 @@ No new images or findings in the focused alert retest; no open bugs. Fresh conso
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/003.md`.
 
-Reviewed `git diff main...HEAD` at `31fec57`. QA's full run is on `73ca876`; only docs changed
-since, so the suite was not re-run. Contract, data model (none), problem+json, Kong strict
-consistency and quickstart evidence match the design. Criteria 1–9 have tests.
+Round 2: reviewed `git diff main...HEAD` at `5ff1468`, focusing on `31fec57..HEAD`. QA's full
+suite ran on `a3df4bb` with the application fix; `dd8dd45` only made the JSO-406 expected-failure
+wait for its form, and only docs changed since, so the suite was not re-run. CI is the second run.
 
-- **blocking** — `apps/portal/components/problem-alert.tsx:50-54`: the heading no longer uses the
-  server's `problem.title`, and any code missing from the local map now reads **"Import failed"**.
-  `ProblemAlert` is shared by about 30 call sites without a `title`, so setup
-  (`setup-form.tsx:103`, "Setup token not accepted"), gateways (`gateway-form.tsx:432`, "Kong
-  refused the token"), profile, teams, invitation, accounts and mail now show "Import failed" for
-  errors that have nothing to do with import. Fix: use `problem.title` when it isn't the raw code
-  (as `main` did), then `friendlyTitles`, then a neutral fallback such as "Something went wrong".
-  Admin import passes its own default through `title`/`titles`. Update
-  `problem-alert.test.tsx:39` and add a case where a non-import code shows the server title.
-- **suggestion** — `packages/ui/src/index.tsx:96`: `EmptyState` declares a `titleSuffix` prop it
-  never reads. Remove it.
-- **suggestion** — `packages/ui/src/index.tsx:79`: `PageHeader` wraps every page's `h1` in
-  `.reference-title`. Rename it to something generic such as `.page-title`.
-- **suggestion** — `apps/portal/components/auth-form.tsx:91`: focus is skipped by comparing the
-  alert text to the copy string. A `wrongPassword` flag would survive a copy change.
-- **suggestion** — `apps/portal/components/date.tsx:8`: in a server-rendered tree
-  (`app/apis/[slug]/changelog/page.tsx`), `suppressHydrationWarning` keeps the server's UTC text,
-  so changelog dates stay in UTC. The criterion 3 surfaces fetch on the client and pass.
+- **resolved** (round 1 blocking) — `apps/portal/components/problem-alert.tsx:50-59` again prefers
+  a readable server `problem.title` (skipping a raw code or its spaced form), then
+  `friendlyTitles`, then a neutral `defaultTitle` ("Something went wrong"). Admin import passes
+  `defaultTitle="Import failed"` (`admin-apis.tsx:655`) and still owns its OpenAPI-specific
+  headings (`admin-apis.tsx:661-664`), so dropping those two codes from the shared map is safe.
+  Covered by `problem-alert.test.tsx:39,54,68`, `dashboard.test.tsx:36` and the three JSO-176
+  browser checks in `backlog-live.test.ts`; UAT confirmed sign-in and key-action alerts.
+- Round 1 suggestions (`EmptyState.titleSuffix`, `.reference-title`, auth-form text compare,
+  changelog UTC dates) stand as recorded in the log and are not reopened.
+
+No blocking findings.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
