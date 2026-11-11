@@ -426,6 +426,11 @@ test('JSO-406: gateway wizard has a single connection heading', async ({
     await expect(
       page.getByRole('heading', { name: 'Connect your Kong', exact: true }),
     ).toBeVisible();
+    // The connection form arrives after the page heading. Wait for its loaded
+    // state so absence cannot pass before the duplicate heading has rendered.
+    await expect(
+      page.getByLabel('Admin API URL', { exact: true }),
+    ).toBeVisible();
     test.fail(
       true,
       'JSO-406: the empty gateway state repeats the connection heading',

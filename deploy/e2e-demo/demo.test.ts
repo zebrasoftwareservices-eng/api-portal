@@ -197,7 +197,7 @@ for (const width of [1280, 375]) {
   });
 }
 
-test('JSO-217: unknown API has the portal not-found content and title', async ({
+test('JSO-217 JSO-223: unknown API has the portal not-found content and default title', async ({
   page,
 }) => {
   await page.goto('/apis/nope');
@@ -207,7 +207,7 @@ test('JSO-217: unknown API has the portal not-found content and title', async ({
   await expect(
     page.getByRole('link', { name: 'Go to APIs', exact: true }),
   ).toHaveAttribute('href', '/');
-  await expect(page).toHaveTitle('API not found · Developer Portal');
+  await expect(page).toHaveTitle('Developer Portal');
 });
 
 test('demo API endpoints return 404 even for stale sessions and mutation requests', async ({

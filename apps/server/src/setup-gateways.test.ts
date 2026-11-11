@@ -509,6 +509,9 @@ it('disables with no Kong call, blocks discovery/import/sample/app/key creation,
   );
   expect(failedRevoke.statusCode).toBe(503);
   expect(failedRevoke.json().type).toBe('/problems/gateway-unavailable');
+  expect(failedRevoke.json().detail).toBe(
+    "The API gateway didn't respond. Try again in a moment.",
+  );
   expect((await db.db.select().from(credentials))[0]?.status).toBe('active');
   expect(
     (await call('DELETE', `apps/${appId}/credentials/${credentialId}`))
@@ -1018,6 +1021,9 @@ it('AC 5: missing gateway and unavailable service discovery have actionable erro
   const unavailable = await call('GET', 'admin/gateway/services');
   expect(unavailable.statusCode).toBe(503);
   expect(unavailable.json().type).toBe('/problems/gateway-unavailable');
+  expect(unavailable.json().detail).toBe(
+    "The API gateway didn't respond. Try again in a moment.",
+  );
   expect(await db.db.select().from(apis)).toHaveLength(0);
   expect((await call('GET', 'admin/gateway/services')).json().items).toEqual([
     { ...service, linkedApiSlug: null },

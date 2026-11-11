@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { parse } from 'yaml';
+import { parse, YAMLParseError } from 'yaml';
 import { bundle, validate } from '@scalar/openapi-parser';
 import { z } from 'zod';
 import { uuidv7 } from 'uuidv7';
@@ -26,6 +26,29 @@ const slugSchema = z
   .min(2)
   .max(64)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+export function importSlug(title: string, slug?: string) {
+  if (slug !== undefined) return slugSchema.parse(slug);
+  const generated = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 64)
+    .replace(/-$/, '');
+  if (generated.replaceAll('-', '').length < 2)
+    throw new Problem(
+      422,
+      'slug-required',
+      "We can't make a slug from this API's title. Enter a slug.",
+      [
+        {
+          pointer: '/slug',
+          message:
+            'Enter a slug. The title has no letters or digits to make one from.',
+        },
+      ],
+    );
+  return slugSchema.parse(generated);
+}
 export const specSchema = z.union([
   z.strictObject({ url: z.url().regex(/^https?:\/\//) }),
   z.strictObject({ content: z.string() }),
@@ -190,6 +213,15 @@ export async function importDocument(
     document = object(parse(content, { maxAliasCount: 100 }));
   } catch (error) {
     if (error instanceof Problem) throw error;
+    if (error instanceof YAMLParseError && error.linePos?.[0]) {
+      const { line, col: column } = error.linePos[0];
+      throw new Problem(
+        422,
+        'invalid-openapi',
+        `Invalid OpenAPI document: ${error.message.split(' at line ')[0]} at line ${line}, column ${column}`,
+        [{ message: error.message.split(' at line ')[0]!, line, column }],
+      );
+    }
     throw invalid('Invalid YAML or JSON');
   }
   if (
@@ -329,15 +361,7 @@ export function registerImport(
         version: string;
         description?: string;
       };
-      const slug = slugSchema.parse(
-        input.slug ??
-          info.title
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-|-$/g, '')
-            .slice(0, 64)
-            .replace(/-$/, ''),
-      );
+      const slug = importSlug(info.title, input.slug);
       const [existing] = await db
         .select({ id: apis.id })
         .from(apis)

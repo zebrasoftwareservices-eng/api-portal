@@ -63,9 +63,9 @@ Platform engineer (installs and publishes), API consumer (developer who signs up
 - Helm chart (later spec)
 
 ## Open questions
-- [ ] Use Zudoku or Scalar for the API reference and try-it console? — tech-lead
-- [ ] Project name, so the docker images and npm scope can be named — Elango
-- [ ] Should the try-it console call Kong directly from the browser (needs CORS on Kong) or via a server proxy? — tech-lead
+- [x] Use Zudoku or Scalar for the API reference and try-it console? — tech-lead
+- [x] Project name, so the docker images and npm scope can be named — Elango
+- [x] Should the try-it console call Kong directly from the browser (needs CORS on Kong) or via a server proxy? — tech-lead
 
 ---
 <!-- Sections below are filled by later stages. -->

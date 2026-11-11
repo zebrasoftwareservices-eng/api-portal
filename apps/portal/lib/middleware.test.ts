@@ -117,6 +117,8 @@ describe('protected portal routes', () => {
       new NextRequest('https://portal.example/dashboard'),
     );
     expect(response.status).toBe(503);
-    expect(await response.text()).toContain('Try again');
+    expect(response.headers.get('x-middleware-rewrite')).toBe(
+      'https://portal.example/unavailable',
+    );
   });
 });

@@ -52,13 +52,13 @@ it('derives the catalog from the inlined seed without invented fields', async ()
 });
 it('does not create a client or read cookies in demo mode', async () => {
   vi.stubEnv('PORTAL_DEMO_ACTIVE', 'true');
-  expect(await currentUser()).toBeNull();
+  expect(await currentUser()).toEqual({ state: 'signed-out' });
   expect(cookies).not.toHaveBeenCalled();
   expect(createClient).not.toHaveBeenCalled();
 });
-it('keeps a server outage signed out without enabling demo mode', async () => {
+it('keeps a server outage unknown without enabling demo mode', async () => {
   vi.stubEnv('PORTAL_DEMO_ACTIVE', 'false');
   cookies.mockRejectedValue(new Error('unavailable'));
-  expect(await currentUser()).toBeNull();
+  expect(await currentUser()).toEqual({ state: 'unknown' });
   expect(isDemo()).toBe(false);
 });

@@ -2,10 +2,18 @@
 import { expect, test } from '@playwright/test';
 
 for (const width of [1280, 375]) {
-  test(`API version badge hugs its text at ${width}px`, async ({ page }) => {
+  test(`JSO-231 API version badge hugs its text at ${width}px`, async ({
+    page,
+  }) => {
     await page.setViewportSize({ width, height: 800 });
     await page.goto('/apis/sample');
-    const badge = page.locator('main .badge').filter({ hasText: /^v1\.0\.0$/ });
+    await expect(
+      page.getByRole('heading', { name: 'Generate a UUID', exact: true }),
+    ).toBeVisible();
+    const badge = page
+      .locator('main .badge')
+      .filter({ hasText: /^v1\.0\.0$/ })
+      .first();
     await expect(badge).toBeVisible();
     const dimensions = await badge.evaluate((element) => {
       const text = document.createRange();
@@ -16,7 +24,9 @@ for (const width of [1280, 375]) {
         expected:
           text.getBoundingClientRect().width +
           parseFloat(style.paddingLeft) +
-          parseFloat(style.paddingRight),
+          parseFloat(style.paddingRight) +
+          parseFloat(style.borderLeftWidth) +
+          parseFloat(style.borderRightWidth),
       };
     });
     expect(Math.abs(dimensions.actual - dimensions.expected)).toBeLessThan(2);
@@ -45,7 +55,9 @@ for (const width of [1280, 375]) {
         expected:
           text.getBoundingClientRect().width +
           parseFloat(style.paddingLeft) +
-          parseFloat(style.paddingRight),
+          parseFloat(style.paddingRight) +
+          parseFloat(style.borderLeftWidth) +
+          parseFloat(style.borderRightWidth),
         inside:
           bounds.left >= card.left &&
           bounds.right <= card.right &&
@@ -92,3 +104,5 @@ test('Node.js POST samples survive selection and a returning visit without error
   ).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+import './backlog-regressions.test';

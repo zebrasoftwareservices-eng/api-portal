@@ -17,11 +17,14 @@ export default async function Layout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await currentUser();
+  const session = await currentUser();
   return (
     <html lang="en">
       <body>
-        <Providers user={user}>
+        <Providers
+          user={session.state === 'signed-in' ? session.user : null}
+          sessionState={session.state}
+        >
           <a className="skip" href="#main">
             Skip to content
           </a>

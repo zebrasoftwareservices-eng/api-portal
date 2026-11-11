@@ -18,7 +18,7 @@ const { scalar, serverClient } = vi.hoisted(() => ({
   serverClient: vi.fn(),
 }));
 vi.mock('server-only', () => ({}));
-vi.mock('../lib/server', () => ({ serverClient, currentUser: vi.fn() }));
+vi.mock('../lib/server', () => ({ serverClient, signedInUser: vi.fn() }));
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
   useRouter: () => ({}),
@@ -130,7 +130,7 @@ it('rejects unknown demo APIs and labels their metadata', async () => {
   ).rejects.toThrow('NEXT_NOT_FOUND');
   expect(
     await generateMetadata({ params: Promise.resolve({ slug: 'nope' }) }),
-  ).toEqual({ title: 'API not found' });
+  ).toEqual({ title: { absolute: 'Developer Portal' } });
   expect(serverClient).not.toHaveBeenCalled();
 });
 it('configures Scalar with inline content and all request paths disabled', () => {

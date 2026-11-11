@@ -186,3 +186,12 @@ it('keeps Create key focusable and prevents creation until email verification', 
   await actor.click(button);
   expect(mocks.post).not.toHaveBeenCalled();
 });
+
+it('JSO-161 returns focus to the initiating Revoke button after Escape', async () => {
+  const user = userEvent.setup();
+  render(<AppDetail appId="app-1" />);
+  const revoke = await screen.findByRole('button', { name: 'Revoke' });
+  await user.click(revoke);
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(revoke).toHaveFocus());
+});

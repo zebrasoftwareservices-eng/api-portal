@@ -183,3 +183,17 @@ it.each(['sign-up', 'sign-in'] as const)(
     );
   },
 );
+
+it('JSO-179 clears and focuses the password after wrong credentials', async () => {
+  const user = userEvent.setup();
+  mocks.signin.mockResolvedValue({ error: { status: 401 } });
+  render(<AuthForm mode="sign-in" />);
+  await user.type(screen.getByLabelText('Email'), 'ana@example.com');
+  await user.type(screen.getByLabelText('Password'), 'wrong-password');
+  await user.click(screen.getByRole('button', { name: 'Sign in' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Email or password is incorrect.',
+  );
+  expect(screen.getByLabelText('Password')).toHaveValue('');
+  await waitFor(() => expect(screen.getByLabelText('Password')).toHaveFocus());
+});

@@ -202,7 +202,7 @@ export async function registerProxy(
           throw new Problem(
             503,
             'gateway-unavailable',
-            "The API gateway didn't respond. Nothing was created. Try again in a moment.",
+            "The API gateway didn't respond. Try again in a moment.",
           );
         }
       },

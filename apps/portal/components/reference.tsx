@@ -6,6 +6,7 @@ import { Button } from '@portal/ui';
 import '@scalar/api-reference-react/style.css';
 import { api } from '../lib/client';
 import { useResource } from './use-resource';
+import { referenceOptions } from '../lib/reference-options';
 import { referenceDocument } from '../lib/reference-document';
 export const Scalar = dynamic(
   () => import('@scalar/api-reference-react').then((m) => m.ApiReferenceReact),
@@ -34,24 +35,28 @@ export function Reference({
   documentUrl,
   slug,
   version,
+  initialDocument,
 }: {
   documentUrl: string;
   slug?: string;
   version?: string;
+  initialDocument?: Record<string, unknown>;
 }) {
   const [attempt, setAttempt] = useState(0);
   const document = useResource(() =>
-    version && slug
-      ? api.GET('/v1/apis/{slug}/versions/{version}/openapi.json', {
-          params: { path: { slug, version } },
-        })
-      : api.GET('/v1/apis/{slug}/openapi.json', {
-          params: {
-            path: {
-              slug: decodeURIComponent(documentUrl.split('/').at(-2) || ''),
+    initialDocument
+      ? Promise.resolve({ data: initialDocument })
+      : version && slug
+        ? api.GET('/v1/apis/{slug}/versions/{version}/openapi.json', {
+            params: { path: { slug, version } },
+          })
+        : api.GET('/v1/apis/{slug}/openapi.json', {
+            params: {
+              path: {
+                slug: decodeURIComponent(documentUrl.split('/').at(-2) || ''),
+              },
             },
-          },
-        }),
+          }),
   );
   if (document.loading) return <p role="status">Loading API reference…</p>;
   if (document.error)
@@ -67,6 +72,7 @@ export function Reference({
     <ReferenceBoundary key={attempt} retry={() => setAttempt((n) => n + 1)}>
       <Scalar
         configuration={{
+          ...referenceOptions(document.data ?? {}),
           content: referenceDocument(document.data ?? {}),
           proxyUrl: '/api/v1/try-it',
           theme: 'none',

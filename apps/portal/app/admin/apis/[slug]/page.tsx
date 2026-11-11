@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { notFound, redirect } from 'next/navigation';
-import { currentUser, serverClient } from '../../../../lib/server';
+import { signedInUser, serverClient } from '../../../../lib/server';
 import { AdminVersions } from '../../../../components/admin-versions';
 import { isDemo } from '../../../../lib/demo';
 export const metadata = { title: 'Manage API versions' };
@@ -13,7 +13,7 @@ export default async function Page({
 }) {
   if (isDemo()) notFound();
   const { slug } = await params;
-  const user = await currentUser();
+  const user = await signedInUser();
   if (!user)
     redirect(`/sign-in?next=${encodeURIComponent(`/admin/apis/${slug}`)}`);
   if (user.role !== 'admin') notFound();

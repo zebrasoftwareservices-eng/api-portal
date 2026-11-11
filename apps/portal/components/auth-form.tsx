@@ -30,7 +30,13 @@ export function AuthForm({
   const [ready, setReady] = useState(false);
   // The server-rendered form must not accept a native submission before
   // React attaches onSubmit (or lose values entered before hydration).
-  useEffect(() => setReady(true), []);
+  useEffect(() => {
+    setReady(true);
+    if (sessionStorage.getItem('portal-session-ended')) {
+      sessionStorage.removeItem('portal-session-ended');
+      toast.error('Your session has ended. Sign in to continue.');
+    }
+  }, []);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [failure, setFailure] = useState('');
   const [duplicate, setDuplicate] = useState(false);
@@ -82,7 +88,7 @@ export function AuthForm({
           className="alert error"
           tabIndex={-1}
           ref={(el) => {
-            el?.focus();
+            if (failure !== 'Email or password is incorrect.') el?.focus();
           }}
         >
           {failure}

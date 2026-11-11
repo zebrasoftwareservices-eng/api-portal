@@ -7,12 +7,15 @@ const state = vi.hoisted(() => ({
   pathname: '/',
   user: null as null | { email: string; role: string },
   demo: false,
+  sessionState: 'signed-out',
 }));
 vi.mock('next/navigation', () => ({
   usePathname: () => state.pathname,
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
-vi.mock('./providers', () => ({ usePortal: () => ({ user: state.user }) }));
+vi.mock('./providers', () => ({
+  usePortal: () => ({ user: state.user, sessionState: state.sessionState }),
+}));
 vi.mock('../lib/demo', () => ({
   isDemo: () => state.demo,
   QUICKSTART_URL: 'https://example.com/quickstart',
@@ -21,31 +24,32 @@ beforeEach(() => {
   state.pathname = '/';
   state.user = null;
   state.demo = false;
+  state.sessionState = 'signed-out';
 });
 it.each([
   ['/', null, ['APIs', 'Sign in', 'Sign up'], 'APIs'],
   [
     '/apis/orders',
     { role: 'developer', email: 'dev@example.com' },
-    ['APIs', 'My apps', 'Profile'],
+    ['APIs', 'My apps'],
     'APIs',
   ],
   [
     '/dashboard',
     { role: 'developer', email: 'dev@example.com' },
-    ['APIs', 'My apps', 'Profile'],
+    ['APIs', 'My apps'],
     'My apps',
   ],
   [
     '/dashboard/apps/one',
     { role: 'admin', email: 'admin@example.com' },
-    ['APIs', 'My apps', 'Admin', 'Profile'],
+    ['APIs', 'My apps', 'Admin'],
     'My apps',
   ],
   [
     '/admin/apis',
     { role: 'admin', email: 'admin@example.com' },
-    ['APIs', 'My apps', 'Admin', 'Profile'],
+    ['APIs', 'My apps', 'Admin'],
     'Admin',
   ],
 ] as const)(
@@ -101,4 +105,46 @@ it('keeps demo navigation limited to APIs and the quickstart', () => {
       .getAllByRole('link')
       .map((link) => link.textContent),
   ).toEqual(['APIs', 'Run the quickstart']);
+});
+
+it('JSO-191 shows public navigation without claiming a session during an outage', () => {
+  state.sessionState = 'unknown';
+  render(<Header />);
+  expect(screen.getByRole('link', { name: 'APIs' })).toBeInTheDocument();
+  expect(screen.queryByText('Sign in')).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: /Account menu/ }),
+  ).not.toBeInTheDocument();
+});
+it('JSO-163 opens an accessible account menu and returns focus on Escape', async () => {
+  const user = userEvent.setup();
+  state.user = { role: 'developer', email: 'dev@example.com' };
+  render(<Header />);
+  const trigger = screen.getByRole('button', {
+    name: 'Account menu for dev@example.com',
+  });
+  trigger.focus();
+  await user.keyboard('{ArrowDown}');
+  expect(screen.getByRole('menuitem', { name: 'Profile' })).toHaveFocus();
+  await user.keyboard('{Escape}');
+  expect(trigger).toHaveFocus();
+});
+
+vi.mock('../lib/client', () => {
+  throw new Error('Sign-out chunk failed to load');
+});
+it('JSO-227 handles a failed sign-out import and closes the menu', async () => {
+  const { toast } = await import('@portal/ui');
+  const failure = vi.spyOn(toast, 'error');
+  const user = userEvent.setup();
+  state.user = { role: 'developer', email: 'dev@example.com' };
+  render(<Header />);
+  const trigger = screen.getByRole('button', {
+    name: 'Account menu for dev@example.com',
+  });
+  await user.click(trigger);
+  await user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
+  expect(failure).toHaveBeenCalledWith("We couldn't sign you out. Try again.");
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+  expect(trigger).toHaveFocus();
 });

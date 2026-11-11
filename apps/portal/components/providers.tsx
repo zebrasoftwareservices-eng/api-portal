@@ -10,23 +10,45 @@ type Reveal = {
 };
 const Context = createContext<{
   user: User | null;
+  sessionState: 'signed-in' | 'signed-out' | 'unknown';
   setUser: (value: User | null) => void;
   reveal: Reveal | null;
   setReveal: (value: Reveal | null) => void;
-}>({ user: null, setUser: () => {}, reveal: null, setReveal: () => {} });
+}>({
+  user: null,
+  sessionState: 'signed-out',
+  setUser: () => {},
+  reveal: null,
+  setReveal: () => {},
+});
 export function Providers({
   children,
   user,
+  sessionState = user ? 'signed-in' : 'signed-out',
 }: {
   children: ReactNode;
   user: User | null;
+  sessionState?: 'signed-in' | 'signed-out' | 'unknown';
 }) {
   const [updatedUser, setUser] = useState<User | null | undefined>(undefined);
   const [reveal, setReveal] = useState<Reveal | null>(null);
   return (
     <Context.Provider
       value={{
-        user: updatedUser === undefined ? user : updatedUser,
+        user:
+          sessionState === 'unknown'
+            ? null
+            : updatedUser === undefined
+              ? user
+              : updatedUser,
+        sessionState:
+          sessionState === 'unknown'
+            ? 'unknown'
+            : updatedUser === undefined
+              ? sessionState
+              : updatedUser
+                ? 'signed-in'
+                : 'signed-out',
         setUser,
         reveal,
         setReveal,

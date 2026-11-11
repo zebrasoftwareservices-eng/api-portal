@@ -11,7 +11,12 @@ export class Problem extends Error {
     readonly status: number,
     readonly code: string,
     detail: string,
-    readonly errors?: { message: string; pointer?: string }[],
+    readonly errors?: {
+      message: string;
+      pointer?: string;
+      line?: number;
+      column?: number;
+    }[],
     readonly fields?: {
       teams?: { id: string; name: string }[];
       apis?: number;
@@ -39,7 +44,7 @@ export function problemHandler(app: FastifyInstance) {
       p = new Problem(
         503,
         'gateway-unavailable',
-        "The API gateway didn't respond. Nothing was created. Try again in a moment.",
+        "The API gateway didn't respond. Try again in a moment.",
       );
     else if (err instanceof GatewayRejectedError)
       p = new Problem(
@@ -91,6 +96,7 @@ export function problemHandler(app: FastifyInstance) {
                   copy[0],
                 ]),
               ),
+              'slug-required': 'Slug required',
               'gateway-unreachable': "The portal couldn't reach that address",
               'gateway-token-refused': 'Kong refused the token',
               'gateway-not-kong': "That address isn't a Kong Admin API",

@@ -52,6 +52,7 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - name: Quickstart within five minutes
         run: node deploy/quickstart-smoke.mjs
+      - run: node deploy/server-image-smoke.mjs
       - run: node deploy/smoke.mjs
       - run: node deploy/outage-smoke.mjs
       - run: pnpm test:e2e

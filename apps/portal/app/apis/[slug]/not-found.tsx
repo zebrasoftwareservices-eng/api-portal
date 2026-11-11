@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+export const metadata = { title: { absolute: 'Developer Portal' } };
 export default function NotFound() {
   return (
     <>

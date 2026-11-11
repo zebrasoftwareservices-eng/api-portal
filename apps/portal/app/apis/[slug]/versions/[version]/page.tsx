@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { Button, CodeValue, PageHeader } from '@portal/ui';
-import { currentUser, serverClient } from '../../../../../lib/server';
+import { signedInUser, serverClient } from '../../../../../lib/server';
 import { isDemo } from '../../../../../lib/demo';
 import { demoData } from '../../../../../lib/demo-data';
 import { DemoReference } from '../../../../../components/demo-reference';
@@ -36,7 +37,10 @@ export async function generateMetadata({ params }: Props) {
         ).GET('/v1/apis/{slug}', { params: { path: { slug } } })
       ).data;
   return {
-    title: data ? `${data.title} ${version}` : 'API not found',
+    title:
+      data && data.versions.some((v) => v.version === version)
+        ? `${data.title} ${version}`
+        : { absolute: 'Developer Portal' },
     ...(data?.version === version
       ? { alternates: { canonical: `/apis/${slug}` } }
       : {}),
@@ -53,13 +57,13 @@ export default async function Page({ params }: Props) {
       <div className="stack">
         <PageHeader
           title={api.title}
+          titleSuffix={<VersionRow api={api} />}
           breadcrumb={[
             { label: 'APIs', href: '/' },
             { label: api.title, href: `/apis/${slug}` },
             { label: version },
           ]}
         />
-        <VersionRow api={api} />
         <CodeValue
           value={api.gatewayBaseUrl}
           label="Base URL in a local quickstart"
@@ -68,14 +72,22 @@ export default async function Page({ params }: Props) {
           This reference is read-only here. Run the quickstart to send real
           requests.
         </p>
-        <DemoReference document={document} />
+        <Suspense
+          fallback={
+            <p role="status" className="reference-loading">
+              Loading API reference…
+            </p>
+          }
+        >
+          <DemoReference document={document} />
+        </Suspense>
       </div>
     );
   }
   const client = await serverClient();
   const [{ data, error }, user] = await Promise.all([
     client.GET('/v1/apis/{slug}', { params: { path: { slug } } }),
-    currentUser(),
+    signedInUser(),
   ]);
   if (error?.status === 404) notFound();
   if (!data) throw new Error('API unavailable');
@@ -91,6 +103,7 @@ export default async function Page({ params }: Props) {
       <div className="stack">
         <PageHeader
           title={data.title}
+          titleSuffix={<VersionRow api={data} current={version} />}
           breadcrumb={[
             { label: 'APIs', href: '/' },
             { label: data.title, href: `/apis/${slug}` },
@@ -98,7 +111,6 @@ export default async function Page({ params }: Props) {
           ]}
           actions={<ApiAccessAction />}
         />
-        <VersionRow api={data} current={version} />
         {!selected.isLatest && (
           <div className="alert stack">
             <p>
@@ -118,11 +130,20 @@ export default async function Page({ params }: Props) {
           Type instead, open it and choose this API&apos;s key scheme first.
           Then choose an operation and select Send. <TryItRecovery />
         </div>
-        <Reference
-          documentUrl={selected.documentUrl}
-          slug={slug}
-          version={version}
-        />
+        <Suspense
+          fallback={
+            <p role="status" className="reference-loading">
+              Loading API reference…
+            </p>
+          }
+        >
+          <Reference
+            documentUrl={selected.documentUrl}
+            slug={slug}
+            version={version}
+            initialDocument={document.data}
+          />
+        </Suspense>
       </div>
     </ApiAccessProvider>
   );

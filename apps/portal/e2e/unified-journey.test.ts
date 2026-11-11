@@ -128,7 +128,11 @@ test('019 AC2: keyboard menu traps focus and returns it after Close and Escape',
     await page.keyboard.press('Enter');
     await expect(close).toBeFocused();
     await page.keyboard.press('Shift+Tab');
-    await expect(page.getByRole('dialog').locator('summary')).toBeFocused();
+    await expect(
+      page
+        .getByRole('dialog')
+        .getByRole('button', { name: 'Sign out', exact: true }),
+    ).toBeFocused();
     await page.keyboard.press('Tab');
     await expect(close).toBeFocused();
     if (method === 'close') await close.click();
@@ -606,3 +610,5 @@ test('019 AC1,4,9: real app links work with and without active keys', async ({
     await expect(page).toHaveURL(new RegExp(`/dashboard/apps/${app.id}$`));
   }
 });
+
+import './backlog-live.test';

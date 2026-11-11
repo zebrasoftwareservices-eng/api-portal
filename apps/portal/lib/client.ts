@@ -15,7 +15,7 @@ export const quietApi = createClient({ baseUrl });
 api.use({
   async onResponse({ response, schemaPath }) {
     if (response.status === 401 && schemaPath !== '/v1/me') {
-      toast.error('Your session has ended. Sign in to continue.');
+      sessionStorage.setItem('portal-session-ended', 'true');
       window.location.assign(
         `/sign-in?next=${encodeURIComponent(window.location.pathname + window.location.search)}`,
       );

@@ -160,7 +160,7 @@ for (const mediaType of [
   'text/plain',
   'text/html',
 ]) {
-  test(`AC 2: Scalar shows a real ${mediaType} access refusal and preserves an upstream 403`, async ({
+  test(`JSO-175 AC 2: Scalar shows a real ${mediaType} access refusal and preserves an upstream 403`, async ({
     page,
     context,
     playwright,
@@ -273,20 +273,6 @@ for (const mediaType of [
       });
       expect(created.status()).toBe(201);
       const { app, credential } = await created.json();
-      await expect
-        .poll(
-          async () =>
-            (
-              await context.request.get(
-                `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/${path}/get`,
-                {
-                  headers: { apikey: credential.key },
-                },
-              )
-            ).status(),
-          { timeout: 15000 },
-        )
-        .toBe(403);
       // JSO-277: one request must refresh a warm catalog on a target miss.
       const proxyCall = () =>
         context.request.get(
@@ -297,46 +283,17 @@ for (const mediaType of [
           { headers: { apikey: credential.key } },
         );
       const firstProxyStatus = (await proxyCall()).status();
-      if (firstProxyStatus !== 403) {
-        // Diagnostic only: retain the first-request assertion below even if retry recovers.
-        const retryStarted = Date.now();
-        let retryCount = 0;
-        await expect
-          .poll(
-            async () => {
-              retryCount++;
-              return (await proxyCall()).status();
-            },
-            { timeout: 15000 },
-          )
-          .toBe(403);
-        console.log(
-          `${mediaType}: initial try-it ${firstProxyStatus}, retry recovered 403 after ${retryCount} requests in ${Date.now() - retryStarted}ms`,
-        );
-      }
       expect(firstProxyStatus).toBe(403);
       await page.goto(`/apis/${path}`);
       if (mediaType === 'application/json') {
-        // JSO-281: operation-level security initially has no selected scheme.
+        // JSO-175: operation-only security now gets a root scheme, so the
+        // documented Authentication Value field is ready without a selector.
         await expect(page.locator('main .alert')).toContainText(
-          'If you see Select Auth Type',
+          'Authentication',
         );
-        const selector = page.getByRole('button', {
-          name: 'Select Auth Type',
-          exact: true,
-        });
-        await expect(selector).toBeVisible();
-        await expect(
-          page.getByPlaceholder('QUxMIFlPVVIgQkFTRSBBUkUgQkVMT05HIFRPIFVT'),
-        ).toBeHidden();
-        await selector.click();
-        await page
-          .getByRole('option', { name: 'key Delete key', exact: true })
-          .click();
-        const value = page
-          .getByRole('region', { name: 'Authentication', exact: true })
-          .getByRole('textbox', { name: 'Value', exact: true });
+        const value = page.getByRole('textbox', { name: 'Value', exact: true });
         await expect(value).toBeVisible();
+        await expect(value).toHaveValue('');
         await value.fill(credential.key);
         await expect(value).toHaveValue(credential.key);
       }
@@ -344,10 +301,11 @@ for (const mediaType of [
         .getByRole('button', { name: /Test Request/ })
         .first()
         .click();
-      await page
-        .getByPlaceholder('QUxMIFlPVVIgQkFTRSBBUkUgQkVMT05HIFRPIFVT')
-        .last()
-        .fill(credential.key);
+      if (mediaType !== 'application/json')
+        await page
+          .getByPlaceholder('QUxMIFlPVVIgQkFTRSBBUkUgQkVMT05HIFRPIFVT')
+          .last()
+          .fill(credential.key);
       const response = page.waitForResponse((r) =>
         r.url().includes('/api/v1/try-it?'),
       );
@@ -359,6 +317,7 @@ for (const mediaType of [
         .click();
       const refused = await response;
       expect(refused.request().headers()['accept']).toContain(mediaType);
+      expect(refused.request().headers()['apikey']).toBe(credential.key);
       expect(refused.status()).toBe(403);
       expect(await refused.json()).toMatchObject({
         type: '/problems/api-access-denied',
@@ -424,7 +383,7 @@ for (const mediaType of [
   });
 }
 
-test('admin imports files and URLs and rejects invalid files without publication', async ({
+test('JSO-176 JSO-177 JSO-184 admin imports files and URLs and rejects invalid files without publication', async ({
   page,
   context,
 }) => {
@@ -483,10 +442,24 @@ test('admin imports files and URLs and rejects invalid files without publication
         r.request().method() === 'POST',
     );
     await page.getByRole('button', { name: 'Import and publish' }).click();
-    expect((await result).status()).toBe(422);
-    await expect(
-      page.getByText('Nothing was published.', { exact: true }),
-    ).toBeVisible();
+    const refused = await result;
+    expect(refused.status()).toBe(422);
+    const problem = await refused.json();
+    if (problem.type.endsWith('invalid-api-version')) {
+      await expect(
+        page.getByLabel('OpenAPI file', { exact: true }),
+      ).toHaveAttribute('aria-invalid', 'true');
+      await expect(
+        page.getByText(/The document's info.version is missing/),
+      ).toBeVisible();
+      await expect(page.locator('main').getByRole('alert')).toHaveCount(0);
+    } else {
+      await expect(page.locator('main').getByRole('alert')).toBeVisible();
+      if (content === 'a: [')
+        await expect(page.locator('main').getByRole('alert')).toContainText(
+          /Line \d+, column \d+/,
+        );
+    }
     expect(
       (await (await context.request.get('/api/v1/apis')).json()).items,
     ).toHaveLength(before);
@@ -522,10 +495,13 @@ test('admin imports files and URLs and rejects invalid files without publication
         detail,
         errors: [{ message: 'Invalid API version', pointer: '/info/version' }],
       });
-      await expect(page.getByText(detail, { exact: true })).toBeVisible();
       await expect(
-        page.getByText('Nothing was published.', { exact: true }),
+        page.getByLabel('OpenAPI file', { exact: true }),
+      ).toHaveAttribute('aria-invalid', 'true');
+      await expect(
+        page.getByText(/The document's info.version is missing/),
       ).toBeVisible();
+      await expect(page.locator('main').getByRole('alert')).toHaveCount(0);
       expect(
         (await (await context.request.get('/api/v1/apis')).json()).items,
       ).toHaveLength(before);
@@ -621,7 +597,7 @@ test('reference document failure shows a retry and recovers without reloading th
     });
   });
   await page.goto('/apis/sample');
-  const alert = page.getByRole('alert').filter({
+  const alert = page.locator('main').getByRole('alert').filter({
     hasText: "The API reference didn't load.",
   });
   await expect(alert).toBeVisible();
@@ -781,7 +757,10 @@ for (const conflict of ['already-linked', 'has-acl'] as const) {
         await expect(select).toBeFocused();
         await expect(select).toHaveAttribute('aria-invalid', 'true');
         await expect(
-          page.getByRole('alert').filter({ hasText: 'Nothing was published.' }),
+          page
+            .locator('main')
+            .getByRole('alert')
+            .filter({ hasText: 'Nothing was published.' }),
         ).toBeVisible();
         // Wait two paints so an alert effect cannot steal focus after the assertion.
         await page.evaluate(

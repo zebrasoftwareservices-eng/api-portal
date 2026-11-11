@@ -368,10 +368,14 @@ test('007 AC4/5/6/7: browser reset, single-use links, profile and password/sessi
   await page.goto('/profile');
   await page.getByLabel('Name', { exact: true }).fill('Renamed Security QA');
   await page.getByRole('button', { name: 'Save name' }).click();
-  await page.locator('header summary').click();
-  await expect(page.locator('header .account-name')).toHaveText(
-    'Renamed Security QA',
-  );
+  await page.getByRole('button', { name: /^Account menu for/ }).click();
+  await expect(page.getByRole('menu')).toContainText(email);
+  await page.keyboard.press('Escape');
+  await expect
+    .poll(
+      async () => (await (await context.request.get('/api/v1/me')).json()).name,
+    )
+    .toBe('Renamed Security QA');
   await page.getByLabel('Current password').fill('wrong-password');
   await page
     .getByLabel('New password', { exact: true })

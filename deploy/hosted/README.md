@@ -5,6 +5,12 @@ This deployment adds the API Portal server, its own PostgreSQL database and a sa
 the existing Caddy is the only path to Fastify, and Postgres stays on an internal Docker
 network. The Kong and portal databases are separate volumes and separate containers.
 
+For PostgreSQL-backed Kong 3.9, configure `KONG_WORKER_CONSISTENCY=strict` on the
+existing Kong deployment and restart its workers before publishing APIs. The default
+`eventual` mode can serve a request with an older ACL plugin list on a pooled try-it
+connection, even after another worker has returned 403 for the same unsubscribed key.
+The bundled quickstart configures strict consistency automatically.
+
 ## Host layout
 
 - Application checkout: `/opt/api-portal`
