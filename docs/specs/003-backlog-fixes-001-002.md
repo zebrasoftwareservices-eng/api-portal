@@ -1,7 +1,7 @@
 ---
 id: 003
 title: Backlog fixes from specs 001 and 002
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-232
@@ -404,7 +404,6 @@ A major first-request access refusal failure reproduced twice: try-it returned 2
 - [ ] JSO-162 Catalog cards have separate non-overlapping blocks, but textContent still joins the base URL directly to View reference → at 390 and 1280 px (minor).
 - [ ] JSO-222 Catalog tab title is APIs instead of APIs · Developer Portal in live and demo (minor).
 - [ ] JSO-224 Scalar repeats the API title as a second visible H1 in live and demo (minor).
-- [ ] JSO-225 Live sidebar lists /status/{code} after /uuid and /headers instead of the authored sample order (minor, deferred to spec 022 by Elango; not fixed here).
 - [ ] JSO-228 Unknown API routes return HTTP 200 instead of 404 in live and demo (minor).
 - [x] JSO-181 Mobile app cards label Active keys and Created at 390 px; regression confirms the existing dashboard fix (minor, verified).
 ## User testing  _(user-tester)_
