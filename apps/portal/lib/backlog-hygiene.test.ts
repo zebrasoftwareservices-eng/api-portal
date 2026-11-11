@@ -24,3 +24,11 @@ it('JSO-230 regenerates Next types and ignores generated development files', () 
   expect(read('apps/portal/.gitignore')).toContain('next-env.d.ts');
   expect(read('apps/portal/.gitignore')).toContain('AGENTS.md');
 });
+it('JSO-188 spec 001 answered open questions remain ticked', () => {
+  const questions = read('docs/specs/001-kong-quickstart-slice.md')
+    .split('## Open questions\n')[1]
+    ?.split('\n## ')[0];
+  expect(questions).toBeDefined();
+  expect(questions?.match(/^- \[x\]/gm)).toHaveLength(3);
+  expect(questions).not.toMatch(/^- \[ \]/m);
+});

@@ -267,13 +267,13 @@ test('JSO-192 JSO-182 JSO-161 JSO-215 key dialog fits, announces and restores fo
   ).toHaveCount(0);
   await saved.click();
   await expect(dialog).toBeHidden();
-  await expect(
-    page.getByRole('heading', { name: 'Try your key', exact: true }),
-  ).toBeFocused();
+  await expect
+    .soft(page.getByRole('heading', { name: 'Try your key', exact: true }))
+    .toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(
-    page.getByRole('link', { name: /^Open .* reference$/ }).first(),
-  ).toBeFocused();
+  await expect
+    .soft(page.getByRole('link', { name: /^Open .* reference$/ }).first())
+    .toBeFocused();
   const revoke = page
     .getByRole('button', { name: 'Revoke', exact: true })
     .first();
@@ -322,5 +322,116 @@ test('JSO-223 JSO-183 not-found titles do not leak route titles or permissions',
       page.getByRole('heading', { name: /not found/i }),
     ).toBeVisible();
     await expect.soft(page).toHaveTitle('Developer Portal');
+  }
+});
+
+test('JSO-175 operation-only Authentication Value accepts a key that reaches a real request', async ({
+  page,
+  context,
+  playwright,
+  baseURL,
+}) => {
+  test.setTimeout(60000);
+  const admin = await playwright.request.newContext({ baseURL });
+  const id = crypto.randomUUID();
+  const slug = `op-auth-${id}`;
+  const kong = process.env.KONG_ADMIN_URL ?? 'http://localhost:8001';
+  const proxy = process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000';
+  try {
+    expect(
+      (
+        await admin.post('/api/auth/sign-in/email', {
+          data: { email: 'admin@example.com', password: 'change-me-now' },
+        })
+      ).status(),
+    ).toBe(200);
+    expect(
+      (
+        await admin.put(`${kong}/services/${id}`, {
+          data: { name: slug, url: 'http://httpbin:8080' },
+        })
+      ).ok(),
+    ).toBe(true);
+    expect(
+      (
+        await admin.post(`${kong}/services/${id}/routes`, {
+          data: { paths: [`/${slug}`] },
+        })
+      ).ok(),
+    ).toBe(true);
+    expect(
+      (
+        await admin.post(`${kong}/services/${id}/plugins`, {
+          data: { name: 'key-auth', config: { hide_credentials: false } },
+        })
+      ).ok(),
+    ).toBe(true);
+    const document = {
+      openapi: '3.1.0',
+      info: { title: 'Operation auth QA', version: '1' },
+      components: {
+        securitySchemes: {
+          key: { type: 'apiKey', in: 'header', name: 'apikey' },
+        },
+      },
+      paths: {
+        '/get': {
+          get: {
+            summary: 'Operation auth request',
+            security: [{ key: [] }],
+            responses: { '200': { description: 'OK' } },
+          },
+        },
+      },
+    };
+    const imported = await admin.post('/api/v1/admin/apis', {
+      data: {
+        slug,
+        gatewayServiceId: id,
+        spec: { content: JSON.stringify(document) },
+      },
+    });
+    expect(imported.status()).toBe(201);
+    const api = await imported.json();
+    await account(context.request);
+    const created = await context.request.post('/api/v1/apps', {
+      data: { name: 'Operation auth QA', apiIds: [api.id] },
+    });
+    expect(created.status()).toBe(201);
+    const { credential } = await created.json();
+    await expect
+      .poll(
+        async () =>
+          (
+            await context.request.get(`${proxy}/${slug}/get`, {
+              headers: { apikey: credential.key },
+            })
+          ).status(),
+        { timeout: 15000 },
+      )
+      .toBe(200);
+    await page.goto(`/apis/${slug}`);
+    await expect(page.locator('main .alert')).toContainText('Authentication');
+    const value = page.getByRole('textbox', { name: 'Value', exact: true });
+    await expect(value).toHaveValue('');
+    await value.fill(credential.key);
+    await page
+      .getByRole('button', { name: /Test Request/ })
+      .first()
+      .click();
+    const response = page.waitForResponse((r) =>
+      r.url().includes('/api/v1/try-it?'),
+    );
+    await page
+      .getByRole('button', {
+        name: `Send get request to ${proxy}/${slug}/get`,
+        exact: true,
+      })
+      .click();
+    const sent = await response;
+    expect(sent.request().headers()['apikey']).toBe(credential.key);
+    expect(sent.status()).toBe(200);
+  } finally {
+    await admin.dispose();
   }
 });

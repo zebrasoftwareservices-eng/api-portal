@@ -24,7 +24,9 @@ for (const width of [1280, 375]) {
         expected:
           text.getBoundingClientRect().width +
           parseFloat(style.paddingLeft) +
-          parseFloat(style.paddingRight),
+          parseFloat(style.paddingRight) +
+          parseFloat(style.borderLeftWidth) +
+          parseFloat(style.borderRightWidth),
       };
     });
     expect(Math.abs(dimensions.actual - dimensions.expected)).toBeLessThan(2);
@@ -53,7 +55,9 @@ for (const width of [1280, 375]) {
         expected:
           text.getBoundingClientRect().width +
           parseFloat(style.paddingLeft) +
-          parseFloat(style.paddingRight),
+          parseFloat(style.paddingRight) +
+          parseFloat(style.borderLeftWidth) +
+          parseFloat(style.borderRightWidth),
         inside:
           bounds.left >= card.left &&
           bounds.right <= card.right &&
