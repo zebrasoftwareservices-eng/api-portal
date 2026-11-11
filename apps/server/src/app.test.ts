@@ -781,11 +781,16 @@ info: {}`,
   it('JSO-277: immediately accepts a newly published API after the proxy catalog cache is warm', async () => {
     const config = loadConfig({ DATABASE_URL: container.getConnectionUri() });
     const fetchGateway = vi.fn(
-      async () =>
-        new Response(
+      async (input: URL | RequestInfo, init?: RequestInit) => {
+        const target = new URL(String(input));
+        expect(new Headers(init?.headers).get('apikey')).toBe('pk_unsubscribed');
+        if (target.pathname === '/sample/get')
+          return new Response('subscribed API response', { status: 200 });
+        return new Response(
           JSON.stringify({ message: 'You cannot consume this service' }),
           { status: 403 },
-        ),
+        );
+      },
     );
     const { app: fresh } = await createApp({
       db: connection.db,
@@ -796,9 +801,12 @@ info: {}`,
     const id = uuidv7(),
       slug = `cache-${id}`;
     try {
-      await fresh.inject(
-        '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get',
-      );
+      const headers = { apikey: 'pk_unsubscribed' };
+      const warm = await fresh.inject({
+        url: '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get',
+        headers,
+      });
+      expect(warm.statusCode).toBe(200);
       const target = `/api/v1/try-it?scalar_url=http://localhost:8000/${slug}/get`;
       const unpublished = await fresh.inject(target);
       expect(unpublished.statusCode).toBe(400);
@@ -829,10 +837,13 @@ info: {}`,
         .update(apis)
         .set({ latestVersionId: id })
         .where(eq(apis.id, id));
-      const result = await fresh.inject(target);
+      const result = await fresh.inject({ url: target, headers });
       expect(result.statusCode, result.body).toBe(403);
       expect(result.json().type).toBe('/problems/api-access-denied');
       expect(fetchGateway).toHaveBeenCalledTimes(2);
+      expect(String(fetchGateway.mock.calls[1]?.[0])).toBe(
+        `http://kong:8000/${slug}/get`,
+      );
       const unknown = await fresh.inject(
         `/api/v1/try-it?scalar_url=http://localhost:8000/${slug}-unpublished/get`,
       );

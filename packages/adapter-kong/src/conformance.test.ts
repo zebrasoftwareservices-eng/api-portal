@@ -52,7 +52,15 @@ beforeAll(async () => {
     .start();
   kong = await new GenericContainer('kong:3.9')
     .withNetwork(network)
-    .withEnvironment({ ...environment, KONG_ADMIN_LISTEN: '0.0.0.0:8001' })
+    .withEnvironment({
+      ...environment,
+      KONG_ADMIN_LISTEN: '0.0.0.0:8001',
+      KONG_WORKER_CONSISTENCY: 'strict',
+      KONG_NGINX_WORKER_PROCESSES: '2',
+      // Make a missed synchronous refresh observable instead of letting a
+      // background rebuild accidentally mask the first-request regression.
+      KONG_WORKER_STATE_UPDATE_FREQUENCY: '60',
+    })
     .withExposedPorts(8001, 8000)
     .withWaitStrategy(Wait.forHttp('/status', 8001))
     .start();
@@ -225,6 +233,38 @@ async function portalKey(appId = randomUUID()) {
   await adapter.issueCredential({ id: appId }, { id, key });
   return { appId, id, key };
 }
+it('refuses the first request with an unsubscribed key after protecting a warm service', async () => {
+  const subscribed = await service();
+  const key = await portalKey();
+  await adapter.grantAccess({ id: key.appId }, subscribed);
+  await adapter.protectService(subscribed);
+  await status(subscribed.id, key.key, 200);
+  // Reuse HTTP connections whose workers have already routed the new service
+  // before its import adds the ACL. Never poll or retry the first refusal.
+  for (let round = 0; round < 5; round++) {
+    const imported = await service();
+    try {
+      await status(imported.id, key.key, 200);
+      await adapter.protectService(imported);
+      const first = await call(imported.id, key.key);
+      expect(first.status).toBe(403);
+      expect(
+        adapter.isAccessDenied({
+          status: first.status,
+          headers: first.headers,
+          body: new Uint8Array(await first.arrayBuffer()),
+        }),
+      ).toBe(true);
+    } finally {
+      await adapter.request(`/routes/${imported.routeId}`, 'DELETE');
+      for (const plugin of await data<{ id: string }>(
+        `/services/${imported.id}/plugins`,
+      ))
+        await adapter.request(`/plugins/${plugin.id}`, 'DELETE');
+      await adapter.request(`/services/${imported.id}`, 'DELETE');
+    }
+  }
+});
 it('AC 1/3/4: enforces all access rows and strips header/query keys while preserving consumer identity', async () => {
   const a = await service(),
     b = await service(),

@@ -341,7 +341,7 @@ except for the error *title* the portal shows.
 - [ ] [qa] Dates in `America/Los_Angeles` and `UTC` via `timezoneId` (JSO-166); 404 status for unknown slug in demo and live (JSO-228).
 - [x] [qa] Clean-checkout `pnpm build` and `pnpm dev` start/stop leave `git status --porcelain` empty; `HOSTNAME=myhost pnpm dev` serves on `0.0.0.0` (JSO-230, JSO-188 tooling).
 - [ ] [qa] Full suite plus clean-clone `docker compose up` serves the catalog with the sample API in under five minutes.
-- [ ] [backend] Fix: First try-it request returns 200 for an unsubscribed API key after import
+- [x] [backend] Fix: First try-it request returns 200 for an unsubscribed API key after import
 ## UX  _(ui-designer)_
 Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes-001-002.md). No new tokens.
 - One new screen, **Portal server unavailable** (`ServerUnavailable` in `error.tsx`, `global-error.tsx`
@@ -421,6 +421,9 @@ return the spec to building. Earlier rounds go in `docs/specs/log/003.md`.
 ### Follow-ups
 - Follow-up spec: JSO-188 server robustness items cut from 003
   Six server robustness items from the spec 001 review: no open transaction during Kong calls, reconcile clears drift after a failed DB update, compensation logs without secrets, boot never overwrites admin slug sample, boot completes after a crash in admin creation, catalog/slug lookup avoid loading full OpenAPI documents. Cut from 003 to keep one PR.
+
+- Backend first-request refusal: reproduced the imported target returning upstream HTTP 200 after a direct Kong 403; Kong 3.9 eventual worker consistency leaves a stale per-worker ACL plugin iterator, rather than a cached portal response or wrong proxy target. Bundled Kong now uses `KONG_WORKER_CONSISTENCY=strict`; external Kong operators must apply that setting on Kong itself (documented in deployment guidance).
+- Backend regression validation: the real two-worker Kong test asserts the first request after protection is 403 across five imports, with no refusal retry; the old eventual setting fails that assertion with 200. Server coverage warms a 200 response, then checks the first newly published target returns 403 and forwards the exact internal URL and key; server and adapter lint/typecheck pass, with 212/212 server and 56/56 adapter tests passing. QA must recreate its existing Kong container with the updated Compose configuration before browser verification; temporary diagnosis objects were removed, and the Bugs line and spec status remain unchanged.
 
 ### Deferred Linear
 - **Bug** — Bug: First try-it request returns 200 for an unsubscribed API key after import (major)

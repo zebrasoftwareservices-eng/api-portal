@@ -35,6 +35,9 @@ services:
     environment:
       <<: *kong-env
       KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      # Apply new ACLs before serving a request on any worker, including pooled
+      # try-it connections. Eventual workers can briefly bypass imported ACLs.
+      KONG_WORKER_CONSISTENCY: strict
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
       KONG_PROXY_ERROR_LOG: /dev/stderr
