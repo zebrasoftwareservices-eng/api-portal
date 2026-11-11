@@ -1,7 +1,7 @@
 ---
 id: 019
 title: Unified portal — developer journey
-status: approved # draft → ready → designed → building → testing → uat → review → approved → done
+status: done # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-07
 linear: JSO-316
