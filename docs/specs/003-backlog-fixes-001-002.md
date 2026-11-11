@@ -1,7 +1,7 @@
 ---
 id: 003
 title: Backlog fixes from specs 001 and 002
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-232
@@ -343,7 +343,17 @@ except for the error *title* the portal shows.
 - [ ] [qa] Full suite plus clean-clone `docker compose up` serves the catalog with the sample API in under five minutes.
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/003-*.md`
+Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes-001-002.md). No new tokens.
+- One new screen, **Portal server unavailable** (`ServerUnavailable` in `error.tsx`, `global-error.tsx`
+  and `/unavailable`): h1 "We can't reach the portal server", **Try again** recovers in place, and the
+  header shows no account area while the session is unknown.
+- Key dialog has a fixed footer so **I've saved it** is always visible; header-line copy announces
+  "Header line copied." or shows "Couldn't copy the header line. Select it and press Ctrl+C (⌘C on Mac)."
+- Focus targets for every fix (Try your key heading, Revoke button, password field, Slug field);
+  account menu as `DropdownMenu`; no empty Breadcrumb `nav`.
+- Admin import: code → sentence-case title map, field-only slug/URL errors, clear on submit,
+  "Line L, column C: …", slug-required copy, **Refresh list** clears the Kong banner.
+- Outage copy for revoke, create key, service picker and try-it never says "Nothing was created".
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
