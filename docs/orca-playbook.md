@@ -12,8 +12,11 @@ Claude does the thinking and reviewing; Codex does the high-volume building and 
 including real-user testing in the browser, which keeps those long sessions off the
 Claude allowance.
 Code is always reviewed by a different model from the one that wrote it.
-Change any role's agent in `factory.config.json` (`"claude"`, `"codex"` or `"antigravity"`), for example
-when one subscription hits its usage limit. Add `"model"` and `"effort"` to a role to pin them.
+When a subscription hits its limit, pause that role until the allowance returns.
+The tech lead stays on Claude. Build, QA, and user testing stay on Codex.
+Change who plays a role in `factory.config.json` (`"claude"`, `"codex"` or `"antigravity"`)
+when you are assigning that role, then commit the change on `main`. Add `"model"` and
+`"effort"` to a role to pin them.
 The Codex roles are pinned to `gpt-6.1-sol`, the Codex coding model on ChatGPT Pro
 (see *When a worker fails*). Antigravity (`"antigravity"`) is still supported if you set it for a role;
 run `agy models` to see the models your Google account offers.
@@ -190,12 +193,14 @@ Open the worker's terminal in Orca to read its error, or run
   see which account and plan are signed in and `/model` to see the models it offers. Put an
   offered model on the Codex roles in `factory.config.json`, commit it on `main`, then tell the
   coordinator: "Stop the failed worker, run `git merge main --no-edit`, and continue."
-- **Usage limit reached** — switch that role's `agent` to the other subscription in
-  `factory.config.json`, commit, and tell the coordinator the same.
+- **Usage limit reached** — pause that role until the allowance returns. Leave the tech lead
+  on Claude, and leave backend, frontend, QA, and the user-tester on Codex. Tell the coordinator
+  to stop the failed worker and continue once the allowance is back.
 - **Antigravity stops with `RESOURCE_EXHAUSTED`, a 429 or a quota message** — the Google
-  account's Antigravity quota is used up (the Starter quota resets weekly). Set the user-tester
-  back to `"agent": "claude"` and delete its `"model"` line in `factory.config.json`, commit on
-  `main`, and tell the coordinator the same.
+  account's Antigravity quota is used up (the Starter quota resets weekly). This applies only
+  to a role you set to `"antigravity"`. The user-tester stays on Codex. For a Codex model the
+  plan does not offer, follow the unsupported-model step above. For an Antigravity role, wait
+  for the quota or choose a model `agy models` lists.
 - **Tab says "Action Required" or "Would you like to make the following edits?"** — the worker
   is waiting for your approval because it was started in Ask mode. Approve it (press `y`), then
   type `/permissions` in that tab and pick **Approve for me**; it applies from the agent's next

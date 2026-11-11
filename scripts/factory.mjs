@@ -518,7 +518,7 @@ function jobFor(role, spec, opts = {}) {
     }
     case 'qa-tester':
       return {
-        change: `Map every acceptance criterion to an automated test, add failure-path tests, and run the one full pass: pnpm lint, pnpm typecheck, pnpm test, pnpm test:e2e, and the quickstart. Use \`node scripts/worktree-compose.mjs up -d --build --wait\` and leave that stack up. Record the portal URL from \`node scripts/worktree-compose.mjs env\` and the commit you tested in the Test report. Re-test every open bug with \`node scripts/factory.mjs linear bug ${spec?.id ?? '<id>'} done|open "<match>"\`. Create a Bug issue with \`linear issue ${spec?.id ?? '<id>'} bug --severity blocker|major\` only for a blocker or major, or for work that crosses owners or releases or remains after this spec. A minor finding stays in the spec and does not set status to building. Set status: uat if no blocker or major remains, otherwise status: building.`,
+        change: `Map every acceptance criterion to an automated test, add failure-path tests, and make those new tests pass locally. Then run the browser suite once as the one full pass: pnpm lint, pnpm typecheck, pnpm test, pnpm test:e2e, and the quickstart. Use \`node scripts/worktree-compose.mjs up -d --build --wait\` and leave that stack up. Record the portal URL from \`node scripts/worktree-compose.mjs env\` and the commit you tested in the Test report. Re-test every open bug with \`node scripts/factory.mjs linear bug ${spec?.id ?? '<id>'} done|open "<match>"\`. Create a Bug issue with \`linear issue ${spec?.id ?? '<id>'} bug --severity blocker|major\` only for a blocker or major, or for work that crosses owners or releases or remains after this spec. A minor finding stays in the spec and does not set status to building. Set status: uat if no blocker or major remains, otherwise status: building.`,
         acceptance: 'The Test report covers every acceptance criterion and names the commit, the stack is still up, durable bugs have Linear issues, minor findings have no Fix task, and status is uat or building.',
       };
     case 'user-tester':
@@ -563,25 +563,25 @@ function readScope(role, spec, stageKey) {
   const log = spec ? `docs/specs/log/${spec.id}.md` : 'docs/specs/log/<id>.md';
   switch (role) {
     case 'product-manager':
-      return 'Read only AGENTS.md, docs/specs/_TEMPLATE.md, the roadmap row for this feature, the Summary plus Out of scope of other specs, and a matching brief in docs/research/ when one exists. Do not open docs/specs/log/ or docs/uat/.';
+      return 'Read only AGENTS.md, docs/specs/_TEMPLATE.md, the roadmap row for this feature, the Summary plus Out of scope of other specs, and a matching brief in docs/research/ when one exists. Do not open docs/uat/. Append 2–4 sentences to the spec log and do not read earlier rounds.';
     case 'researcher':
       return stageKey === 'board'
         ? 'Read AGENTS.md, docs/product-brief.md, docs/roadmap.md, docs/adr/0007-lean-factory-loop.md, and the Summary plus Out of scope of each spec. Use factory status, factory next, and linear read. Do not open application code, docs/uat/, docs/specs/log/, or a full Linear ticket.'
         : 'Read AGENTS.md, docs/product-brief.md, docs/roadmap.md, and the Summary plus Out of scope of existing specs. For a Linear key, use linear read --issue. Check the web when a gateway or competitor claim matters. Do not open application code, docs/uat/, or docs/specs/log/.';
     case 'tech-lead':
       return stageKey === 'review'
-        ? `Read only the spec Summary, Acceptance criteria, Technical design, and the current Test report. Read an ADR only when the spec names it. Do not open ${log} or docs/uat/.`
-        : 'Read only AGENTS.md, the spec through Open questions, and ADRs the spec names. Do not open docs/specs/log/ or other specs.';
+        ? `Read only the spec Summary, Acceptance criteria, Technical design, and the current Test report. Read an ADR only when the spec names it. Do not open docs/uat/. Append 2–4 sentences to ${log} and do not read earlier rounds.`
+        : 'Read only AGENTS.md, the spec through Open questions, and ADRs the spec names. Do not open other specs. Append 2–4 sentences to the spec log and do not read earlier rounds.';
     case 'ui-designer':
-      return 'Read only the spec Summary, User stories, Acceptance criteria, Technical design, and docs/design/tokens.md. Do not open docs/specs/log/ or docs/uat/.';
+      return 'Read only the spec Summary, User stories, Acceptance criteria, Technical design, and docs/design/tokens.md. Do not open docs/uat/. Append 2–4 sentences to the spec log and do not read earlier rounds.';
     case 'backend-developer':
-      return 'Read only the spec Technical design, your unchecked [backend] tasks, and Build notes. Do not open docs/specs/log/ or docs/uat/.';
+      return 'Read only the spec Technical design, your unchecked [backend] tasks, and Build notes. Do not open docs/uat/. Append 2–4 sentences to the spec log and do not read earlier rounds.';
     case 'frontend-developer':
-      return 'Read only the spec Technical design, the UX section, your unchecked [frontend] tasks, the linked design file, and Build notes. Do not open docs/specs/log/ or docs/uat/.';
+      return 'Read only the spec Technical design, the UX section, your unchecked [frontend] tasks, the linked design file, and Build notes. Do not open docs/uat/. Append 2–4 sentences to the spec log and do not read earlier rounds.';
     case 'qa-tester':
       return 'Read only the spec Acceptance criteria, Technical design, Build notes, and open Bugs. Do not open docs/uat/ or old review notes.';
     case 'user-tester':
-      return 'Read only the spec Summary, User stories, Acceptance criteria, UX section, and open Bugs. On a retest, walk only the failed rows. Do not read the code, docs/specs/log/, old screenshots, or browser logs.';
+      return 'Read only the spec Summary, User stories, Acceptance criteria, UX section, and open Bugs. On a retest, walk only the failed rows. Do not read the code, old screenshots, or browser logs. Append 2–4 sentences to the spec log and do not read earlier rounds.';
     default:
       return 'Read only the sections named in your role file.';
   }
@@ -593,12 +593,12 @@ function workerSpec(role, spec, job, stageKey) {
     `Read: ${readScope(role, spec, stageKey)}`,
     `Target: ${spec ? spec.rel : 'docs/specs/'}${job.target ? ` — ${job.target}` : ''}.`,
     `Change: ${job.change}`,
-    `Constraints: work only in this worktree; never create or switch branches, force-push, push to main, or merge. You may push this feature branch. Never pass Elango's approval gates.${job.constraints ? ` ${job.constraints}` : ''}`,
+    `Constraints: work only in this worktree; never create or switch branches, force-push, push to main, or merge. You may push this feature branch. Never pass Elango's approval gates. The interpreter is python3; there is no python. Typecheck the package you changed before its tests. When a task adds a database migration, generate it with \`pnpm --filter @portal/db exec drizzle-kit generate\` from the repo root so packages/db/drizzle.config.ts supplies the schema and dialect.${job.constraints ? ` ${job.constraints}` : ''}`,
     `Ownership: you may edit ${OWNERSHIP[role]}`,
     `Observable acceptance: ${job.acceptance}`,
   ];
   if (spec) {
-    lines.push(`History: append long notes to docs/specs/log/${spec.id}.md. Keep the matching spec section to the current result. Do not paste screenshots or earlier rounds into the spec.`);
+    lines.push(`History: append 2–4 sentences to docs/specs/log/${spec.id}.md and do not read earlier rounds. Keep the matching spec section to the current result. Do not paste screenshots or earlier rounds into the spec.`);
   }
   if (spec?.linear && LINEAR) {
     lines.push(

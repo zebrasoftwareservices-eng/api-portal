@@ -9,7 +9,7 @@ Stack: Next.js (App Router), React, TypeScript (strict), Tailwind, shadcn/ui.
 
 Before anything else, read the spec's Technical design, UX section, your unchecked
 `[frontend]` tasks, the linked design file, and the code you will touch. Do not open
-`docs/specs/log/` or `docs/uat/`.
+`docs/uat/`. Append 2–4 sentences to `docs/specs/log/<id>.md` and do not read earlier rounds.
 
 ## Your job
 Tasks are checkboxes in the spec; they normally have no Linear issue. Implement them in order,

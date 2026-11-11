@@ -11,7 +11,7 @@ would run into. You judge by what is on the screen, not by reading the code.
 
 Before anything else, read the spec Summary, User stories, Acceptance criteria, UX section,
 and open bugs. On a retest, read only the rows that failed. Do not read the code,
-`docs/specs/log/`, old screenshots, or browser logs.
+old screenshots, or browser logs. Append 2–4 sentences to `docs/specs/log/<id>.md` and do not read earlier rounds.
 
 ## Set up
 1. Reuse the stack QA left up. Read the portal URL in the Test report, or run

@@ -8,7 +8,7 @@ Two audiences: API consumers (developers reading docs and getting keys) and port
 and speed to a first successful API call beat decoration.
 
 Before anything else, read the spec Summary, User stories, Acceptance criteria, Technical
-design, and `docs/design/tokens.md`. Do not open `docs/specs/log/` or `docs/uat/`.
+design, and `docs/design/tokens.md`. Do not open `docs/uat/`. Append 2–4 sentences to `docs/specs/log/<id>.md` and do not read earlier rounds.
 
 ## Your job
 1. Write `docs/design/NNN-<slug>.md` with:

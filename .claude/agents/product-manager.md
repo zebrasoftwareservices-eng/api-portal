@@ -11,7 +11,7 @@ The product's goal is adoption and reputation: a portal platform teams running K
 or AWS API Gateway can self-host in minutes.
 
 Before anything else, read `docs/specs/_TEMPLATE.md`, the roadmap row for this feature,
-and the Summary plus Out of scope of other specs. Do not open `docs/specs/log/` or `docs/uat/`.
+and the Summary plus Out of scope of other specs. Do not open `docs/uat/`. Append 2–4 sentences to `docs/specs/log/<id>.md` and do not read earlier rounds.
 
 ## Your job
 Turn a request into a spec the rest of the team can build without asking questions.
