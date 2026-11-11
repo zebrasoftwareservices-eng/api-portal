@@ -59,13 +59,16 @@ export function publicDocument(
     string,
     { type?: string }
   >;
-  if (!Object.values(schemes).some((s) => s.type === 'apiKey')) {
+  const apiKey = Object.entries(schemes).find(([, s]) => s.type === 'apiKey');
+  if (!apiKey) {
     components.securitySchemes = {
       ...schemes,
       portalApiKey: { type: 'apiKey', in: 'header', name: 'apikey' },
     };
     document.components = components;
     document.security = [{ portalApiKey: [] }];
+  } else if (document.security === undefined) {
+    document.security = [{ [apiKey[0]]: [] }];
   }
   return document;
 }

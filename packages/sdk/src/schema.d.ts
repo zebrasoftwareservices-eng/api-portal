@@ -112,6 +112,9 @@ export interface paths {
          *     `servers` is replaced by a single entry with the API's public gateway base URL, and
          *     if the document has no `apiKey` security scheme, a `portalApiKey` scheme
          *     (`in: header`, `name: apikey`, Kong's default) is added and applied at the top level.
+         *     If the document has an `apiKey` scheme but no top-level `security`, the first `apiKey`
+         *     scheme is applied at the top level, so the reference shows its key field (spec 003).
+         *     Operation-level `security`, including `security: []`, is left as written.
          */
         get: operations["getApiDocument"];
         put?: never;
@@ -887,9 +890,9 @@ export interface components {
                 message: string;
                 /** @description Lint findings only. The Spectral rule name, e.g. operation-operationId-unique */
                 rule?: string;
-                /** @description Lint findings only. 1-based line in `source` */
+                /** @description Lint findings, and `/problems/invalid-openapi` syntax errors: 1-based line in `source` (or in the submitted document) */
                 line?: number;
-                /** @description Lint findings only. 1-based column in `source` */
+                /** @description Lint findings, and `/problems/invalid-openapi` syntax errors: 1-based column in `source` (or in the submitted document) */
                 column?: number;
                 /** @description Lint findings only. URL of the external file the finding is in; null for the imported document itself */
                 source?: string | null;
@@ -2626,10 +2629,14 @@ export interface operations {
              * @description The document cannot be published. `type` is one of
              *     `/problems/openapi-lint-failed` (one or more error-severity lint findings; `errors`
              *     lists each with `rule`, `message`, `pointer`, `line` and `column`, up to 100),
-             *     `/problems/invalid-openapi` (parse or schema error; `errors[0]` is the first one),
+             *     `/problems/invalid-openapi` (parse or schema error; `errors[0]` is the first one;
+             *     for a YAML or JSON syntax error it has `line` and `column`),
              *     `/problems/unsupported-openapi-version` (not 3.0.x or 3.1.x),
              *     `/problems/invalid-api-version` (`info.version` is missing or doesn't match
              *     `ApiVersionName`; it is used in URLs),
+             *     `/problems/slug-required` (no `slug` was given and none can be derived from
+             *     `info.title`, for example a title with no ASCII letters or digits;
+             *     `errors[0].pointer` is `/slug`),
              *     `/problems/spec-url-unreachable` (fetching `spec.url` failed or timed out after 10 s),
              *     `/problems/gateway-service-not-found`,
              *     `/problems/gateway-service-has-no-route` (no route with a path, and no `routePath` given),

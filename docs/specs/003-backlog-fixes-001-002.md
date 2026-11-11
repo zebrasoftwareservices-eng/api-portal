@@ -317,10 +317,10 @@ except for the error *title* the portal shows.
 - *Commit messages.* No commit in this spec may name JSO-188 (it stays open for spec 022).
 
 ### Tasks
-- [ ] [backend] `import.ts`: return `422 /problems/slug-required` (pointer `/slug`) when no slug is given and the title yields none (JSO-188 slug item); unit test with a title like "日本語 API".
-- [ ] [backend] `import.ts`: YAML/JSON syntax errors return `invalid-openapi` with `errors[0].line`/`column` and "at line L, column C" in `detail` (JSO-184); unit test with malformed YAML.
-- [ ] [backend] `catalog.ts`: apply the first `apiKey` scheme at top level when the document has one but no root `security` (JSO-175); unit tests per the risk above.
-- [ ] [backend] Regenerate `packages/sdk` (`pnpm --filter @portal/sdk generate`) and typecheck it.
+- [x] [backend] `import.ts`: return `422 /problems/slug-required` (pointer `/slug`) when no slug is given and the title yields none (JSO-188 slug item); unit test with a title like "日本語 API".
+- [x] [backend] `import.ts`: YAML/JSON syntax errors return `invalid-openapi` with `errors[0].line`/`column` and "at line L, column C" in `detail` (JSO-184); unit test with malformed YAML.
+- [x] [backend] `catalog.ts`: apply the first `apiKey` scheme at top level when the document has one but no root `security` (JSO-175); unit tests per the risk above.
+- [x] [backend] Regenerate `packages/sdk` (`pnpm --filter @portal/sdk generate`) and typecheck it.
 - [ ] [frontend] Server outage: tri-state `currentUser`, header with no account state when unknown, `ServerUnavailable` in `error.tsx`, new `global-error.tsx` and `/unavailable`, middleware rewrite with 503, **Try again** = refresh + reset (JSO-189, 190, 191).
 - [ ] [frontend] Reference page: `showDeveloperTools: 'never'`, document-order `operationsSorter`, empty auth value, single `h1`, badge/Copy alignment, one document request per load (JSO-172, 173, 174, 224, 225; JSO-188 toolbar and fetch items).
 - [ ] [frontend] 404 status: remove route `loading.tsx` for `apis/[slug]` and its version route, Suspense around `Reference` only (JSO-228, demo and live).
@@ -356,6 +356,10 @@ Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes
 - Outage copy for revoke, create key, service picker and try-it never says "Nothing was created".
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Backend: import now returns the contracted slug-required problem for generated slugs with fewer than two ASCII letters/digits, and syntax errors include the first YAML parser line/column for both API and version imports. `日本語 API` correctly derives `api`; the no-slug regression uses `日本語`, with mixed-title and explicit-slug coverage too.
+- Backend: public documents without root security now apply their first existing apiKey scheme, preserving explicit root and operation security; the SDK was regenerated from the existing contract. All four backend tasks are complete; no Bugs lines or spec status changed.
+- Backend validation: server and SDK lint/typecheck passed; server tests passed 211/211 across 15 files, including 11 new import/catalog regressions, and SDK test passed with no test files. Build dependency packages first on a clean worktree; local container tests needed Docker Desktop started and `DOCKER_HOST=unix:///Users/elangodhanasekaran/.docker/run/docker.sock` with sandbox access to Docker.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
