@@ -426,10 +426,6 @@ test('JSO-406: gateway wizard has a single connection heading', async ({
     await expect(
       page.getByRole('heading', { name: 'Connect your Kong', exact: true }),
     ).toBeVisible();
-    test.fail(
-      true,
-      'JSO-406: the empty gateway state repeats the connection heading',
-    );
     await expect(
       page.getByRole('heading', { name: 'Connect a Kong', exact: true }),
     ).toHaveCount(0, { timeout: 5000 });
