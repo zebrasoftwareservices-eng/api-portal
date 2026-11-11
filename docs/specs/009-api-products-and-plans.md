@@ -1,7 +1,7 @@
 ---
 id: 009
 title: API products and free plans with rate limits
-status: draft   # draft → ready → designed → building → testing → uat → review → approved → done
+status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-237
@@ -98,15 +98,22 @@ Sprint 4 demo steps in `docs/roadmap.md`.
 - **Notification emails** (subscribed, plan changed, cancelled).
 
 ## Open questions
-- [ ] Is a subscription a new kind of app (one key, one plan), or does an existing app subscribe
+- [x] Is a subscription a new kind of app (one key, one plan), or does an existing app subscribe
       to a plan? This decides the data model and the My apps screen. — tech-lead, then Elango
-- [ ] What happens to apps created before this spec, which call APIs with no plan (spec 004)?
+      **Decided (Elango, 2026-11-11):** each subscription is a new app with one key and one plan.
+- [x] What happens to apps created before this spec, which call APIs with no plan (spec 004)?
       Options: move them to a default unlimited plan, or leave them as they are until the
       developer subscribes. — Elango
-- [ ] Does the catalog list only products, or products plus APIs that are in no product? And can
+      **Decided (Elango, 2026-11-11):** a migration moves them to a built-in default plan with no
+      limits, so every app has a plan.
+- [x] Does the catalog list only products, or products plus APIs that are in no product? And can
       a developer still get a key for an API that is in no product? — Elango
-- [ ] Can a team hold two subscriptions to the same product (for example staging and production)?
+      **Decided (Elango, 2026-11-11):** the catalog lists products and APIs that are in no product;
+      loose APIs keep spec 004's per-API key flow.
+- [x] Can a team hold two subscriptions to the same product (for example staging and production)?
       — Elango
+      **Decided (Elango, 2026-11-11):** yes; subscriptions are named (for example `staging`,
+      `prod`), each with its own key and limits.
 - [ ] Does a monthly quota reset on the first of the calendar month in UTC, or on a rolling
       30-day window? Kong's `month` window decides what is cheap; the plan table must say which.
       — tech-lead
