@@ -435,3 +435,87 @@ test('JSO-175 operation-only Authentication Value accepts a key that reaches a r
     await admin.dispose();
   }
 });
+
+for (const title of ['Team unavailable', 'unknown-code']) {
+  test(`JSO-176 non-import app load preserves the appropriate title: ${title}`, async ({
+    page,
+    context,
+  }) => {
+    await account(context.request);
+    await page.route('**/api/v1/apps', (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/problem+json',
+        json: { type: '/problems/unknown-code', title, status: 503 },
+      }),
+    );
+    await page.goto('/dashboard');
+    const alert = page.getByRole('alert');
+    await expect(alert).toContainText(
+      title === 'unknown-code' ? 'Something went wrong' : title,
+    );
+    await expect(alert).not.toContainText('Import failed');
+  });
+}
+
+test('JSO-176 admin import keeps its fallback for an unknown problem code', async ({
+  page,
+  context,
+}) => {
+  expect(
+    (
+      await context.request.post('/api/auth/sign-in/email', {
+        data: { email: 'admin@example.com', password: 'change-me-now' },
+      })
+    ).status(),
+  ).toBe(200);
+  const serviceId = crypto.randomUUID();
+  await page.route('**/api/v1/admin/gateway/services', (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: serviceId,
+            name: 'Import title QA',
+            routes: [{ paths: ['/title-qa'] }],
+            keyAuth: true,
+          },
+        ],
+      },
+    }),
+  );
+  await page.route('**/api/v1/admin/apis', (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: 'application/problem+json',
+      json: {
+        type: '/problems/unknown-code',
+        title: 'unknown-code',
+        detail: 'The import could not complete.',
+        status: 500,
+      },
+    }),
+  );
+  await page.goto('/admin/apis');
+  await page.getByLabel('OpenAPI file', { exact: true }).setInputFiles({
+    name: 'title-qa.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(
+      JSON.stringify({
+        openapi: '3.1.0',
+        info: { title: 'Title QA', version: '1' },
+        paths: {},
+      }),
+    ),
+  });
+  await page
+    .getByLabel('Kong service', { exact: true })
+    .selectOption(serviceId);
+  await page
+    .getByRole('button', { name: 'Import and publish', exact: true })
+    .click();
+  await expect(page.getByRole('alert')).toContainText('Import failed');
+  await expect(page.getByRole('alert')).not.toContainText(
+    'Something went wrong',
+  );
+});
