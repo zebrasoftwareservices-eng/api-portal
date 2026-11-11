@@ -1,7 +1,7 @@
 ---
 id: 003
 title: Backlog fixes from specs 001 and 002
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-232
@@ -385,30 +385,32 @@ Design: [`docs/design/003-backlog-fixes-001-002.md`](../design/003-backlog-fixes
 
 ## Test report  _(qa-tester)_
 
-Tested commit: `73ca87636dafb266e42834a209132605e6617251` (application fixes through `71740f2135174b37ad8e25c898c3bbaa1b4429ec`). Portal: **http://localhost:3013**, from `node scripts/worktree-compose.mjs env`; project `portal-003-backlog-fixes-001-002-cb68`. Kong was recreated before browser checks and `printenv KONG_WORKER_CONSISTENCY` returned `strict`.
+QA retest after build loop 2, 2026-11-11. Full-suite commit: `a3df4bb` (includes application fix `a91dffa`); final tested QA commit: `dd8dd450fa2b67a77dc5111f3420d9d70531bdc5`, which makes the existing JSO-406 expected-failure assertion wait for its asynchronously loaded form. Application code is unchanged between these commits. Portal: **http://localhost:3013**, from `node scripts/worktree-compose.mjs env`; Compose project `portal-003-backlog-fixes-001-002-cb68`. The worktree stack was recreated with `KONG_WORKER_CONSISTENCY=strict` and is left running for UAT.
 
-| Acceptance criterion | Automated evidence | Result |
+| Acceptance criterion | Automated coverage | Result |
 | --- | --- | --- |
-| 1 — catalog spacing, whitespace and full tab title at 390/1280 px | `apps/portal/e2e/backlog-regressions.test.ts`: JSO-162, JSO-222/183 in live and demo | Pass |
-| 2 — title/badge and base-URL/Copy alignment; one visible H1; toolbar absent; empty authentication; one document request | `apps/portal/e2e/backlog-regressions.test.ts`: JSO-173, 224, 172, 174 and document-request regression | Pass |
-| 2 — operation-only security, hint, pasted key reaches request; first unauthorized try-it refuses access | `apps/portal/e2e/backlog-live.test.ts`: JSO-175; `apps/portal/e2e/journeys.ts`: JSON/XML/plain/HTML refusal; `apps/server/src/catalog.test.ts` | Pass; first-request assertion has no Kong polling or retry warm-up |
-| 3 — reveal dialog fits, copy success/failure, saved-key Tab order, revoke Cancel/Escape focus | `apps/portal/e2e/backlog-live.test.ts`: JSO-192/182/161/215; `components/key-handover.test.tsx`, `app-detail.test.tsx`, `shared-ui.test.tsx` | Pass |
-| 3 — app header, keys and admin dates in Los Angeles and UTC | `apps/portal/e2e/backlog-live.test.ts`: two JSO-166 timezone projects | Pass |
-| 4 — account dropdown, mobile labels, absent empty breadcrumb, sign-out API/import failures | `apps/portal/e2e/backlog-live.test.ts`: JSO-163/181/214/227; `apps/portal/components/header.test.tsx` | Pass |
-| 5 — wrong-password focus/clear and expired-session create-key redirect/toast | `apps/portal/e2e/backlog-live.test.ts`: JSO-179 and 180 | Pass |
-| 6 — sentence-case outages; field-only slug/URL errors; previous result cleared; malformed YAML coordinates; non-ASCII slug; recovered service refresh | `apps/portal/components/admin-apis.test.tsx`, `problem-alert.test.tsx`, `account-security.test.tsx`; `apps/server/src/import.test.ts`; `apps/portal/e2e/journeys.ts` | Pass |
-| 7 — real server stop/start on catalog, reference and dashboard; unknown header auth; retry within 5 s without document reload; action-neutral copy | `apps/portal/e2e/backlog-live.test.ts`: three JSO-189/190/191 cases; `apps/server/src/app.test.ts`, `apps/portal/components/problem-alert.test.tsx` | Pass |
-| 8 — default not-found titles, non-admin denial, unknown-app title, live/demo HTTP 404 | `apps/portal/e2e/backlog-live.test.ts`: JSO-223/183; `backlog-regressions.test.ts`: JSO-223/228 in both modes | Pass |
-| 9 — visible-text demo server/auth-card guard; no fixed badge wait; ten consecutive badge runs | `apps/portal/e2e/backlog-regressions.test.ts`: JSO-226 and JSO-173; `reference-snippets.test.ts`: JSO-231 with `--repeat-each=10` | Pass (20/20 JSO-231; 10/10 alignment) |
-| 9 — image smoke registered in CI, obsolete config absent, demo command documented, answered questions ticked | `apps/portal/lib/backlog-hygiene.test.ts` | Pass |
-| 9 — clean build and dev start/stop stay clean; exported HOSTNAME does not change wildcard bind | `tests/spec003-hygiene.test.ts` | Pass; explicit test environment forwarded through Turbo using `--env-mode=loose` |
-| 9 — fresh seeded Compose quickstart under five minutes | `tests/spec003-quickstart.test.ts`: deletes only this worktree QA stack/volume, then `node scripts/worktree-compose.mjs up -d --build --wait` | Pass: catalog and sample API in **88.0 s**; fresh-volume current checkout, not a separate clone |
+| 1: responsive catalog spacing and tab title | `apps/portal/e2e/backlog-regressions.test.ts`: JSO-162 at 390/1280 px; JSO-222/183, live and demo | PASS |
+| 2: reference alignment, single H1, no toolbar, empty key field, one document fetch | `backlog-regressions.test.ts`: JSO-173/224/172/174 and document-fetch check; `backlog-live.test.ts`: JSO-175 sends a pasted key through real Kong; `apps/server/src/catalog.test.ts` preserves root/operation security | PASS; authored operation ordering remains deferred to spec 022 |
+| 3: key dialog, copy success/failure, keyboard focus, revoke cancel/Escape, browser dates | `apps/portal/e2e/backlog-live.test.ts`: JSO-192/182/161/215 and JSO-166 in Los Angeles and UTC; `components/app-detail.test.tsx`, `shared-ui.test.tsx` | PASS |
+| 4: account dropdown, mobile labels, absent empty breadcrumb, sign-out failures | `backlog-live.test.ts`: JSO-163/181/214/227; `components/header.test.tsx` includes failed dynamic import | PASS |
+| 5: wrong-password clearing/focus and expired-session redirect/toast | `backlog-live.test.ts`: JSO-179/180; `components/auth-form.test.tsx` | PASS |
+| 6: import titles/field-only errors, clear-on-submit, YAML location, missing slug, gateway refresh | `components/admin-apis.test.tsx`, `problem-alert.test.tsx`, `apps/server/src/import.test.ts`; new `backlog-live.test.ts` JSO-176 tests preserve a readable dashboard server title, use a neutral dashboard fallback, and retain the admin-import fallback | PASS |
+| 7: real server outage, unknown account state, portal error page, recovery within five seconds without reload, contextual outage copy | `backlog-live.test.ts`: JSO-189/190/191 on `/`, `/apis/sample`, `/dashboard`; `components/server-unavailable.test.tsx`, `apps/server/src/app.test.ts` | PASS; remaining server items explicitly deferred to spec 022 |
+| 8: default not-found titles and real HTTP 404 | `backlog-live.test.ts`: JSO-223/183 for quickstart-required, non-admin admin page, unknown app; `backlog-regressions.test.ts`: JSO-228 live/demo; `deploy/e2e-demo/demo.test.ts` | PASS |
+| 9: demo card guard, CI/runtime hygiene, repeatable badge, clean build/dev, wildcard bind, quickstart | `backlog-regressions.test.ts`: visible server/auth text guard; `reference-snippets.test.ts`: JSO-231 repeated 10 times; `tests/spec003-hygiene.test.ts`; `tests/spec003-quickstart.test.ts`; `deploy/server-image-smoke.mjs` | PASS; CI contains server-image smoke, duplicate reference config is absent, AGENTS lists demo command |
 
-Validation: `pnpm lint` and `pnpm typecheck` passed; `pnpm test` passed **549 tests** (275 portal, 212 server, 56 Kong adapter, 6 database; 12 successful Turbo tasks, 8 cached). Focused live Playwright passed **21** with 2 intentional skips; focused demo passed **9** with 2 intentional skips; first-request refusals passed **4/4**, and the issue-specific badge repeat passed **20/20** (10 per viewport), plus **10/10** alignment repeats. Skips cover mode-specific behavior and operation-order work deferred by Elango; deferred work was not tested or reopened.
+Failure paths include invalid YAML/slug/URL, failed clipboard/sign-out/import, wrong password, expired session, real Kong/server outages, unauthorized admin navigation, duplicate/idempotent gateway operations, and missing API subscription ACL denial. The current board had no open Bugs at intake, so no open bug transition or new durable issue was required; the previously closed findings remain covered by the regression suites. JSO-225 and the remaining JSO-188 server work are deferred to spec 022 by the coordinator and are not represented as completed work here.
 
-`pnpm test:e2e` completed successfully: **92 passed, 2 skipped** in **6.2 minutes**. Existing expected-failure annotations for JSO-399, JSO-405 and JSO-406 remain unchanged; they are outside this spec. An initial run was interrupted after missing Compose project/image/port variables caused setup failures; the complete pass used all matching worktree variables plus `SERVER_URL=http://localhost:4013`, and confirmed disposable leftovers from the interrupted attempt were removed. The worktree stack remains running for UAT.
+Validation results:
 
-All five open bugs were re-tested through `linear bug 003 done`: the major first-request refusal and minor JSO-162, JSO-222, JSO-224 and JSO-228. There are no open blocker/major findings and no new minor findings or Fix tasks. The dates/404 QA task helper rejects its existing multi-key line (JSO-166 and JSO-228); its passing evidence is recorded above for coordinator bookkeeping.
+- `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed. Workspace tests report 278 portal, 212 server, 56 Kong-adapter, and 6 database tests; unchanged packages used Turbo cache. Portal typecheck also passed before the new browser tests and after the marker correction.
+- The single `pnpm test:e2e` full pass ran 97 tests in 6.5 minutes: 94 passed, 2 skipped, and 1 expected-failure timing race failed because JSO-406 **passed unexpectedly** before its form rendered. A targeted run without the marker confirmed that the existing duplicate heading remains; restored the marker and made the assertion wait for the loaded Admin API URL field. The final targeted JSO-406 rerun passed (one expected failure, exit 0) after waiting for the loaded form, on `dd8dd45`. The full suite was not repeated. JSO-399 and JSO-405 reproduced their existing expected failures; the skipped cases are deferred authored operation ordering and the demo-only card check on the live build.
+- All three new ProblemAlert title checks passed both targeted and in the full browser run. `pnpm test:e2e:demo`: 41 passed, 2 skipped; dedicated demo backlog run: 9 passed, 2 skipped (live-only auth and deferred ordering).
+- JSO-231 `--repeat-each=10`: 20 passed across 1280/375 px, waiting for Scalar rendering without a fixed timeout.
+- `node --experimental-strip-types --test tests/spec003-hygiene.test.ts` passed from a clean checkout: build and dev start/stop leave git clean; `HOSTNAME=myhost` still binds a wildcard address.
+- `node --experimental-strip-types --test tests/spec003-quickstart.test.ts` passed: fresh worktree containers and volumes, seeded sample catalog ready in **116.0 seconds** using `node scripts/worktree-compose.mjs up -d --build --wait`. `deploy/server-image-smoke.mjs` passed for the worktree image; `deploy/smoke.mjs` passed real key creation/authentication, try-it, one-time reveal, idempotent revoke and revoked-key rejection.
+
+No new blocker or major was found in this retest. UAT should use the running portal URL above; the full-suite exit status is explicitly retained as evidence of the corrected test race, and existing JSO-399/405/406 expected failures remain visible rather than being claimed fixed.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
