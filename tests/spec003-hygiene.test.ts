@@ -31,7 +31,7 @@ test(
       PORTAL_DEMO_MODE: 'on',
     };
     delete env.SERVER_URL;
-    const child = spawn('pnpm', ['dev'], {
+    const child = spawn('pnpm', ['dev', '--env-mode=loose'], {
       env,
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
