@@ -1,7 +1,7 @@
 ---
 id: 003
 title: Backlog fixes from specs 001 and 002
-status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-232
@@ -175,12 +175,172 @@ Chromium; "visible" means inside the viewport without scrolling unless a criteri
 <!-- Sections below are filled by later stages. -->
 
 ## Technical design  _(tech-lead)_
-Components · API contract · Data model · Adapter calls · Risks
+Frontend-led fix bundle on `main` at `bf1b1c9` (specs 008 and 019 merged). No new screens,
+no new tables, no new dependencies, no gateway calls. Two small server changes back
+criterion 6 and JSO-175. No ADR: nothing here is a lasting architecture choice.
+
+**Answers to the tech-lead open questions**
+- **019 on `main`.** JSO-181 is fixed by `36f6aa2` (My apps cards carry `<dt>` labels for
+  APIs, Active keys and Created); close it with that commit after QA's regression test passes.
+  JSO-163 is not fixed (`header.tsx` still uses `<details>`/`<summary>`), JSO-214 is not fixed
+  (`PageHeader` always renders `<nav aria-label="Breadcrumb">`), JSO-182 is not fixed (the
+  reveal dialog does not hand focus to **Try your key**). Those three get tasks.
+- **JSO-172 / JSO-173.** JSO-172 is not fixed: `reference.tsx` doesn't set
+  `showDeveloperTools`, and Scalar 1.46 defaults it to `'localhost'`, so the toolbar shows on
+  the quickstart. JSO-221 fixed the badge width only; the vertical alignment in design 3.2 is
+  still open. Both get tasks.
+- **JSO-175.** Make the key field appear. The server already adds `portalApiKey` at the top
+  level when a document has no `apiKey` scheme; it now also applies the document's first
+  `apiKey` scheme at the top level when the document has one but no root `security`. Kong
+  key-auth guards the whole service, so this is true of every operation. Operation-level
+  `security` (including `security: []`) is unchanged. The hint keeps naming Authentication.
+- **JSO-230.** Ignore them. Next 16 rewrites `next-env.d.ts` differently for `dev` and `build`
+  and writes `apps/portal/AGENTS.md`; neither is source. Untrack `next-env.d.ts`, add both to
+  `apps/portal/.gitignore`, and make the portal `typecheck` script `next typegen && tsc --noEmit`
+  so a clean checkout still typechecks.
+- **JSO-228.** Yes, live `/apis/<unknown>` (and `/apis/<slug>/versions/<unknown>`) also
+  return 404. The cause is the same in both builds: the route's `loading.tsx` opens a Suspense
+  boundary, the 200 shell streams, and `notFound()` arrives too late to set the status.
+
+**Components**
+- `apps/portal` — almost every fix (criteria 1–8): header, `PageHeader` use, reference page,
+  key dialog, app detail, dashboard, auth form, admin import, error and not-found pages,
+  `DateValue`, middleware, ingress, build hygiene.
+- `packages/ui` — `PageHeader` renders the breadcrumb `nav` only when `breadcrumb` has items
+  (JSO-214); `CopyButton` gets an `announce` / `failedMessage` pair and a live region (JSO-215).
+- `apps/server` — `import.ts` (YAML line/column, slug-required) and `catalog.ts` (JSO-175).
+- `packages/sdk` — regenerate from the contract (descriptions and one new problem type only).
+- `.github/workflows/ci.yml`, `AGENTS.md`, `apps/portal/playwright.reference.config.ts`
+  (deleted), `docs/specs/001-*.md` open-question ticks (JSO-229, JSO-188 tooling items).
+
+**API contract** (`apps/server/openapi.yaml`, updated in this stage)
+- `GET /v1/apis/{slug}/openapi.json` (and the version variant, which shares the transform):
+  if the document has an `apiKey` scheme and no top-level `security`, the first `apiKey`
+  scheme is applied at the top level. Response shape unchanged.
+- `POST /v1/admin/apis` → `422 /problems/slug-required` when no `slug` is given and
+  `info.title` yields no valid slug (fewer than 2 `[a-z0-9]` characters after slugifying).
+  `title: "Slug required"`, `detail: "We can't make a slug from this API's title. Enter a slug."`,
+  `errors: [{ pointer: "/slug", message: "Enter a slug. The title has no letters or digits to make one from." }]`.
+  Today this escapes as a ZodError → generic 400.
+- `POST /v1/admin/apis` and `POST /v1/admin/apis/{slug}/versions` → `422 /problems/invalid-openapi`
+  for a YAML/JSON syntax error now carries `errors[0].line` and `errors[0].column` (1-based,
+  from `YAMLParseError.linePos[0]`), and `detail` reads
+  `Invalid OpenAPI document: <reason> at line <l>, column <c>`. `Problem.errors[].line/column`
+  descriptions widened to cover this. Schema-level errors keep `pointer` only.
+
+**Data model** — none. No migration.
+
+**Adapter calls** — none. No Kong behaviour changes; key create/revoke code is not touched
+except for the error *title* the portal shows.
+
+**Design per issue (portal)**
+- *Server outage (JSO-189, 190, 191).* `lib/server.ts#currentUser()` returns
+  `{ state: 'signed-in', user } | { state: 'signed-out' } | { state: 'unknown' }`; network
+  failure or 5xx from `/v1/me` is `unknown`, a 401 is `signed-out`. `Providers` carries the
+  state; `Header` renders no account area (no Sign in/Sign up, no menu) when `unknown`.
+  One client component `ServerUnavailable` (portal heading "We can't reach the portal server",
+  copy per ui-designer, **Try again**) is used by `app/error.tsx`, a new `app/global-error.tsx`
+  (renders its own `<html>`, header markup and the component, as the backstop when the layout
+  throws), and a new `app/unavailable/page.tsx`. Middleware no longer returns the plain-text
+  503: for a protected page with the server down it `NextResponse.rewrite`s to `/unavailable`
+  with status 503, so the URL stays `/dashboard`. **Try again** does
+  `startTransition(() => { router.refresh(); reset?.(); })` — `refresh` re-runs middleware and
+  server components, so a recovered server renders the real page with no reload. The `/`
+  and `/apis/[slug]` pages throw on a network error so they hit `error.tsx`.
+- *"Nothing was created" (JSO-188 copy).* Revoke, the admin service picker and try-it use
+  their own outage copy (ui-designer), never the create-flow sentence.
+- *Reference page (JSO-172, 173, 174, 188, 224, 225).* Scalar configuration adds
+  `showDeveloperTools: 'never'`, `operationsSorter` as a function that orders by the operation's index in
+  `Object.keys(document.paths)` then method order in the path item, and an
+  `authentication.securitySchemes[<scheme>]` entry with an empty value for each `apiKey` scheme
+  so the Value field shows Scalar's placeholder, never a key-like example. Hide Scalar's
+  intro `h1` (title) with a scoped `display: none` rule, so the portal `PageHeader` `h1` is the only
+  one and the title isn't shown twice; prefer a Scalar option if 1.46 has one. Badge and
+  **Copy** alignment is CSS in `VersionRow`/`CodeValue` (`align-items: center` on the title and
+  base-URL rows). For the double document fetch: on a production build, find the second
+  request (likely `ApiAccessProvider` or a remount of `Reference`) and make it one; the test
+  counts requests to `/api/v1/apis/sample/openapi.json` per load.
+- *Not found returns 404 (JSO-228).* Remove `app/apis/[slug]/loading.tsx` and
+  `app/apis/[slug]/versions/[version]/loading.tsx` so `notFound()` runs before the first byte;
+  keep a loading state inside the page with a Suspense boundary around `Reference` only,
+  below the API lookup. Tab titles (JSO-183, 222, 223): catalog sets
+  `metadata.title = 'APIs'`; not-found pages, `/quickstart-required` and an unknown app ID
+  use the default `Developer Portal`.
+- *Catalog card (JSO-162).* Base URL and **View reference →** become sibling block elements
+  with a gap; no shared inline run.
+- *Dates (JSO-166).* `DateValue` becomes a client component that formats with the browser's
+  time zone (`Intl.DateTimeFormat(undefined, { dateStyle: 'medium' })`, no `timeZone`); the
+  server render prints the UTC date and the `<time>` has `suppressHydrationWarning`.
+- *Key dialog and app page (JSO-161, 182, 192, 215).* Dialog content gets
+  `max-height: calc(100dvh - 2rem)` with the body scrolling and the footer (**I've saved it**)
+  outside the scroll area, so it is visible at 1280×800. On close after **I've saved it**,
+  `onCloseAutoFocus` focuses the **Try your key** heading (`tabIndex={-1}`), so the next Tab
+  reaches its first button. The revoke `AlertDialog` returns focus to the **Revoke** button
+  that opened it (keep a ref per key id; `onCloseAutoFocus` → that button). `CopyButton` writes
+  "Header line copied." to a polite live region; on a rejected `navigator.clipboard.writeText`
+  it shows the ui-designer's failure message instead.
+- *Header (JSO-163, 227).* Account menu becomes `DropdownMenu` from `@portal/ui` (trigger =
+  email, items: email label, separator, Profile, **Sign out**). Sign-out wraps the dynamic
+  `import('../lib/client')` and `signOut()` in one try/catch; any failure shows the toast.
+- *Sign-in and session (JSO-179, 180).* Wrong password clears and focuses the password field.
+  A 401 from create-key (and other app actions) sends the user to
+  `/sign-in?next=<current path>` and shows "Your session has ended. Sign in to continue."
+- *Admin import (JSO-176, 177, 178, 184, 188).* `ProblemAlert` maps codes to sentence-case
+  titles (`gateway-unavailable` → "Gateway unavailable", etc.) and never shows the raw code.
+  `validation`, `api-slug-taken` and `slug-required` errors render on the field only. Submit
+  clears the previous success and error before validation. `invalid-openapi` with
+  `line`/`column` shows "Line L, column C: <message>". **Refresh list** refetches gateway
+  services and clears the Kong-down banner on success. Create-key and revoke-key outages use
+  "Gateway unavailable".
+- *Hygiene (JSO-188 tooling, 229, 230, 231, 226).* `ingress/start.ts` binds to
+  `process.env.PORTAL_HOST || '0.0.0.0'`, not `HOSTNAME` (macOS and some shells export
+  `HOSTNAME`); the Docker image keeps working because it doesn't rely on `HOSTNAME` for the
+  ingress. CI adds a step `node deploy/server-image-smoke.mjs` in `compose-smoke`.
+
+**Risks and how to test them**
+- *Scalar options drift between minor versions.* Pin behaviour with e2e on visible text
+  (JSO-226): fail if "Developer Tools", "Configure", "Share", "Deploy", a server card or an
+  auth card is visible; check sidebar order and the single `h1`.
+- *`router.refresh()` after an outage may serve a cached RSC payload.* QA test: stop the
+  server, load each page, start it, select **Try again**, expect content within 5 s without a
+  navigation event (`page.on('framenavigated')` count unchanged).
+- *Middleware rewrite with status 503 must not break the healthy path.* `outage-smoke.mjs`
+  plus a unit test of middleware for both states.
+- *Removing route `loading.tsx` slows first paint on `/apis/[slug]`.* The API lookup is one
+  fast call; the Suspense boundary around Scalar keeps its loading state. Assert 404 status
+  for unknown slugs in both builds.
+- *Hydration mismatch from local-time dates.* Covered by `suppressHydrationWarning` on the
+  `<time>` only; test in `America/Los_Angeles` and `UTC` with Playwright `timezoneId`.
+- *JSO-175 changes the served document.* Unit test in `catalog.test.ts`: op-level-only
+  security gets a root `security`; a document with root security or `security: []` on an
+  operation is unchanged there.
+- *Commit messages.* No commit in this spec may name JSO-188 (it stays open for spec 022).
 
 ### Tasks
-- [ ] [backend] …
-- [ ] [frontend] …
-- [ ] [qa] …
+- [ ] [backend] `import.ts`: return `422 /problems/slug-required` (pointer `/slug`) when no slug is given and the title yields none (JSO-188 slug item); unit test with a title like "日本語 API".
+- [ ] [backend] `import.ts`: YAML/JSON syntax errors return `invalid-openapi` with `errors[0].line`/`column` and "at line L, column C" in `detail` (JSO-184); unit test with malformed YAML.
+- [ ] [backend] `catalog.ts`: apply the first `apiKey` scheme at top level when the document has one but no root `security` (JSO-175); unit tests per the risk above.
+- [ ] [backend] Regenerate `packages/sdk` (`pnpm --filter @portal/sdk generate`) and typecheck it.
+- [ ] [frontend] Server outage: tri-state `currentUser`, header with no account state when unknown, `ServerUnavailable` in `error.tsx`, new `global-error.tsx` and `/unavailable`, middleware rewrite with 503, **Try again** = refresh + reset (JSO-189, 190, 191).
+- [ ] [frontend] Reference page: `showDeveloperTools: 'never'`, document-order `operationsSorter`, empty auth value, single `h1`, badge/Copy alignment, one document request per load (JSO-172, 173, 174, 224, 225; JSO-188 toolbar and fetch items).
+- [ ] [frontend] 404 status: remove route `loading.tsx` for `apis/[slug]` and its version route, Suspense around `Reference` only (JSO-228, demo and live).
+- [ ] [frontend] Tab titles: catalog `APIs · Developer Portal`; not-found, `/quickstart-required` and unknown app ID use `Developer Portal` (JSO-183, 222, 223).
+- [ ] [frontend] Catalog card: base URL and **View reference →** as separate, spaced elements (JSO-162).
+- [ ] [frontend] `DateValue` in the browser's time zone (JSO-166).
+- [ ] [frontend] Key dialog fits 1280×800 with **I've saved it** visible; focus to **Try your key** after close; revoke dialog returns focus to its **Revoke** button (JSO-192, 182, 161).
+- [ ] [frontend] `CopyButton` live-region announcement and clipboard-failure message (JSO-215; copy from ui-designer).
+- [ ] [frontend] `PageHeader` renders the Breadcrumb nav only with items (JSO-214).
+- [ ] [frontend] Account menu as `DropdownMenu`; sign-out failure toast covers import failure (JSO-163, 227).
+- [ ] [frontend] Sign-in wrong password clears and focuses the field; 401 on app actions → `/sign-in?next=…` with the session-ended toast (JSO-179, 180).
+- [ ] [frontend] Admin import: sentence-case titles, field-only slug/URL errors, clear on submit, line/column display, slug-required on the field, **Refresh list** clears the Kong banner, "Gateway unavailable" for key outages (JSO-176, 177, 178, 184; JSO-188 slug item).
+- [ ] [frontend] Outage copy: no "Nothing was created" on revoke, admin service picker or try-it (JSO-188 copy item).
+- [ ] [frontend] Hygiene: ingress binds `PORTAL_HOST || 0.0.0.0`; ignore `next-env.d.ts` and `apps/portal/AGENTS.md`, typecheck runs `next typegen` first; delete `playwright.reference.config.ts`; CI runs `deploy/server-image-smoke.mjs`; AGENTS.md lists `pnpm test:e2e:demo`; tick spec 001's answered open questions (JSO-188 tooling items, JSO-229, JSO-230).
+- [ ] [qa] One regression test per issue in scope (criteria 1–9), named by issue key; JSO-181 test confirms `36f6aa2` and closes it.
+- [ ] [qa] Demo e2e fails on visible Scalar server/auth card text (JSO-226); version-badge test waits for Scalar render and passes `--repeat-each=10` (JSO-231).
+- [ ] [qa] Outage e2e: stop server, check `/`, `/apis/sample`, `/dashboard` error page and header, restart, **Try again** recovers within 5 s with no navigation (JSO-189, 190, 191).
+- [ ] [qa] Dates in `America/Los_Angeles` and `UTC` via `timezoneId` (JSO-166); 404 status for unknown slug in demo and live (JSO-228).
+- [ ] [qa] Clean-checkout `pnpm build` and `pnpm dev` start/stop leave `git status --porcelain` empty; `HOSTNAME=myhost pnpm dev` serves on `0.0.0.0` (JSO-230, JSO-188 tooling).
+- [ ] [qa] Full suite plus clean-clone `docker compose up` serves the catalog with the sample API in under five minutes.
 
 ## UX  _(ui-designer)_
 Summary + link to `docs/design/003-*.md`
