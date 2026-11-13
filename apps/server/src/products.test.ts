@@ -66,17 +66,21 @@ const adapter = {
   applyAccessPolicy: vi.fn(async () => ({ repairs: [], findings: [] })),
 } as unknown as GatewayAdapter;
 let role = 'admin';
+let signedIn = true;
 const auth = {
   api: {
-    getSession: async () => ({
-      user: {
-        id: adminId,
-        name: 'Admin',
-        email: 'admin@example.com',
-        role,
-        emailVerified: true,
-      },
-    }),
+    getSession: async () =>
+      signedIn
+        ? {
+            user: {
+              id: adminId,
+              name: 'Admin',
+              email: 'admin@example.com',
+              role,
+              emailVerified: true,
+            },
+          }
+        : null,
   },
 } as unknown as Auth;
 beforeAll(async () => {
@@ -187,6 +191,7 @@ beforeEach(async () => {
     vi.spyOn(adapter, method);
   vi.clearAllMocks();
   role = 'admin';
+  signedIn = true;
   await connection.db
     .update(teamMembers)
     .set({ role: 'admin' })
@@ -755,4 +760,180 @@ it('compensates subscription and regeneration commit failures and fails closed o
       'DROP TRIGGER reject_cancel_commit ON apps; DROP FUNCTION reject_cancel_commit();',
     );
   }
+});
+
+it.each(['POST', 'PUT'] as const)(
+  'AC2: %s rejects every invalid numeric field and API membership without saving',
+  async (method) => {
+    const before = await connection.db.select().from(plans);
+    const beforeApis = await connection.db.select().from(planApis);
+    const path = `/api/v1/admin/products/${productId}/plans${method === 'PUT' ? `/${planId}` : ''}`;
+    for (const field of ['rateLimit', 'monthlyQuota'] as const) {
+      for (const value of [undefined, 0, -1, 2.5]) {
+        const result = await server.inject({
+          method,
+          url: path,
+          payload: {
+            name: 'Invalid QA',
+            rateLimit: 5,
+            rateLimitUnit: 'second',
+            monthlyQuota: 10,
+            apiIds: [apiId],
+            [field]: value,
+          },
+        });
+        expect(result.statusCode, result.body).toBe(400);
+        expect(result.headers['content-type']).toContain(
+          'application/problem+json',
+        );
+        expect(result.json().errors).toContainEqual(
+          expect.objectContaining({ pointer: `/${field}` }),
+        );
+      }
+    }
+    for (const apiIds of [[], [uuidv7()]]) {
+      const result = await server.inject({
+        method,
+        url: path,
+        payload: {
+          name: 'Invalid QA',
+          rateLimit: 5,
+          rateLimitUnit: 'second',
+          monthlyQuota: 10,
+          apiIds,
+        },
+      });
+      expect(result.statusCode, result.body).toBe(400);
+      expect(result.json().errors).toContainEqual(
+        expect.objectContaining({ pointer: '/apiIds' }),
+      );
+    }
+    expect(await connection.db.select().from(plans)).toEqual(before);
+    expect(await connection.db.select().from(planApis)).toEqual(beforeApis);
+    expect(adapter.applyPlanLimits).not.toHaveBeenCalled();
+  },
+);
+it('duplicate subscriptions return a conflict without issuing another key or consumer', async () => {
+  const created = await subscribe();
+  vi.clearAllMocks();
+  const result = await server.inject({
+    method: 'POST',
+    url: '/api/v1/apps',
+    payload: { name: created.app.name, teamId, planId },
+  });
+  expect(result.statusCode).toBe(409);
+  expect(result.headers['content-type']).toContain('application/problem+json');
+  expect(result.json().type).toBe('/problems/app-name-taken');
+  expect((await active(created.app.id)).map((c) => c.id)).toEqual([
+    created.credential.id,
+  ]);
+  expect(adapter.ensureConsumer).not.toHaveBeenCalled();
+  expect(adapter.issueCredential).not.toHaveBeenCalled();
+});
+it('serializes simultaneous duplicate subscriptions before any second Kong write', async () => {
+  const request = {
+    method: 'POST' as const,
+    url: '/api/v1/apps',
+    payload: { name: 'Concurrent QA subscription', teamId, planId },
+  };
+  const results = await Promise.all([
+    server.inject(request),
+    server.inject(request),
+  ]);
+  expect(results.map((result) => result.statusCode).sort()).toEqual([201, 409]);
+  const conflict = results.find((result) => result.statusCode === 409)!;
+  expect(conflict.headers['content-type']).toContain(
+    'application/problem+json',
+  );
+  expect(conflict.json().type).toBe('/problems/app-name-taken');
+  expect(adapter.ensureConsumer).toHaveBeenCalledTimes(1);
+  expect(adapter.issueCredential).toHaveBeenCalledTimes(1);
+  const created = results.find((result) => result.statusCode === 201)!.json();
+  expect(
+    (await active(created.app.id)).map((credential) => credential.id),
+  ).toEqual([created.credential.id]);
+});
+it('AC10: non-admins cannot create or edit products or plans and expired sessions cannot mutate subscriptions', async () => {
+  const created = await subscribe();
+  const before = await connection.db.select().from(products);
+  const beforePlans = await connection.db.select().from(plans);
+  const beforeApps = await connection.db.select().from(apps);
+  const beforeCredentials = await connection.db.select().from(credentials);
+  vi.clearAllMocks();
+  role = 'developer';
+  const input = {
+    name: 'Denied',
+    rateLimit: 5,
+    rateLimitUnit: 'second',
+    monthlyQuota: 10,
+    apiIds: [apiId],
+  };
+  for (const request of [
+    {
+      method: 'POST' as const,
+      url: '/api/v1/admin/products',
+      payload: { name: 'Denied', description: 'Denied', apiIds: [apiId] },
+    },
+    {
+      method: 'PATCH' as const,
+      url: `/api/v1/admin/products/${productId}`,
+      payload: { name: 'Denied' },
+    },
+    {
+      method: 'POST' as const,
+      url: `/api/v1/admin/products/${productId}/plans`,
+      payload: input,
+    },
+    {
+      method: 'PUT' as const,
+      url: `/api/v1/admin/products/${productId}/plans/${planId}`,
+      payload: input,
+    },
+  ]) {
+    const result = await server.inject(request);
+    expect(result.statusCode, result.body).toBe(403);
+    expect(result.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+  }
+  signedIn = false;
+  for (const request of [
+    {
+      method: 'POST' as const,
+      url: '/api/v1/apps',
+      payload: { name: 'Expired', teamId, planId },
+    },
+    {
+      method: 'PUT' as const,
+      url: `/api/v1/apps/${created.app.id}/plan`,
+      payload: { planId: nextPlanId },
+    },
+    { method: 'DELETE' as const, url: `/api/v1/apps/${created.app.id}` },
+    {
+      method: 'POST' as const,
+      url: `/api/v1/apps/${created.app.id}/credentials/${created.credential.id}/regenerate`,
+    },
+  ]) {
+    const result = await server.inject(request);
+    expect(result.statusCode, result.body).toBe(401);
+    expect(result.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+  }
+  expect(await connection.db.select().from(products)).toEqual(before);
+  expect(await connection.db.select().from(plans)).toEqual(beforePlans);
+  expect(await connection.db.select().from(apps)).toEqual(beforeApps);
+  expect(await connection.db.select().from(credentials)).toEqual(
+    beforeCredentials,
+  );
+  for (const method of [
+    'ensureConsumer',
+    'issueCredential',
+    'applyPlanLimits',
+    'deleteConsumer',
+    'grantAccess',
+    'revokeAccess',
+    'revokeCredential',
+  ] as const)
+    expect(adapter[method]).not.toHaveBeenCalled();
 });

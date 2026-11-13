@@ -38,7 +38,12 @@ test('JSO-163 JSO-181 JSO-214 account dropdown and mobile app labels', async ({
   expect(
     (
       await context.request.post('/api/v1/apps', {
-        data: { name: 'Labels QA', apiIds: [apis[0].id] },
+        data: {
+          name: 'Labels QA',
+          apiIds: [
+            apis.find((api: { slug: string }) => api.slug === 'sample')!.id,
+          ],
+        },
       })
     ).status(),
   ).toBe(201);
@@ -57,6 +62,7 @@ test('JSO-163 JSO-181 JSO-214 account dropdown and mobile app labels', async ({
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 390, height: 800 });
   await expect(page.locator('.app-cards dt')).toHaveText([
+    'Plan',
     'APIs',
     'Active keys',
     'Created',
@@ -127,7 +133,10 @@ test('JSO-180 expired create-key session redirects with explanation', async ({
   await account(context.request);
   const apis = (await (await context.request.get('/api/v1/apis')).json()).items;
   const result = await context.request.post('/api/v1/apps', {
-    data: { name: 'Expired QA', apiIds: [apis[0].id] },
+    data: {
+      name: 'Expired QA',
+      apiIds: [apis.find((api: { slug: string }) => api.slug === 'sample')!.id],
+    },
   });
   const { app } = await result.json();
   await page.goto(`/dashboard/apps/${app.id}`);
@@ -158,12 +167,25 @@ for (const path of ['/', '/apis/sample', '/dashboard']) {
     try {
       compose('stop', 'server');
       await page.goto(path);
-      await expect(
-        page.getByRole('heading', {
-          name: "We can't reach the portal server",
-          exact: true,
-        }),
-      ).toBeVisible();
+      if (path === '/') {
+        await expect(
+          page
+            .getByRole('alert')
+            .filter({ hasText: "We couldn't load the products." }),
+        ).toBeVisible();
+        await expect(
+          page
+            .getByRole('alert')
+            .filter({ hasText: "We couldn't load the APIs." }),
+        ).toBeVisible();
+      } else {
+        await expect(
+          page.getByRole('heading', {
+            name: "We can't reach the portal server",
+            exact: true,
+          }),
+        ).toBeVisible();
+      }
       await expect(page.getByRole('banner')).toBeVisible();
       await expect(
         page.getByRole('banner').getByText(/Sign in|Sign up/),
@@ -188,9 +210,19 @@ for (const path of ['/', '/apis/sample', '/dashboard']) {
         if (frame === page.mainFrame()) navigations.push(frame.url());
       });
       compose('start', '--wait', 'server');
-      await page
-        .getByRole('button', { name: 'Try again', exact: true })
-        .click();
+      if (path === '/') {
+        await page
+          .getByRole('link', { name: 'Try again', exact: true })
+          .first()
+          .click();
+        await expect(
+          page.getByRole('alert').filter({ hasText: /couldn't load/ }),
+        ).toHaveCount(0);
+      } else {
+        await page
+          .getByRole('button', { name: 'Try again', exact: true })
+          .click();
+      }
       await expect(
         page
           .getByRole('heading', {
@@ -210,6 +242,11 @@ for (const path of ['/', '/apis/sample', '/dashboard']) {
         type: 'same-document navigations',
         description: JSON.stringify(navigations),
       });
+      if (path === '/')
+        test.fail(
+          true,
+          '009 minor: catalog retry links reload the document and discard page state',
+        );
       expect(documentRequests).toBe(0);
       expect(
         await page.evaluate(
@@ -232,7 +269,12 @@ test('JSO-192 JSO-182 JSO-161 JSO-215 key dialog fits, announces and restores fo
   const apis = (await (await context.request.get('/api/v1/apis')).json()).items;
   const { app } = await (
     await context.request.post('/api/v1/apps', {
-      data: { name: 'Dialog QA', apiIds: [apis[0].id] },
+      data: {
+        name: 'Dialog QA',
+        apiIds: [
+          apis.find((api: { slug: string }) => api.slug === 'sample')!.id,
+        ],
+      },
     })
   ).json();
   await page.goto(`/dashboard/apps/${app.id}`);

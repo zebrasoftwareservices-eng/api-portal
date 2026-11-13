@@ -966,7 +966,16 @@ it('enforces a shared monthly quota and preserves counters across a plan replace
     expect(exhausted.headers.get('x-ratelimit-remaining-month')).toBe('0');
     expect(await persistedUsage()).toBe(20);
     await adapter.applyPlanLimits(app, null);
-    expect((await call(a.id, key.key)).status).toBe(200);
+    const remaining = await adapter.request<{ data: { name: string }[] }>(
+      `/plugins?tags=portal-app-${app.id}`,
+    );
+    expect(
+      remaining!.data.filter((plugin) => plugin.name === 'rate-limiting'),
+    ).toEqual([]);
+    // Deletion can reach the Admin API before the proxy invalidates its cached
+    // plugin. This removal check uses the same bounded convergence as key/ACL
+    // removal above; the counted quota and replacement requests stay exact.
+    await status(a.id, key.key, 200);
   } finally {
     await adapter.deleteConsumer(app);
   }

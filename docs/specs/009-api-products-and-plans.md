@@ -1,7 +1,7 @@
 ---
 id: 009
 title: API products and free plans with rate limits
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-237
@@ -281,12 +281,10 @@ is in `apps/server/openapi.yaml` (tag `products`, and the changed `apps` operati
 - [x] [frontend] Subscribe on the product page: choose a plan, name the subscription, confirm, show the key once; gateway-unavailable and role errors
 - [x] [frontend] My apps: show each app's plan and limits; change plan (same product), cancel with confirmation, regenerate key with the key shown once; read-only members see no actions
 - [x] [frontend] Admin: product list, create and edit product (APIs from the catalog), add and edit plans with field errors beside each field
-- [ ] [qa] Integration tests on real Kong and Postgres for AC 1–10, including the counter carry-over and the migration
-- [ ] [qa] Playwright e2e: admin creates a product and plan; developer subscribes, gets 429 on the sixth call, changes plan, regenerates and cancels
-- [ ] [qa] Quickstart `docker compose up` still works, with `cluster` policy, and the spec 004 per-API key flow still works for APIs in no product
-
+- [x] [qa] Integration tests on real Kong and Postgres for AC 1–10, including the counter carry-over and the migration
+- [x] [qa] Playwright e2e: admin creates a product and plan; developer subscribes, gets 429 on the sixth call, changes plan, regenerates and cancels
+- [x] [qa] Quickstart `docker compose up` still works, with `cluster` policy, and the spec 004 per-API key flow still works for APIs in no product
 - [x] [backend] Fix: Monthly quota carry-over intermittently allows an extra request in the full suite
-
 ## UX  _(ui-designer)_
 Design: [docs/design/009-api-products-and-plans.md](../design/009-api-products-and-plans.md). No new tokens.
 - **Catalog** gains a Products section (`ProductCard`: APIs and plan counts); the APIs section lists only APIs in no product.
@@ -315,18 +313,38 @@ The real-Kong carry-over test now waits for each cluster-policy monthly counter 
 Validation: `@portal/adapter-kong` lint, typecheck and package tests pass (60/60). The initial pre-change package run also exposed an unrelated intermittent shared-conformance assertion on ACL `created_at` changing across an idempotent PUT; the final package run passed it without changes. The broad backend guard flags existing sibling frontend/design files; the coordinator explicitly authorized a narrow staged path list, verified to include only this adapter test and this stage's spec/log changes, with sibling QA/e2e edits left untouched.
 
 ## Test report  _(qa-tester)_
-Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
 
-| Criterion | Test file | Result |
+Tested application commit: `9845cbfd87efb39e3e5e8ac8262d512fdb5bed73`, with the QA test changes in this worktree. No application code changed during QA. Portal URL from `node scripts/worktree-compose.mjs env`: **http://localhost:3008**; project `portal-009-api-products-and-plans-2-b317`, Kong proxy `http://localhost:18008`, Admin API `http://localhost:19008`.
+
+| Acceptance criterion | Automated evidence | Result |
 | --- | --- | --- |
+| AC1 — two published APIs, product catalog and comparison table | `apps/server/src/products.test.ts` product/catalog case; `apps/portal/e2e/products.test.ts` AC1–8 creates the product and Free plan in the browser, then checks both APIs, 5/second and 10,000/month in the catalog and plan table | Pass |
+| AC2 — missing, zero, negative, fractional limits; empty/outside APIs; field errors and no save | `apps/server/src/products.test.ts` POST/PUT validation matrix snapshots plans and plan APIs; `apps/portal/lib/plan-validation.test.ts`; `apps/portal/components/products.test.tsx` pointer rendering; `apps/portal/e2e/products.test.ts` invalid form then successful correction | Pass |
+| AC3 — team subscription, plan, one-time key and upstream access to both APIs | `apps/server/src/products.test.ts` bounded subscription and single active credential; `apps/portal/e2e/products.test.ts` AC1–8 verifies the one-time reveal, reload secrecy and live upstream JSON from both APIs | Pass |
+| AC4 — sixth request in one second is 429, next window succeeds | `apps/portal/e2e/products.test.ts` AC1–8 synchronizes to the second boundary, asserts `[200,200,200,200,200,429]` within 900 ms and 200 in the next window against real Kong | Pass |
+| AC5 — eleventh request exceeds quota 10 while under the short rate limit | `apps/portal/e2e/products.test.ts` AC1–8 sends two calls per second across both APIs, then asserts request 11 is 429; `packages/adapter-kong/src/conformance.test.ts` checks persisted shared quota | Pass |
+| AC6 — upgrade to 20/second retains the key and admits ten calls | `apps/server/src/products.test.ts` plan change; `apps/portal/e2e/products.test.ts` AC1–8 changes plan in the UI, sends ten live requests using the original key and verifies the active credential ID | Pass |
+| AC7 — confirmed cancellation removes subscription and rejects key | `apps/server/src/products.test.ts` cancellation; `apps/portal/e2e/products.test.ts` AC1–8 confirms cancellation, checks list removal and Kong 401/403 | Pass |
+| AC8 — regenerated key shown once, new key works, old key gets 401 | `apps/server/src/products.test.ts` regeneration and failure compensation; `apps/portal/e2e/products.test.ts` AC1–8 checks both live keys and secret absence after reload | Pass |
+| AC9 — unreachable gateway shows problem+json and preserves subscription, plan and key | `apps/server/src/products.test.ts` every gateway-call failure and database/commit compensation; `apps/portal/components/products.test.tsx`; `apps/portal/e2e/products.test.ts` AC9–10 stops real Kong, checks 503 problem+json and all four UI errors, snapshots state, restarts Kong and verifies the original key | Pass |
+| AC10 — read-only members and non-admins cannot mutate; no portal/Kong changes | `apps/server/src/products.test.ts` role/session cases snapshot database rows and assert no adapter calls; `apps/portal/e2e/products.test.ts` AC9–10 checks every denied endpoint, hidden write controls, unchanged state and continued original-key access | Pass |
 
-Long notes go in `docs/specs/log/009.md`, not here.
+Additional failure paths cover duplicate and simultaneous subscriptions (one 201, one 409, one consumer/key), expired/missing sessions (401), direct product-API bypass rejection, revoked credentials, and failures during subscription, plan changes, regeneration and cancellation. `packages/db/src/plans-migration.test.ts` verifies Unlimited backfill and retained subscriptions. The real-Kong counter regression checks eight persisted uses before replacement, exactly 20 total uses, and request 21 rejected; only the final limiter-removal check now waits for bounded proxy convergence after verifying the plugin is absent in the Admin API, matching the existing ACL/key removal checks without weakening quota assertions.
+
+Validation on 2026-11-13:
+- `pnpm lint` and `pnpm typecheck`: pass; changed packages were typechecked before their tests.
+- `TURBO_FORCE=true pnpm test`: pass, **612 tests** (server 239, portal 306, Kong 60, database 7), no cached tasks. An earlier uncached run exposed the limiter-removal synchronization issue above; the focused regression and the final uncached workspace run pass after that test-only correction.
+- Focused Playwright product run: **2 passed**, including the four real-gateway outage dialogs.
+- Complete `pnpm test:e2e`: pass, **97 passed, 2 skipped** in 7.3 minutes; this includes four explicitly expected-failure regressions (three setup findings already tracked by their tests, plus the minor catalog retry finding). Both 009 browser tests pass in this complete run. The earlier misconfigured attempt was aborted, not counted as a successful pass.
+- `node scripts/worktree-compose.mjs up -d --build --wait`: pass, real Postgres/Kong and portal healthy; leave the worktree stack running for UAT. The browser setup fixture uses explicit worktree project/image/port variables because it invokes Compose directly. The initial browser attempt omitted those variables and invoked default-project `down -v`/`up`; that runner and its orphan worker were stopped, and the corrected complete pass uses this worktree project throughout. The prior state of the default project was not recorded, so any prior default-project data impact is unknown; no default-project containers were running at the subsequent inspection.
+
+Bug verification: the quota carry-over bug remains verified closed with `linear bug 009 done`; the catalog retry bug remains open with `linear bug 009 open` and is covered by its expected-failure regression. The catalog issue is minor, has no Fix task or Linear issue, and does not block UAT. No application code was changed.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
-
+- [x] Monthly quota carry-over intermittently allows an extra request in the full suite (major)
+- [ ] Catalog outage retry reloads the document and discards page state (minor). Repro: stop the server, open `/`, restart the server, and choose either catalog “Try again” link. The catalog recovers, but the request is a main-frame document navigation (observed count 1 instead of 0), unlike the existing API-detail and My apps retry flows. Automated regression: `apps/portal/e2e/backlog-live.test.ts`, server-outage `/` case; no Linear issue or Fix task.
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
@@ -351,3 +369,10 @@ return the spec to building. Earlier rounds go in `docs/specs/log/009.md`.
 ### Follow-ups
 - Redis rate-limiting policy for Kong hybrid and multi-node installs (ADR 0009)
 - Move pre-009 apps on the built-in Unlimited plan onto a product plan
+
+### Deferred Linear
+- **Bug** — Bug: Monthly quota carry-over intermittently allows an extra request in the full suite (major)
+  - parent: JSO-237
+  - priority: high
+  - create when the Linear limit allows
+  - body: QA on commit 3508226efa8e01987f1f695534dfee4e90852b31, with only QA test changes in the working tree, found a failure in the required full `pnpm test` run.  Steps: run `pnpm test` with Docker available. In `packages/adapter-kong/src/conformance.test.ts`, the real Postgres/Kong test `enforces a shared monthly quota and preserves counters across a plan replacement on real Kong` sends eight calls on a quota-10 plan, replaces it with quota 20, sends twelve further calls, then asserts the next call is denied. At line 931 the next call returned HTTP 200 instead of 429; adapter-kong ended with 59 passed and one failed test, and Turbo aborted the still-running server suite.  An isolated rerun of that test and a rerun of the entire conformance file both passed. This is intermittent, and QA has not established whether the defect is gateway propagation, quota counting, suite state or the test itself; do not treat those reruns as a green full run. Investigate and make quota carry-over deterministic under the full-suite workload before release. The new quickstart browser test separately verifies a fresh quota-10 subscription denies its eleventh request.
