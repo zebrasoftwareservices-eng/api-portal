@@ -43,6 +43,7 @@ const queued: MailPayload[] = [];
 const adapter = {
   health: vi.fn(async () => ({ reachable: true })),
   ensureConsumer: vi.fn(async () => ({ id: uuidv7(), username: 'consumer' })),
+  applyPlanLimits: vi.fn(async () => {}),
   grantAccess: vi.fn(async () => {}),
   issueCredential: vi.fn(async () => ({ id: uuidv7() })),
   revokeCredential: vi.fn(async () => {}),

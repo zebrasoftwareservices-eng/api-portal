@@ -109,6 +109,7 @@ const adapter: GatewayAdapter = {
     const c = owned.get(app.id);
     if (c) c.credentials = c.credentials.filter((k) => k.id !== id);
   }),
+  applyPlanLimits: vi.fn(async () => {}),
   grantAccess: vi.fn(async () => {}),
   revokeAccess: vi.fn(async () => {}),
   protectService: vi.fn(async () => ({ keyAuth: true, findings: [] })),
@@ -737,7 +738,7 @@ info: {}`,
       expect.objectContaining({
         services: expect.arrayContaining([{ id: 'service' }]),
         apps: expect.arrayContaining([
-          { app: { id: key.appId }, services: [{ id: 'service' }] },
+          { app: { id: key.appId }, services: [{ id: 'service' }], limits: null },
         ]),
       }),
     );
@@ -772,6 +773,7 @@ info: {}`,
           before.apps.map((app) => ({
             app: { id: app.id },
             services: [{ id: 'service' }],
+            limits: null,
           })),
         ),
       }),
@@ -783,7 +785,9 @@ info: {}`,
     const fetchGateway = vi.fn(
       async (input: URL | RequestInfo, init?: RequestInit) => {
         const target = new URL(String(input));
-        expect(new Headers(init?.headers).get('apikey')).toBe('pk_unsubscribed');
+        expect(new Headers(init?.headers).get('apikey')).toBe(
+          'pk_unsubscribed',
+        );
         if (target.pathname === '/sample/get')
           return new Response('subscribed API response', { status: 200 });
         return new Response(

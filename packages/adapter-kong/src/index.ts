@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import {
   GatewayServiceConflictError,
   type ServiceRef,
+  type PlanLimits,
   type ConnectionCheck,
   type ServiceProtection,
   type AccessPolicy,
@@ -38,6 +39,7 @@ export interface KongConfig {
   adminUrl: string;
   instanceId: string;
   adminToken?: string;
+  rateLimitPolicy?: 'cluster' | 'local';
   fetch?: typeof fetch;
 }
 export class KongAdapter implements GatewayAdapter {
@@ -51,7 +53,7 @@ export class KongAdapter implements GatewayAdapter {
       apiKeys: true,
       accessControl: true,
       oauthClients: false,
-      plans: false,
+      plans: true,
       usage: false,
     } as const;
   }
@@ -280,6 +282,31 @@ export class KongAdapter implements GatewayAdapter {
       undefined,
       true,
     );
+  }
+  private rateConfig(limits: PlanLimits) {
+    return {
+      [limits.rate.unit]: limits.rate.limit,
+      month: limits.monthlyQuota,
+      limit_by: 'consumer',
+      policy: this.config.rateLimitPolicy ?? 'cluster',
+    };
+  }
+  async applyPlanLimits(app: AppRef, limits: PlanLimits | null) {
+    const path = `/plugins/${this.stableId('rate-limiting', app.id)}`;
+    if (!limits) {
+      await this.request(path, 'DELETE', undefined, true);
+      return;
+    }
+    const consumer = await this.request<Entity>(
+      `/consumers/${consumerUsername(app)}`,
+    );
+    if (!consumer) throw new GatewayUnavailableError();
+    await this.request(path, 'PUT', {
+      name: 'rate-limiting',
+      consumer: { id: consumer.id },
+      config: this.rateConfig(limits),
+      tags: portalTags(this.config.instanceId, app),
+    });
   }
   private owns(entity: Entity) {
     return (
@@ -668,6 +695,75 @@ export class KongAdapter implements GatewayAdapter {
             : 'Multiple published APIs share this service and its access group.',
         });
       }
+    }
+    const ratePlugins = (
+      await this.pages(
+        `/plugins?tags=portal-instance-${this.config.instanceId}&size=1000`,
+      )
+    ).filter((p) => p.name === 'rate-limiting' && this.owns(p));
+    for (const desired of policy.apps) {
+      if (!desired.limits) continue;
+      const consumer = consumers.find((c) => c.appId === desired.app.id);
+      if (!consumer) continue; // A lost consumer cannot recover its plaintext keys.
+      const id = this.stableId('rate-limiting', desired.app.id);
+      const plugin = ratePlugins.find((p) => p.id === id);
+      const config = this.rateConfig(desired.limits);
+      if (
+        !plugin ||
+        plugin.enabled === false ||
+        plugin.consumer?.id !== consumer.id ||
+        plugin.service ||
+        plugin.route ||
+        !Object.entries(config).every(([k, v]) => plugin.config?.[k] === v) ||
+        (desired.limits.rate.unit === 'second'
+          ? plugin.config?.minute != null
+          : plugin.config?.second != null)
+      ) {
+        await this.applyPlanLimits(desired.app, desired.limits);
+        report.repairs.push({
+          action: plugin ? 'updated' : 'added',
+          object: 'plugin',
+          appId: desired.app.id,
+          detail: 'Plan limits repaired',
+        });
+      }
+    }
+    for (const plugin of ratePlugins) {
+      const desired = policy.apps.find(
+        (a) =>
+          plugin.id === this.stableId('rate-limiting', a.app.id) && a.limits,
+      );
+      if (!desired) {
+        await this.request(`/plugins/${plugin.id}`, 'DELETE', undefined, true);
+        report.repairs.push({
+          action: 'removed',
+          object: 'plugin',
+          detail: 'Stale plan limits removed',
+        });
+      }
+    }
+    for (const service of services.filter((s) =>
+      policy.services.some((r) => r.id === s.id),
+    )) {
+      const linked = routes.filter((r) => r.service?.id === service.id);
+      if (
+        plugins.some(
+          (p) =>
+            p.name === 'rate-limiting' &&
+            !this.owns(p) &&
+            ((p.route && p.service?.id === service.id) ||
+              (p.consumer &&
+                (p.service?.id === service.id ||
+                  linked.some((r) => r.id === p.route?.id)))),
+        )
+      )
+        report.findings.push({
+          code: 'foreign-rate-limit',
+          serviceId: service.id,
+          serviceName: service.name ?? service.id,
+          message:
+            'An operator rate-limiting plugin has a more specific scope than the plan limits.',
+        });
     }
     return report;
   }

@@ -86,6 +86,12 @@ conformance(
         instanceId,
         fetch: async () => new Response('', { status: 401 }),
       }),
+    ratePlugins: async (appId) =>
+      (await adapter.request<{
+        data: { id: string; config: Record<string, unknown>; tags: string[] }[];
+      }>(`/plugins?tags=portal-app-${appId}`))!.data.filter(
+        (p) => p.config.limit_by === 'consumer',
+      ),
     serviceId: randomUUID(),
     memberships: async (appId) =>
       (await adapter.request<{
@@ -891,5 +897,41 @@ it('AC 7(e): two real Kongs expose missing consumers and new credentials work af
   } finally {
     await adapter.deleteConsumer(app);
     await second.stop();
+  }
+});
+
+it('enforces a shared monthly quota and preserves counters across a plan replacement on real Kong', async () => {
+  const a = await service(),
+    b = await service(),
+    key = await portalKey(),
+    app = { id: key.appId };
+  try {
+    for (const s of [a, b]) {
+      await adapter.protectService(s);
+      await adapter.grantAccess(app, s);
+    }
+    await status(a.id, key.key, 200);
+    await status(b.id, key.key, 200);
+    await adapter.applyPlanLimits(app, {
+      rate: { unit: 'second', limit: 5 },
+      monthlyQuota: 10,
+    });
+    for (let i = 0; i < 8; i++) {
+      expect((await call(i % 2 ? a.id : b.id, key.key)).status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    await adapter.applyPlanLimits(app, {
+      rate: { unit: 'second', limit: 5 },
+      monthlyQuota: 20,
+    });
+    for (let i = 0; i < 12; i++) {
+      expect((await call(i % 2 ? a.id : b.id, key.key)).status).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    expect((await call(a.id, key.key)).status).toBe(429);
+    await adapter.applyPlanLimits(app, null);
+    expect((await call(a.id, key.key)).status).toBe(200);
+  } finally {
+    await adapter.deleteConsumer(app);
   }
 });

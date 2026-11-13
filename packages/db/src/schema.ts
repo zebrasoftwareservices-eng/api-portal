@@ -176,9 +176,91 @@ export const teamInvitations = pgTable(
       .where(sql`${t.acceptedAt} is null and ${t.cancelledAt} is null`),
   ],
 );
+export const BUILTIN_PLAN_ID = '01937a00-0000-7000-8000-000000000009';
+export const products = pgTable(
+  'products',
+  {
+    id: uuid('id').primaryKey(),
+    slug: text('slug').notNull().unique(),
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    createdBy: uuid('created_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    check('product_name', sql`length(btrim(${t.name})) between 1 and 80`),
+  ],
+);
+export const productApis = pgTable(
+  'product_apis',
+  {
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    apiId: uuid('api_id')
+      .notNull()
+      .references(() => apis.id, { onDelete: 'restrict' }),
+  },
+  (t) => [primaryKey({ columns: [t.productId, t.apiId] })],
+);
+export const plans = pgTable(
+  'plans',
+  {
+    id: uuid('id').primaryKey(),
+    productId: uuid('product_id').references(() => products.id, {
+      onDelete: 'restrict',
+    }),
+    name: text('name').notNull(),
+    description: text('description'),
+    rateLimit: integer('rate_limit'),
+    rateLimitUnit: text('rate_limit_unit').$type<'second' | 'minute'>(),
+    monthlyQuota: integer('monthly_quota'),
+    builtin: boolean('builtin').notNull().default(false),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    check('plan_builtin_product', sql`${t.builtin} = (${t.productId} is null)`),
+    check(
+      'plan_limits',
+      sql`(${t.builtin} and ${t.rateLimit} is null and ${t.rateLimitUnit} is null and ${t.monthlyQuota} is null) or (not ${t.builtin} and ${t.rateLimit} is not null and ${t.rateLimitUnit} is not null and ${t.monthlyQuota} is not null and ${t.rateLimit} > 0 and ${t.rateLimitUnit} in ('second','minute') and ${t.monthlyQuota} >= ${t.rateLimit})`,
+    ),
+    uniqueIndex('plan_product_name_unique').on(t.productId, t.name),
+    uniqueIndex('plan_id_product_unique').on(t.id, t.productId),
+    uniqueIndex('plan_builtin_unique')
+      .on(t.builtin)
+      .where(sql`${t.builtin}`),
+  ],
+);
+export const planApis = pgTable(
+  'plan_apis',
+  {
+    planId: uuid('plan_id').notNull(),
+    productId: uuid('product_id').notNull(),
+    apiId: uuid('api_id').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.planId, t.apiId] }),
+    foreignKey({
+      columns: [t.planId, t.productId],
+      foreignColumns: [plans.id, plans.productId],
+    }).onDelete('cascade'),
+    foreignKey({
+      columns: [t.productId, t.apiId],
+      foreignColumns: [productApis.productId, productApis.apiId],
+    }).onDelete('restrict'),
+  ],
+);
 export const apps = pgTable(
   'apps',
   {
+    planId: uuid('plan_id')
+      .notNull()
+      .default(BUILTIN_PLAN_ID)
+      .references(() => plans.id, { onDelete: 'restrict' }),
     id: uuid('id').primaryKey(),
     teamId: uuid('team_id')
       .notNull()
@@ -191,7 +273,10 @@ export const apps = pgTable(
     createdAt: created(),
     updatedAt: updated(),
   },
-  (t) => [uniqueIndex('app_team_name_unique').on(t.teamId, t.name)],
+  (t) => [
+    uniqueIndex('app_team_name_unique').on(t.teamId, t.name),
+    index('app_plan_idx').on(t.planId),
+  ],
 );
 export const subscriptions = pgTable(
   'subscriptions',

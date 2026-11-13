@@ -4,3360 +4,4025 @@
  */
 
 export interface paths {
-    "/v1/health": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Server and gateway health */
-        get: operations["getHealth"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+  '/v1/health': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/setup": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Whether this install still needs its first admin
-         * @description Public, so the portal can send every page to the setup screen. Reveals nothing secret.
-         */
-        get: operations["getSetupStatus"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** Server and gateway health */
+    get: operations['getHealth'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/setup': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/setup/admin": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create the first admin and sign them in
-         * @description Atomic and serialized: of any number of submissions, at the same time or later, exactly
-         *     one creates an admin. The response sets the session cookie. When
-         *     `NODE_ENV=production`, `setupToken` must match the token this server start wrote to its
-         *     logs. The token lives only in memory, is replaced on each start and stops working once an
-         *     admin exists. Rate-limited to 10 requests per minute per IP.
-         */
-        post: operations["createFirstAdmin"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Whether this install still needs its first admin
+     * @description Public, so the portal can send every page to the setup screen. Reveals nothing secret.
+     */
+    get: operations['getSetupStatus'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/setup/admin': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/apis": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List published APIs (public catalog) */
-        get: operations["listApis"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Create the first admin and sign them in
+     * @description Atomic and serialized: of any number of submissions, at the same time or later, exactly
+     *     one creates an admin. The response sets the session cookie. When
+     *     `NODE_ENV=production`, `setupToken` must match the token this server start wrote to its
+     *     logs. The token lives only in memory, is replaced on each start and stops working once an
+     *     admin exists. Rate-limited to 10 requests per minute per IP.
+     */
+    post: operations['createFirstAdmin'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/apis': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/apis/{slug}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get one published API */
-        get: operations["getApi"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** List published APIs (public catalog) */
+    get: operations['listApis'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/apis/{slug}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/apis/{slug}/openapi.json": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * OpenAPI document of the latest version, ready for the API reference
-         * @description The latest version's stored, validated document, with two changes made when it is served:
-         *     `servers` is replaced by a single entry with the API's public gateway base URL, and
-         *     if the document has no `apiKey` security scheme, a `portalApiKey` scheme
-         *     (`in: header`, `name: apikey`, Kong's default) is added and applied at the top level.
-         *     If the document has an `apiKey` scheme but no top-level `security`, the first `apiKey`
-         *     scheme is applied at the top level, so the reference shows its key field (spec 003).
-         *     Operation-level `security`, including `security: []`, is left as written.
-         */
-        get: operations["getApiDocument"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** Get one published API */
+    get: operations['getApi'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/apis/{slug}/openapi.json': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/apis/{slug}/versions/{version}/openapi.json": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * OpenAPI document of one version, ready for the API reference
-         * @description Same transformation as `getApiDocument` (servers replaced, `portalApiKey` added when
-         *     needed). Every version shares the API's gateway base URL: the portal documents versions,
-         *     it doesn't route them (spec 012, out of scope).
-         */
-        get: operations["getApiVersionDocument"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * OpenAPI document of the latest version, ready for the API reference
+     * @description The latest version's stored, validated document, with two changes made when it is served:
+     *     `servers` is replaced by a single entry with the API's public gateway base URL, and
+     *     if the document has no `apiKey` security scheme, a `portalApiKey` scheme
+     *     (`in: header`, `name: apikey`, Kong's default) is added and applied at the top level.
+     *     If the document has an `apiKey` scheme but no top-level `security`, the first `apiKey`
+     *     scheme is applied at the top level, so the reference shows its key field (spec 003).
+     *     Operation-level `security`, including `security: []`, is left as written.
+     */
+    get: operations['getApiDocument'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/apis/{slug}/versions/{version}/openapi.json': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/apis/{slug}/changelog": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The API's changelog, one entry per version
-         * @description Newest import first. Each entry's `changes` was computed once, when that version was
-         *     imported, against the version just below it in the version order (see
-         *     `ApiDetail.versions`); it never changes afterwards, including when the latest version
-         *     changes.
-         */
-        get: operations["getApiChangelog"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * OpenAPI document of one version, ready for the API reference
+     * @description Same transformation as `getApiDocument` (servers replaced, `portalApiKey` added when
+     *     needed). Every version shares the API's gateway base URL: the portal documents versions,
+     *     it doesn't route them (spec 012, out of scope).
+     */
+    get: operations['getApiVersionDocument'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/apis/{slug}/changelog': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/me": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The signed-in user */
-        get: operations["getMe"];
-        put?: never;
-        post?: never;
-        /**
-         * Delete the signed-in user's account, its apps and their keys
-         * @description Spec 007 AC 9 and spec 008 AC 8. Checks in this order: password (403
-         *     `/problems/invalid-password`, counted as a failed sign-in), last portal admin (409
-         *     `/problems/last-admin`), last Admin of a team that has other members (409
-         *     `/problems/team-needs-admin`, with `teams` naming them), then a gateway health check
-         *     (503 `/problems/gateway-unavailable`, nothing deleted). It then deletes the teams where
-         *     the user is the only member (their personal team, and any shared team they are alone in):
-         *     each of those teams' apps loses its Kong consumer (with its keys and ACL memberships) and
-         *     its rows, one app at a time, then the team. Finally it deletes the user with their
-         *     sessions and their other memberships. Apps of teams with other members are not touched,
-         *     and their keys keep working. If Kong fails part way, apps already removed stay
-         *     removed (their keys no longer work), the account and the remaining apps stay, and the
-         *     call returns 503 so a retry finishes the job. On success the session cookie is cleared and
-         *     the email address can sign up again as a new account.
-         */
-        delete: operations["deleteMe"];
-        options?: never;
-        head?: never;
-        /** Change the signed-in user's name */
-        patch: operations["updateMe"];
-        trace?: never;
+    /**
+     * The API's changelog, one entry per version
+     * @description Newest import first. Each entry's `changes` was computed once, when that version was
+     *     imported, against the version just below it in the version order (see
+     *     `ApiDetail.versions`); it never changes afterwards, including when the latest version
+     *     changes.
+     */
+    get: operations['getApiChangelog'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/products': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/me/current-team": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Switch the signed-in user's current team
-         * @description Spec 008 AC 2. The current team is the membership selected most recently. It is stored
-         *     server-side, so it survives sign-out and is the same on every device. API calls still
-         *     name their team explicitly.
-         */
-        put: operations["setCurrentTeam"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * List products (public catalog)
+     * @description Every product is public in this spec (hidden products are spec 010). The catalog shows
+     *     these plus the APIs whose `products` list is empty (`GET /v1/apis`).
+     */
+    get: operations['listProducts'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/products/{productSlug}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/me/email": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start changing the signed-in user's email address
-         * @description Spec 007 AC 7. Sends a confirmation link to `newEmail` and records it as `pendingEmail`.
-         *     The account keeps its current address, and signs in with it, until the link is opened.
-         *     A new request replaces any pending one (the old link stops working). Counts against the
-         *     per-account verification email limit.
-         */
-        post: operations["requestEmailChange"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** Get one product with its APIs and plans */
+    get: operations['getProduct'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/me/email/confirm": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Confirm an email change with the token from the emailed link
-         * @description No session needed: the link may be opened on another device. On success the account's
-         *     email becomes the new address, verified, and sign-in works only with it. Single use.
-         */
-        post: operations["confirmEmailChange"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** The signed-in user */
+    get: operations['getMe'];
+    put?: never;
+    post?: never;
+    /**
+     * Delete the signed-in user's account, its apps and their keys
+     * @description Spec 007 AC 9 and spec 008 AC 8. Checks in this order: password (403
+     *     `/problems/invalid-password`, counted as a failed sign-in), last portal admin (409
+     *     `/problems/last-admin`), last Admin of a team that has other members (409
+     *     `/problems/team-needs-admin`, with `teams` naming them), then a gateway health check
+     *     (503 `/problems/gateway-unavailable`, nothing deleted). It then deletes the teams where
+     *     the user is the only member (their personal team, and any shared team they are alone in):
+     *     each of those teams' apps loses its Kong consumer (with its keys and ACL memberships) and
+     *     its rows, one app at a time, then the team. Finally it deletes the user with their
+     *     sessions and their other memberships. Apps of teams with other members are not touched,
+     *     and their keys keep working. If Kong fails part way, apps already removed stay
+     *     removed (their keys no longer work), the account and the remaining apps stay, and the
+     *     call returns 503 so a retry finishes the job. On success the session cookie is cleared and
+     *     the email address can sign up again as a new account.
+     */
+    delete: operations['deleteMe'];
+    options?: never;
+    head?: never;
+    /** Change the signed-in user's name */
+    patch: operations['updateMe'];
+    trace?: never;
+  };
+  '/v1/me/current-team': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/apps": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List a team's apps
-         * @description Any role. Without `teamId`, lists the caller's current team.
-         */
-        get: operations["listApps"];
-        put?: never;
-        /**
-         * Create an app, subscribe it to APIs and issue its first API key
-         * @description Atomic from the developer's point of view (spec 001 AC 6 and 8, spec 004 AC 8). The
-         *     server upserts the Kong consumer, grants access to each subscribed API, issues the
-         *     key-auth credential, then writes Postgres in one transaction. On any failure it deletes
-         *     whatever it created in Kong and stores nothing, so a retry creates exactly one consumer.
-         *     The returned `credential.key` is never shown again. The key works only on the APIs in
-         *     `apiIds`; Kong answers 403 on every other key-auth service (ADR 0005).
-         *     The app belongs to `teamId` (default: the caller's current team), and needs the
-         *     `admin` or `member` role there (spec 008). The role is checked before email verification
-         *     and before any gateway call.
-         */
-        post: operations["createApp"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    /**
+     * Switch the signed-in user's current team
+     * @description Spec 008 AC 2. The current team is the membership selected most recently. It is stored
+     *     server-side, so it survives sign-out and is the same on every device. API calls still
+     *     name their team explicitly.
+     */
+    put: operations['setCurrentTeam'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me/email': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/apps/{appId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get one of a team's apps
-         * @description Any role in the app's team. Anyone else gets 404, including a removed member.
-         */
-        get: operations["getApp"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Start changing the signed-in user's email address
+     * @description Spec 007 AC 7. Sends a confirmation link to `newEmail` and records it as `pendingEmail`.
+     *     The account keeps its current address, and signs in with it, until the link is opened.
+     *     A new request replaces any pending one (the old link stops working). Counts against the
+     *     per-account verification email limit.
+     */
+    post: operations['requestEmailChange'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/me/email/confirm': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/apps/{appId}/credentials": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Issue another API key for an app
-         * @description The returned `key` is shown once and never stored by the portal. The consumer and its
-         *     access are upserted first, so this also works when the connection now points at a Kong
-         *     that doesn't have the app's consumer yet (spec 005 AC 7(e)). Needs the `admin` or
-         *     `member` role in the app's team; `read-only` gets 403 and nothing changes in Kong or
-         *     Postgres (spec 008 AC 4).
-         */
-        post: operations["createCredential"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Confirm an email change with the token from the emailed link
+     * @description No session needed: the link may be opened on another device. On success the account's
+     *     email becomes the new address, verified, and sign-in works only with it. Single use.
+     */
+    post: operations['confirmEmailChange'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/apps': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/apps/{appId}/credentials/{credentialId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Revoke an API key
-         * @description Deletes the key-auth credential in Kong, then marks the credential `revoked`.
-         *     Idempotent: revoking an already revoked key returns 204. If Kong is unreachable
-         *     the key stays `active` and the call returns 503, so the UI never shows a key as
-         *     revoked while Kong still accepts it. Needs the `admin` or `member` role in the app's
-         *     team; `read-only` gets 403 and the key stays active (spec 008 AC 4). Any member may
-         *     revoke any of the team's keys, whoever created them.
-         */
-        delete: operations["revokeCredential"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * List a team's apps
+     * @description Any role. Without `teamId`, lists the caller's current team.
+     */
+    get: operations['listApps'];
+    put?: never;
+    /**
+     * Create an app (or subscribe to a plan) and issue its first API key
+     * @description Atomic from the developer's point of view (spec 001 AC 6 and 8, spec 004 AC 8, spec 009
+     *     AC 3 and 9). The server upserts the Kong consumer, grants access to each API, applies the
+     *     plan's rate limit and quota, issues the key-auth credential, then writes Postgres in one
+     *     transaction. On any failure it deletes whatever it created in Kong and stores nothing, so
+     *     a retry creates exactly one consumer. The returned `credential.key` is never shown again.
+     *     The key works only on the app's APIs; Kong answers 403 on every other key-auth service
+     *     (ADR 0005).
+     *
+     *     Send exactly one of `planId` or `apiIds`:
+     *     - `planId` subscribes to a product plan (spec 009). The app reaches the plan's APIs, with
+     *       the plan's limits, and the subscription's name is the app's `name`.
+     *     - `apiIds` is the spec 004 flow for APIs in no product. The app goes on the built-in
+     *       `Unlimited` plan. An API that is in a product is refused with `/problems/validation`
+     *       (pointer `/apiIds`); subscribe to one of its plans instead.
+     *     The app belongs to `teamId` (default: the caller's current team), and needs the
+     *     `admin` or `member` role there (spec 008). The role is checked before email verification
+     *     and before any gateway call.
+     */
+    post: operations['createApp'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/apps/{appId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/teams": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * The signed-in user's teams
-         * @description Personal team first, then by name. Creates the personal team if it is missing.
-         */
-        get: operations["listTeams"];
-        put?: never;
-        /**
-         * Create a team
-         * @description Spec 008 AC 2. The caller becomes its Admin, and it becomes their current team.
-         */
-        post: operations["createTeam"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * Get one of a team's apps
+     * @description Any role in the app's team. Anyone else gets 404, including a removed member.
+     */
+    get: operations['getApp'];
+    put?: never;
+    post?: never;
+    /**
+     * Cancel a subscription (delete an app)
+     * @description Deletes the app's Kong consumer, which removes its keys, ACL groups and rate limit in
+     *     Kong, then deletes the app and its keys in Postgres (spec 009 AC 7). If Kong is
+     *     unreachable nothing changes and the call returns 503; the app and its keys keep working.
+     *     Works for any app, on any plan. Needs the `admin` or `member` role in the app's team;
+     *     `read-only` gets 403 and nothing changes (spec 009 AC 10). A second delete returns 404.
+     */
+    delete: operations['deleteApp'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/apps/{appId}/plan': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/teams/{teamId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: components["parameters"]["TeamId"];
-            };
-            cookie?: never;
-        };
-        /** A team with its members and, for Admins, its pending invitations */
-        get: operations["getTeam"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    /**
+     * Change a subscription's plan, keeping its key
+     * @description Moves the app to another plan of the same product (spec 009 AC 6). Keys don't change.
+     *     The server applies the new rate limit and quota in Kong, grants the new plan's APIs,
+     *     removes APIs the new plan doesn't include, then updates Postgres. Kong's request counters
+     *     carry over, so the month's quota is not reset. If any Kong call fails the server puts the
+     *     old plan back in Kong (and the next reconcile does so if that fails too), stores nothing
+     *     and returns 502 or 503. Choosing the current plan returns 200 and calls Kong anyway, which
+     *     repairs drift. Needs the `admin` or `member` role in the app's team; `read-only` gets 403.
+     */
+    put: operations['changeAppPlan'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/apps/{appId}/credentials': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/teams/{teamId}/invitations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: components["parameters"]["TeamId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Invite someone to the team by email
-         * @description Spec 008 AC 3. Admin only. Emails a single-use link, valid 7 days, to `email` (trimmed and
-         *     lowercased). Checks in this order: validation, membership (404) and role (403
-         *     `/problems/team-role-forbidden`), personal team, mail settings, rate limit (20 an hour per
-         *     user), already a member, pending invitation. A refused request stores nothing and
-         *     sends nothing.
-         */
-        post: operations["createInvitation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Issue another API key for an app
+     * @description The returned `key` is shown once and never stored by the portal. The consumer and its
+     *     access are upserted first, so this also works when the connection now points at a Kong
+     *     that doesn't have the app's consumer yet (spec 005 AC 7(e)). Needs the `admin` or
+     *     `member` role in the app's team; `read-only` gets 403 and nothing changes in Kong or
+     *     Postgres (spec 008 AC 4).
+     */
+    post: operations['createCredential'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/apps/{appId}/credentials/{credentialId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/teams/{teamId}/invitations/{invitationId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: components["parameters"]["TeamId"];
-                invitationId: components["parameters"]["InvitationId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Cancel a pending invitation
-         * @description Admin only. Its link stops working at once. Cancelling a cancelled or expired invitation returns 204.
-         */
-        delete: operations["cancelInvitation"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Revoke an API key
+     * @description Deletes the key-auth credential in Kong, then marks the credential `revoked`.
+     *     Idempotent: revoking an already revoked key returns 204. If Kong is unreachable
+     *     the key stays `active` and the call returns 503, so the UI never shows a key as
+     *     revoked while Kong still accepts it. Needs the `admin` or `member` role in the app's
+     *     team; `read-only` gets 403 and the key stays active (spec 008 AC 4). Any member may
+     *     revoke any of the team's keys, whoever created them.
+     */
+    delete: operations['revokeCredential'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/apps/{appId}/credentials/{credentialId}/regenerate': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/teams/{teamId}/members/{userId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: components["parameters"]["TeamId"];
-                userId: components["parameters"]["UserId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove a member, or leave the team
-         * @description An Admin may remove anyone; any member may remove themselves (leave). Only the
-         *     membership is deleted: the team's apps, keys and Kong consumers are unchanged, including
-         *     keys this member created (spec 008 AC 7). Refused with `/problems/team-needs-admin` for
-         *     the last Admin.
-         */
-        delete: operations["removeTeamMember"];
-        options?: never;
-        head?: never;
-        /**
-         * Change a member's role
-         * @description Admin only (spec 008 AC 9). Applies on the member's next request. Refused with
-         *     `/problems/team-needs-admin` if it would leave the team with no Admin.
-         */
-        patch: operations["updateTeamMember"];
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Replace an active API key with a new one
+     * @description Issues a new key-auth credential in Kong, deletes the old one in Kong, then in one
+     *     transaction stores the new key and marks the old one `revoked` (spec 009 AC 8). The new
+     *     `key` is shown once. If issuing fails nothing changes; if deleting the old key fails the
+     *     server deletes the new one again and returns 502 or 503, so the old key keeps working and
+     *     Kong never holds a key the portal doesn't know (AC 9). Works for any app. Needs the
+     *     `admin` or `member` role; `read-only` gets 403.
+     */
+    post: operations['regenerateCredential'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/teams': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/invitations/preview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Show what an invitation link is for
-         * @description No session needed: the invitee may not have an account yet. The token is in the body so
-         *     it never appears in access logs. Changes nothing.
-         */
-        post: operations["previewInvitation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * The signed-in user's teams
+     * @description Personal team first, then by name. Creates the personal team if it is missing.
+     */
+    get: operations['listTeams'];
+    put?: never;
+    /**
+     * Create a team
+     * @description Spec 008 AC 2. The caller becomes its Admin, and it becomes their current team.
+     */
+    post: operations['createTeam'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/teams/{teamId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        teamId: components['parameters']['TeamId'];
+      };
+      cookie?: never;
     };
-    "/v1/invitations/accept": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Accept an invitation and join the team
-         * @description Spec 008 AC 3 and 6. The signed-in account's email must equal the invited address
-         *     (case-insensitive). On success the membership is created with the invited role, the team
-         *     becomes the current team, and the account's email is marked verified (the token reached
-         *     that inbox). On any refusal nothing changes.
-         */
-        post: operations["acceptInvitation"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /** A team with its members and, for Admins, its pending invitations */
+    get: operations['getTeam'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/teams/{teamId}/invitations': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        teamId: components['parameters']['TeamId'];
+      };
+      cookie?: never;
     };
-    "/v1/admin/gateway/services": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Kong services that an imported spec can be linked to
-         * @description Leaves out services tagged `portal-internal`, such as the protected Admin API route from
-         *     the docs recipe. The import screen calls this before showing its form. On a disabled
-         *     connection it makes no request to Kong and returns `/problems/gateway-disabled`, so the
-         *     service list isn't offered (spec 005 AC 7(b)).
-         */
-        get: operations["listGatewayServices"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Invite someone to the team by email
+     * @description Spec 008 AC 3. Admin only. Emails a single-use link, valid 7 days, to `email` (trimmed and
+     *     lowercased). Checks in this order: validation, membership (404) and role (403
+     *     `/problems/team-role-forbidden`), personal team, mail settings, rate limit (20 an hour per
+     *     user), already a member, pending invitation. A refused request stores nothing and
+     *     sends nothing.
+     */
+    post: operations['createInvitation'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/teams/{teamId}/invitations/{invitationId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        teamId: components['parameters']['TeamId'];
+        invitationId: components['parameters']['InvitationId'];
+      };
+      cookie?: never;
     };
-    "/v1/admin/apis": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Import an OpenAPI 3.x document, link it to a Kong service and publish it
-         * @description Validates the document (OpenAPI 3.0 or 3.1 only; Swagger 2.0 is rejected), lints it
-         *     with the active Spectral ruleset (spec 012, ADR 0007) and bundles external `$ref`s. On
-         *     success the API is published to the public catalog with the document as its first and
-         *     latest version. On a validation or lint error nothing is stored. Lint warnings don't
-         *     block; they are returned in `lintWarnings`.
-         *
-         *     If the service is already linked to a published API, the refusal
-         *     (`/problems/gateway-service-already-linked`) names that API; publish the document as a
-         *     new version of it with `POST /v1/admin/apis/{slug}/versions` instead.
-         *
-         *     Publishing applies access control to the linked service (ADR 0005): an `allow` ACL for
-         *     the service's portal group, and `hide_credentials` on its key-auth plugins. Existing keys
-         *     get 403 until their app subscribes, and so do non-portal consumers until the operator adds
-         *     them to the group `portal-svc-<serviceId>`. A service without key-auth gets no ACL and
-         *     publishes with an `api-public` warning. Kong applies plugin changes within about 5 seconds.
-         *
-         *     On a disabled connection the import is refused with `/problems/gateway-disabled` before the
-         *     body is validated, `spec.url` is fetched or Kong is called, and nothing is left behind
-         *     (spec 005 AC 7(b)).
-         */
-        post: operations["importApi"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Cancel a pending invitation
+     * @description Admin only. Its link stops working at once. Cancelling a cancelled or expired invitation returns 204.
+     */
+    delete: operations['cancelInvitation'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/teams/{teamId}/members/{userId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        teamId: components['parameters']['TeamId'];
+        userId: components['parameters']['UserId'];
+      };
+      cookie?: never;
     };
-    "/v1/admin/apis/{slug}/versions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Publish a new version of an existing API
-         * @description Validates and lints the document exactly like `importApi`, computes the change summary
-         *     against the previous version (see `ChangelogEntry`), and stores the version. No gateway
-         *     call is made: every version shares the API's Kong service and route, and access is per
-         *     API, so this works while Kong is unreachable.
-         *
-         *     With `makeLatest` true (the default) the new version becomes the latest, even when its
-         *     number is lower than the current latest (spec 012 AC 2). With `makeLatest` false it is
-         *     published and listed, and the latest is unchanged. On any refusal nothing is stored.
-         */
-        post: operations["importApiVersion"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Remove a member, or leave the team
+     * @description An Admin may remove anyone; any member may remove themselves (leave). Only the
+     *     membership is deleted: the team's apps, keys and Kong consumers are unchanged, including
+     *     keys this member created (spec 008 AC 7). Refused with `/problems/team-needs-admin` for
+     *     the last Admin.
+     */
+    delete: operations['removeTeamMember'];
+    options?: never;
+    head?: never;
+    /**
+     * Change a member's role
+     * @description Admin only (spec 008 AC 9). Applies on the member's next request. Refused with
+     *     `/problems/team-needs-admin` if it would leave the team with no Admin.
+     */
+    patch: operations['updateTeamMember'];
+    trace?: never;
+  };
+  '/v1/invitations/preview': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/admin/apis/{slug}/latest-version": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Make an existing version the latest
-         * @description "Set as latest" (spec 012 AC 9). Idempotent: naming the current latest returns 200 and
-         *     changes nothing. The catalog title and description follow the latest version's `info`.
-         *     No gateway call is made. Changelog entries are not recomputed.
-         */
-        put: operations["setLatestApiVersion"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Show what an invitation link is for
+     * @description No session needed: the invitee may not have an account yet. The token is in the body so
+     *     it never appears in access logs. Changes nothing.
+     */
+    post: operations['previewInvitation'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/invitations/accept': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/admin/gateways": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** The gateway connection, and the bundled Kong's values if this install has one */
-        get: operations["listGateways"];
-        put?: never;
-        /**
-         * Check and save the gateway connection
-         * @description Runs the same checks as `testGateway`, then saves. The portal uses the connection from the
-         *     next request, with no restart, and queues a reconcile. On any failure nothing is saved.
-         *     A refused second add makes no request to the supplied URL.
-         */
-        post: operations["createGateway"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Accept an invitation and join the team
+     * @description Spec 008 AC 3 and 6. The signed-in account's email must equal the invited address
+     *     (case-insensitive). On success the membership is created with the invited role, the team
+     *     becomes the current team, and the account's email is marked verified (the token reached
+     *     that inbox). On any refusal nothing changes.
+     */
+    post: operations['acceptInvitation'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/products': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/admin/gateways/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Check connection values without saving anything
-         * @description Read-only: it makes GET requests only and changes nothing in Kong or Postgres. Failure
-         *     messages never contain the token or a response body. Rate-limited to 30 requests per minute
-         *     per admin. Pass `gatewayId` when editing, so a blank token can use the stored one if the
-         *     Admin API URL is unchanged. With a changed URL and a stored token, a blank token gets
-         *     `/problems/gateway-token-required` and the stored token is never sent.
-         */
-        post: operations["testGateway"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Create a product from published APIs
+     * @description Postgres only; no Kong call. A product with no plans is listed in the catalog with an
+     *     empty plan table. `slug` can't be changed later.
+     */
+    post: operations['createProduct'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/products/{productId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/admin/gateways/{gatewayId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                gatewayId: components["parameters"]["GatewayId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Remove the connection and its stored token
-         * @description Makes no request to Kong. The portal's objects stay there, including its ACLs, so traffic is
-         *     unchanged; the docs describe tag-based cleanup.
-         */
-        delete: operations["deleteGateway"];
-        options?: never;
-        head?: never;
-        /**
-         * Edit, disable or re-enable the connection
-         * @description A change to only `enabled: false` makes no request to Kong, so a connection to a Kong that
-         *     is down can still be disabled. Every other change runs the same checks as `testGateway`
-         *     first. On any failure nothing is saved and the existing connection keeps working. That
-         *     includes `enabled: true`: if a check fails, the response names that case and the connection
-         *     stays disabled.
-         */
-        patch: operations["updateGateway"];
-        trace?: never;
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Edit a product's name, description or APIs
+     * @description `apiIds` replaces the product's API list. Removing an API that one of the product's
+     *     plans includes is refused with `/problems/api-in-plan`; remove it from those plans first.
+     *     Postgres only.
+     */
+    patch: operations['updateProduct'];
+    trace?: never;
+  };
+  '/v1/admin/products/{productId}/plans': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/admin/gateways/{gatewayId}/sample": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                gatewayId: components["parameters"]["GatewayId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Publish the sample API on the bundled Kong
-         * @description Only when the connection is enabled, its Admin API URL equals the bundled Kong's and no API
-         *     has the slug `sample` (`Gateway.sampleAvailable`). The sample's upstream exists only in the
-         *     bundled compose network.
-         */
-        post: operations["addSampleApi"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Add a free plan to a product
+     * @description Postgres only; Kong is called when a developer subscribes. Every invalid field is
+     *     returned in `errors[]` with its pointer (`/rateLimit`, `/rateLimitUnit`, `/monthlyQuota`,
+     *     `/apiIds`, `/name`), and nothing is saved (spec 009 AC 2). `monthlyQuota` must be at
+     *     least `rateLimit`, because Kong refuses a month limit below the second or minute limit.
+     */
+    post: operations['createPlan'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/products/{productId}/plans/{planId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/admin/settings/mail": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * How the portal sends email
-         * @description `source` says which settings are in use: `saved` (admin UI, these win), `environment`
-         *     (the `SMTP_*` variables, used while nothing is saved) or `none`. The SMTP password is never
-         *     returned; `hasPassword` says whether one is stored.
-         */
-        get: operations["getMailSettings"];
-        /**
-         * Save SMTP settings; from now on they win over the environment
-         * @description Doesn't contact the SMTP server; use the test action for that. The password is encrypted
-         *     at rest (AES-256-GCM with `PORTAL_ENCRYPTION_KEY`). Omit `password` to keep the stored one;
-         *     send `null` to remove it.
-         */
-        put: operations["saveMailSettings"];
-        post?: never;
-        /** Remove the saved SMTP settings and go back to the environment ones */
-        delete: operations["deleteMailSettings"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    /**
+     * Replace a plan's name, limits and APIs
+     * @description Same validation as `createPlan`. Saves to Postgres, then starts a gateway reconcile run
+     *     right away, which moves every subscriber's rate limit, quota and API access in Kong to the
+     *     new values, usually within seconds (ADR 0009). Until that run finishes subscribers keep
+     *     the old limits. Kong's counters carry over, so the month's quota is not reset.
+     */
+    put: operations['updatePlan'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/gateway/services': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/admin/settings/mail/test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Send a test email with the settings in use
-         * @description Sends synchronously and gives up after 15 seconds. Error `detail`s are fixed copy and
-         *     never include the SMTP server's reply, the username or the password.
-         */
-        post: operations["sendTestEmail"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    /**
+     * List Kong services that an imported spec can be linked to
+     * @description Leaves out services tagged `portal-internal`, such as the protected Admin API route from
+     *     the docs recipe. The import screen calls this before showing its form. On a disabled
+     *     connection it makes no request to Kong and returns `/problems/gateway-disabled`, so the
+     *     service list isn't offered (spec 005 AC 7(b)).
+     */
+    get: operations['listGatewayServices'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/apis': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/admin/settings/accounts": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Email verification requirement and rate limits */
-        get: operations["getAccountSettings"];
-        /**
-         * Change the verification requirement and rate limits
-         * @description Takes effect on the next request, without a restart. Send the whole object.
-         */
-        put: operations["saveAccountSettings"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Import an OpenAPI 3.x document, link it to a Kong service and publish it
+     * @description Validates the document (OpenAPI 3.0 or 3.1 only; Swagger 2.0 is rejected), lints it
+     *     with the active Spectral ruleset (spec 012, ADR 0007) and bundles external `$ref`s. On
+     *     success the API is published to the public catalog with the document as its first and
+     *     latest version. On a validation or lint error nothing is stored. Lint warnings don't
+     *     block; they are returned in `lintWarnings`.
+     *
+     *     If the service is already linked to a published API, the refusal
+     *     (`/problems/gateway-service-already-linked`) names that API; publish the document as a
+     *     new version of it with `POST /v1/admin/apis/{slug}/versions` instead.
+     *
+     *     Publishing applies access control to the linked service (ADR 0005): an `allow` ACL for
+     *     the service's portal group, and `hide_credentials` on its key-auth plugins. Existing keys
+     *     get 403 until their app subscribes, and so do non-portal consumers until the operator adds
+     *     them to the group `portal-svc-<serviceId>`. A service without key-auth gets no ACL and
+     *     publishes with an `api-public` warning. Kong applies plugin changes within about 5 seconds.
+     *
+     *     On a disabled connection the import is refused with `/problems/gateway-disabled` before the
+     *     body is validated, `spec.url` is fetched or Kong is called, and nothing is left behind
+     *     (spec 005 AC 7(b)).
+     */
+    post: operations['importApi'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/apis/{slug}/versions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    "/v1/try-it": {
-        parameters: {
-            query: {
-                /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
-                scalar_url: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Forward a try-it request to the gateway
-         * @description Scalar's proxy protocol (ADR 0003). Forwards the method, body and allowed headers to
-         *     the gateway (public base URL rewritten to the internal one) and passes the gateway's
-         *     status, headers and body back unchanged; for example, Kong's 401 is returned as a 401.
-         *     The one exception is Kong's own access-control refusal: the status stays 403 and the
-         *     headers pass through, but the body becomes the `/problems/api-access-denied` problem, so
-         *     the console can say what to do next. A 403 from the upstream service passes unchanged.
-         *     No session needed. Rate-limited to 60 requests per minute per IP. Strips cookies,
-         *     doesn't follow redirects, caps bodies at 1 MiB, 10 s timeout.
-         *     POST, PUT, PATCH and DELETE behave the same way.
-         */
-        get: operations["tryItGet"];
-        /** Forward a try-it request to the gateway (see GET) */
-        put: operations["tryItPut"];
-        /** Forward a try-it request to the gateway (see GET) */
-        post: operations["tryItPost"];
-        /** Forward a try-it request to the gateway (see GET) */
-        delete: operations["tryItDelete"];
-        options?: never;
-        head?: never;
-        /** Forward a try-it request to the gateway (see GET) */
-        patch: operations["tryItPatch"];
-        trace?: never;
+    get?: never;
+    put?: never;
+    /**
+     * Publish a new version of an existing API
+     * @description Validates and lints the document exactly like `importApi`, computes the change summary
+     *     against the previous version (see `ChangelogEntry`), and stores the version. No gateway
+     *     call is made: every version shares the API's Kong service and route, and access is per
+     *     API, so this works while Kong is unreachable.
+     *
+     *     With `makeLatest` true (the default) the new version becomes the latest, even when its
+     *     number is lower than the current latest (spec 012 AC 2). With `makeLatest` false it is
+     *     published and listed, and the latest is unchanged. On any refusal nothing is stored.
+     */
+    post: operations['importApiVersion'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/apis/{slug}/latest-version': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
+    get?: never;
+    /**
+     * Make an existing version the latest
+     * @description "Set as latest" (spec 012 AC 9). Idempotent: naming the current latest returns 200 and
+     *     changes nothing. The catalog title and description follow the latest version's `info`.
+     *     No gateway call is made. Changelog entries are not recomputed.
+     */
+    put: operations['setLatestApiVersion'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/gateways': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The gateway connection, and the bundled Kong's values if this install has one */
+    get: operations['listGateways'];
+    put?: never;
+    /**
+     * Check and save the gateway connection
+     * @description Runs the same checks as `testGateway`, then saves. The portal uses the connection from the
+     *     next request, with no restart, and queues a reconcile. On any failure nothing is saved.
+     *     A refused second add makes no request to the supplied URL.
+     */
+    post: operations['createGateway'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/gateways/test': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Check connection values without saving anything
+     * @description Read-only: it makes GET requests only and changes nothing in Kong or Postgres. Failure
+     *     messages never contain the token or a response body. Rate-limited to 30 requests per minute
+     *     per admin. Pass `gatewayId` when editing, so a blank token can use the stored one if the
+     *     Admin API URL is unchanged. With a changed URL and a stored token, a blank token gets
+     *     `/problems/gateway-token-required` and the stored token is never sent.
+     */
+    post: operations['testGateway'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/gateways/{gatewayId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        gatewayId: components['parameters']['GatewayId'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Remove the connection and its stored token
+     * @description Makes no request to Kong. The portal's objects stay there, including its ACLs, so traffic is
+     *     unchanged; the docs describe tag-based cleanup.
+     */
+    delete: operations['deleteGateway'];
+    options?: never;
+    head?: never;
+    /**
+     * Edit, disable or re-enable the connection
+     * @description A change to only `enabled: false` makes no request to Kong, so a connection to a Kong that
+     *     is down can still be disabled. Every other change runs the same checks as `testGateway`
+     *     first. On any failure nothing is saved and the existing connection keeps working. That
+     *     includes `enabled: true`: if a check fails, the response names that case and the connection
+     *     stays disabled.
+     */
+    patch: operations['updateGateway'];
+    trace?: never;
+  };
+  '/v1/admin/gateways/{gatewayId}/sample': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        gatewayId: components['parameters']['GatewayId'];
+      };
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Publish the sample API on the bundled Kong
+     * @description Only when the connection is enabled, its Admin API URL equals the bundled Kong's and no API
+     *     has the slug `sample` (`Gateway.sampleAvailable`). The sample's upstream exists only in the
+     *     bundled compose network.
+     */
+    post: operations['addSampleApi'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/settings/mail': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * How the portal sends email
+     * @description `source` says which settings are in use: `saved` (admin UI, these win), `environment`
+     *     (the `SMTP_*` variables, used while nothing is saved) or `none`. The SMTP password is never
+     *     returned; `hasPassword` says whether one is stored.
+     */
+    get: operations['getMailSettings'];
+    /**
+     * Save SMTP settings; from now on they win over the environment
+     * @description Doesn't contact the SMTP server; use the test action for that. The password is encrypted
+     *     at rest (AES-256-GCM with `PORTAL_ENCRYPTION_KEY`). Omit `password` to keep the stored one;
+     *     send `null` to remove it.
+     */
+    put: operations['saveMailSettings'];
+    post?: never;
+    /** Remove the saved SMTP settings and go back to the environment ones */
+    delete: operations['deleteMailSettings'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/settings/mail/test': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Send a test email with the settings in use
+     * @description Sends synchronously and gives up after 15 seconds. Error `detail`s are fixed copy and
+     *     never include the SMTP server's reply, the username or the password.
+     */
+    post: operations['sendTestEmail'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/admin/settings/accounts': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Email verification requirement and rate limits */
+    get: operations['getAccountSettings'];
+    /**
+     * Change the verification requirement and rate limits
+     * @description Takes effect on the next request, without a restart. Send the whole object.
+     */
+    put: operations['saveAccountSettings'];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/v1/try-it': {
+    parameters: {
+      query: {
+        /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
+        scalar_url: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Forward a try-it request to the gateway
+     * @description Scalar's proxy protocol (ADR 0003). Forwards the method, body and allowed headers to
+     *     the gateway (public base URL rewritten to the internal one) and passes the gateway's
+     *     status, headers and body back unchanged; for example, Kong's 401 is returned as a 401.
+     *     The one exception is Kong's own access-control refusal: the status stays 403 and the
+     *     headers pass through, but the body becomes the `/problems/api-access-denied` problem, so
+     *     the console can say what to do next. A 403 from the upstream service passes unchanged.
+     *     No session needed. Rate-limited to 60 requests per minute per IP. Strips cookies,
+     *     doesn't follow redirects, caps bodies at 1 MiB, 10 s timeout.
+     *     POST, PUT, PATCH and DELETE behave the same way.
+     */
+    get: operations['tryItGet'];
+    /** Forward a try-it request to the gateway (see GET) */
+    put: operations['tryItPut'];
+    /** Forward a try-it request to the gateway (see GET) */
+    post: operations['tryItPost'];
+    /** Forward a try-it request to the gateway (see GET) */
+    delete: operations['tryItDelete'];
+    options?: never;
+    head?: never;
+    /** Forward a try-it request to the gateway (see GET) */
+    patch: operations['tryItPatch'];
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-    schemas: {
-        /** @description RFC 9457 problem details */
-        Problem: {
-            /**
-             * Format: uri-reference
-             * @example /problems/gateway-unavailable
-             */
-            type: string;
-            /** @example Gateway unavailable */
-            title: string;
-            status: number;
-            /** @example The API gateway didn't respond. Nothing was created. Try again in a moment. */
-            detail?: string;
-            instance?: string;
-            /** @description With `/problems/gateway-in-use`: published APIs on this gateway */
-            apis?: number;
-            /** @description With `/problems/gateway-in-use`: active keys on this gateway */
-            activeKeys?: number;
-            /** @description With `/problems/gateway-keys-missing`: active keys with no consumer on the new Kong */
-            affectedKeys?: number;
-            /**
-             * @description Field or document errors. For `/problems/invalid-openapi`, only the first error is
-             *     returned. For `/problems/openapi-lint-failed`, every error-severity finding up to 100;
-             *     `errorCount` holds the full number.
-             */
-            errors?: {
-                /** @description JSON Pointer into the request body or the OpenAPI document, e.g. /paths/~1pets/get/responses */
-                pointer?: string;
-                message: string;
-                /** @description Lint findings only. The Spectral rule name, e.g. operation-operationId-unique */
-                rule?: string;
-                /** @description Lint findings, and `/problems/invalid-openapi` syntax errors: 1-based line in `source` (or in the submitted document) */
-                line?: number;
-                /** @description Lint findings, and `/problems/invalid-openapi` syntax errors: 1-based column in `source` (or in the submitted document) */
-                column?: number;
-                /** @description Lint findings only. URL of the external file the finding is in; null for the imported document itself */
-                source?: string | null;
-            }[];
-            /** @description Only on `/problems/openapi-lint-failed`: total number of error findings */
-            errorCount?: number;
-            /** @description With `/problems/team-needs-admin` from `DELETE /v1/me`: the teams where the caller is the only Admin and others are members */
-            teams?: {
-                /** Format: uuid */
-                id: string;
-                name: string;
-            }[];
-        };
-        Slug: string;
-        Health: {
-            /** @enum {string} */
-            status: "ok" | "degraded";
-            version: string;
-            lint: {
-                /** @enum {string} */
-                ruleset: "default" | "custom";
-                /** @description The configured ruleset file (custom only) */
-                path?: string;
-                /** @enum {string} */
-                status: "ok" | "error";
-                /**
-                 * @description Why the custom ruleset failed to load, naming the file. Present only when status is error.
-                 * @example /etc/portal/ruleset.yaml: file not found
-                 */
-                error?: string;
-            };
-            gateway: null | {
-                /** @enum {string} */
-                kind: "kong";
-                reachable: boolean;
-                version?: string;
-            };
-        };
-        SetupStatus: {
-            /** @description True until the first admin exists */
-            adminRequired: boolean;
-            /** @description True while an admin is required and `NODE_ENV=production` */
-            setupTokenRequired: boolean;
-        };
-        CreateFirstAdminRequest: {
-            /** Format: email */
-            email: string;
-            password: string;
-            /** @description Defaults to Administrator */
-            name?: string;
-            /** @description Required when `setupTokenRequired` is true */
-            setupToken?: string;
-        };
-        GatewayUrls: {
-            /**
-             * Format: uri
-             * @example http://kong:8001
-             */
-            adminUrl: string;
-            /**
-             * Format: uri
-             * @description Address of Kong's proxy as the server reaches it. Used by try-it. Checked.
-             * @example http://kong:8000
-             */
-            proxyInternalUrl: string;
-            /**
-             * Format: uri
-             * @description Address developers call, shown in the catalog. The server can't check it from inside, so only its form is validated.
-             * @example http://localhost:8000
-             */
-            proxyPublicUrl: string;
-        };
-        Gateway: components["schemas"]["GatewayUrls"] & {
-            /** Format: uuid */
-            id: string;
-            /** @enum {string} */
-            kind: "kong";
-            /** @description Whether a token is stored. The token itself is never returned. */
-            hasAdminToken: boolean;
-            enabled: boolean;
-            /**
-             * @description `env`: set by `KONG_ADMIN_URL`, so editing, disabling and removing are refused.
-             * @enum {string}
-             */
-            managedBy: "admin" | "env";
-            /** @description Whether `addSampleApi` would be accepted */
-            sampleAvailable: boolean;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        GatewayList: {
-            items: components["schemas"]["Gateway"][];
-            /** @description The bundled Kong's values for the form. Null when this install has none. */
-            bundled: null | components["schemas"]["GatewayUrls"];
-        };
-        CreateGatewayRequest: components["schemas"]["GatewayUrls"] & {
-            /** @description Optional; sent as `Kong-Admin-Token` */
-            adminToken?: string;
-        };
-        TestGatewayRequest: components["schemas"]["GatewayUrls"] & {
-            /**
-             * Format: uuid
-             * @description The connection being edited. Omit for a new one.
-             */
-            gatewayId?: string;
-            /** @description A new token. Absent or empty keeps the stored one if the URL is unchanged. Null means this connection uses no token. */
-            adminToken?: string | null;
-        };
-        UpdateGatewayRequest: {
-            /** Format: uri */
-            adminUrl?: string;
-            /** @description A new token. Absent or empty keeps the stored one if the URL is unchanged. Null removes it, and the connection uses no token. */
-            adminToken?: string | null;
-            /** Format: uri */
-            proxyInternalUrl?: string;
-            /** Format: uri */
-            proxyPublicUrl?: string;
-            enabled?: boolean;
-            /** @description The admin accepted that active keys won't work on this Kong */
-            confirmMissingKeys?: boolean;
-        };
-        GatewayTestResult: {
-            /**
-             * @description Kong version
-             * @example 3.9.4
-             */
-            version: string;
-            /** @description Empty when there is nothing to report, including when there are no active keys. */
-            warnings: {
-                /** @enum {string} */
-                code: "active-keys-missing";
-                message: string;
-                affectedKeys: number;
-            }[];
-        };
-        User: {
-            /** Format: uuid */
-            id: string;
-            /**
-             * Format: email
-             * @description The address the account signs in with
-             */
-            email: string;
-            name: string;
-            /** @enum {string} */
-            role: "developer" | "admin";
-            emailVerified: boolean;
-            /**
-             * Format: email
-             * @description New address waiting for its confirmation link, if an email change is in progress and its link hasn't expired
-             */
-            pendingEmail: string | null;
-            /** @description The admin's "Require a verified email" setting. With `emailVerified` false, creating apps and keys is refused. */
-            verificationRequired: boolean;
-            /**
-             * Format: uuid
-             * @description The team picked most recently in the switcher; the personal team for a new account (spec 008)
-             */
-            currentTeamId: string;
-        };
-        UpdateMeRequest: {
-            /** @description Trimmed before saving */
-            name: string;
-        };
-        EmailChangeRequest: {
-            /**
-             * Format: email
-             * @description Trimmed and lower-cased
-             */
-            newEmail: string;
-        };
-        DeleteMeRequest: {
-            password: string;
-        };
-        /**
-         * @description `none`: plain SMTP. `starttls`: upgrade with STARTTLS, required (usually port 587). `tls`: TLS from the start (usually port 465).
-         * @enum {string}
-         */
-        SmtpSecurity: "none" | "starttls" | "tls";
-        SmtpSettingsView: {
-            host: string;
-            port: number;
-            security: components["schemas"]["SmtpSecurity"];
-            username: string | null;
-            hasPassword: boolean;
-            senderName: string;
-            /** Format: email */
-            senderAddress: string;
-        };
-        MailSettings: {
-            /**
-             * @description Which settings portal email uses now
-             * @enum {string}
-             */
-            source: "saved" | "environment" | "none";
-            /** @description Settings saved in the admin UI, or null */
-            saved: components["schemas"]["SmtpSettingsView"] | null;
-            /** Format: date-time */
-            updatedAt?: string | null;
-            /** @description Settings from `SMTP_*` environment variables, or null when `SMTP_HOST` or `SMTP_SENDER_ADDRESS` is unset. Read-only. */
-            environment: components["schemas"]["SmtpSettingsView"] | null;
-        };
-        SaveMailSettingsRequest: {
-            host: string;
-            port: number;
-            security: components["schemas"]["SmtpSecurity"];
-            username?: string | null;
-            /** @description Omit to keep the stored password; null removes it. Never returned. */
-            password?: string | null;
-            senderName: string;
-            /** Format: email */
-            senderAddress: string;
-        };
-        RateLimit: {
-            max: number;
-            windowMinutes: number;
-        };
-        AccountRateLimits: {
-            /** @description Failed sign-ins per email address. Default 10 in 15 minutes. */
-            signInFailures: components["schemas"]["RateLimit"];
-            /** @description Password reset requests per email address. Default 3 in 60 minutes. */
-            passwordResetEmails: components["schemas"]["RateLimit"];
-            /** @description Verification email resends and email change requests per account. Default 3 in 60 minutes. */
-            verificationEmails: components["schemas"]["RateLimit"];
-        };
-        SaveAccountSettingsRequest: {
-            requireVerifiedEmail: boolean;
-            rateLimits: components["schemas"]["AccountRateLimits"];
-        };
-        AccountSettings: components["schemas"]["SaveAccountSettingsRequest"] & {
-            /** @description SMTP settings are saved or set in the environment. `requireVerifiedEmail` can't be turned on without them. */
-            mailConfigured: boolean;
-        };
-        ApiSummary: {
-            /** Format: uuid */
-            id: string;
-            slug: components["schemas"]["Slug"];
-            /** @description The latest version's info.title */
-            title: string;
-            /** @description The latest version's info.version */
-            version: string;
-            /** @description The latest version's info.description (Markdown) */
-            description?: string | null;
-            /**
-             * Format: uri
-             * @example http://localhost:8000/sample
-             */
-            gatewayBaseUrl: string;
-            /**
-             * Format: date-time
-             * @description When the API's first version was published
-             */
-            publishedAt: string;
-        };
-        ApiDetail: components["schemas"]["ApiSummary"] & {
-            /**
-             * @description The latest version's document
-             * @example /api/v1/apis/sample/openapi.json
-             */
-            documentUrl: string;
-            /**
-             * @description Every version, in version order: highest first by semantic-version precedence when
-             *     every version name is a valid SemVer 2.0 string, otherwise newest import first.
-             *     Exactly one has `isLatest` true.
-             */
-            versions: components["schemas"]["ApiVersionSummary"][];
-            gatewayService: {
-                id: string;
-                name: string;
-            };
-        };
-        ImportedApi: components["schemas"]["ApiDetail"] & {
-            /** @description Published, but the admin should know this. Empty when there is nothing to report. */
-            warnings: components["schemas"]["ImportWarning"][];
-            /** @description Non-blocking lint findings, in document order, up to 200. Empty when there are none. */
-            lintWarnings: components["schemas"]["LintFinding"][];
-        };
-        /**
-         * @description The document's `info.version`. Restricted so it can be used in URLs: starts with a letter
-         *     or digit, then letters, digits, `.`, `_`, `-` or `+`, at most 64 characters.
-         * @example 2.0.0
-         * @example 2024-06-01
-         * @example v2
-         */
-        ApiVersionName: string;
-        ApiVersionSummary: {
-            version: components["schemas"]["ApiVersionName"];
-            isLatest: boolean;
-            /**
-             * Format: date-time
-             * @description When this version was imported
-             */
-            publishedAt: string;
-            /** @example /api/v1/apis/orders/versions/1.0.0/openapi.json */
-            documentUrl: string;
-        };
-        ImportedApiVersion: {
-            api: components["schemas"]["ApiDetail"];
-            version: components["schemas"]["ChangelogEntry"];
-            /** @description Non-blocking lint findings, in document order, up to 200. Empty when there are none. */
-            lintWarnings: components["schemas"]["LintFinding"][];
-        };
-        LintFinding: {
-            /** @example operation-description */
-            rule: string;
-            /**
-             * @description Spectral info and hint findings are reported as warning
-             * @enum {string}
-             */
-            severity: "error" | "warning";
-            message: string;
-            /**
-             * @description JSON Pointer into the document
-             * @example /paths/~1orders/get
-             */
-            pointer: string;
-            line: number;
-            column: number;
-            /** @description URL of the external file the finding is in; null for the imported document itself */
-            source?: string | null;
-        };
-        ChangelogEntry: {
-            version: components["schemas"]["ApiVersionName"];
-            /**
-             * Format: date-time
-             * @description The import date
-             */
-            publishedAt: string;
-            /** @description The admin's note, plain text (rendered without HTML) */
-            releaseNote: string | null;
-            /** @description Null for the first version, or when no version sorted below this one at import time. */
-            changes: null | components["schemas"]["ChangeSummary"];
-        };
-        ChangeSummary: {
-            comparedTo: components["schemas"]["ApiVersionName"];
-            added: components["schemas"]["OperationChange"][];
-            /** @description Every removed operation is breaking. */
-            removed: components["schemas"]["OperationChange"][];
-            changed: components["schemas"]["OperationChange"][];
-            /** @description True if any removed or changed operation is breaking */
-            breaking: boolean;
-        };
-        OperationChange: {
-            /** @enum {string} */
-            method: "GET" | "PUT" | "POST" | "DELETE" | "OPTIONS" | "HEAD" | "PATCH" | "TRACE";
-            /** @example /orders/{id} */
-            path: string;
-            summary?: string | null;
-            breaking: boolean;
-            /** @description Empty for added operations; `operation-removed` for removed ones. */
-            reasons: {
-                /** @enum {string} */
-                code: "operation-removed" | "required-parameter-added" | "parameter-became-required" | "request-body-became-required" | "success-response-removed" | "parameter-removed" | "optional-parameter-added" | "security-changed" | "deprecated";
-                /** @example New required query parameter `status` */
-                message: string;
-            }[];
-        };
-        ImportApiVersionRequest: {
-            spec: components["schemas"]["SpecSource"];
-            /** @description Plain text shown in the changelog */
-            releaseNote?: string;
-            /**
-             * @description False for "Don't make this the default version"
-             * @default true
-             */
-            makeLatest: boolean;
-        };
-        SetLatestVersionRequest: {
-            version: components["schemas"]["ApiVersionName"];
-        };
-        /** @description Exactly one of `url` or `content` */
-        SpecSource: {
-            /** Format: uri */
-            url: string;
-        } | {
-            /** @description OpenAPI document as YAML or JSON text (5 MiB max) */
-            content: string;
-        };
-        ImportWarning: {
-            /**
-             * @description `api-public`: the service has no key-auth, so anyone can call this API without a key.
-             *     `partial-key-auth`: key-auth is only on some of the service's routes, so the other routes stay open.
-             * @enum {string}
-             */
-            code: "api-public" | "partial-key-auth";
-            message: string;
-        };
-        ImportApiRequest: {
-            spec: components["schemas"]["SpecSource"];
-            /** @description Plain text shown in the changelog for the first version */
-            releaseNote?: string;
-            /** @description Kong service ID or name, from GET /v1/admin/gateway/services */
-            gatewayServiceId: string;
-            /** @description Defaults to a slug of info.title */
-            slug?: components["schemas"]["Slug"];
-            /** @description Public path prefix on the gateway. Defaults to the first path of the service's first route. */
-            routePath?: string;
-        };
-        GatewayService: {
-            id: string;
-            name: string;
-            routes: {
-                id: string;
-                name?: string | null;
-                paths: string[];
-            }[];
-            /** @description True if an enabled key-auth plugin applies to the service */
-            keyAuth: boolean;
-            /** @description Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`; add a version to that API instead (`importApiVersion`). */
-            linkedApiSlug?: string | null;
-        };
+  schemas: {
+    /** @description RFC 9457 problem details */
+    Problem: {
+      /**
+       * Format: uri-reference
+       * @example /problems/gateway-unavailable
+       */
+      type: string;
+      /** @example Gateway unavailable */
+      title: string;
+      status: number;
+      /** @example The API gateway didn't respond. Try again in a moment. */
+      detail?: string;
+      instance?: string;
+      /** @description With `/problems/gateway-in-use`: published APIs on this gateway */
+      apis?: number;
+      /** @description With `/problems/gateway-in-use`: active keys on this gateway */
+      activeKeys?: number;
+      /** @description With `/problems/gateway-keys-missing`: active keys with no consumer on the new Kong */
+      affectedKeys?: number;
+      /**
+       * @description Field or document errors. For `/problems/invalid-openapi`, only the first error is
+       *     returned. For `/problems/openapi-lint-failed`, every error-severity finding up to 100;
+       *     `errorCount` holds the full number.
+       */
+      errors?: {
+        /** @description JSON Pointer into the request body or the OpenAPI document, e.g. /paths/~1pets/get/responses */
+        pointer?: string;
+        message: string;
+        /** @description Lint findings only. The Spectral rule name, e.g. operation-operationId-unique */
+        rule?: string;
+        /** @description Lint findings, and `/problems/invalid-openapi` syntax errors: 1-based line in `source` (or in the submitted document) */
+        line?: number;
+        /** @description Lint findings, and `/problems/invalid-openapi` syntax errors: 1-based column in `source` (or in the submitted document) */
+        column?: number;
+        /** @description Lint findings only. URL of the external file the finding is in; null for the imported document itself */
+        source?: string | null;
+      }[];
+      /** @description Only on `/problems/openapi-lint-failed`: total number of error findings */
+      errorCount?: number;
+      /** @description With `/problems/team-needs-admin` from `DELETE /v1/me`: the teams where the caller is the only Admin and others are members */
+      teams?: {
+        /** Format: uuid */
+        id: string;
+        name: string;
+      }[];
+    };
+    Slug: string;
+    Health: {
+      /** @enum {string} */
+      status: 'ok' | 'degraded';
+      version: string;
+      lint: {
         /** @enum {string} */
-        TeamRole: "admin" | "member" | "read-only";
-        CreateTeamRequest: {
-            /** @description Trimmed before saving; need not be unique */
-            name: string;
-        };
-        SetCurrentTeamRequest: {
-            /** Format: uuid */
-            teamId: string;
-        };
-        TeamSummary: {
-            /** Format: uuid */
-            id: string;
-            /** @description `Personal` for a personal team */
-            name: string;
-            /** @description The caller's personal team. Single-member; takes no invitations. */
-            personal: boolean;
-            role: components["schemas"]["TeamRole"];
-            memberCount: number;
-            /** Format: date-time */
-            createdAt: string;
-        };
-        TeamMember: {
-            /** Format: uuid */
-            userId: string;
-            name: string;
-            /** Format: email */
-            email: string;
-            role: components["schemas"]["TeamRole"];
-            /** Format: date-time */
-            joinedAt: string;
-        };
-        TeamDetail: components["schemas"]["TeamSummary"] & {
-            /** @description Admins first, then by name */
-            members: components["schemas"]["TeamMember"][];
-            /** @description Pending, unexpired invitations, newest first. `null` unless the caller is an Admin. */
-            invitations: components["schemas"]["Invitation"][] | null;
-        };
-        CreateInvitationRequest: {
-            /**
-             * Format: email
-             * @description Trimmed and lowercased
-             */
-            email: string;
-            role: components["schemas"]["TeamRole"];
-        };
-        UpdateTeamMemberRequest: {
-            role: components["schemas"]["TeamRole"];
-        };
-        Invitation: {
-            /** Format: uuid */
-            id: string;
-            /** Format: email */
-            email: string;
-            role: components["schemas"]["TeamRole"];
-            /** @description `null` if the inviter's account was deleted */
-            invitedBy: {
-                /** Format: uuid */
-                userId: string;
-                name: string;
-            } | null;
-            /** Format: date-time */
-            createdAt: string;
-            /**
-             * Format: date-time
-             * @description 7 days after `createdAt`
-             */
-            expiresAt: string;
-        };
-        InvitationTokenRequest: {
-            token: string;
-        };
-        InvitationPreview: {
-            teamName: string;
-            role: components["schemas"]["TeamRole"];
-            /**
-             * Format: email
-             * @description The invited address; sign in or sign up with it to accept
-             */
-            email: string;
-            invitedByName: string | null;
-            /** Format: date-time */
-            expiresAt: string;
-            /** @enum {string} */
-            state: "pending" | "accepted" | "cancelled" | "expired";
-        };
-        CreateAppRequest: {
-            name: string;
-            description?: string;
-            /**
-             * Format: uuid
-             * @description The team the app belongs to. Defaults to the caller's current team; the portal always sends it.
-             */
-            teamId?: string;
-            apiIds: string[];
-        };
-        App: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            teamId: string;
-            /** @description The caller's role in the app's team. `read-only` can't create or revoke keys. */
-            role: components["schemas"]["TeamRole"];
-            name: string;
-            description?: string | null;
-            subscriptions: {
-                /** Format: uuid */
-                apiId: string;
-                slug: components["schemas"]["Slug"];
-                title: string;
-            }[];
-            /** @description Active and revoked keys, newest first. Never includes the key value. */
-            credentials: components["schemas"]["Credential"][];
-            /** Format: date-time */
-            createdAt: string;
-        };
-        Credential: {
-            /** Format: uuid */
-            id: string;
-            /** @enum {string} */
-            kind: "api-key";
-            /**
-             * @description Last 4 characters of the key, shown as …9fQa
-             * @example 9fQa
-             */
-            keyHint: string;
-            /** @enum {string} */
-            status: "active" | "revoked";
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            revokedAt?: string | null;
-        };
-        IssuedCredential: components["schemas"]["Credential"] & {
-            /**
-             * @description The full API key, `pk_` + 43 base64url characters. Returned only here, once.
-             * @example pk_3q2-7wErT...
-             */
-            key: string;
-            /**
-             * @description Header to send it in
-             * @example apikey
-             */
-            headerName: string;
-        };
-        CreateAppResponse: {
-            app: components["schemas"]["App"];
-            credential: components["schemas"]["IssuedCredential"];
-        };
+        ruleset: 'default' | 'custom';
+        /** @description The configured ruleset file (custom only) */
+        path?: string;
+        /** @enum {string} */
+        status: 'ok' | 'error';
+        /**
+         * @description Why the custom ruleset failed to load, naming the file. Present only when status is error.
+         * @example /etc/portal/ruleset.yaml: file not found
+         */
+        error?: string;
+      };
+      gateway: null | {
+        /** @enum {string} */
+        kind: 'kong';
+        reachable: boolean;
+        version?: string;
+      };
     };
-    responses: {
-        /** @description Request body or parameters failed validation (`/problems/validation`) */
-        ValidationError: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /** @description Not signed in (`/problems/unauthenticated`) */
-        Unauthorized: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /** @description Signed in but not an admin (`/problems/forbidden`) */
-        Forbidden: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /** @description Not found, or not owned by the caller (`/problems/not-found`) */
-        NotFound: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /**
-         * @description The caller is a member of the team but their role doesn't allow this
-         *     (`/problems/team-role-forbidden`). Nothing was changed, in Kong or the portal.
-         */
-        TeamRoleForbidden: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /**
-         * @description `/problems/team-role-forbidden` (the caller is `read-only` in the team; checked first) or
-         *     `/problems/email-not-verified` (the admin requires a verified email and the user hasn't
-         *     verified theirs; the UI offers to resend it with `POST /api/auth/send-verification-email`).
-         *     Nothing was created, in Kong or the portal.
-         */
-        TeamForbiddenOrNotVerified: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /**
-         * @description This would leave the team with no Admin (`/problems/team-needs-admin`). Make another member
-         *     an Admin first. Nothing was changed.
-         */
-        TeamNeedsAdmin: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /**
-         * @description Kong's Admin API is unreachable, timed out (5 s) or returned 5xx
-         *     (`/problems/gateway-unavailable`). Nothing was changed; it is safe to retry.
-         *     Includes `Retry-After: 5`.
-         */
-        GatewayUnavailable: {
-            headers: {
-                "Retry-After"?: number;
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /**
-         * @description A field is malformed, isn't http(s), carries credentials, a query or a fragment, or resolves
-         *     to a link-local or cloud metadata address (`/problems/validation`). `errors[].pointer` names
-         *     the field, such as `/adminUrl`. The portal made no request to a refused address.
-         */
-        GatewayFieldInvalid: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /**
-         * @description A connection check failed and nothing was saved. Messages contain neither the token nor a
-         *     response body. `type` is one of:
-         *     `/problems/gateway-unreachable` (network error, 5 s timeout or 5xx; for `localhost`, the detail
-         *     says the address is resolved from the server),
-         *     `/problems/gateway-token-refused` (401 or 403),
-         *     `/problems/gateway-not-kong` (the URL answers but isn't a Kong Admin API),
-         *     `/problems/gateway-read-only` (DB-less mode or a data plane node),
-         *     `/problems/gateway-proxy-unreachable` (the Admin API passed but the internal proxy URL failed),
-         *     `/problems/gateway-token-required` (URL changed with a stored token; enter it again).
-         */
-        GatewayCheckFailed: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /** @description Missing `scalar_url`, or it isn't under a published API's base URL (`/problems/try-it-target-not-allowed`) */
-        TryItNotAllowed: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /**
-         * @description Kong refused the key because its app isn't subscribed to this API
-         *     (`/problems/api-access-denied`). `title` and `detail` hold the copy from the UX design.
-         *     Responses from the upstream service, including its own 403s, are not rewritten.
-         */
-        TryItAccessDenied: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /** @description Request body over the limit (`/problems/payload-too-large`) */
-        PayloadTooLarge: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /** @description Rate limit exceeded (`/problems/rate-limited`) */
-        RateLimited: {
-            headers: {
-                "Retry-After"?: number;
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /** @description Gateway did not answer within 10 s (`/problems/try-it-timeout`) */
-        TryItTimeout: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
-        /** @description Kong rejected the request with a 4xx (`/problems/gateway-rejected`). Nothing was changed. */
-        GatewayRejected: {
-            headers: {
-                [name: string]: unknown;
-            };
-            content: {
-                "application/problem+json": components["schemas"]["Problem"];
-            };
-        };
+    SetupStatus: {
+      /** @description True until the first admin exists */
+      adminRequired: boolean;
+      /** @description True while an admin is required and `NODE_ENV=production` */
+      setupTokenRequired: boolean;
     };
-    parameters: {
-        Slug: components["schemas"]["Slug"];
-        AppId: string;
-        CredentialId: string;
-        /** @description A version's `info.version`, URL-encoded (`+` becomes `%2B`) */
-        Version: components["schemas"]["ApiVersionName"];
-        GatewayId: string;
-        TeamId: string;
-        UserId: string;
-        InvitationId: string;
+    CreateFirstAdminRequest: {
+      /** Format: email */
+      email: string;
+      password: string;
+      /** @description Defaults to Administrator */
+      name?: string;
+      /** @description Required when `setupTokenRequired` is true */
+      setupToken?: string;
     };
-    requestBodies: never;
-    headers: never;
-    pathItems: never;
+    GatewayUrls: {
+      /**
+       * Format: uri
+       * @example http://kong:8001
+       */
+      adminUrl: string;
+      /**
+       * Format: uri
+       * @description Address of Kong's proxy as the server reaches it. Used by try-it. Checked.
+       * @example http://kong:8000
+       */
+      proxyInternalUrl: string;
+      /**
+       * Format: uri
+       * @description Address developers call, shown in the catalog. The server can't check it from inside, so only its form is validated.
+       * @example http://localhost:8000
+       */
+      proxyPublicUrl: string;
+    };
+    Gateway: components['schemas']['GatewayUrls'] & {
+      /** Format: uuid */
+      id: string;
+      /** @enum {string} */
+      kind: 'kong';
+      /** @description Whether a token is stored. The token itself is never returned. */
+      hasAdminToken: boolean;
+      enabled: boolean;
+      /**
+       * @description `env`: set by `KONG_ADMIN_URL`, so editing, disabling and removing are refused.
+       * @enum {string}
+       */
+      managedBy: 'admin' | 'env';
+      /** @description Whether `addSampleApi` would be accepted */
+      sampleAvailable: boolean;
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      updatedAt: string;
+    };
+    GatewayList: {
+      items: components['schemas']['Gateway'][];
+      /** @description The bundled Kong's values for the form. Null when this install has none. */
+      bundled: null | components['schemas']['GatewayUrls'];
+    };
+    CreateGatewayRequest: components['schemas']['GatewayUrls'] & {
+      /** @description Optional; sent as `Kong-Admin-Token` */
+      adminToken?: string;
+    };
+    TestGatewayRequest: components['schemas']['GatewayUrls'] & {
+      /**
+       * Format: uuid
+       * @description The connection being edited. Omit for a new one.
+       */
+      gatewayId?: string;
+      /** @description A new token. Absent or empty keeps the stored one if the URL is unchanged. Null means this connection uses no token. */
+      adminToken?: string | null;
+    };
+    UpdateGatewayRequest: {
+      /** Format: uri */
+      adminUrl?: string;
+      /** @description A new token. Absent or empty keeps the stored one if the URL is unchanged. Null removes it, and the connection uses no token. */
+      adminToken?: string | null;
+      /** Format: uri */
+      proxyInternalUrl?: string;
+      /** Format: uri */
+      proxyPublicUrl?: string;
+      enabled?: boolean;
+      /** @description The admin accepted that active keys won't work on this Kong */
+      confirmMissingKeys?: boolean;
+    };
+    GatewayTestResult: {
+      /**
+       * @description Kong version
+       * @example 3.9.4
+       */
+      version: string;
+      /** @description Empty when there is nothing to report, including when there are no active keys. */
+      warnings: {
+        /** @enum {string} */
+        code: 'active-keys-missing';
+        message: string;
+        affectedKeys: number;
+      }[];
+    };
+    User: {
+      /** Format: uuid */
+      id: string;
+      /**
+       * Format: email
+       * @description The address the account signs in with
+       */
+      email: string;
+      name: string;
+      /** @enum {string} */
+      role: 'developer' | 'admin';
+      emailVerified: boolean;
+      /**
+       * Format: email
+       * @description New address waiting for its confirmation link, if an email change is in progress and its link hasn't expired
+       */
+      pendingEmail: string | null;
+      /** @description The admin's "Require a verified email" setting. With `emailVerified` false, creating apps and keys is refused. */
+      verificationRequired: boolean;
+      /**
+       * Format: uuid
+       * @description The team picked most recently in the switcher; the personal team for a new account (spec 008)
+       */
+      currentTeamId: string;
+    };
+    UpdateMeRequest: {
+      /** @description Trimmed before saving */
+      name: string;
+    };
+    EmailChangeRequest: {
+      /**
+       * Format: email
+       * @description Trimmed and lower-cased
+       */
+      newEmail: string;
+    };
+    DeleteMeRequest: {
+      password: string;
+    };
+    /**
+     * @description `none`: plain SMTP. `starttls`: upgrade with STARTTLS, required (usually port 587). `tls`: TLS from the start (usually port 465).
+     * @enum {string}
+     */
+    SmtpSecurity: 'none' | 'starttls' | 'tls';
+    SmtpSettingsView: {
+      host: string;
+      port: number;
+      security: components['schemas']['SmtpSecurity'];
+      username: string | null;
+      hasPassword: boolean;
+      senderName: string;
+      /** Format: email */
+      senderAddress: string;
+    };
+    MailSettings: {
+      /**
+       * @description Which settings portal email uses now
+       * @enum {string}
+       */
+      source: 'saved' | 'environment' | 'none';
+      /** @description Settings saved in the admin UI, or null */
+      saved: components['schemas']['SmtpSettingsView'] | null;
+      /** Format: date-time */
+      updatedAt?: string | null;
+      /** @description Settings from `SMTP_*` environment variables, or null when `SMTP_HOST` or `SMTP_SENDER_ADDRESS` is unset. Read-only. */
+      environment: components['schemas']['SmtpSettingsView'] | null;
+    };
+    SaveMailSettingsRequest: {
+      host: string;
+      port: number;
+      security: components['schemas']['SmtpSecurity'];
+      username?: string | null;
+      /** @description Omit to keep the stored password; null removes it. Never returned. */
+      password?: string | null;
+      senderName: string;
+      /** Format: email */
+      senderAddress: string;
+    };
+    RateLimit: {
+      max: number;
+      windowMinutes: number;
+    };
+    AccountRateLimits: {
+      /** @description Failed sign-ins per email address. Default 10 in 15 minutes. */
+      signInFailures: components['schemas']['RateLimit'];
+      /** @description Password reset requests per email address. Default 3 in 60 minutes. */
+      passwordResetEmails: components['schemas']['RateLimit'];
+      /** @description Verification email resends and email change requests per account. Default 3 in 60 minutes. */
+      verificationEmails: components['schemas']['RateLimit'];
+    };
+    SaveAccountSettingsRequest: {
+      requireVerifiedEmail: boolean;
+      rateLimits: components['schemas']['AccountRateLimits'];
+    };
+    AccountSettings: components['schemas']['SaveAccountSettingsRequest'] & {
+      /** @description SMTP settings are saved or set in the environment. `requireVerifiedEmail` can't be turned on without them. */
+      mailConfigured: boolean;
+    };
+    ApiSummary: {
+      /** Format: uuid */
+      id: string;
+      slug: components['schemas']['Slug'];
+      /** @description The latest version's info.title */
+      title: string;
+      /**
+       * @description Products that include this API, by name (spec 009). Empty means the API is in no
+       *     product: the catalog lists it on its own and it keeps the spec 004 per-API key flow.
+       */
+      products: components['schemas']['ProductRef'][];
+      /** @description The latest version's info.version */
+      version: string;
+      /** @description The latest version's info.description (Markdown) */
+      description?: string | null;
+      /**
+       * Format: uri
+       * @example http://localhost:8000/sample
+       */
+      gatewayBaseUrl: string;
+      /**
+       * Format: date-time
+       * @description When the API's first version was published
+       */
+      publishedAt: string;
+    };
+    ApiDetail: components['schemas']['ApiSummary'] & {
+      /**
+       * @description The latest version's document
+       * @example /api/v1/apis/sample/openapi.json
+       */
+      documentUrl: string;
+      /**
+       * @description Every version, in version order: highest first by semantic-version precedence when
+       *     every version name is a valid SemVer 2.0 string, otherwise newest import first.
+       *     Exactly one has `isLatest` true.
+       */
+      versions: components['schemas']['ApiVersionSummary'][];
+      gatewayService: {
+        id: string;
+        name: string;
+      };
+    };
+    ImportedApi: components['schemas']['ApiDetail'] & {
+      /** @description Published, but the admin should know this. Empty when there is nothing to report. */
+      warnings: components['schemas']['ImportWarning'][];
+      /** @description Non-blocking lint findings, in document order, up to 200. Empty when there are none. */
+      lintWarnings: components['schemas']['LintFinding'][];
+    };
+    /**
+     * @description The document's `info.version`. Restricted so it can be used in URLs: starts with a letter
+     *     or digit, then letters, digits, `.`, `_`, `-` or `+`, at most 64 characters.
+     * @example 2.0.0
+     * @example 2024-06-01
+     * @example v2
+     */
+    ApiVersionName: string;
+    ApiVersionSummary: {
+      version: components['schemas']['ApiVersionName'];
+      isLatest: boolean;
+      /**
+       * Format: date-time
+       * @description When this version was imported
+       */
+      publishedAt: string;
+      /** @example /api/v1/apis/orders/versions/1.0.0/openapi.json */
+      documentUrl: string;
+    };
+    ImportedApiVersion: {
+      api: components['schemas']['ApiDetail'];
+      version: components['schemas']['ChangelogEntry'];
+      /** @description Non-blocking lint findings, in document order, up to 200. Empty when there are none. */
+      lintWarnings: components['schemas']['LintFinding'][];
+    };
+    LintFinding: {
+      /** @example operation-description */
+      rule: string;
+      /**
+       * @description Spectral info and hint findings are reported as warning
+       * @enum {string}
+       */
+      severity: 'error' | 'warning';
+      message: string;
+      /**
+       * @description JSON Pointer into the document
+       * @example /paths/~1orders/get
+       */
+      pointer: string;
+      line: number;
+      column: number;
+      /** @description URL of the external file the finding is in; null for the imported document itself */
+      source?: string | null;
+    };
+    ChangelogEntry: {
+      version: components['schemas']['ApiVersionName'];
+      /**
+       * Format: date-time
+       * @description The import date
+       */
+      publishedAt: string;
+      /** @description The admin's note, plain text (rendered without HTML) */
+      releaseNote: string | null;
+      /** @description Null for the first version, or when no version sorted below this one at import time. */
+      changes: null | components['schemas']['ChangeSummary'];
+    };
+    ChangeSummary: {
+      comparedTo: components['schemas']['ApiVersionName'];
+      added: components['schemas']['OperationChange'][];
+      /** @description Every removed operation is breaking. */
+      removed: components['schemas']['OperationChange'][];
+      changed: components['schemas']['OperationChange'][];
+      /** @description True if any removed or changed operation is breaking */
+      breaking: boolean;
+    };
+    OperationChange: {
+      /** @enum {string} */
+      method:
+        | 'GET'
+        | 'PUT'
+        | 'POST'
+        | 'DELETE'
+        | 'OPTIONS'
+        | 'HEAD'
+        | 'PATCH'
+        | 'TRACE';
+      /** @example /orders/{id} */
+      path: string;
+      summary?: string | null;
+      breaking: boolean;
+      /** @description Empty for added operations; `operation-removed` for removed ones. */
+      reasons: {
+        /** @enum {string} */
+        code:
+          | 'operation-removed'
+          | 'required-parameter-added'
+          | 'parameter-became-required'
+          | 'request-body-became-required'
+          | 'success-response-removed'
+          | 'parameter-removed'
+          | 'optional-parameter-added'
+          | 'security-changed'
+          | 'deprecated';
+        /** @example New required query parameter `status` */
+        message: string;
+      }[];
+    };
+    ImportApiVersionRequest: {
+      spec: components['schemas']['SpecSource'];
+      /** @description Plain text shown in the changelog */
+      releaseNote?: string;
+      /**
+       * @description False for "Don't make this the default version"
+       * @default true
+       */
+      makeLatest: boolean;
+    };
+    SetLatestVersionRequest: {
+      version: components['schemas']['ApiVersionName'];
+    };
+    /** @description Exactly one of `url` or `content` */
+    SpecSource:
+      | {
+          /** Format: uri */
+          url: string;
+        }
+      | {
+          /** @description OpenAPI document as YAML or JSON text (5 MiB max) */
+          content: string;
+        };
+    ImportWarning: {
+      /**
+       * @description `api-public`: the service has no key-auth, so anyone can call this API without a key.
+       *     `partial-key-auth`: key-auth is only on some of the service's routes, so the other routes stay open.
+       * @enum {string}
+       */
+      code: 'api-public' | 'partial-key-auth';
+      message: string;
+    };
+    ImportApiRequest: {
+      spec: components['schemas']['SpecSource'];
+      /** @description Plain text shown in the changelog for the first version */
+      releaseNote?: string;
+      /** @description Kong service ID or name, from GET /v1/admin/gateway/services */
+      gatewayServiceId: string;
+      /** @description Defaults to a slug of info.title */
+      slug?: components['schemas']['Slug'];
+      /** @description Public path prefix on the gateway. Defaults to the first path of the service's first route. */
+      routePath?: string;
+    };
+    GatewayService: {
+      id: string;
+      name: string;
+      routes: {
+        id: string;
+        name?: string | null;
+        paths: string[];
+      }[];
+      /** @description True if an enabled key-auth plugin applies to the service */
+      keyAuth: boolean;
+      /** @description Slug of the published API already linked to this service. Importing another API onto it is refused with `/problems/gateway-service-already-linked`; add a version to that API instead (`importApiVersion`). */
+      linkedApiSlug?: string | null;
+    };
+    /** @enum {string} */
+    TeamRole: 'admin' | 'member' | 'read-only';
+    CreateTeamRequest: {
+      /** @description Trimmed before saving; need not be unique */
+      name: string;
+    };
+    SetCurrentTeamRequest: {
+      /** Format: uuid */
+      teamId: string;
+    };
+    TeamSummary: {
+      /** Format: uuid */
+      id: string;
+      /** @description `Personal` for a personal team */
+      name: string;
+      /** @description The caller's personal team. Single-member; takes no invitations. */
+      personal: boolean;
+      role: components['schemas']['TeamRole'];
+      memberCount: number;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    TeamMember: {
+      /** Format: uuid */
+      userId: string;
+      name: string;
+      /** Format: email */
+      email: string;
+      role: components['schemas']['TeamRole'];
+      /** Format: date-time */
+      joinedAt: string;
+    };
+    TeamDetail: components['schemas']['TeamSummary'] & {
+      /** @description Admins first, then by name */
+      members: components['schemas']['TeamMember'][];
+      /** @description Pending, unexpired invitations, newest first. `null` unless the caller is an Admin. */
+      invitations: components['schemas']['Invitation'][] | null;
+    };
+    CreateInvitationRequest: {
+      /**
+       * Format: email
+       * @description Trimmed and lowercased
+       */
+      email: string;
+      role: components['schemas']['TeamRole'];
+    };
+    UpdateTeamMemberRequest: {
+      role: components['schemas']['TeamRole'];
+    };
+    Invitation: {
+      /** Format: uuid */
+      id: string;
+      /** Format: email */
+      email: string;
+      role: components['schemas']['TeamRole'];
+      /** @description `null` if the inviter's account was deleted */
+      invitedBy: {
+        /** Format: uuid */
+        userId: string;
+        name: string;
+      } | null;
+      /** Format: date-time */
+      createdAt: string;
+      /**
+       * Format: date-time
+       * @description 7 days after `createdAt`
+       */
+      expiresAt: string;
+    };
+    InvitationTokenRequest: {
+      token: string;
+    };
+    InvitationPreview: {
+      teamName: string;
+      role: components['schemas']['TeamRole'];
+      /**
+       * Format: email
+       * @description The invited address; sign in or sign up with it to accept
+       */
+      email: string;
+      invitedByName: string | null;
+      /** Format: date-time */
+      expiresAt: string;
+      /** @enum {string} */
+      state: 'pending' | 'accepted' | 'cancelled' | 'expired';
+    };
+    /** @description Exactly one of `planId` (subscribe to a product plan) or `apiIds` (APIs in no product). */
+    CreateAppRequest: {
+      /** @description Unique in the team. For a subscription this is its name, such as `staging` or `prod`. */
+      name: string;
+      /**
+       * Format: uuid
+       * @description A product plan (not the built-in plan)
+       */
+      planId?: string;
+      description?: string;
+      /**
+       * Format: uuid
+       * @description The team the app belongs to. Defaults to the caller's current team; the portal always sends it.
+       */
+      teamId?: string;
+      apiIds?: string[];
+    } & (unknown | unknown);
+    App: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      teamId: string;
+      plan: components['schemas']['AppPlan'];
+      /** @description The caller's role in the app's team. `read-only` can't create or revoke keys. */
+      role: components['schemas']['TeamRole'];
+      name: string;
+      description?: string | null;
+      /**
+       * @description The APIs this app's keys reach. For an app on a product plan, the plan's APIs; for an
+       *     app on the built-in plan, the APIs chosen at creation.
+       */
+      subscriptions: {
+        /** Format: uuid */
+        apiId: string;
+        slug: components['schemas']['Slug'];
+        title: string;
+      }[];
+      /** @description Active and revoked keys, newest first. Never includes the key value. */
+      credentials: components['schemas']['Credential'][];
+      /** Format: date-time */
+      createdAt: string;
+    };
+    Credential: {
+      /** Format: uuid */
+      id: string;
+      /** @enum {string} */
+      kind: 'api-key';
+      /**
+       * @description Last 4 characters of the key, shown as …9fQa
+       * @example 9fQa
+       */
+      keyHint: string;
+      /** @enum {string} */
+      status: 'active' | 'revoked';
+      /** Format: date-time */
+      createdAt: string;
+      /** Format: date-time */
+      revokedAt?: string | null;
+    };
+    IssuedCredential: components['schemas']['Credential'] & {
+      /**
+       * @description The full API key, `pk_` + 43 base64url characters. Returned only here, once.
+       * @example pk_3q2-7wErT...
+       */
+      key: string;
+      /**
+       * @description Header to send it in
+       * @example apikey
+       */
+      headerName: string;
+    };
+    CreateAppResponse: {
+      app: components['schemas']['App'];
+      credential: components['schemas']['IssuedCredential'];
+    };
+    ChangePlanRequest: {
+      /** Format: uuid */
+      planId: string;
+    };
+    ProductRef: {
+      /** Format: uuid */
+      id: string;
+      slug: components['schemas']['Slug'];
+      name: string;
+    };
+    ProductSummary: components['schemas']['ProductRef'] & {
+      /** @description Markdown */
+      description: string;
+      apiCount: number;
+      planCount: number;
+      /** Format: date-time */
+      createdAt: string;
+    };
+    ProductDetail: components['schemas']['ProductSummary'] & {
+      /** @description The product's APIs, by title */
+      apis: components['schemas']['ApiSummary'][];
+      /** @description The product's plans, oldest first (the plan comparison table's columns) */
+      plans: components['schemas']['Plan'][];
+    };
+    CreateProductRequest: {
+      name: string;
+      /** @description Markdown */
+      description: string;
+      /** @description Defaults to a slug of `name`. Fixed once created. */
+      slug?: components['schemas']['Slug'];
+      apiIds: string[];
+    };
+    UpdateProductRequest: {
+      name?: string;
+      description?: string;
+      apiIds?: string[];
+    };
+    /** @enum {string} */
+    RateLimitUnit: 'second' | 'minute';
+    PlanInput: {
+      /** @description Unique within the product */
+      name: string;
+      description?: string;
+      /** @description Requests per `rateLimitUnit`, for all of the plan's APIs together */
+      rateLimit: number;
+      rateLimitUnit: components['schemas']['RateLimitUnit'];
+      /**
+       * @description Requests per calendar month in UTC, for all of the plan's APIs together. Resets at
+       *     00:00 UTC on the 1st. Must be at least `rateLimit`.
+       */
+      monthlyQuota: number;
+      /** @description APIs of the plan's product */
+      apiIds: string[];
+    };
+    Plan: {
+      /** Format: uuid */
+      id: string;
+      /** Format: uuid */
+      productId: string;
+      name: string;
+      description: string | null;
+      rateLimit: number;
+      rateLimitUnit: components['schemas']['RateLimitUnit'];
+      monthlyQuota: number;
+      /**
+       * @description The quota resets at 00:00 UTC on the first of each month
+       * @enum {string}
+       */
+      quotaPeriod: 'calendar-month-utc';
+      apis: {
+        /** Format: uuid */
+        id: string;
+        slug: components['schemas']['Slug'];
+        title: string;
+      }[];
+      /** Format: date-time */
+      createdAt: string;
+    };
+    /**
+     * @description The app's plan. `builtin` true is the `Unlimited` plan of apps made without a product;
+     *     its product and limit fields are null.
+     */
+    AppPlan: {
+      /** Format: uuid */
+      id: string;
+      /**
+       * @example Free
+       * @example Unlimited
+       */
+      name: string;
+      builtin: boolean;
+      product: components['schemas']['ProductRef'] | null;
+      rateLimit: number | null;
+      rateLimitUnit: components['schemas']['RateLimitUnit'] | null;
+      monthlyQuota: number | null;
+    };
+  };
+  responses: {
+    /** @description Request body or parameters failed validation (`/problems/validation`) */
+    ValidationError: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /** @description Not signed in (`/problems/unauthenticated`) */
+    Unauthorized: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /** @description Signed in but not an admin (`/problems/forbidden`) */
+    Forbidden: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /** @description Not found, or not owned by the caller (`/problems/not-found`) */
+    NotFound: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /**
+     * @description The caller is a member of the team but their role doesn't allow this
+     *     (`/problems/team-role-forbidden`). Nothing was changed, in Kong or the portal.
+     */
+    TeamRoleForbidden: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /**
+     * @description `/problems/team-role-forbidden` (the caller is `read-only` in the team; checked first) or
+     *     `/problems/email-not-verified` (the admin requires a verified email and the user hasn't
+     *     verified theirs; the UI offers to resend it with `POST /api/auth/send-verification-email`).
+     *     Nothing was created, in Kong or the portal.
+     */
+    TeamForbiddenOrNotVerified: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /**
+     * @description This would leave the team with no Admin (`/problems/team-needs-admin`). Make another member
+     *     an Admin first. Nothing was changed.
+     */
+    TeamNeedsAdmin: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /**
+     * @description Kong's Admin API is unreachable, timed out (5 s) or returned 5xx
+     *     (`/problems/gateway-unavailable`). Nothing was changed; it is safe to retry.
+     *     Includes `Retry-After: 5`.
+     */
+    GatewayUnavailable: {
+      headers: {
+        'Retry-After'?: number;
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /**
+     * @description A field is malformed, isn't http(s), carries credentials, a query or a fragment, or resolves
+     *     to a link-local or cloud metadata address (`/problems/validation`). `errors[].pointer` names
+     *     the field, such as `/adminUrl`. The portal made no request to a refused address.
+     */
+    GatewayFieldInvalid: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /**
+     * @description A connection check failed and nothing was saved. Messages contain neither the token nor a
+     *     response body. `type` is one of:
+     *     `/problems/gateway-unreachable` (network error, 5 s timeout or 5xx; for `localhost`, the detail
+     *     says the address is resolved from the server),
+     *     `/problems/gateway-token-refused` (401 or 403),
+     *     `/problems/gateway-not-kong` (the URL answers but isn't a Kong Admin API),
+     *     `/problems/gateway-read-only` (DB-less mode or a data plane node),
+     *     `/problems/gateway-proxy-unreachable` (the Admin API passed but the internal proxy URL failed),
+     *     `/problems/gateway-token-required` (URL changed with a stored token; enter it again).
+     */
+    GatewayCheckFailed: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /** @description Missing `scalar_url`, or it isn't under a published API's base URL (`/problems/try-it-target-not-allowed`) */
+    TryItNotAllowed: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /**
+     * @description Kong refused the key because its app isn't subscribed to this API
+     *     (`/problems/api-access-denied`). `title` and `detail` hold the copy from the UX design.
+     *     Responses from the upstream service, including its own 403s, are not rewritten.
+     */
+    TryItAccessDenied: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /** @description Request body over the limit (`/problems/payload-too-large`) */
+    PayloadTooLarge: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /** @description Rate limit exceeded (`/problems/rate-limited`) */
+    RateLimited: {
+      headers: {
+        'Retry-After'?: number;
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /** @description Gateway did not answer within 10 s (`/problems/try-it-timeout`) */
+    TryItTimeout: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+    /** @description Kong rejected the request with a 4xx (`/problems/gateway-rejected`). Nothing was changed. */
+    GatewayRejected: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        'application/problem+json': components['schemas']['Problem'];
+      };
+    };
+  };
+  parameters: {
+    Slug: components['schemas']['Slug'];
+    AppId: string;
+    CredentialId: string;
+    /** @description A version's `info.version`, URL-encoded (`+` becomes `%2B`) */
+    Version: components['schemas']['ApiVersionName'];
+    GatewayId: string;
+    TeamId: string;
+    UserId: string;
+    InvitationId: string;
+    ProductSlug: components['schemas']['Slug'];
+    ProductId: string;
+    PlanId: string;
+  };
+  requestBodies: never;
+  headers: never;
+  pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    getHealth: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /**
-             * @description Server is up, with or without a gateway. `gateway` is null when none is connected;
-             *     otherwise `gateway.reachable` reports Kong's Admin API. `status` is `degraded`
-             *     when the operator's lint ruleset (`PORTAL_LINT_RULESET`) failed to load; `lint.error`
-             *     names the file and the problem, and imports answer 503 until it is fixed and the server
-             *     restarted. The status code stays 200 so the published docs keep being served.
-             */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Health"];
-                };
-            };
-        };
+  getHealth: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    getSetupStatus: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /**
+       * @description Server is up, with or without a gateway. `gateway` is null when none is connected;
+       *     otherwise `gateway.reachable` reports Kong's Admin API. `status` is `degraded`
+       *     when the operator's lint ruleset (`PORTAL_LINT_RULESET`) failed to load; `lint.error`
+       *     names the file and the problem, and imports answer 503 until it is fixed and the server
+       *     restarted. The status code stays 200 so the published docs keep being served.
+       */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Setup status */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SetupStatus"];
-                };
-            };
+        content: {
+          'application/json': components['schemas']['Health'];
         };
+      };
     };
-    createFirstAdmin: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateFirstAdminRequest"];
-            };
-        };
-        responses: {
-            /** @description Admin created and signed in */
-            201: {
-                headers: {
-                    /** @description Better Auth session cookie */
-                    "Set-Cookie"?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["User"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            /** @description The setup token is missing or wrong (`/problems/setup-token-invalid`). No admin was created. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description An admin already exists (`/problems/setup-complete`). Nothing was changed. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            429: components["responses"]["RateLimited"];
-        };
+  };
+  getSetupStatus: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    listApis: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Setup status */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Published APIs, newest first */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: components["schemas"]["ApiSummary"][];
-                    };
-                };
-            };
+        content: {
+          'application/json': components['schemas']['SetupStatus'];
         };
+      };
     };
-    getApi: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: components["parameters"]["Slug"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The API */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiDetail"];
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
+  };
+  createFirstAdmin: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    getApiDocument: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: components["parameters"]["Slug"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OpenAPI 3.x document as JSON */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateFirstAdminRequest'];
+      };
     };
-    getApiVersionDocument: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: components["parameters"]["Slug"];
-                /** @description A version's `info.version`, URL-encoded (`+` becomes `%2B`) */
-                version: components["parameters"]["Version"];
-            };
-            cookie?: never;
+    responses: {
+      /** @description Admin created and signed in */
+      201: {
+        headers: {
+          /** @description Better Auth session cookie */
+          'Set-Cookie'?: string;
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description OpenAPI 3.x document as JSON */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
+        content: {
+          'application/json': components['schemas']['User'];
         };
+      };
+      400: components['responses']['ValidationError'];
+      /** @description The setup token is missing or wrong (`/problems/setup-token-invalid`). No admin was created. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      /** @description An admin already exists (`/problems/setup-complete`). Nothing was changed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      429: components['responses']['RateLimited'];
     };
-    getApiChangelog: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: components["parameters"]["Slug"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Changelog entries */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: components["schemas"]["ChangelogEntry"][];
-                    };
-                };
-            };
-            404: components["responses"]["NotFound"];
-        };
+  };
+  listApis: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    getMe: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Published APIs, newest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Current user */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["User"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
+        content: {
+          'application/json': {
+            items: components['schemas']['ApiSummary'][];
+          };
         };
+      };
     };
-    deleteMe: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DeleteMeRequest"];
-            };
-        };
-        responses: {
-            /** @description Account deleted and signed out */
-            204: {
-                headers: {
-                    /** @description Expires the session cookie */
-                    "Set-Cookie"?: string;
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            /** @description The password is wrong (`/problems/invalid-password`). Nothing was deleted. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /**
-             * @description This is the only portal admin (`/problems/last-admin`); another admin must exist first.
-             *     Or this is the only Admin of a team that has other members
-             *     (`/problems/team-needs-admin`; `teams` lists them). Nothing was deleted.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            429: components["responses"]["RateLimited"];
-            502: components["responses"]["GatewayRejected"];
-            /**
-             * @description Kong's Admin API is unreachable (`/problems/gateway-unavailable`, `detail` says the
-             *     account was not deleted). Includes `Retry-After: 5`.
-             */
-            503: {
-                headers: {
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+  };
+  getApi: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        slug: components['parameters']['Slug'];
+      };
+      cookie?: never;
     };
-    updateMe: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description The API */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateMeRequest"];
-            };
+        content: {
+          'application/json': components['schemas']['ApiDetail'];
         };
-        responses: {
-            /** @description Updated user */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["User"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-        };
+      };
+      404: components['responses']['NotFound'];
     };
-    setCurrentTeam: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetCurrentTeamRequest"];
-            };
-        };
-        responses: {
-            /** @description Current team changed */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-        };
+  };
+  getApiDocument: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        slug: components['parameters']['Slug'];
+      };
+      cookie?: never;
     };
-    requestEmailChange: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description OpenAPI 3.x document as JSON */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["EmailChangeRequest"];
-            };
+        content: {
+          'application/json': {
+            [key: string]: unknown;
+          };
         };
-        responses: {
-            /** @description Confirmation email queued */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["User"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            /**
-             * @description `/problems/email-unavailable`: the address belongs to another account or is the
-             *     current one. `detail` says only that the address can't be used.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            429: components["responses"]["RateLimited"];
-        };
+      };
+      404: components['responses']['NotFound'];
     };
-    confirmEmailChange: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    token: string;
-                };
-            };
-        };
-        responses: {
-            /** @description Email changed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["User"];
-                };
-            };
-            /**
-             * @description `/problems/link-expired`: the token is unknown, used, replaced or more than 24 hours
-             *     old. Nothing changed.
-             */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description The address was taken by another account meanwhile (`/problems/email-unavailable`). Nothing changed. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+  };
+  getApiVersionDocument: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        slug: components['parameters']['Slug'];
+        /** @description A version's `info.version`, URL-encoded (`+` becomes `%2B`) */
+        version: components['parameters']['Version'];
+      };
+      cookie?: never;
     };
-    listApps: {
-        parameters: {
-            query?: {
-                teamId?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description OpenAPI 3.x document as JSON */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Apps, newest first */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: components["schemas"]["App"][];
-                    };
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
+        content: {
+          'application/json': {
+            [key: string]: unknown;
+          };
         };
+      };
+      404: components['responses']['NotFound'];
     };
-    createApp: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateAppRequest"];
-            };
-        };
-        responses: {
-            /** @description App created, with its first key */
-            201: {
-                headers: {
-                    /** @description /api/v1/apps/{appId} */
-                    Location?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["CreateAppResponse"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["TeamForbiddenOrNotVerified"];
-            /** @description One of `apiIds` is not a published API, or the caller isn't a member of `teamId` */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /**
-             * @description The team already has an app with this name (`/problems/app-name-taken`), or the
-             *     API's gateway connection is disabled (`/problems/gateway-disabled`). When disabled,
-             *     nothing is created in Kong or Postgres.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            502: components["responses"]["GatewayRejected"];
-            503: components["responses"]["GatewayUnavailable"];
-        };
+  };
+  getApiChangelog: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        slug: components['parameters']['Slug'];
+      };
+      cookie?: never;
     };
-    getApp: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                appId: components["parameters"]["AppId"];
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Changelog entries */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description The app */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["App"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
+        content: {
+          'application/json': {
+            items: components['schemas']['ChangelogEntry'][];
+          };
         };
+      };
+      404: components['responses']['NotFound'];
     };
-    createCredential: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                appId: components["parameters"]["AppId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Key issued */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["IssuedCredential"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["TeamForbiddenOrNotVerified"];
-            404: components["responses"]["NotFound"];
-            /**
-             * @description `type` is one of `/problems/credential-limit` (the app already has 5 active keys),
-             *     `/problems/gateway-disabled` (the connection is disabled) or
-             *     `/problems/gateway-not-connected` (no gateway exists). Nothing was created.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            502: components["responses"]["GatewayRejected"];
-            503: components["responses"]["GatewayUnavailable"];
-        };
+  };
+  listProducts: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    revokeCredential: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                appId: components["parameters"]["AppId"];
-                credentialId: components["parameters"]["CredentialId"];
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Products, by name */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Revoked */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["TeamRoleForbidden"];
-            404: components["responses"]["NotFound"];
-            502: components["responses"]["GatewayRejected"];
-            503: components["responses"]["GatewayUnavailable"];
+        content: {
+          'application/json': {
+            items: components['schemas']['ProductSummary'][];
+          };
         };
+      };
     };
-    listTeams: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Teams and the current one */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: components["schemas"]["TeamSummary"][];
-                        /** Format: uuid */
-                        currentTeamId: string;
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-        };
+  };
+  getProduct: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        productSlug: components['parameters']['ProductSlug'];
+      };
+      cookie?: never;
     };
-    createTeam: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description The product */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateTeamRequest"];
-            };
+        content: {
+          'application/json': components['schemas']['ProductDetail'];
         };
-        responses: {
-            /** @description Team created */
-            201: {
-                headers: {
-                    /** @description /api/v1/teams/{teamId} */
-                    Location?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamSummary"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-        };
+      };
+      404: components['responses']['NotFound'];
     };
-    getTeam: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: components["parameters"]["TeamId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description The team */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamDetail"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-        };
+  };
+  getMe: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    createInvitation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: components["parameters"]["TeamId"];
-            };
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Current user */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateInvitationRequest"];
-            };
+        content: {
+          'application/json': components['schemas']['User'];
         };
-        responses: {
-            /** @description Invitation created and email queued */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Invitation"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["TeamRoleForbidden"];
-            404: components["responses"]["NotFound"];
-            /**
-             * @description `type` is one of `/problems/personal-team` (personal teams take no invitations),
-             *     `/problems/mail-not-configured` (no mail settings, so nobody would get the email),
-             *     `/problems/already-member` (the address belongs to a member) or
-             *     `/problems/invitation-pending` (that address already has a pending invitation to this
-             *     team; cancel it to invite again).
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            429: components["responses"]["RateLimited"];
-        };
+      };
+      401: components['responses']['Unauthorized'];
     };
-    cancelInvitation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: components["parameters"]["TeamId"];
-                invitationId: components["parameters"]["InvitationId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Cancelled */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["TeamRoleForbidden"];
-            404: components["responses"]["NotFound"];
-            /** @description Already accepted (`/problems/invitation-used`). Remove the member instead. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+  };
+  deleteMe: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    removeTeamMember: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: components["parameters"]["TeamId"];
-                userId: components["parameters"]["UserId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Removed */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["TeamRoleForbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["TeamNeedsAdmin"];
-        };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DeleteMeRequest'];
+      };
     };
-    updateTeamMember: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                teamId: components["parameters"]["TeamId"];
-                userId: components["parameters"]["UserId"];
-            };
-            cookie?: never;
+    responses: {
+      /** @description Account deleted and signed out */
+      204: {
+        headers: {
+          /** @description Expires the session cookie */
+          'Set-Cookie'?: string;
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateTeamMemberRequest"];
-            };
+        content?: never;
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      /** @description The password is wrong (`/problems/invalid-password`). Nothing was deleted. */
+      403: {
+        headers: {
+          [name: string]: unknown;
         };
-        responses: {
-            /** @description The member with the new role */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamMember"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["TeamRoleForbidden"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["TeamNeedsAdmin"];
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
         };
+      };
+      /**
+       * @description This is the only portal admin (`/problems/last-admin`); another admin must exist first.
+       *     Or this is the only Admin of a team that has other members
+       *     (`/problems/team-needs-admin`; `teams` lists them). Nothing was deleted.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      429: components['responses']['RateLimited'];
+      502: components['responses']['GatewayRejected'];
+      /**
+       * @description Kong's Admin API is unreachable (`/problems/gateway-unavailable`, `detail` says the
+       *     account was not deleted). Includes `Retry-After: 5`.
+       */
+      503: {
+        headers: {
+          'Retry-After'?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
     };
-    previewInvitation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InvitationTokenRequest"];
-            };
-        };
-        responses: {
-            /** @description The invitation, in any state */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InvitationPreview"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            404: components["responses"]["NotFound"];
-        };
+  };
+  updateMe: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    acceptInvitation: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["InvitationTokenRequest"];
-            };
-        };
-        responses: {
-            /** @description Joined */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["TeamSummary"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            404: components["responses"]["NotFound"];
-            /**
-             * @description `type` is one of `/problems/invitation-cancelled`, `/problems/invitation-used`,
-             *     `/problems/invitation-expired` or `/problems/invitation-wrong-account` (signed in with
-             *     another address; the invitation stays pending).
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateMeRequest'];
+      };
     };
-    listGatewayServices: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description Updated user */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Services with their routes */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        items: components["schemas"]["GatewayService"][];
-                    };
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /**
-             * @description `type` is one of `/problems/gateway-not-connected` (no gateway exists; the detail points
-             *     to Admin → Gateways) or `/problems/gateway-disabled` (the connection is disabled).
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            502: components["responses"]["GatewayRejected"];
-            503: components["responses"]["GatewayUnavailable"];
+        content: {
+          'application/json': components['schemas']['User'];
         };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
     };
-    importApi: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ImportApiRequest"];
-            };
-        };
-        responses: {
-            /** @description Imported and published */
-            201: {
-                headers: {
-                    /** @description /api/v1/apis/{slug} */
-                    Location?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportedApi"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /**
-             * @description Slug already used (`/problems/api-slug-taken`), no gateway is connected
-             *     (`/problems/gateway-not-connected`), or the connection is disabled
-             *     (`/problems/gateway-disabled`). Nothing was created in Kong or Postgres.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Document larger than 5 MiB (`/problems/document-too-large`) */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /**
-             * @description The document cannot be published. `type` is one of
-             *     `/problems/openapi-lint-failed` (one or more error-severity lint findings; `errors`
-             *     lists each with `rule`, `message`, `pointer`, `line` and `column`, up to 100),
-             *     `/problems/invalid-openapi` (parse or schema error; `errors[0]` is the first one;
-             *     for a YAML or JSON syntax error it has `line` and `column`),
-             *     `/problems/unsupported-openapi-version` (not 3.0.x or 3.1.x),
-             *     `/problems/invalid-api-version` (`info.version` is missing or doesn't match
-             *     `ApiVersionName`; it is used in URLs),
-             *     `/problems/slug-required` (no `slug` was given and none can be derived from
-             *     `info.title`, for example a title with no ASCII letters or digits;
-             *     `errors[0].pointer` is `/slug`),
-             *     `/problems/spec-url-unreachable` (fetching `spec.url` failed or timed out after 10 s),
-             *     `/problems/gateway-service-not-found`,
-             *     `/problems/gateway-service-has-no-route` (no route with a path, and no `routePath` given),
-             *     `/problems/gateway-service-has-acl` (an ACL plugin the portal didn't create applies to the
-             *     service, globally or on the service or one of its routes; `detail` names the service, and
-             *     its plugins are unchanged),
-             *     `/problems/gateway-service-already-linked` (another published API uses this service;
-             *     `detail` names that API's slug).
-             */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            502: components["responses"]["GatewayRejected"];
-            /**
-             * @description `/problems/gateway-unavailable` (see `GatewayUnavailable`), or
-             *     `/problems/lint-ruleset-unavailable`: the operator's ruleset failed to load at startup,
-             *     so nothing can be imported until it is fixed and the server restarted. The portal never
-             *     falls back to the default ruleset.
-             */
-            503: {
-                headers: {
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+  };
+  setCurrentTeam: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    importApiVersion: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: components["parameters"]["Slug"];
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ImportApiVersionRequest"];
-            };
-        };
-        responses: {
-            /** @description Version published */
-            201: {
-                headers: {
-                    /** @description /api/v1/apis/{slug}/versions/{version}/openapi.json */
-                    Location?: string;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ImportedApiVersion"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            /**
-             * @description The API already has a version with this `info.version` (`/problems/api-version-exists`;
-             *     `detail` names it). The published version is unchanged.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description Document larger than 5 MiB (`/problems/document-too-large`) */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /**
-             * @description The document cannot be published: `/problems/openapi-lint-failed`,
-             *     `/problems/invalid-openapi`, `/problems/unsupported-openapi-version`,
-             *     `/problems/invalid-api-version` or `/problems/spec-url-unreachable`, as for `importApi`.
-             */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /** @description `/problems/lint-ruleset-unavailable` (see `importApi`) */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SetCurrentTeamRequest'];
+      };
     };
-    setLatestApiVersion: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slug: components["parameters"]["Slug"];
-            };
-            cookie?: never;
+    responses: {
+      /** @description Current team changed */
+      204: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SetLatestVersionRequest"];
-            };
-        };
-        responses: {
-            /** @description The API, with its new latest version */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiDetail"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description No such API, or it has no version with that name (`/problems/not-found`) */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+        content?: never;
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
     };
-    listGateways: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description At most one item until spec 017. Never includes the admin token. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GatewayList"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-        };
+  };
+  requestEmailChange: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    createGateway: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateGatewayRequest"];
-            };
-        };
-        responses: {
-            /** @description Saved */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Gateway"];
-                };
-            };
-            400: components["responses"]["GatewayFieldInvalid"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description A gateway already exists; a portal connects to one (`/problems/gateway-exists`). It is unchanged. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            422: components["responses"]["GatewayCheckFailed"];
-            429: components["responses"]["RateLimited"];
-        };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['EmailChangeRequest'];
+      };
     };
-    testGateway: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description Confirmation email queued */
+      202: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["TestGatewayRequest"];
-            };
+        content: {
+          'application/json': components['schemas']['User'];
         };
-        responses: {
-            /** @description All checks passed */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["GatewayTestResult"];
-                };
-            };
-            400: components["responses"]["GatewayFieldInvalid"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            422: components["responses"]["GatewayCheckFailed"];
-            429: components["responses"]["RateLimited"];
-            /** @description The stored admin token cannot be decrypted (`/problems/gateway-unavailable`). Enter the token again before testing or saving. No outbound request is made. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      /**
+       * @description `/problems/email-unavailable`: the address belongs to another account or is the
+       *     current one. `detail` says only that the address can't be used.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
         };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      429: components['responses']['RateLimited'];
     };
-    deleteGateway: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                gatewayId: components["parameters"]["GatewayId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Removed */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            /**
-             * @description `type` is `/problems/gateway-env-managed` or `/problems/gateway-in-use`. For the second,
-             *     `apis` and `activeKeys` say how many depend on it. Nothing was removed.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+  };
+  confirmEmailChange: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    updateGateway: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                gatewayId: components["parameters"]["GatewayId"];
-            };
-            cookie?: never;
+    requestBody: {
+      content: {
+        'application/json': {
+          token: string;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateGatewayRequest"];
-            };
-        };
-        responses: {
-            /** @description Saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Gateway"];
-                };
-            };
-            400: components["responses"]["GatewayFieldInvalid"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            /**
-             * @description `type` is `/problems/gateway-env-managed` (set by environment variables, so read-only)
-             *     or `/problems/gateway-keys-missing` (`affectedKeys` active keys have no consumer on this
-             *     Kong; send `confirmMissingKeys: true` to save anyway). Nothing was saved.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            422: components["responses"]["GatewayCheckFailed"];
-            429: components["responses"]["RateLimited"];
-            /** @description The stored admin token cannot be decrypted (`/problems/gateway-unavailable`). Enter the token again before testing or saving. No outbound request is made. */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+      };
     };
-    addSampleApi: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                gatewayId: components["parameters"]["GatewayId"];
-            };
-            cookie?: never;
+    responses: {
+      /** @description Email changed */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Published */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiDetail"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            404: components["responses"]["NotFound"];
-            /**
-             * @description `type` is `/problems/gateway-disabled` (the connection is disabled; this is checked first)
-             *     or `/problems/sample-not-available` (this gateway can't take the sample). Nothing was created.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            502: components["responses"]["GatewayRejected"];
-            503: components["responses"]["GatewayUnavailable"];
+        content: {
+          'application/json': components['schemas']['User'];
         };
+      };
+      /**
+       * @description `/problems/link-expired`: the token is unknown, used, replaced or more than 24 hours
+       *     old. Nothing changed.
+       */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      /** @description The address was taken by another account meanwhile (`/problems/email-unavailable`). Nothing changed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
     };
-    getMailSettings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Mail settings */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MailSettings"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-        };
+  };
+  listApps: {
+    parameters: {
+      query?: {
+        teamId?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    saveMailSettings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Apps, newest first */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SaveMailSettingsRequest"];
-            };
+        content: {
+          'application/json': {
+            items: components['schemas']['App'][];
+          };
         };
-        responses: {
-            /** @description Saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MailSettings"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
     };
-    deleteMailSettings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Removed; the response shows what is now in use */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MailSettings"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /**
-             * @description "Require a verified email" is on and the environment has no SMTP settings, so removing
-             *     these would leave no way to send mail (`/problems/mail-required`).
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+  };
+  createApp: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
     };
-    sendTestEmail: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": {
-                    /** Format: email */
-                    to: string;
-                };
-            };
-        };
-        responses: {
-            /** @description The SMTP server accepted the message */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        /** Format: email */
-                        to: string;
-                        /** @enum {string} */
-                        source: "saved" | "environment";
-                    };
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /** @description No SMTP settings are saved or set in the environment (`/problems/mail-not-configured`) */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-            /**
-             * @description The SMTP server didn't take the message. `type` is one of
-             *     `/problems/smtp-unreachable` (DNS, connection, TLS or timeout),
-             *     `/problems/smtp-auth-failed` (the server rejected the username or password),
-             *     `/problems/smtp-rejected` (connected and signed in, but the sender or recipient was refused).
-             */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateAppRequest'];
+      };
     };
-    getAccountSettings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
+    responses: {
+      /** @description App created, with its first key */
+      201: {
+        headers: {
+          /** @description /api/v1/apps/{appId} */
+          Location?: string;
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            /** @description Account settings */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AccountSettings"];
-                };
-            };
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
+        content: {
+          'application/json': components['schemas']['CreateAppResponse'];
         };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['TeamForbiddenOrNotVerified'];
+      /**
+       * @description One of `apiIds` is not a published API, `planId` is not a product plan, or the caller
+       *     isn't a member of `teamId`
+       */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      /**
+       * @description The team already has an app with this name (`/problems/app-name-taken`), or the
+       *     API's gateway connection is disabled (`/problems/gateway-disabled`). When disabled,
+       *     nothing is created in Kong or Postgres.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      502: components['responses']['GatewayRejected'];
+      503: components['responses']['GatewayUnavailable'];
     };
-    saveAccountSettings: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SaveAccountSettingsRequest"];
-            };
-        };
-        responses: {
-            /** @description Saved */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AccountSettings"];
-                };
-            };
-            400: components["responses"]["ValidationError"];
-            401: components["responses"]["Unauthorized"];
-            403: components["responses"]["Forbidden"];
-            /**
-             * @description Turning on `requireVerifiedEmail` with no SMTP settings saved or in the environment
-             *     (`/problems/mail-not-configured`). Nothing was saved.
-             */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["Problem"];
-                };
-            };
-        };
+  };
+  getApp: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        appId: components['parameters']['AppId'];
+      };
+      cookie?: never;
     };
-    tryItGet: {
-        parameters: {
-            query: {
-                /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
-                scalar_url: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description The app */
+      200: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: never;
-        responses: {
-            400: components["responses"]["TryItNotAllowed"];
-            403: components["responses"]["TryItAccessDenied"];
-            413: components["responses"]["PayloadTooLarge"];
-            429: components["responses"]["RateLimited"];
-            504: components["responses"]["TryItTimeout"];
-            /** @description The gateway's response, passed through unchanged */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
+        content: {
+          'application/json': components['schemas']['App'];
         };
+      };
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
     };
-    tryItPut: {
-        parameters: {
-            query: {
-                /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
-                scalar_url: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "*/*": unknown;
-            };
-        };
-        responses: {
-            400: components["responses"]["TryItNotAllowed"];
-            403: components["responses"]["TryItAccessDenied"];
-            413: components["responses"]["PayloadTooLarge"];
-            429: components["responses"]["RateLimited"];
-            504: components["responses"]["TryItTimeout"];
-            /** @description The gateway's response, passed through unchanged */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  deleteApp: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        appId: components['parameters']['AppId'];
+      };
+      cookie?: never;
     };
-    tryItPost: {
-        parameters: {
-            query: {
-                /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
-                scalar_url: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
+    requestBody?: never;
+    responses: {
+      /** @description Cancelled */
+      204: {
+        headers: {
+          [name: string]: unknown;
         };
-        requestBody?: {
-            content: {
-                "*/*": unknown;
-            };
-        };
-        responses: {
-            400: components["responses"]["TryItNotAllowed"];
-            403: components["responses"]["TryItAccessDenied"];
-            413: components["responses"]["PayloadTooLarge"];
-            429: components["responses"]["RateLimited"];
-            504: components["responses"]["TryItTimeout"];
-            /** @description The gateway's response, passed through unchanged */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+        content?: never;
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['TeamRoleForbidden'];
+      404: components['responses']['NotFound'];
+      502: components['responses']['GatewayRejected'];
+      503: components['responses']['GatewayUnavailable'];
     };
-    tryItDelete: {
-        parameters: {
-            query: {
-                /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
-                scalar_url: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "*/*": unknown;
-            };
-        };
-        responses: {
-            400: components["responses"]["TryItNotAllowed"];
-            403: components["responses"]["TryItAccessDenied"];
-            413: components["responses"]["PayloadTooLarge"];
-            429: components["responses"]["RateLimited"];
-            504: components["responses"]["TryItTimeout"];
-            /** @description The gateway's response, passed through unchanged */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+  };
+  changeAppPlan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        appId: components['parameters']['AppId'];
+      };
+      cookie?: never;
     };
-    tryItPatch: {
-        parameters: {
-            query: {
-                /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
-                scalar_url: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: {
-            content: {
-                "*/*": unknown;
-            };
-        };
-        responses: {
-            400: components["responses"]["TryItNotAllowed"];
-            403: components["responses"]["TryItAccessDenied"];
-            413: components["responses"]["PayloadTooLarge"];
-            429: components["responses"]["RateLimited"];
-            504: components["responses"]["TryItTimeout"];
-            /** @description The gateway's response, passed through unchanged */
-            default: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ChangePlanRequest'];
+      };
     };
+    responses: {
+      /** @description Plan changed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['App'];
+        };
+      };
+      /**
+       * @description `/problems/validation` with pointer `/planId`: the plan belongs to another product, or
+       *     the app is on the built-in `Unlimited` plan (spec 004 apps can't move onto a product
+       *     plan; subscribe instead)
+       */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['TeamForbiddenOrNotVerified'];
+      404: components['responses']['NotFound'];
+      /** @description The connection is disabled (`/problems/gateway-disabled`) or missing (`/problems/gateway-not-connected`). Nothing changed. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      502: components['responses']['GatewayRejected'];
+      503: components['responses']['GatewayUnavailable'];
+    };
+  };
+  createCredential: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        appId: components['parameters']['AppId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Key issued */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['IssuedCredential'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['TeamForbiddenOrNotVerified'];
+      404: components['responses']['NotFound'];
+      /**
+       * @description `type` is one of `/problems/credential-limit` (the app already has 5 active keys, or
+       *     it is a subscription on a product plan and already has its one active key; regenerate
+       *     it instead),
+       *     `/problems/gateway-disabled` (the connection is disabled) or
+       *     `/problems/gateway-not-connected` (no gateway exists). Nothing was created.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      502: components['responses']['GatewayRejected'];
+      503: components['responses']['GatewayUnavailable'];
+    };
+  };
+  revokeCredential: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        appId: components['parameters']['AppId'];
+        credentialId: components['parameters']['CredentialId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Revoked */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['TeamRoleForbidden'];
+      404: components['responses']['NotFound'];
+      502: components['responses']['GatewayRejected'];
+      503: components['responses']['GatewayUnavailable'];
+    };
+  };
+  regenerateCredential: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        appId: components['parameters']['AppId'];
+        credentialId: components['parameters']['CredentialId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description New key issued; the old key is revoked */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['IssuedCredential'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['TeamForbiddenOrNotVerified'];
+      404: components['responses']['NotFound'];
+      /**
+       * @description `/problems/credential-revoked` (the key is already revoked; nothing to replace),
+       *     `/problems/gateway-disabled` or `/problems/gateway-not-connected`. Nothing changed.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      502: components['responses']['GatewayRejected'];
+      503: components['responses']['GatewayUnavailable'];
+    };
+  };
+  listTeams: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Teams and the current one */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            items: components['schemas']['TeamSummary'][];
+            /** Format: uuid */
+            currentTeamId: string;
+          };
+        };
+      };
+      401: components['responses']['Unauthorized'];
+    };
+  };
+  createTeam: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateTeamRequest'];
+      };
+    };
+    responses: {
+      /** @description Team created */
+      201: {
+        headers: {
+          /** @description /api/v1/teams/{teamId} */
+          Location?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamSummary'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+    };
+  };
+  getTeam: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        teamId: components['parameters']['TeamId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The team */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamDetail'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
+    };
+  };
+  createInvitation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        teamId: components['parameters']['TeamId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateInvitationRequest'];
+      };
+    };
+    responses: {
+      /** @description Invitation created and email queued */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Invitation'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['TeamRoleForbidden'];
+      404: components['responses']['NotFound'];
+      /**
+       * @description `type` is one of `/problems/personal-team` (personal teams take no invitations),
+       *     `/problems/mail-not-configured` (no mail settings, so nobody would get the email),
+       *     `/problems/already-member` (the address belongs to a member) or
+       *     `/problems/invitation-pending` (that address already has a pending invitation to this
+       *     team; cancel it to invite again).
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      429: components['responses']['RateLimited'];
+    };
+  };
+  cancelInvitation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        teamId: components['parameters']['TeamId'];
+        invitationId: components['parameters']['InvitationId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Cancelled */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['TeamRoleForbidden'];
+      404: components['responses']['NotFound'];
+      /** @description Already accepted (`/problems/invitation-used`). Remove the member instead. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  removeTeamMember: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        teamId: components['parameters']['TeamId'];
+        userId: components['parameters']['UserId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Removed */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['TeamRoleForbidden'];
+      404: components['responses']['NotFound'];
+      409: components['responses']['TeamNeedsAdmin'];
+    };
+  };
+  updateTeamMember: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        teamId: components['parameters']['TeamId'];
+        userId: components['parameters']['UserId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateTeamMemberRequest'];
+      };
+    };
+    responses: {
+      /** @description The member with the new role */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamMember'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['TeamRoleForbidden'];
+      404: components['responses']['NotFound'];
+      409: components['responses']['TeamNeedsAdmin'];
+    };
+  };
+  previewInvitation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['InvitationTokenRequest'];
+      };
+    };
+    responses: {
+      /** @description The invitation, in any state */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['InvitationPreview'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      404: components['responses']['NotFound'];
+    };
+  };
+  acceptInvitation: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['InvitationTokenRequest'];
+      };
+    };
+    responses: {
+      /** @description Joined */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['TeamSummary'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      404: components['responses']['NotFound'];
+      /**
+       * @description `type` is one of `/problems/invitation-cancelled`, `/problems/invitation-used`,
+       *     `/problems/invitation-expired` or `/problems/invitation-wrong-account` (signed in with
+       *     another address; the invitation stays pending).
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  createProduct: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateProductRequest'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          /** @description /api/v1/products/{productSlug} */
+          Location?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProductDetail'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      /** @description One of `apiIds` is not a published API (`/problems/not-found`) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      /** @description Another product has this slug (`/problems/product-slug-taken`) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  updateProduct: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        productId: components['parameters']['ProductId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateProductRequest'];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ProductDetail'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /**
+       * @description `/problems/api-in-plan`: a removed API is in a plan; `errors[].pointer` is `/apiIds`
+       *     and `errors[].message` names the plans. Nothing was saved.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  createPlan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        productId: components['parameters']['ProductId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PlanInput'];
+      };
+    };
+    responses: {
+      /** @description Created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Plan'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /** @description The product already has a plan with this name (`/problems/plan-name-taken`) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  updatePlan: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        productId: components['parameters']['ProductId'];
+        planId: components['parameters']['PlanId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['PlanInput'];
+      };
+    };
+    responses: {
+      /** @description Updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Plan'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /** @description Another plan of this product has this name (`/problems/plan-name-taken`) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  listGatewayServices: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Services with their routes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            items: components['schemas']['GatewayService'][];
+          };
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      /**
+       * @description `type` is one of `/problems/gateway-not-connected` (no gateway exists; the detail points
+       *     to Admin → Gateways) or `/problems/gateway-disabled` (the connection is disabled).
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      502: components['responses']['GatewayRejected'];
+      503: components['responses']['GatewayUnavailable'];
+    };
+  };
+  importApi: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ImportApiRequest'];
+      };
+    };
+    responses: {
+      /** @description Imported and published */
+      201: {
+        headers: {
+          /** @description /api/v1/apis/{slug} */
+          Location?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportedApi'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      /**
+       * @description Slug already used (`/problems/api-slug-taken`), no gateway is connected
+       *     (`/problems/gateway-not-connected`), or the connection is disabled
+       *     (`/problems/gateway-disabled`). Nothing was created in Kong or Postgres.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      /** @description Document larger than 5 MiB (`/problems/document-too-large`) */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      /**
+       * @description The document cannot be published. `type` is one of
+       *     `/problems/openapi-lint-failed` (one or more error-severity lint findings; `errors`
+       *     lists each with `rule`, `message`, `pointer`, `line` and `column`, up to 100),
+       *     `/problems/invalid-openapi` (parse or schema error; `errors[0]` is the first one;
+       *     for a YAML or JSON syntax error it has `line` and `column`),
+       *     `/problems/unsupported-openapi-version` (not 3.0.x or 3.1.x),
+       *     `/problems/invalid-api-version` (`info.version` is missing or doesn't match
+       *     `ApiVersionName`; it is used in URLs),
+       *     `/problems/slug-required` (no `slug` was given and none can be derived from
+       *     `info.title`, for example a title with no ASCII letters or digits;
+       *     `errors[0].pointer` is `/slug`),
+       *     `/problems/spec-url-unreachable` (fetching `spec.url` failed or timed out after 10 s),
+       *     `/problems/gateway-service-not-found`,
+       *     `/problems/gateway-service-has-no-route` (no route with a path, and no `routePath` given),
+       *     `/problems/gateway-service-has-acl` (an ACL plugin the portal didn't create applies to the
+       *     service, globally or on the service or one of its routes; `detail` names the service, and
+       *     its plugins are unchanged),
+       *     `/problems/gateway-service-already-linked` (another published API uses this service;
+       *     `detail` names that API's slug).
+       */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      502: components['responses']['GatewayRejected'];
+      /**
+       * @description `/problems/gateway-unavailable` (see `GatewayUnavailable`), or
+       *     `/problems/lint-ruleset-unavailable`: the operator's ruleset failed to load at startup,
+       *     so nothing can be imported until it is fixed and the server restarted. The portal never
+       *     falls back to the default ruleset.
+       */
+      503: {
+        headers: {
+          'Retry-After'?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  importApiVersion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        slug: components['parameters']['Slug'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ImportApiVersionRequest'];
+      };
+    };
+    responses: {
+      /** @description Version published */
+      201: {
+        headers: {
+          /** @description /api/v1/apis/{slug}/versions/{version}/openapi.json */
+          Location?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportedApiVersion'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /**
+       * @description The API already has a version with this `info.version` (`/problems/api-version-exists`;
+       *     `detail` names it). The published version is unchanged.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      /** @description Document larger than 5 MiB (`/problems/document-too-large`) */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      /**
+       * @description The document cannot be published: `/problems/openapi-lint-failed`,
+       *     `/problems/invalid-openapi`, `/problems/unsupported-openapi-version`,
+       *     `/problems/invalid-api-version` or `/problems/spec-url-unreachable`, as for `importApi`.
+       */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      /** @description `/problems/lint-ruleset-unavailable` (see `importApi`) */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  setLatestApiVersion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        slug: components['parameters']['Slug'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SetLatestVersionRequest'];
+      };
+    };
+    responses: {
+      /** @description The API, with its new latest version */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiDetail'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      /** @description No such API, or it has no version with that name (`/problems/not-found`) */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  listGateways: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description At most one item until spec 017. Never includes the admin token. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GatewayList'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  createGateway: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['CreateGatewayRequest'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Gateway'];
+        };
+      };
+      400: components['responses']['GatewayFieldInvalid'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      /** @description A gateway already exists; a portal connects to one (`/problems/gateway-exists`). It is unchanged. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      422: components['responses']['GatewayCheckFailed'];
+      429: components['responses']['RateLimited'];
+    };
+  };
+  testGateway: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TestGatewayRequest'];
+      };
+    };
+    responses: {
+      /** @description All checks passed */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['GatewayTestResult'];
+        };
+      };
+      400: components['responses']['GatewayFieldInvalid'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      422: components['responses']['GatewayCheckFailed'];
+      429: components['responses']['RateLimited'];
+      /** @description The stored admin token cannot be decrypted (`/problems/gateway-unavailable`). Enter the token again before testing or saving. No outbound request is made. */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  deleteGateway: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        gatewayId: components['parameters']['GatewayId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Removed */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /**
+       * @description `type` is `/problems/gateway-env-managed` or `/problems/gateway-in-use`. For the second,
+       *     `apis` and `activeKeys` say how many depend on it. Nothing was removed.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  updateGateway: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        gatewayId: components['parameters']['GatewayId'];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['UpdateGatewayRequest'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['Gateway'];
+        };
+      };
+      400: components['responses']['GatewayFieldInvalid'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /**
+       * @description `type` is `/problems/gateway-env-managed` (set by environment variables, so read-only)
+       *     or `/problems/gateway-keys-missing` (`affectedKeys` active keys have no consumer on this
+       *     Kong; send `confirmMissingKeys: true` to save anyway). Nothing was saved.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      422: components['responses']['GatewayCheckFailed'];
+      429: components['responses']['RateLimited'];
+      /** @description The stored admin token cannot be decrypted (`/problems/gateway-unavailable`). Enter the token again before testing or saving. No outbound request is made. */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  addSampleApi: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        gatewayId: components['parameters']['GatewayId'];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Published */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ApiDetail'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      404: components['responses']['NotFound'];
+      /**
+       * @description `type` is `/problems/gateway-disabled` (the connection is disabled; this is checked first)
+       *     or `/problems/sample-not-available` (this gateway can't take the sample). Nothing was created.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      502: components['responses']['GatewayRejected'];
+      503: components['responses']['GatewayUnavailable'];
+    };
+  };
+  getMailSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Mail settings */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MailSettings'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  saveMailSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SaveMailSettingsRequest'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MailSettings'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  deleteMailSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Removed; the response shows what is now in use */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['MailSettings'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      /**
+       * @description "Require a verified email" is on and the environment has no SMTP settings, so removing
+       *     these would leave no way to send mail (`/problems/mail-required`).
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  sendTestEmail: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': {
+          /** Format: email */
+          to: string;
+        };
+      };
+    };
+    responses: {
+      /** @description The SMTP server accepted the message */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': {
+            /** Format: email */
+            to: string;
+            /** @enum {string} */
+            source: 'saved' | 'environment';
+          };
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      /** @description No SMTP settings are saved or set in the environment (`/problems/mail-not-configured`) */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+      /**
+       * @description The SMTP server didn't take the message. `type` is one of
+       *     `/problems/smtp-unreachable` (DNS, connection, TLS or timeout),
+       *     `/problems/smtp-auth-failed` (the server rejected the username or password),
+       *     `/problems/smtp-rejected` (connected and signed in, but the sender or recipient was refused).
+       */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  getAccountSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Account settings */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AccountSettings'];
+        };
+      };
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+    };
+  };
+  saveAccountSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['SaveAccountSettingsRequest'];
+      };
+    };
+    responses: {
+      /** @description Saved */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AccountSettings'];
+        };
+      };
+      400: components['responses']['ValidationError'];
+      401: components['responses']['Unauthorized'];
+      403: components['responses']['Forbidden'];
+      /**
+       * @description Turning on `requireVerifiedEmail` with no SMTP settings saved or in the environment
+       *     (`/problems/mail-not-configured`). Nothing was saved.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/problem+json': components['schemas']['Problem'];
+        };
+      };
+    };
+  };
+  tryItGet: {
+    parameters: {
+      query: {
+        /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
+        scalar_url: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      400: components['responses']['TryItNotAllowed'];
+      403: components['responses']['TryItAccessDenied'];
+      413: components['responses']['PayloadTooLarge'];
+      429: components['responses']['RateLimited'];
+      504: components['responses']['TryItTimeout'];
+      /** @description The gateway's response, passed through unchanged */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  tryItPut: {
+    parameters: {
+      query: {
+        /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
+        scalar_url: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        '*/*': unknown;
+      };
+    };
+    responses: {
+      400: components['responses']['TryItNotAllowed'];
+      403: components['responses']['TryItAccessDenied'];
+      413: components['responses']['PayloadTooLarge'];
+      429: components['responses']['RateLimited'];
+      504: components['responses']['TryItTimeout'];
+      /** @description The gateway's response, passed through unchanged */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  tryItPost: {
+    parameters: {
+      query: {
+        /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
+        scalar_url: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        '*/*': unknown;
+      };
+    };
+    responses: {
+      400: components['responses']['TryItNotAllowed'];
+      403: components['responses']['TryItAccessDenied'];
+      413: components['responses']['PayloadTooLarge'];
+      429: components['responses']['RateLimited'];
+      504: components['responses']['TryItTimeout'];
+      /** @description The gateway's response, passed through unchanged */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  tryItDelete: {
+    parameters: {
+      query: {
+        /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
+        scalar_url: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        '*/*': unknown;
+      };
+    };
+    responses: {
+      400: components['responses']['TryItNotAllowed'];
+      403: components['responses']['TryItAccessDenied'];
+      413: components['responses']['PayloadTooLarge'];
+      429: components['responses']['RateLimited'];
+      504: components['responses']['TryItTimeout'];
+      /** @description The gateway's response, passed through unchanged */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  tryItPatch: {
+    parameters: {
+      query: {
+        /** @description Absolute target URL. Must start with a published API's `gatewayBaseUrl`. */
+        scalar_url: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        '*/*': unknown;
+      };
+    };
+    responses: {
+      400: components['responses']['TryItNotAllowed'];
+      403: components['responses']['TryItAccessDenied'];
+      413: components['responses']['PayloadTooLarge'];
+      429: components['responses']['RateLimited'];
+      504: components['responses']['TryItTimeout'];
+      /** @description The gateway's response, passed through unchanged */
+      default: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
 }
