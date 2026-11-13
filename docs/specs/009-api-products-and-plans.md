@@ -285,6 +285,8 @@ is in `apps/server/openapi.yaml` (tag `products`, and the changed `apps` operati
 - [ ] [qa] Playwright e2e: admin creates a product and plan; developer subscribes, gets 429 on the sixth call, changes plan, regenerates and cancels
 - [ ] [qa] Quickstart `docker compose up` still works, with `cluster` policy, and the spec 004 per-API key flow still works for APIs in no product
 
+- [x] [backend] Fix: Monthly quota carry-over intermittently allows an extra request in the full suite
+
 ## UX  _(ui-designer)_
 Design: [docs/design/009-api-products-and-plans.md](../design/009-api-products-and-plans.md). No new tokens.
 - **Catalog** gains a Products section (`ProductCard`: APIs and plan counts); the APIs section lists only APIs in no product.
@@ -305,6 +307,12 @@ Implemented the product/plan schema with a generated forward migration and Unlim
 Validation: all changed packages pass lint and typecheck; `@portal/db` passes 7 tests, `@portal/server` passes 234 tests, and `@portal/adapter-kong` passes 60 tests including real-Kong quota counter carry-over. `@portal/adapter-sdk` and `@portal/sdk` test commands pass with no standalone tests; adapter SDK conformance runs in the Kong package. No workspace-wide suite, browser or quickstart was run.
 
 `PORTAL_RATE_LIMIT_POLICY` is documented in `deploy/.env.example` and `deploy/README.md`; the coordinator leaves the root README addition for the tech lead. Existing test fixtures that truncate user-linked tables now restore the built-in plan. The coordinator authorized bypassing the broad guard using an explicit backend-only staged path list because frontend and earlier design changes share this branch; no other worker’s files were restored or included in the backend commit.
+
+### Backend — quota carry-over regression
+
+The real-Kong carry-over test now waits for each cluster-policy monthly counter to commit in Postgres instead of assuming the proxy response plus 300 ms guarantees persistence. It asserts the monthly limit and remaining count on every accepted request across both services, eight persisted uses across the plan replacement, and exactly 20 uses when request 21 returns 429. This is a test synchronization change: Kong 3.9 writes cluster counters on an asynchronous timer, so concurrent traffic can still overshoot; no gateway policy or production behavior changed. QA should repeat its full-workspace workload before closing the Bugs line.
+
+Validation: `@portal/adapter-kong` lint, typecheck and package tests pass (60/60). The initial pre-change package run also exposed an unrelated intermittent shared-conformance assertion on ACL `created_at` changing across an idempotent PUT; the final package run passed it without changes. The broad backend guard flags existing sibling frontend/design files; the coordinator explicitly authorized a narrow staged path list, verified to include only this adapter test and this stage's spec/log changes, with sibling QA/e2e edits left untouched.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`

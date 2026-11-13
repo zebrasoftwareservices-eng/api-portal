@@ -916,19 +916,55 @@ it('enforces a shared monthly quota and preserves counters across a plan replace
       rate: { unit: 'second', limit: 5 },
       monthlyQuota: 10,
     });
-    for (let i = 0; i < 8; i++) {
-      expect((await call(i % 2 ? a.id : b.id, key.key)).status).toBe(200);
+    const consumer = await adapter.request<{ id: string }>(
+      `/consumers/portal-app-${app.id}`,
+    );
+    // Kong's cluster policy schedules its Postgres increment on a timer.
+    // A proxy response (or a fixed delay) does not establish that it committed.
+    // Observe persistence without sending probe traffic that consumes quota.
+    const persistedUsage = async () => {
+      const result = await postgres.exec([
+        'psql',
+        '-U',
+        'kong',
+        '-d',
+        'kong',
+        '-Atc',
+        `SELECT COALESCE(SUM(value), 0) FROM ratelimiting_metrics
+         WHERE identifier = '${consumer!.id}' AND period = 'month'
+         AND period_date = date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')`,
+      ]);
+      expect(result.exitCode, result.output).toBe(0);
+      return Number(result.output.trim());
+    };
+    const countedCall = async (index: number, quota: number) => {
+      const response = await call(index % 2 ? a.id : b.id, key.key);
+      expect(response.status).toBe(200);
+      // Also catch requests that bypass a not-yet-visible plugin or use stale limits.
+      expect(response.headers.get('x-ratelimit-limit-month')).toBe(
+        String(quota),
+      );
+      expect(response.headers.get('x-ratelimit-remaining-month')).toBe(
+        String(quota - index - 1),
+      );
+      await expect
+        .poll(persistedUsage, { timeout: 10000, interval: 100 })
+        .toBe(index + 1);
+      // Keep this monthly-quota test below the independent five-per-second limit.
       await new Promise((resolve) => setTimeout(resolve, 300));
-    }
+    };
+    for (let i = 0; i < 8; i++) await countedCall(i, 10);
     await adapter.applyPlanLimits(app, {
       rate: { unit: 'second', limit: 5 },
       monthlyQuota: 20,
     });
-    for (let i = 0; i < 12; i++) {
-      expect((await call(i % 2 ? a.id : b.id, key.key)).status).toBe(200);
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    }
-    expect((await call(a.id, key.key)).status).toBe(429);
+    // Replacing the plugin must preserve the eight committed uses of the quota.
+    expect(await persistedUsage()).toBe(8);
+    for (let i = 8; i < 20; i++) await countedCall(i, 20);
+    const exhausted = await call(a.id, key.key);
+    expect(exhausted.status).toBe(429);
+    expect(exhausted.headers.get('x-ratelimit-remaining-month')).toBe('0');
+    expect(await persistedUsage()).toBe(20);
     await adapter.applyPlanLimits(app, null);
     expect((await call(a.id, key.key)).status).toBe(200);
   } finally {
