@@ -1,7 +1,7 @@
 ---
 id: 009
 title: API products and free plans with rate limits
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-237
@@ -345,17 +345,44 @@ Bug verification: the quota carry-over bug remains verified closed with `linear 
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [x] Monthly quota carry-over intermittently allows an extra request in the full suite (major)
 - [ ] Catalog outage retry reloads the document and discards page state (minor). Repro: stop the server, open `/`, restart the server, and choose either catalog “Try again” link. The catalog recovers, but the request is a main-frame document navigation (observed count 1 instead of 0), unlike the existing API-detail and My apps retry flows. Automated regression: `apps/portal/e2e/backlog-live.test.ts`, server-outage `/` case; no Linear issue or Fix task.
-## User testing  _(user-tester)_
-| User story | Result | Evidence |
-| --- | --- | --- |
+- [ ] Mobile product plan cards remain side by side and overflow at 390 × 844 (minor). Product with three plans: document client width 390px, scroll width 593px; third-plan tap did not navigate. First Subscribe link then plan radio completes the journey. Evidence: local `docs/uat/009/mobile-plan-layout-fail.png`; no Linear issue or Fix task.
 
-One row per user-visible criterion. Evidence is a short quote of what was on the screen.
-Name an image only for an open failure. On a retest, change only the failed rows.
-Earlier rounds go in `docs/specs/log/009.md`. The full report is `docs/uat/009/report.md`.
+## User testing  _(user-tester)_
+
+2026-11-13, commit `d2c4d8727dc783d8525eec0b9c1bc1400c561dd8`, Orca browser against QA's stack at http://localhost:3008. Full current evidence: [UAT report](../uat/009/report.md). Server-only payload/internals remain QA coverage; the rows below describe the visible walk and live Kong calls.
+
+| User story / criterion | Result | Evidence |
+| --- | --- | --- |
+| AC1 — create product and compare plans | Pass, desktop | “Created UAT Weather bundle.”; “2 APIs · 3 plans”; Free shows 5/second, 10,000/calendar month UTC and both APIs included. |
+| AC2 — invalid plan form | Pass, visible form | “Enter a rate limit.”, “Enter … of 1 or more.”, “Enter a whole number…” and “Choose at least one API.”; valid correction saved once. Outside-product APIs are not offered. |
+| AC3 — subscription, one-time key and APIs | Pass | “Your API key”; My apps shows Free and one active key; reload shows only suffix; both APIs 200, docs Send shows “200 OK”. |
+| AC4 — rate limit | Pass | Six requests in 0.077s: five 200s then 429; next second 200. |
+| AC5 — monthly quota | Pass | Ten requests 0.55s apart returned 200; eleventh 429. |
+| AC6 — plan change | Pass | “Changed to Expanded. Your key stays the same…”; original key: ten 200s in 0.108s. |
+| AC7 — cancellation | Pass | “Cancelled uat-desktop. Its key has stopped working.”; app gone, key 401. |
+| AC8 — regeneration | Pass | “Your new API key”; old 401, new 200, secret absent after reload. |
+| AC9 — gateway outage | Pass, visible behavior | All four actions show “The gateway is unavailable” without closing; recovery keeps Expanded/original key, no partial subscription, original key 200. |
+| AC10 — read-only/non-admin | Pass, visible behavior | “you can't subscribe here”; no plan/key/cancel controls; normal developer's admin URL shows “Page not found”. |
+| Mobile main journey | Fail, minor layout; subscription completed | `mobile-plan-layout-fail.png`: three cards in a row, 593px content on 390px client; first plan → Tiny radio → key/app succeeds. |
+| Keyboard main journey | Pass with name entry | Tab/Enter reached Free, submitted and completed key dialog; Escape kept one-time reveal open. Name supplied with browser fill; navigation/activation used Tab, Enter, Escape. |
+| Catalog retry bug | Fail, minor | “Try again” recovers catalog but changes document time origin; existing bug reaffirmed open. |
+
+Console check returned no error-level entries; the available line was informational: “loadDocument: 28 ms”. No browser logs or secrets were saved. One local failure image, no round directory; stack stopped. No blocker or major is open, so the result is review.
 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/009.md`.
+
+Reviewed `git diff main...HEAD` at `d2c4d87`. That commit only adds QA tests on top of the tested application commit `9845cbf`, and the Test report shows a full uncached pass, so the suite was not re-run. All ten acceptance criteria have server, browser and real-Kong tests. The contract, data model, migration backfill, adapter calls, compensation paths, role checks and problem+json mapping match the Technical design and ADR 0009. Concurrent plan changes serialize on the `appAccess` row lock.
+
+**Blocking:** none.
+
+**Suggestions** (no Fix task):
+- `apps/portal/app/products/[slug]/products.css:40`: `display: flex` overrides the `.stack` grid, so on screens 767px wide or narrower the plan cards sit side by side and overflow. This is the open mobile minor in Bugs. Use `display: grid`, or add `flex-direction: column`.
+- `apps/server/src/products.ts:124` and `:94`: `GET /v1/products` builds the full detail for each product, and each detail calls `publishedApis(db)` again. Return the summaries from one grouped count query instead.
+- `apps/server/src/reconcile.ts:54`: reconcile runs two or three queries for every app inside the locked transaction. Load plans and plan APIs once and group them in memory before installs reach thousands of apps.
+- `apps/server/src/products.ts:52`: `checkApis` checks only that the APIs exist, so an admin can add an unpublished API to a product. Check against `publishedApis` so products match AC 1's "published APIs".
+- `packages/adapter-kong/src/index.ts:303`: when the consumer is missing, `applyPlanLimits` throws `GatewayUnavailableError` (503 "gateway unavailable"), but Kong is reachable. A `gateway-rejected`/conflict error would describe the cause better.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
