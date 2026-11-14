@@ -1,7 +1,7 @@
 ---
 id: 016
 title: Production install — hardened Compose, Helm chart, backups and upgrades
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-13
 linear: JSO-244
@@ -418,9 +418,10 @@ Kong objects; reconcile keeps running every 5 minutes as now and is idempotent.
 - [x] [frontend] `PORTAL_TRUSTED_PROXIES` in the portal ingress: keep client IP and `https` only from a trusted peer; unit tests for trusted, untrusted and spoofed headers.
 - [x] [frontend] Portal Dockerfile: `PORTAL_VERSION` build arg, OCI labels, runs with a read-only root filesystem (writable `/tmp` only, or the proven minimum).
 - [ ] [qa] Run `upgrade-smoke` and `helm-smoke` locally and in CI; record AC 2–11 evidence in the Test report.
-- [ ] [qa] Verify the quickstart is unchanged: `deploy/docker-compose.yml` up in under five minutes, existing smokes and `pnpm test:e2e` pass.
+- [x] [qa] Verify the quickstart is unchanged: `deploy/docker-compose.yml` up in under five minutes, existing smokes and `pnpm test:e2e` pass.
 - [ ] [qa] Production Compose on a Linux host with a real Kong: HTTPS via the Caddy profile, `NODE_ENV=production`, no host ports for Postgres/server, no Kong container, no sample API, claim and connect Kong (AC 1).
-
+- [ ] [backend] Fix: Upgrade smoke cannot start Kong or verify upgrade and recovery criteria
+- [ ] [backend] Fix: Helm smoke passes without required AC 7-10 runtime assertions
 ## UX  _(ui-designer)_
 No UI change: no new or changed screens, flows, states, copy or tokens (Out of scope). The
 `[frontend]` tasks are the portal container only: runtime `SERVER_URL` proxying, `GET /healthz`,
@@ -439,18 +440,31 @@ No UI change: no new or changed screens, flows, states, copy or tokens (Out of s
   root filesystem and the production proxy subnet.
 
 ## Test report  _(qa-tester)_
-Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
+Commit tested: `f519283479e9de9d16678037f68c3273d4a3d44b` · Portal: `http://localhost:3005`
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
+| 1 | `apps/server/src/production-install.test.ts`; clean Ubuntu/Caddy/Kong walk | Partial — Compose isolation and hardening pass; the required Linux HTTPS/existing-Kong walk was not available locally. |
+| 2 | `apps/server/src/config.test.ts`; `deploy/upgrade-smoke.mjs` | Fail — unit failure paths pass, but the upgrade smoke aborts at its invalid Kong bind mount before the missing-secret case. |
+| 3 | `scripts/release-tags.test.mjs`; `apps/server/src/production-install.test.ts` | Pass — exact tags accepted, invalid/latest refs rejected, pinned workflow has no `latest`. |
+| 4 | `deploy/upgrade-smoke.mjs`; `packages/db/src/migrate.test.ts` | Fail — migration integration passes, but the required baseline-to-candidate smoke cannot start Kong or assert retained users/API/app/key. |
+| 5 | `deploy/upgrade-smoke.mjs` | Fail — backup/restore assertions are not implemented or reached. |
+| 6 | `deploy/upgrade-smoke.mjs` | Fail — rollback assertions are not implemented or reached. |
+| 7 | `deploy/helm/smoke.sh`; `apps/server/src/production-install.test.ts` | Partial — kind 1.37 install/rollouts pass and templates are hardened; the smoke omits Service reachability and runtime UID assertions. |
+| 8 | `deploy/helm/smoke.sh`; `apps/server/src/production-install.test.ts` | Partial — template guards pass; the smoke does not install and verify the external-database release. |
+| 9 | `apps/server/src/health.test.ts`; `apps/server/src/app.test.ts`; `deploy/helm/smoke.sh` | Partial — health contract and recovery rollout pass; Endpoints removal, liveness and restart-count assertions are absent. |
+| 10 | `apps/server/src/setup-gateways.test.ts`; `apps/server/src/startup.test.ts`; `deploy/helm/smoke.sh` | Partial — database token claim/restart tests pass; Helm cross-replica token equality, claim and rejection are absent. |
+| 11 | `packages/db/src/migrate.test.ts`; `deploy/upgrade-smoke.mjs` | Partial — synthetic schema-ahead integration passes without writes; the image-level smoke assertion is not implemented or reached. |
+
+Regression pass: `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed. The browser suite had 93 passes, 2 expected failures and 2 skips; its two pre-stack connection failures passed on targeted re-test after the suite-established stack was healthy. `deploy/helm/smoke.sh` passed on kind/Kubernetes 1.37; `deploy/upgrade-smoke.mjs` failed. The worktree quickstart remains healthy and running at the portal URL above.
 
 Long notes go in `docs/specs/log/016.md`, not here.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
-
+- [ ] Upgrade smoke cannot start Kong or verify upgrade and recovery criteria (major)
+- [ ] Helm smoke passes without required AC 7-10 runtime assertions (major)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
@@ -471,3 +485,16 @@ return the spec to building. Earlier rounds go in `docs/specs/log/016.md`.
 - [ ] API contract, README and docs updated
 - [ ] Tech-lead review has no blocking findings
 - [ ] Elango merged the PR
+
+
+### Deferred Linear
+- **Bug** — Bug: Upgrade smoke cannot start Kong or verify upgrade and recovery criteria (major)
+  - parent: JSO-244
+  - priority: high
+  - create when the Linear limit allows
+  - body: Steps: run node deploy/upgrade-smoke.mjs from a clean worktree with Docker available. The script starts deploy/production/compose.yaml plus deploy/ci/compose.upgrade.yaml; the override mounts ../kong.yml, which resolves to nonexistent deploy/kong.yml, so Docker creates a directory and Kong exits 1 with /kong/declarative.yml: Is a directory. The smoke aborts before validating upgrade data preservation, backup/restore, rollback, missing-secret startup, setup-token restart, or schema-ahead behavior required by AC 2 and AC 4-6/10-11. Expected: the disposable Kong starts and the script performs explicit assertions for every promised behavior. Actual: node exits 1; retained reproduction logs prove the invalid bind mount, and the script source contains no data creation/restore/rollback/schema-ahead assertions.
+- **Bug** — Bug: Helm smoke passes without required AC 7-10 runtime assertions (major)
+  - parent: JSO-244
+  - priority: high
+  - create when the Linear limit allows
+  - body: Steps: create a Kubernetes 1.37 kind cluster and run deploy/helm/smoke.sh. The script exits 0 after install, rollout, a Postgres scale-down/scale-up, and a manifest grep. Inspection shows it never requests the portal through its Service, checks container UIDs, installs the externalDatabase release, verifies server removal from Endpoints while liveness and restartCount remain healthy, or proves the shared setup token across two replicas and cross-replica claim/rejection. Expected: explicit failing assertions for every AC 7-10 behavior promised by the CI technical design. Actual: the smoke passes while those runtime criteria remain untested; static chart tests cannot prove the installed behavior.
