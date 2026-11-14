@@ -1,7 +1,7 @@
 ---
 id: 010
 title: Access requests and catalog visibility
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-238
@@ -411,40 +411,46 @@ Validation: `@portal/db`, `@portal/server` and `@portal/sdk` lint and typecheck 
 
 ## Test report  _(qa-tester)_
 
-QA retest — 2026-11-14. Application commit tested: `ba6d94879573fa36a361c4e18832d28153f40959`, with the QA regression additions in this report's commit. Portal: **http://localhost:3019**, from `node scripts/worktree-compose.mjs env`; isolated Compose project `portal-010-access-requests-and-visibili-a08a`.
+QA retest — 2026-11-14. Tested commit `aa75415746fc868f74363a6e5500a6ccf8ef30e6` (application fixes through `bf684e3`, frontend `28d29c4`, SDK `434e726`, plus QA regression tests and the corrected team-search selector). Worktree portal: **http://localhost:3019**; Kong proxy: **http://localhost:18019**. Isolated Compose project: `portal-010-access-requests-and-visibili-a08a`; left running for UAT. The default Docker project was not used.
 
-| Acceptance criterion | Automated tests | Result |
+| AC | Automated evidence | Result |
 | --- | --- | --- |
-| 1 — Pending request, queue details, no credential | `apps/server/src/access-requests.test.ts` (create request / concurrent approvals); `apps/portal/e2e/access-requests.test.ts` (request dialog, queue, unchanged Kong consumers) | Pass |
-| 2 — Invalid reason and duplicate refusal | `apps/server/src/access-requests.test.ts` (blank/whitespace/1001-char reason, duplicate pending); `apps/portal/components/access-flows.test.tsx` (validation and 409 message); `apps/portal/e2e/access-requests.test.ts` | Pass |
-| 3 — Approval, note/email, reveal and gateway limits | `apps/server/src/access-requests.test.ts`; `apps/server/src/mail/access-mail.test.ts`; `apps/portal/e2e/access-requests.test.ts` (Mailpit note, one-time key, real Kong 200/429) | Pass |
-| 4 — Rejection, required note and resubmission | `apps/server/src/access-requests.test.ts`; `apps/portal/components/access-flows.test.tsx`; `apps/portal/e2e/access-requests.test.ts` (400 blank rejection, note email, retry) | Pass |
-| 5 — Admin permissions and read-only team role | `apps/server/src/access-requests.test.ts` (admin endpoint matrix, read-only and expired sessions); `apps/portal/components/access-flows.test.tsx` (read-only reveal hidden) | Pass |
-| 6 — Gateway outage on approval and recovery | `apps/server/src/access-requests.test.ts` (compensation and retry); `apps/portal/components/access-flows.test.tsx` (error preserves dialog); `apps/portal/e2e/access-requests.test.ts` (real Kong stopped, 503 problem, pending/no mail, recovery) | Pass |
-| 7 — Pending plan change preserves Basic/key, duplicate 409 | `apps/server/src/access-requests.test.ts`; `apps/portal/components/access-flows.test.tsx`; `apps/portal/e2e/access-requests.test.ts` | Pass |
-| 8 — Plan-change approve/reject, same key, immediate downgrade | `apps/server/src/access-requests.test.ts`; `apps/portal/e2e/access-requests.test.ts` (Basic→Partner approval, reject/retry, same key and real Kong limits) | Pass |
-| 9 — Open upgrade defaults and signed-out Hidden 404 | `packages/db/src/access-migration.test.ts`; `apps/server/src/access-requests.test.ts` (visibility matrix); `apps/portal/e2e/access-requests.test.ts` (product/reference/changelog HTTP 404); `deploy/e2e/quickstart.spec.ts` | Pass |
-| 10 — Internal insider self-service/request and outsider 404 | `apps/server/src/access-requests.test.ts` (insider/outsider and full visibility matrix); `apps/server/src/access-policy.test.ts`; `apps/portal/e2e/access-requests.test.ts` (anonymous Internal page 404) | Pass |
-| 11 — Manual assignment, notification, reveal and visibility | `apps/server/src/access-requests.test.ts`; `apps/server/src/mail/access-mail.test.ts` (current Admin/Member recipients, excludes read-only); `apps/portal/e2e/access-requests.test.ts` (no admin key, Mailpit, reveal, Kong 200, anonymous 404) | Pass |
-| 12 — Affected teams, Keep/Revoke across every origin | `apps/server/src/access-requests.test.ts` (three teams, confirmation, Keep); `apps/server/src/admin-revocation.test.ts` (admin-origin visibility/approval confirmation, Keep and real Kong 401); `apps/portal/components/access-flows.test.tsx` (Keep default); `apps/portal/e2e/access-requests.test.ts` (admin assignment counted and revoked) | Pass |
-| 13 — Saved setting, pending revoke, retry/email idempotence | `apps/server/src/access-requests.test.ts` (partial failure/replay); `apps/server/src/admin-revocation.test.ts` (new admin-origin failure/retry regression, persisted Hidden/pending, no early email, 401 after retries/reconcile, one notification); `apps/portal/components/access-flows.test.tsx` (retry notice); `apps/portal/e2e/access-requests.test.ts` (real Kong outage for request-origin and admin-origin, Mailpit once per subscription) | Pass |
+| 1 | `apps/server/src/access-requests.test.ts`: pending request, queue, no provisioning; `apps/portal/e2e/access-requests.test.ts`: request dialog → queue, no Kong consumer | PASS |
+| 2 | `access-requests.test.ts`: invalid reason, duplicate pending, name collision; `apps/portal/components/access-flows.test.tsx`: 400/409 field retention; access e2e: empty reason and duplicate | PASS |
+| 3 | `access-requests.test.ts`: concurrent approve/one decision, first reveal; `apps/server/src/mail/access-mail.test.ts`: atomic id-only jobs; access e2e: note email, reveal once, real upstream and Partner rate limit | PASS |
+| 4 | `access-requests.test.ts`: required reject note and request again; access e2e: blank reject 400, rejected email with note, retry | PASS |
+| 5 | `access-requests.test.ts`: non-admin endpoint matrix, read-only request/reveal 403, expired session 401; `access-flows.test.tsx`: read-only actions hidden | PASS |
+| 6 | `access-requests.test.ts`: rollback and retry; access e2e: real Kong stopped → 503, Pending, no approval mail → restart and approve; `access-flows.test.tsx`: dialog retained with gateway error | PASS |
+| 7 | `access-requests.test.ts` and access e2e: approval plan change 202, old plan/key retained, second request 409 | PASS |
+| 8 | `access-requests.test.ts` and access e2e: reject/retry/approve preserve key, Partner gateway limits, instant Basic downgrade | PASS |
+| 9 | `packages/db/src/access-migration.test.ts`: upgrade defaults; `access-requests.test.ts`: public surface visibility matrix; access e2e: anonymous Hidden and unknown product/API/changelog HTTP 404, signed-in Hidden HTTP 200 | PASS |
+| 10 | `access-requests.test.ts`: Internal insider self-service and approval, excluded team 404; `apps/server/src/access-policy.test.ts`: viewer matrix; access e2e: anonymous Internal pages 404 | PASS |
+| 11 | `access-requests.test.ts`: Manual assignment visibility and delayed issuance; access e2e: no admin key, assigned email, team reveal and working Kong key; `admin-revocation.test.ts`: Internal unnamed assignment 409 without consumer creation and named assignment 201 | PASS |
+| 12 | `access-requests.test.ts`: three-team counts and Keep; `admin-revocation.test.ts`: admin-origin visibility/approval, Manual→Internal Keep 200/Revoke 401 and reconcile; access e2e: confirmation count/default Keep, Manual→Internal prompt/cancel, real 409 assignment dialog message and field retention | PASS |
+| 13 | `access-requests.test.ts`: partial failure/replay; `admin-revocation.test.ts`: failed deletion persists/retries/one email and no resurrection; access e2e: stopped Kong saves setting, Revoke pending/no email, retry → 401 and once-only observed emails | PASS |
 
-Validation: changed-package typechecks passed before tests. `pnpm lint`, `pnpm typecheck` and `pnpm test` passed (server **285**, portal **334**, database **9**, Kong adapter **60**: **688 total**); targeted real-Kong admin-revocation tests passed **4/4**. The single full `pnpm test:e2e` run finished **98 passed, 2 skipped**, with no unexpected failure; this includes four existing expected-failure cases (JSO-399, JSO-405, JSO-406 and the JSO-189/190/191 outage case) and skips JSO-225/226. The spec 010 browser journey passed in **48.0s**, including admin-assigned AC 12–13, actual Kong stop/start, 401 after retry, once-only Mailpit notifications and the fixed product/reference/changelog 404 checks.
+Review-fix regressions: server tests cover omitted `requiresApproval`, one viewer load per catalog request, revocation/compensation diagnostics with app ID and error class without secrets, Manual→Internal confirmation and named-team assignment. Browser assertions verify plan caption/cards stack at 390px with zero document overflow, Escape and Cancel restore focus to the originating Approve button, and the real Internal-assignment conflict preserves the form and says “Add the team to this product first”.
 
-Quickstart: `node --experimental-strip-types --test tests/spec003-quickstart.test.ts` passed after deleting only this worktree's volumes and running `node scripts/worktree-compose.mjs up -d --build --wait`: a fresh seeded catalog and same-origin API responded in **172.8 seconds**, below five minutes. The seeded stack remains healthy and running for UAT at the portal URL above; the default `portal` Compose project was not touched.
+Validation: `pnpm lint` and `pnpm typecheck` passed; `pnpm test` passed (server 295, portal 338, Kong adapter 60, database 9). Both changed packages were typechecked before their tests; focused real-Kong integration passed 6/6. Docker/Chromium-dependent commands required sandbox escalation; the first sandboxed full test attempt could not reach the container runtime and was rerun elevated. `node scripts/worktree-compose.mjs up -d --build --wait` passed; the seeded evaluation configuration was then started on the same isolated project.
 
-Open bugs retested: the 390px product page still has **20px** horizontal overflow, and Escape from the approval dialog still returns focus to **BODY**; both remain minor, open and without Fix tasks. Admin-assigned revoke-on-restrict is verified fixed; no blocker or major remains. Failure paths cover malformed reason, duplicate request, concurrent approval, name collision, missing permission, expired session, approval outage and revocation failure/replay.
+The single full `pnpm test:e2e` run on `aa75415` completed **97 passed, 2 skipped, 1 unexpected failure** in 8.2 minutes. Spec 010 and the seeded quickstart smoke passed; existing expected failures JSO-399/405/406 and the catalog retry document-reload minor remained expected failures. The one unexpected failure was the older spec 009 rate-window test: its six-request burst straddled Kong's second boundary even though the host clock had just advanced (gateway Date headers crossed 18:52:51 → 18:52:52). Updated only its test helper to observe Kong's `/status` Date header without consuming subscription quota; package typecheck, scoped ESLint and the affected browser journey then passed **1/1** on the content committed as `98cc0dd`. The full browser suite was not repeated. Focused spec 010 browser regression passed **1/1** before the full run, which also passed it. All four recorded spec bugs were reverified with `linear bug 010 done`; no blocker or major remains, so status is `uat`.
 
-Ownership guard limitation: `node scripts/factory.mjs guard qa-tester` flags prior application/design/migration/SDK/UAT files already on this feature branch. The coordinator relayed Elango's explicit authorization to commit only `apps/server/src/admin-revocation.test.ts`, `apps/portal/e2e/access-requests.test.ts`, `tests/spec010.playwright.config.ts`, this spec and `docs/specs/log/010.md`; no flagged application file was changed or restored.
+Ownership guard limitation: `guard qa-tester` includes application/design/SDK files already committed by prior stages on this feature branch. Under Elango's standing authorization, QA commits use explicit pathspecs containing only the three QA test files, this spec and `docs/specs/log/010.md`; no application code was changed.
 
 ### Bugs
-<!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
-- [x] Invisible product and changelog pages return HTTP 200 instead of 404 (major)
-  - Verified on rebuilt `043b2a8`: anonymous Hidden, Internal and Manual product/API/changelog pages and unknown slugs return HTTP 404; signed-in Hidden pages return HTTP 200. Confirmed with `linear bug 010 done`; no Linear issue exists or was created, per Elango.
-- [x] Revoke-on-restrict leaves admin-assigned subscription keys working (major)
-  - Browser retest verified visibility and approval confirmations include admin assignments; Keep retains 200, Revoke/retry returns 401, assigned subscriptions show Revoked and notifications arrive once per observed subscription. Confirmed with `linear bug 010 done`; no Linear issue, per Elango.
-- [x] Mobile plan cards and caption remain in narrow side-by-side columns at 390px with 20px horizontal overflow (minor); request/reveal journey still works. Evidence: `docs/uat/010/mobile-plan-layout-fail.png`.
-- [x] Escape from the approval dialog returns focus to BODY instead of the originating Approve button (minor); Tab restarts at Skip to content, but approval remains possible.
+- [x] Invisible product and changelog pages return HTTP 200 instead of 404 (major).
+  - Retested: anonymous Hidden/Internal/Manual and unknown product/API/changelog paths return HTTP 404; signed-in Hidden paths return 200. Verified with `linear bug 010 done`.
+- [x] Revoke-on-restrict leaves admin-assigned subscription keys working (major).
+  - Retested with real Kong: admin-origin assignments are counted, Keep preserves 200, Revoke/retry returns 401, and reconcile does not restore access; Manual→Internal Keep/Revoke also passes. Verified with `linear bug 010 done`.
+- [x] Mobile plan cards and caption remain in narrow side-by-side columns at 390px with horizontal overflow (minor).
+  - Browser assertions pass: caption/cards stack vertically at equal full width and document overflow is zero. Verified with `linear bug 010 done`.
+- [x] Escape from the approval dialog returns focus to BODY instead of the originating Approve button (minor).
+  - Browser assertions pass for both Escape and Cancel returning focus to the originating Approve button. Verified with `linear bug 010 done`.
+
+- [x] Existing product-plan browser rate-limit test intermittently crosses the gateway's second boundary when synchronized to the host clock (minor test defect).
+  - Full-run evidence showed the gateway Date advancing mid-burst; corrected the test helper to observe Kong's own Date. Package typecheck, scoped ESLint and the affected browser journey pass after correction; no application code changed.
+
+No open spec findings; no Linear issues were created, per Elango's instruction.
 
 ## User testing  _(user-tester)_
 
