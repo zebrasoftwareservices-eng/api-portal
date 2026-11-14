@@ -59,12 +59,14 @@ operator sets the public base URL
   an option to use my own PostgreSQL, so that the portal fits how my cluster already runs.
 - As a portal admin on a chart with more than one server replica, I want the setup token from any
   replica's log to work, so that I can claim the first admin whichever pod serves me (JSO-378).
+- As a platform engineer, I want an old image started against a newer database to stop with a
+  pointer to the rollback steps, so that a wrong rollback cannot damage the data.
 
 ## Acceptance criteria
 1. **Given** a clean Ubuntu 26.04 LTS VM with Docker Engine and Compose v2, a Kong the company
    already runs, and access to this repo's GHCR packages, **When** a person follows the install
-   guide using the production Compose file, secrets supplied as files, and the guide's reverse
-   proxy example, **Then** within 30 minutes the portal is served over HTTPS at the configured
+   guide using the production Compose file, secrets supplied as files, and the guide's Caddy
+   reverse proxy example, **Then** within 30 minutes the portal is served over HTTPS at the configured
    public URL, the server runs with `NODE_ENV=production`, Postgres and the server API are not
    published on any host port, no sample API is seeded, no Kong container runs, and the admin can
    claim the install with the setup token and connect the existing Kong.
@@ -75,10 +77,12 @@ operator sets the public base URL
 3. **Given** a version tag is pushed to the repo **When** the release workflow finishes, **Then**
    the server and portal images are published to GHCR tagged with exactly that version, the
    packages stay private, and no `latest` tag is pushed or moved.
-4. **Given** the previous release tag is running with data (an admin, a published API, a
-   developer, an app with a key) **When** the new tag is started against the same database
-   volume, **Then** migrations apply on start, the admin and developer can sign in, and the API,
-   app and key are all still listed. This runs in CI.
+4. **Given** a baseline server image built in CI from `origin/main`, running with data (an admin,
+   a published API, a developer, an app with a key) **When** the server image built from this
+   branch is started against the same database volume, **Then** migrations apply on start, the
+   admin and developer can sign in, and the API, app and key are all still listed. This runs in
+   CI and needs no published tag. The guide describes the same steps for a real upgrade: the
+   previous published tag, then the new tag.
 5. **Given** a running production install with data **When** the operator runs the documented
    backup command, deletes an app, then runs the documented restore command with that backup,
    **Then** the deleted app is back, every other record matches the backup, and the backup step
@@ -86,8 +90,9 @@ operator sets the public base URL
 6. **Given** an install upgraded to the new tag, and a backup taken before the upgrade **When** the
    operator follows the guide's rollback (stop, restore the pre-upgrade backup, start the previous
    tag), **Then** the previous version runs and shows the pre-upgrade data.
-7. **Given** a throwaway Kubernetes cluster in CI at the chart's declared `kubeVersion` **When** the
-   Helm chart is installed with default values, **Then** the portal, server and Postgres pods
+7. **Given** a throwaway kind cluster in CI on kind's Kubernetes 1.37 node image, and a chart whose
+   `Chart.yaml` declares `kubeVersion` for 1.37 only, **When** the chart is installed with Helm 3
+   and default values, **Then** the portal, server and Postgres pods
    become Ready, the portal answers through its Service, every container runs as a non-root user,
    and the release creates no Kong, cert-manager or ingress-controller resources.
 8. **Given** the Helm chart **When** it is installed with an external database URL value, **Then**
@@ -97,9 +102,19 @@ operator sets the public base URL
 9. **Given** a running Helm install **When** the database becomes unreachable, **Then** the server's
    readiness check fails and the pod leaves the Service endpoints while its liveness check keeps
    passing; **when** the database returns, **Then** the pod is Ready again without a restart.
-10. **Given** a Helm install with two server replicas and no admin yet **When** the setup token
-    printed by one replica is submitted on a request served by the other, **Then** it is accepted
-    and the admin is created; **and** after that, the token is rejected by both replicas.
+10. **Given** a Helm install with two server replicas and no admin yet **When** both replicas
+    start, **Then** they print the same setup token, which is stored in one database row created
+    once while no admin exists; **when** that token is submitted on a request served by the other
+    replica, **Then** it is accepted, the admin is created, the row is deleted, and the token is
+    then rejected by both replicas. **Given** the production Compose install with no admin yet
+    **When** the server restarts, **Then** it prints the same token as before the restart. The
+    chart creates no Secret holding the token. This replaces spec 005's rule that each start mints
+    a new token and nothing is stored: a leaked log line stays valid until the admin is claimed,
+    including across restarts.
+11. **Given** a database that has a migration the running image does not contain (for example the
+    previous tag started on a database already upgraded, without a restore) **When** the server
+    starts, **Then** it exits non-zero before serving any request, changes no data, and its log
+    names the rollback steps: restore the pre-upgrade backup, then start the previous tag.
 
 ## Out of scope
 - **Replacing the quickstart.** `deploy/docker-compose.yml`, its bundled Kong, the optional sample
@@ -112,7 +127,15 @@ operator sets the public base URL
 - **Installing, upgrading or securing the company's Kong.** Kong's own chart does that; the guide
   points at `docs/connect-kong.md` and spec 005's settings.
 - **Down migrations.** Migrations stay forward-only; rollback is restore plus the previous tag
-  (Elango, 2026-11-13).
+  (Elango, 2026-11-13). An old image facing a newer schema stops (criterion 11); it never migrates down.
+- **Publishing a baseline tag such as `v0.7.0`.** The CI upgrade test builds its baseline from
+  `origin/main`. The first real tag-to-tag upgrade happens at the second release (Elango, 2026-11-13).
+- **More than one Kubernetes minor, and Helm 4.** The chart declares 1.37 (stable was v1.37.2 on
+  2026-11-13) and is tested with Helm 3 only.
+- **Proxy examples other than Caddy, and a proxy inside the chart.** Any proxy that forwards HTTPS
+  to the portal works; the guide shows Caddy only. The chart installs no Caddy, cert-manager or
+  ingress controller.
+- **A Kubernetes Secret as a second store for the setup token.** The database row is the only store.
 - **TLS inside the portal, cert-manager, Vault, external-secrets, OpenShift, air-gapped mirrors,
   Windows hosts and marketplace listings.** Later specs if asked for.
 - **A second VM walkthrough.** Ubuntu 24.04 LTS is named as expected to work, not walked.
@@ -123,18 +146,19 @@ operator sets the public base URL
 - **Any UI change.** No new screens; the ui-designer stage has no work.
 
 ## Open questions
-- [ ] **What is "the previous release tag" for criterion 4?** No tag or image exists yet. Does the
-  first release workflow run publish a baseline tag from current `main` (for example `v0.7.0`)
-  before this spec's own tag, so CI has something to upgrade from? — Elango, with tech-lead
-- [ ] **Which Kubernetes minor does the chart declare?** The decision is "the one the CI cluster
-  runs"; the tech-lead names it in the install-paths ADR. — tech-lead
-- [ ] **Should the server refuse to start when the database schema is newer than it knows** (an
-  old tag started against an upgraded database without a restore), with a log line pointing to
-  the rollback steps? That would add a failure-path criterion. — tech-lead, Elango
-- [ ] **Where does the shared setup token live**: a database row or a chart-managed Secret? Both
-  meet criterion 10; it changes the Compose path too. — tech-lead
-- [ ] **Which reverse proxy does the guide show** (Caddy, as in `deploy/hosted/`, or nginx)? One
-  example only. — tech-lead
+All five were decided by Elango on 2026-11-13. None are open.
+- [x] **Upgrade baseline.** Decided: no `v0.7.0` tag. CI builds the baseline image from
+  `origin/main` and the new image from this branch on the same volume (criterion 4). The guide
+  describes previous published tag → new tag.
+- [x] **Kubernetes minor.** Decided: `kubeVersion` 1.37, kind's 1.37 node image in CI, Helm 3, one
+  minor only (criterion 7).
+- [x] **Newer schema.** Decided: the server exits before serving and logs the rollback steps; no
+  down migrations (criterion 11).
+- [x] **Shared setup token.** Decided: one database row, created while no admin exists, deleted on
+  claim; every replica on Compose and Helm prints the same token; no chart Secret. Replaces spec
+  005's per-start token (criterion 10).
+- [x] **Reverse proxy.** Decided: the VM guide shows Caddy; any HTTPS-forwarding proxy is fine; the
+  chart installs no Caddy or cert-manager (criterion 1, Out of scope).
 
 ---
 <!-- Sections below are filled by later stages. -->
