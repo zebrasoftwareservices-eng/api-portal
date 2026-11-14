@@ -1,7 +1,7 @@
 ---
 id: 010
 title: Access requests and catalog visibility
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-238
@@ -366,7 +366,7 @@ desired-state loop skips non-active apps, so a revoked key can never come back.
 - [x] [qa] Integration with real Kong: Manual assignment, keep vs revoke (401 after revoke), partial failure + retry idempotence + one email per team, reconcile doesn't resurrect (AC 11–13)
 - [x] [qa] Playwright e2e: Sprint 4 demo step 3 (request Partner → admin approves → reveal key → call works; Hidden product 404 when signed out); quickstart smoke
 - [x] [frontend] Fix: Invisible product and changelog pages return HTTP 200 instead of 404
-
+- [ ] [backend] Fix: Revoke-on-restrict leaves admin-assigned subscription keys working
 ## UX  _(ui-designer)_
 Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access-requests-and-visibility.md). No new tokens.
 
@@ -415,14 +415,33 @@ Commit guard: `guard qa-tester` flags application/design/schema files already co
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 - [x] Invisible product and changelog pages return HTTP 200 instead of 404 (major)
   - Verified on rebuilt `043b2a8`: anonymous Hidden, Internal and Manual product/API/changelog pages and unknown slugs return HTTP 404; signed-in Hidden pages return HTTP 200. Confirmed with `linear bug 010 done`; no Linear issue exists or was created, per Elango.
+- [ ] Revoke-on-restrict leaves admin-assigned subscription keys working (major)
+- [ ] Mobile plan cards and caption remain in narrow side-by-side columns at 390px with 20px horizontal overflow (minor); request/reveal journey still works. Evidence: `docs/uat/010/mobile-plan-layout-fail.png`.
+- [ ] Escape from the approval dialog returns focus to BODY instead of the originating Approve button (minor); Tab restarts at Skip to content, but approval remains possible.
 
 ## User testing  _(user-tester)_
-| User story | Result | Evidence |
-| --- | --- | --- |
 
-One row per user-visible criterion. Evidence is a short quote of what was on the screen.
-Name an image only for an open failure. On a retest, change only the failed rows.
-Earlier rounds go in `docs/specs/log/010.md`. The full report is `docs/uat/010/report.md`.
+2026-11-14 UAT of QA's application `043b2a8` at http://localhost:3019: **failed; building**. Full evidence: `docs/uat/010/report.md`. Per Elango, this bug remains spec-only with no Linear issue now or later; screenshots remain local and uncommitted.
+
+| User story / criterion | Result | Evidence |
+| --- | --- | --- |
+| 1 Request approval access | Pass | “Pending”; queue showed requester, team, plan and reason. |
+| 2 Reason and duplicate validation | Pass | “Keep the reason to 1000 characters or fewer”; “Your team already has a pending request.” |
+| 3 Approve, email, reveal, call | Pass | “Your key is ready”; approval note in Mailpit; Kong 200 then 429. |
+| 4 Reject and request again | Pass | “Add a note so the requester knows why”; “Rejected”; Request again succeeded. |
+| 5 Permissions (UI) | Pass | Non-admin admin page not found; “A team Admin or Member can reveal the key” for Read-only, without reveal controls. |
+| 6 Approval gateway outage | Pass | “The gateway is unavailable… It's still pending”; retry succeeded after Kong restart. |
+| 7 Pending plan change | Pass | “Your key keeps working on Basic until then”; original key 200/429 at Basic limits. |
+| 8 Decide plan change | Pass | Rejection retained Basic; approval retained the same key at Partner limits; immediate Basic downgrade. |
+| 9 Open / Hidden (UI) | Pass | Open listed signed out; Hidden showed “Page not found” anonymously and plans signed in. |
+| 10 Internal (UI) | Pass | Named team subscribed/requested; outsider and signed-out visitor saw “Page not found.” |
+| 11 Manual assignment | Pass | “Set up by your admin”; no admin key; assignment email; recipient reveal and Kong 200. |
+| 12 Restrict existing access | Fail — major | Assigned subscriptions omitted from count and revocation: original key 401, assigned key still 200/Active; `restrict-assigned-key-fail.png`. |
+| 13 Revoke retry | Pass for selected subscriptions | “Revoke pending” and automatic retry; notice cleared, key 401 and three revocation emails; assigned-key omission is AC12 failure. |
+| Mobile main journey | Pass with minor | Request → approval → reveal → Kong 200; narrow side-by-side cards and overflow in `mobile-plan-layout-fail.png`. |
+| Keyboard main journey | Pass with minor | Tab/Enter approved; Escape closed dialog but focus returned to BODY and next Tab to “Skip to content.” |
+
+Backend-only HTTP/problem+json matrices, credential absence and mail/retry idempotence were not independently repeated; QA's Test report covers those assertions. Console inspection returned `"entries": []`, so no actual console error was available to quote. Two local failure images, no committed PNGs or browser logs.
 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
