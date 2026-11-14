@@ -41,7 +41,7 @@ describe('build-time demo switch', () => {
       fallback: [],
     });
   });
-  it('keeps the live proxy and no demo data outside demo mode', async () => {
+  it('leaves live API proxying to the runtime ingress outside Vercel', async () => {
     vi.stubEnv('PORTAL_DEMO_MODE', '');
     vi.stubEnv('VERCEL', '');
     vi.stubEnv('SERVER_URL', 'http://server:4000');
@@ -50,8 +50,18 @@ describe('build-time demo switch', () => {
       PORTAL_DEMO_ACTIVE: 'false',
       PORTAL_DEMO_SAMPLE_API: '',
     });
+    expect(await built.rewrites!()).toEqual([]);
+  });
+  it('keeps the live API rewrite on Vercel where the runtime ingress is absent', async () => {
+    vi.stubEnv('PORTAL_DEMO_MODE', 'off');
+    vi.stubEnv('VERCEL', '1');
+    vi.stubEnv('SERVER_URL', 'https://server.example');
+    const built = await config();
     expect(await built.rewrites!()).toEqual([
-      { source: '/api/:path*', destination: 'http://server:4000/api/:path*' },
+      {
+        source: '/api/:path*',
+        destination: 'https://server.example/api/:path*',
+      },
     ]);
   });
 });

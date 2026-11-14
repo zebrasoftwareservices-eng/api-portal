@@ -413,10 +413,10 @@ Kong objects; reconcile keeps running every 5 minutes as now and is idempotent.
 - [ ] [backend] Helm chart `deploy/helm/api-portal/` as designed, with NOTES.txt and `helm lint` clean (AC 7, 8, 9, 10).
 - [ ] [backend] CI jobs `upgrade-smoke` (`deploy/upgrade-smoke.mjs`, `deploy/ci/compose.upgrade.yaml`) and `helm-smoke` (`deploy/helm/smoke.sh`) (AC 2, 4–11).
 - [ ] [backend] `docs/install/production.md` (VM guide, Caddy, claim, connect Kong, backup cron, upgrade, rollback anchor `#roll-back`), `docs/install/helm.md`; README links them (AC 1, 4, 5, 6).
-- [ ] [frontend] Portal ingress proxies `/api/*` to `SERVER_URL` at runtime; middleware and `lib/server.ts` read it at runtime; test with a non-default server host.
-- [ ] [frontend] Portal ingress answers `GET /healthz` (200 when the Next child answers on loopback, 503 otherwise).
-- [ ] [frontend] `PORTAL_TRUSTED_PROXIES` in the portal ingress: keep client IP and `https` only from a trusted peer; unit tests for trusted, untrusted and spoofed headers.
-- [ ] [frontend] Portal Dockerfile: `PORTAL_VERSION` build arg, OCI labels, runs with a read-only root filesystem (writable `/tmp` only, or the proven minimum).
+- [x] [frontend] Portal ingress proxies `/api/*` to `SERVER_URL` at runtime; middleware and `lib/server.ts` read it at runtime; test with a non-default server host.
+- [x] [frontend] Portal ingress answers `GET /healthz` (200 when the Next child answers on loopback, 503 otherwise).
+- [x] [frontend] `PORTAL_TRUSTED_PROXIES` in the portal ingress: keep client IP and `https` only from a trusted peer; unit tests for trusted, untrusted and spoofed headers.
+- [x] [frontend] Portal Dockerfile: `PORTAL_VERSION` build arg, OCI labels, runs with a read-only root filesystem (writable `/tmp` only, or the proven minimum).
 - [ ] [qa] Run `upgrade-smoke` and `helm-smoke` locally and in CI; record AC 2–11 evidence in the Test report.
 - [ ] [qa] Verify the quickstart is unchanged: `deploy/docker-compose.yml` up in under five minutes, existing smokes and `pnpm test:e2e` pass.
 - [ ] [qa] Production Compose on a Linux host with a real Kong: HTTPS via the Caddy profile, `NODE_ENV=production`, no host ports for Postgres/server, no Kong container, no sample API, claim and connect Kong (AC 1).
@@ -428,6 +428,13 @@ No UI change: no new or changed screens, flows, states, copy or tokens (Out of s
 [`docs/design/016-production-install-helm.md`](../design/016-production-install-helm.md).
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend: the public portal ingress now routes `/api/*` to runtime `SERVER_URL`, serves
+  `/healthz` from a loopback Next probe, and sanitizes forwarding metadata with optional
+  `PORTAL_TRUSTED_PROXIES` IP/CIDR trust. The portal image no longer bakes `SERVER_URL`; it has
+  `PORTAL_VERSION`/OCI metadata, remains uid 1000, and uses `/tmp` as its writable runtime path.
+  Portal lint, typecheck, and all 285 tests pass; QA should exercise the image with a read-only
+  root filesystem and the production proxy subnet.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`

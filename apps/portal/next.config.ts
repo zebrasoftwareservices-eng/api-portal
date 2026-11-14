@@ -37,12 +37,16 @@ export default async function config(): Promise<NextConfig> {
           afterFiles: [],
           fallback: [],
         };
-      return [
-        {
-          source: '/api/:path*',
-          destination: `${process.env.SERVER_URL || 'http://localhost:4000'}/api/:path*`,
-        },
-      ];
+      // Self-hosted images proxy API traffic in ingress/proxy.ts so SERVER_URL
+      // remains runtime configuration. Vercel does not run that launcher.
+      return process.env.VERCEL === '1'
+        ? [
+            {
+              source: '/api/:path*',
+              destination: `${process.env.SERVER_URL || 'http://localhost:4000'}/api/:path*`,
+            },
+          ]
+        : [];
     },
   };
 }
