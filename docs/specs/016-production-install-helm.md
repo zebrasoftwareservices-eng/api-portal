@@ -1,7 +1,7 @@
 ---
 id: 016
 title: Production install — hardened Compose, Helm chart, backups and upgrades
-status: review  # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-13
 linear: JSO-244
@@ -502,14 +502,16 @@ Full evidence: `docs/uat/016/report.md`. No blocker or major UAT bug is open.
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/016.md`.
 
-Reviewed `git diff main...HEAD` at `5a2b7b4`. The Test report names `6cff3d0`; the only code change since is a static test in `apps/server/src/production-install.test.ts`, re-run here (9 passed). CI has not run on this branch: every job since the first push stops in 2–4 s with GitHub's "recent account payments have failed" billing block, and `main` shows the same. The CI second run therefore does not exist yet.
+Re-reviewed `git diff main...HEAD` at `3b9d4ea`. The Test report names `975e9d0`. Commits after it change only the spec, the log and `docs/uat/`, so the suite was not re-run. CI has not run on this branch because of the GitHub account billing block. That is Elango's to clear, and CI is still the second run.
 
-Checked and fine: config secrets and error output (`apps/server/src/config.ts`, `main.ts`), the setup-token row under the advisory lock and its delete in the claim transaction (`apps/server/src/setup.ts:116`), the schema-ahead guard before any write (`packages/db/src/index.ts:21`), readiness timeout and problem body (`apps/server/src/app.ts:39`), runtime `/api` proxying and trusted-proxy handling (`apps/portal/ingress/proxy.ts`), the Helm chart, the release workflow (exact tags, pinned SHAs, no `latest`), and backup/restore. Checked on Docker 29.9: the pinned Postgres image reads a `0600` secret owned by uid 1000, and the pinned Caddy image starts with `read_only`, `cap_drop: [ALL]` and `no-new-privileges`. The quickstart is unchanged.
+Both blocking findings from the review at `5a2b7b4` are resolved:
+- GHCR authentication. `docs/install/production.md:10` adds `docker login ghcr.io` with a `read:packages` token before the pull. `docs/install/helm.md:5-21` creates a `docker-registry` Secret and passes `imagePullSecrets[0].name` in both install commands. Checked with `helm template --kube-version 1.37.0`: the Secret reaches the server and portal pods. The bundled Postgres image is public and needs none.
+- AC 1 evidence. The Test report records a Caddy-profile walk of `deploy/production/compose.yaml` at `https://localhost`. It shows `NODE_ENV=production`, no host ports for Postgres or the server, no Kong in the project, an empty catalog, claim 201 and replay 409, and a separately started Kong 3.9.4 connected. The user test reached the same portal over HTTPS with clean desktop, mobile and keyboard passes. The timed clean-Ubuntu 30-minute walk stays with Elango at the release gate.
 
-- **blocking** — Neither install guide authenticates to the private GHCR packages. AC 3 keeps the packages private, but `docs/install/production.md:10` goes straight to `docker compose pull`. `docs/install/helm.md:5` installs with no `imagePullSecrets`. Someone following only the guide stops at "unauthorized" on a clean VM or cluster, so AC 1 cannot pass. Fix: add a step before the pull: `docker login ghcr.io -u <github-user>` with a token that has `read:packages`. Add the matching `kubectl create secret docker-registry` and `--set imagePullSecrets[0].name=…` to the Helm guide.
-- **blocking** — AC 1 has no evidence. The Caddy profile has never been started by any test. Only a static check in `production-install.test.ts:27` covers it. The open `[qa]` task "Production Compose on a Linux host with a real Kong" is the fix for this, so no new task is added. QA can run it on any Docker host without a clean VM. Use `deploy/production/compose.yaml` with the candidate images retagged, `--profile caddy` and `PORTAL_DOMAIN=localhost` (Caddy issues a local certificate), and a separately started Kong. Then record HTTPS, `NODE_ENV=production`, no host ports for Postgres or the server, no Kong container, no sample API, the claim, and the Kong connection. If no clean Ubuntu 26.04 VM exists, the timed 30-minute walk goes to Elango at the release gate.
+No blocking findings. Open suggestions (no Fix task):
 - **suggestion** — `.github/workflows/ci.yml:68` and `:78` use tag-pinned actions (`actions/checkout@v4`, `helm/kind-action@v1.12.0`), but `release.yml` pins SHAs. Pin the new jobs the same way when CI is next touched.
-- **suggestion** — `deploy/production/secrets/README.md:11` uses `chmod 600`. This works only when the files belong to uid 1000, the server's user. Ubuntu's first user is uid 1000, but files created under `sudo` are root-owned, and the server then fails with "cannot read". Say to create them as uid 1000 or `chown 1000`.
+- **suggestion** — `deploy/production/secrets/README.md:11` uses `chmod 600`. That works only when uid 1000, the server's user, owns the files. Files created under `sudo` are root-owned, and then the server fails with "cannot read". Tell readers to create the files as uid 1000 or run `chown 1000`.
+- **suggestion** — `docs/install/helm.md:8` runs `kubectl create namespace portal`, and the next command still passes `--create-namespace`. That is harmless, but drop one of them.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
