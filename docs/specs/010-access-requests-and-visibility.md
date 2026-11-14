@@ -1,7 +1,7 @@
 ---
 id: 010
 title: Access requests and catalog visibility
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-238
@@ -480,46 +480,30 @@ Console inspection on both current tabs returned `"entries": []`; no actual cons
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/010.md`.
 
-Review 2026-11-14 of `d454f9c` (`git diff main...HEAD`). The Test report covers application commit
-`ba6d948`; later commits change only tests and docs, and the full suite passed, so it was not re-run.
-CI on the pushed branch is the second run. Every acceptance criterion 1–13 maps to a passing
-automated test. The code matches the contract and data model: one drizzle-kit migration with safe
-upgrade defaults, problem+json everywhere, no secrets in mail jobs (id payloads only), Kong objects
-tagged through the existing adapter, and reconcile never re-grants a non-`active` app. The quickstart
-passed in 172.8 s. **Result: changes requested.** Per Elango, the cheap suggestions below are fixed
-now, so they're Blocking with Fix tasks.
+Re-review 2026-11-14 of `a379fd0`, covering `cc35e79..HEAD` (SDK `434e726`, backend `bf684e3`,
+frontend `28d29c4`, QA `fbb1ef6..6eff692`, UAT `a379fd0`). The Test report covers `aa75415` with
+lint, typecheck and `pnpm test` green; later commits change only a spec 009 test helper (`98cc0dd`,
+its browser journey re-passed) and docs, so the suite was not re-run. CI on the pushed branch is the
+second run. **Result: approved — no blocking findings.**
 
-**Blocking** (each has a Fix task):
-- `apps/server/src/revocation.ts:64` swallows the Kong/DB error with no log, and
-  `app-provisioning.ts:22` and `:137` dropped spec 009's "compensation deferred to reconcile"
-  warning. Log `{ appId }` and the error class (never a key or credential) so an operator can see
-  why a revocation stays pending.
-- `apps/server/src/products.ts:60` — `requiresApproval: z.boolean().default(false)` means a plan PUT
-  that omits it turns approval off. On update, an omitted value keeps the current one (on create it
-  stays `false`). The contract documents this; no shape change.
-- `apps/server/src/product-access.ts:183` — Manual→Internal isn't treated as restricting, so a team
-  holding an active admin assignment that isn't named loses visibility with no Keep/Revoke prompt.
-  Count those subscriptions as affected and use the same confirmation.
-- `apps/server/src/product-access.ts:281` — `POST /v1/admin/subscriptions` on an Internal product
-  for a team that isn't named answers 409 `/problems/team-not-named` and creates nothing (contract
-  updated). The admin assign dialog shows "Add the team to this product first".
-- `apps/server/src/products.ts:156` and `:159` — `GET /v1/products` calls `loadViewer` for the
-  filter and again for every product. Load it once per request and pass it down.
-- `apps/server/package.json:41` adds `testcontainers` (dev only) for the real-Kong revocation test
-  without a recorded reason. Add one line to Build notes.
-- UAT minor: mobile plan cards overflow by 20px at 390px (Bugs).
-- UAT minor: Escape from the approval dialog returns focus to BODY instead of the Approve button
-  (Bugs).
+All eight earlier Blocking findings are resolved:
+- Diagnostics: `apps/server/src/revocation.ts:66` and `compensate` in
+  `apps/server/src/app-provisioning.ts:21` log `{ appId, errorClass }` with no key or credential;
+  every caller (including reconcile and the revocation job) passes the logger.
+- `apps/server/src/products.ts:60` — `requiresApproval` is optional; on update an omitted value is
+  skipped by the `set`, on create the column default `false` applies. Contract and SDK match.
+- `apps/server/src/product-access.ts:186` — Manual→Internal now counts unnamed teams' subscriptions
+  and uses the Keep/Revoke confirmation.
+- `apps/server/src/product-access.ts:320` — admin assignment on an Internal product for an unnamed
+  team answers 409 `/problems/team-not-named` before any Kong call; the assign dialog shows
+  "Add the team to this product first" (`apps/portal/components/product-access.tsx:319`).
+- `apps/server/src/products.ts:151` — `GET /v1/products` loads the viewer once per request.
+- Build notes record why `testcontainers` is a server dev dependency.
+- UAT minors: plan cards stack at 390px (`products.css:41`), and the approval dialog returns focus
+  to the originating button (`access-shared.tsx:133`); both retested in UAT.
 
-**Suggestions** (follow-ups, no Fix task):
-- `apps/server/src/revocation.ts:37` and every subscription write in `apps.ts`,
-  `access-requests.ts` and `product-access.ts` take the global advisory lock `71833005` and hold it
-  across Kong HTTP calls, so subscription writes run one at a time. Fine at single-tenant scale;
-  narrow it to a per-product or per-app lock if contention shows up.
-- `apps/server/src/catalog.ts` `publishedApis` runs `canSeeApi`/`productVisible` per row (N+1).
-  Fine at seed size; batch it with `visibleProductIds` later.
-
-The four provisional product defaults were accepted by Elango (Open questions).
+**Suggestions** (no Fix task): none new. The global advisory lock and the per-row catalog
+visibility check remain follow-ups by Elango's decision. The four product defaults are accepted.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
