@@ -1,7 +1,7 @@
 ---
 id: 010
 title: Access requests and catalog visibility
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-238
@@ -419,12 +419,13 @@ Ownership guard limitation: `node scripts/factory.mjs guard qa-tester` flags pri
 - [x] Invisible product and changelog pages return HTTP 200 instead of 404 (major)
   - Verified on rebuilt `043b2a8`: anonymous Hidden, Internal and Manual product/API/changelog pages and unknown slugs return HTTP 404; signed-in Hidden pages return HTTP 200. Confirmed with `linear bug 010 done`; no Linear issue exists or was created, per Elango.
 - [x] Revoke-on-restrict leaves admin-assigned subscription keys working (major)
+  - Browser retest verified visibility and approval confirmations include admin assignments; Keep retains 200, Revoke/retry returns 401, assigned subscriptions show Revoked and notifications arrive once per observed subscription. Confirmed with `linear bug 010 done`; no Linear issue, per Elango.
 - [ ] Mobile plan cards and caption remain in narrow side-by-side columns at 390px with 20px horizontal overflow (minor); request/reveal journey still works. Evidence: `docs/uat/010/mobile-plan-layout-fail.png`.
 - [ ] Escape from the approval dialog returns focus to BODY instead of the originating Approve button (minor); Tab restarts at Skip to content, but approval remains possible.
 
 ## User testing  _(user-tester)_
 
-2026-11-14 UAT of QA's application `043b2a8` at http://localhost:3019: **failed; building**. Full evidence: `docs/uat/010/report.md`. Per Elango, this bug remains spec-only with no Linear issue now or later; screenshots remain local and uncommitted.
+2026-11-14 UAT retest of rows 12–13 on QA’s running stack with fix `ba6d948` (checkout `ef055f6`) at http://localhost:3019: **passed; review**. Other rows retain the original walk’s evidence; the two minor findings remain open. Full evidence: `docs/uat/010/report.md`; no Linear bug was created, per Elango.
 
 | User story / criterion | Result | Evidence |
 | --- | --- | --- |
@@ -439,12 +440,12 @@ Ownership guard limitation: `node scripts/factory.mjs guard qa-tester` flags pri
 | 9 Open / Hidden (UI) | Pass | Open listed signed out; Hidden showed “Page not found” anonymously and plans signed in. |
 | 10 Internal (UI) | Pass | Named team subscribed/requested; outsider and signed-out visitor saw “Page not found.” |
 | 11 Manual assignment | Pass | “Set up by your admin”; no admin key; assignment email; recipient reveal and Kong 200. |
-| 12 Restrict existing access | Fail — major | Assigned subscriptions omitted from count and revocation: original key 401, assigned key still 200/Active; `restrict-assigned-key-fail.png`. |
-| 13 Revoke retry | Pass for selected subscriptions | “Revoke pending” and automatic retry; notice cleared, key 401 and three revocation emails; assigned-key omission is AC12 failure. |
+| 12 Restrict existing access | Pass (retest) | Visibility and approval both counted all three teams, including admin assignment; default Keep retained 200 for all keys. Visibility Revoke plus automatic retry gave 401 for all three. Separate approval Revoke counted its sole admin-assigned subscription and changed its key from 200 to 401; admin showed “Revoked.” |
+| 13 Revoke retry | Pass (retest) | Kong stopped: Hidden persisted after reload, all three named “Revoke pending,” no revocation email. Kong restarted: pending notice cleared, all three keys 401, Mailpit “1-3 of 3” remained stable on later refresh; separate approval Revoke added one fourth email. |
 | Mobile main journey | Pass with minor | Request → approval → reveal → Kong 200; narrow side-by-side cards and overflow in `mobile-plan-layout-fail.png`. |
 | Keyboard main journey | Pass with minor | Tab/Enter approved; Escape closed dialog but focus returned to BODY and next Tab to “Skip to content.” |
 
-Backend-only HTTP/problem+json matrices, credential absence and mail/retry idempotence were not independently repeated; QA's Test report covers those assertions. Console inspection returned `"entries": []`, so no actual console error was available to quote. Two local failure images, no committed PNGs or browser logs.
+Backend-only HTTP/problem+json matrices, credential absence and mail/retry idempotence were not independently repeated; QA's Test report covers those assertions. Console inspection returned `"entries": []`, so no actual console error was available to quote. The obsolete assigned-key failure image was removed; no new images, committed PNGs or browser logs.
 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
