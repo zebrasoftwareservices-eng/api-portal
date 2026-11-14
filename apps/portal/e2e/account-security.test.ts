@@ -940,6 +940,7 @@ for (const width of [1280, 390]) {
     ).toBe(200);
     const sections = [
       ['/admin/apis', 'APIs'],
+      ['/admin/products', 'Products'],
       ['/admin/gateways', 'Gateways'],
       ['/admin/settings/mail', 'Mail'],
       ['/admin/settings/accounts', 'Accounts'],
@@ -956,7 +957,7 @@ for (const width of [1280, 390]) {
       });
       await expect(nav).toHaveCount(1);
       await expect(select).toHaveCount(1);
-      await expect(nav.locator('a')).toHaveCount(4);
+      await expect(nav.locator('a')).toHaveCount(sections.length);
       await expect(nav.locator('[aria-current="page"]')).toHaveText(label);
       await expect(select).toHaveValue(path);
       if (width === 390) {

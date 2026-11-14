@@ -86,6 +86,12 @@ conformance(
         instanceId,
         fetch: async () => new Response('', { status: 401 }),
       }),
+    ratePlugins: async (appId) =>
+      (await adapter.request<{
+        data: { id: string; config: Record<string, unknown>; tags: string[] }[];
+      }>(`/plugins?tags=portal-app-${appId}`))!.data.filter(
+        (p) => p.config.limit_by === 'consumer',
+      ),
     serviceId: randomUUID(),
     memberships: async (appId) =>
       (await adapter.request<{
@@ -891,5 +897,86 @@ it('AC 7(e): two real Kongs expose missing consumers and new credentials work af
   } finally {
     await adapter.deleteConsumer(app);
     await second.stop();
+  }
+});
+
+it('enforces a shared monthly quota and preserves counters across a plan replacement on real Kong', async () => {
+  const a = await service(),
+    b = await service(),
+    key = await portalKey(),
+    app = { id: key.appId };
+  try {
+    for (const s of [a, b]) {
+      await adapter.protectService(s);
+      await adapter.grantAccess(app, s);
+    }
+    await status(a.id, key.key, 200);
+    await status(b.id, key.key, 200);
+    await adapter.applyPlanLimits(app, {
+      rate: { unit: 'second', limit: 5 },
+      monthlyQuota: 10,
+    });
+    const consumer = await adapter.request<{ id: string }>(
+      `/consumers/portal-app-${app.id}`,
+    );
+    // Kong's cluster policy schedules its Postgres increment on a timer.
+    // A proxy response (or a fixed delay) does not establish that it committed.
+    // Observe persistence without sending probe traffic that consumes quota.
+    const persistedUsage = async () => {
+      const result = await postgres.exec([
+        'psql',
+        '-U',
+        'kong',
+        '-d',
+        'kong',
+        '-Atc',
+        `SELECT COALESCE(SUM(value), 0) FROM ratelimiting_metrics
+         WHERE identifier = '${consumer!.id}' AND period = 'month'
+         AND period_date = date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')`,
+      ]);
+      expect(result.exitCode, result.output).toBe(0);
+      return Number(result.output.trim());
+    };
+    const countedCall = async (index: number, quota: number) => {
+      const response = await call(index % 2 ? a.id : b.id, key.key);
+      expect(response.status).toBe(200);
+      // Also catch requests that bypass a not-yet-visible plugin or use stale limits.
+      expect(response.headers.get('x-ratelimit-limit-month')).toBe(
+        String(quota),
+      );
+      expect(response.headers.get('x-ratelimit-remaining-month')).toBe(
+        String(quota - index - 1),
+      );
+      await expect
+        .poll(persistedUsage, { timeout: 10000, interval: 100 })
+        .toBe(index + 1);
+      // Keep this monthly-quota test below the independent five-per-second limit.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    };
+    for (let i = 0; i < 8; i++) await countedCall(i, 10);
+    await adapter.applyPlanLimits(app, {
+      rate: { unit: 'second', limit: 5 },
+      monthlyQuota: 20,
+    });
+    // Replacing the plugin must preserve the eight committed uses of the quota.
+    expect(await persistedUsage()).toBe(8);
+    for (let i = 8; i < 20; i++) await countedCall(i, 20);
+    const exhausted = await call(a.id, key.key);
+    expect(exhausted.status).toBe(429);
+    expect(exhausted.headers.get('x-ratelimit-remaining-month')).toBe('0');
+    expect(await persistedUsage()).toBe(20);
+    await adapter.applyPlanLimits(app, null);
+    const remaining = await adapter.request<{ data: { name: string }[] }>(
+      `/plugins?tags=portal-app-${app.id}`,
+    );
+    expect(
+      remaining!.data.filter((plugin) => plugin.name === 'rate-limiting'),
+    ).toEqual([]);
+    // Deletion can reach the Admin API before the proxy invalidates its cached
+    // plugin. This removal check uses the same bounded convergence as key/ACL
+    // removal above; the counted quota and replacement requests stay exact.
+    await status(a.id, key.key, 200);
+  } finally {
+    await adapter.deleteConsumer(app);
   }
 });

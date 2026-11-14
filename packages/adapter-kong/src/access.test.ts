@@ -44,6 +44,14 @@ function fixture(plugins: Entity[] = [], consumers: Entity[] = []) {
         else if (path === '/routes') data = routes;
         else if (path === '/plugins') data = plugins;
         else if (path === '/consumers') data = consumers;
+        else if (path.startsWith('/consumers/') && !path.endsWith('/acls'))
+          return Response.json(
+            consumers.find(
+              (c) =>
+                c.username === path.split('/')[2] ||
+                c.id === path.split('/')[2],
+            ) ?? {},
+          );
         else if (path === '/acls') {
           const all = [...members].flatMap(([id, rows]) =>
             rows.map((row) => ({ ...row, consumer: { id } })),
@@ -452,4 +460,64 @@ describe('Kong access policy', () => {
       }),
     ).toBe(false);
   });
+});
+
+it('reconciles rate-limit drift, removes orphan plugins and preserves more-specific operator plugins', async () => {
+  const consumer = {
+    id: 'consumer',
+    username: 'portal-app-app',
+    custom_id: 'app',
+    tags: [...tags, 'portal-app-app'],
+  };
+  const operator = {
+    id: 'operator',
+    name: 'rate-limiting',
+    route: { id: 'r1' },
+    service: { id: 'a' },
+    config: { second: 1 },
+    tags: ['operator'],
+  };
+  const f = fixture([operator], [consumer]);
+  const policy = {
+    services: [{ id: 'a' }],
+    apps: [
+      {
+        app: { id: 'app' },
+        services: [{ id: 'a' }],
+        limits: {
+          rate: { unit: 'second' as const, limit: 5 },
+          monthlyQuota: 10,
+        },
+      },
+    ],
+  };
+  const first = await f.adapter.applyAccessPolicy(policy);
+  expect(first.findings).toContainEqual(
+    expect.objectContaining({ code: 'foreign-rate-limit', serviceId: 'a' }),
+  );
+  expect(first.repairs).toContainEqual(
+    expect.objectContaining({
+      object: 'plugin',
+      appId: 'app',
+      action: 'added',
+    }),
+  );
+  expect((await f.adapter.applyAccessPolicy(policy)).repairs).toEqual([]);
+  const plugin = f.plugins.find(
+    (p) => p.name === 'rate-limiting' && p.id !== 'operator',
+  )!;
+  plugin.config!.second = 99;
+  expect((await f.adapter.applyAccessPolicy(policy)).repairs).toContainEqual(
+    expect.objectContaining({ object: 'plugin', action: 'updated' }),
+  );
+  const removed = await f.adapter.applyAccessPolicy({
+    ...policy,
+    apps: [{ ...policy.apps[0]!, limits: null }],
+  });
+  expect(removed.repairs).toContainEqual(
+    expect.objectContaining({ object: 'plugin', action: 'removed' }),
+  );
+  expect(f.plugins.filter((p) => p.name === 'rate-limiting')).toEqual([
+    operator,
+  ]);
 });

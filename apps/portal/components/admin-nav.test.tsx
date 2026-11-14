@@ -10,13 +10,14 @@ vi.mock('next/navigation', () => ({
 }));
 const items = [
   ['/admin/apis', 'APIs'],
+  ['/admin/products', 'Products'],
   ['/admin/gateways', 'Gateways'],
   ['/admin/settings/mail', 'Mail'],
   ['/admin/settings/accounts', 'Accounts'],
 ] as const;
 describe('shared admin navigation', () => {
   it.each([...items, ['/admin/apis/api-id/versions', 'APIs'] as const])(
-    'marks the current section on %s and offers all four destinations',
+    'marks the current section on %s and offers all five destinations',
     (path, label) => {
       mocks.path = path;
       render(<AdminNav />);
@@ -32,7 +33,7 @@ describe('shared admin navigation', () => {
       ).toHaveValue(items.find(([, name]) => name === label)?.[0]);
     },
   );
-  it('navigates between all four sections with the mobile select', async () => {
+  it('navigates between all five sections with the mobile select', async () => {
     mocks.path = '/admin/gateways';
     const actor = userEvent.setup();
     render(<AdminNav />);

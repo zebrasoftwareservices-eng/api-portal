@@ -2,11 +2,15 @@
 export interface AppRef {
   id: string;
 }
+export interface PlanLimits {
+  rate: { unit: 'second' | 'minute'; limit: number };
+  monthlyQuota: number;
+}
 export interface Capabilities {
   apiKeys: true;
   accessControl: true;
   oauthClients: false;
-  plans: false;
+  plans: boolean;
   usage: false;
 }
 export interface HealthReport {
@@ -58,7 +62,7 @@ export interface ServiceProtection {
 }
 export interface AccessPolicy {
   services: ServiceRef[];
-  apps: { app: AppRef; services: ServiceRef[] }[];
+  apps: { app: AppRef; services: ServiceRef[]; limits: PlanLimits | null }[];
 }
 export interface AccessReport {
   repairs: AccessRepair[];
@@ -88,6 +92,7 @@ export interface GatewayAdapter {
     credential: CredentialSpec,
   ): Promise<IssuedCredential>;
   revokeCredential(app: AppRef, credentialId: string): Promise<void>;
+  applyPlanLimits(app: AppRef, limits: PlanLimits | null): Promise<void>;
   grantAccess(app: AppRef, service: ServiceRef): Promise<void>;
   revokeAccess(app: AppRef, service: ServiceRef): Promise<void>;
   protectService(service: ServiceRef): Promise<ServiceProtection>;

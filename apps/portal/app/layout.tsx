@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Metadata } from 'next';
 import '@portal/ui/styles.css';
+import './products/[slug]/products.css';
 import { currentUser } from '../lib/server';
 import { Providers } from '../components/providers';
 import { Header } from '../components/header';

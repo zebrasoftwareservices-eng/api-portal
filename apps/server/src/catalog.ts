@@ -1,16 +1,39 @@
 // SPDX-License-Identifier: Apache-2.0
-import { apis, apiVersions, gateways, type Database } from '@portal/db';
+import {
+  apis,
+  apiVersions,
+  gateways,
+  products,
+  productApis,
+  type Database,
+} from '@portal/db';
 import { eq, desc } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { orderVersions, versionDocumentUrl } from './versions.js';
 import { notFound } from './problem.js';
 export async function publishedApis(db: Database) {
-  return db
+  const rows = await db
     .select({ api: apis, version: apiVersions, gateway: gateways })
     .from(apis)
     .innerJoin(apiVersions, eq(apis.latestVersionId, apiVersions.id))
     .innerJoin(gateways, eq(apis.gatewayId, gateways.id))
     .orderBy(desc(apis.publishedAt));
+  const links = await db
+    .select({
+      apiId: productApis.apiId,
+      id: products.id,
+      slug: products.slug,
+      name: products.name,
+    })
+    .from(productApis)
+    .innerJoin(products, eq(products.id, productApis.productId));
+  return rows.map((row) => ({
+    ...row,
+    products: links
+      .filter((l) => l.apiId === row.api.id)
+      .map((l) => ({ id: l.id, slug: l.slug, name: l.name }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  }));
 }
 export type PublishedApi = Awaited<ReturnType<typeof publishedApis>>[number];
 export const baseUrl = (row: PublishedApi) =>
@@ -18,6 +41,7 @@ export const baseUrl = (row: PublishedApi) =>
 export function apiSummary(row: PublishedApi) {
   return {
     id: row.api.id,
+    products: row.products,
     slug: row.api.slug,
     title: row.version.title,
     version: row.version.version,

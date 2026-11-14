@@ -23,3 +23,14 @@ it('JSO-180 preserves the current app path and carries the session-ended toast a
   );
   expect(sessionStorage.getItem('portal-session-ended')).toBe('true');
 });
+it('keeps product permission refusals on the form so the UI can explain that nothing was saved', async () => {
+  const assign = vi.fn();
+  vi.stubGlobal('window', { location: { assign } });
+  await middleware.mock.calls[0]![0].onResponse({
+    response: new Response(JSON.stringify({ type: '/problems/forbidden' }), {
+      status: 403,
+    }),
+    schemaPath: '/v1/admin/products/{productId}/plans',
+  });
+  expect(assign).not.toHaveBeenCalled();
+});

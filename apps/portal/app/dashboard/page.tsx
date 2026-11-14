@@ -4,8 +4,13 @@ export const metadata = { title: 'My apps' };
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ api?: string | string[] }>;
+  searchParams: Promise<{ api?: string | string[]; notice?: string }>;
 }) {
-  const { api } = await searchParams;
-  return <Dashboard slug={typeof api === 'string' ? api : undefined} />;
+  const { api, notice } = await searchParams;
+  return (
+    <Dashboard
+      notice={notice}
+      slug={typeof api === 'string' ? api : undefined}
+    />
+  );
 }

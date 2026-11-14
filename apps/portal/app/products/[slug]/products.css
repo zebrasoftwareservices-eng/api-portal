@@ -1,0 +1,50 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+.plan-comparison {
+  overflow-x: auto;
+}
+.plan-comparison table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.plan-comparison th,
+.plan-comparison td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.plan-comparison th:first-child {
+  position: sticky;
+  left: 0;
+  background: var(--background);
+}
+.plan-comparison caption {
+  text-align: left;
+  padding: 12px 0;
+  color: var(--muted-foreground);
+}
+.plan-cards {
+  display: none;
+}
+.form-column {
+  max-width: var(--portal-form-max-width, 640px);
+  width: 100%;
+}
+.product-description {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 767px) {
+  .plan-comparison {
+    display: none;
+  }
+  .plan-cards {
+    display: flex;
+  }
+  .plan-cards .button {
+    width: 100%;
+  }
+}
+
+.product-description pre {
+  overflow-x: auto;
+  white-space: pre-wrap;
+}

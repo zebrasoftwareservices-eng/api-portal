@@ -1,16 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import {
-  apps,
-  credentials,
-  apis,
-  subscriptions,
-  type Database,
-} from '@portal/db';
+import { apps, credentials, apis, plans, type Database } from '@portal/db';
 import {
   requireGateway,
   type GatewayConnection,
 } from './gateway-connection.js';
 import type { FastifyBaseLogger } from 'fastify';
+import { appApis, planLimits } from './app-plans.js';
 import { sql, eq } from 'drizzle-orm';
 export async function reconcile(
   db: Database,
@@ -27,7 +22,7 @@ export async function reconcile(
     const { adapter } = requireGateway(gateway);
     const [owned, appRows, keyRows] = await Promise.all([
       adapter.listOwnedConsumers(),
-      tx.select({ id: apps.id }).from(apps),
+      tx.select().from(apps),
       tx.select().from(credentials),
     ]);
     const appIds = new Set(appRows.map((a) => a.id));
@@ -52,26 +47,27 @@ export async function reconcile(
           { appId: row.appId, credentialId: row.id },
           'drift: active credential missing from gateway',
         );
-    const [apiRows, subRows] = await Promise.all([
-      tx.select({ id: apis.gatewayServiceId, slug: apis.slug }).from(apis),
-      tx
-        .select({
-          appId: subscriptions.appId,
-          serviceId: apis.gatewayServiceId,
-        })
-        .from(subscriptions)
-        .innerJoin(apis, eq(subscriptions.apiId, apis.id)),
-    ]);
+    const apiRows = await tx
+      .select({ id: apis.gatewayServiceId, slug: apis.slug })
+      .from(apis);
+    const desired = await Promise.all(
+      appRows.map(async (app) => {
+        const [plan] = await tx
+          .select()
+          .from(plans)
+          .where(eq(plans.id, app.planId));
+        return {
+          app: { id: app.id },
+          services: [
+            ...new Set((await appApis(tx, app)).map((a) => a.gatewayServiceId)),
+          ].map((id) => ({ id })),
+          limits: planLimits(plan!),
+        };
+      }),
+    );
     const report = await adapter.applyAccessPolicy({
       services: apiRows.map((a) => ({ id: a.id })),
-      apps: appRows.map((app) => ({
-        app,
-        services: [
-          ...new Set(
-            subRows.filter((s) => s.appId === app.id).map((s) => s.serviceId),
-          ),
-        ].map((id) => ({ id })),
-      })),
+      apps: desired,
     });
     for (const repair of report.repairs)
       log.warn(repair, 'drift: access policy repaired');

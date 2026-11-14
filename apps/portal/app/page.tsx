@@ -9,10 +9,18 @@ export default async function Catalog() {
   if (isDemo())
     return <CatalogView items={[demoData().api]} user={null} demo />;
   const client = await serverClient();
-  const [{ data, error }, user] = await Promise.all([
-    client.GET('/v1/apis'),
+  const [{ data, error }, user, products] = await Promise.all([
+    client.GET('/v1/apis').catch(() => ({ data: undefined, error: true })),
     signedInUser(),
+    client.GET('/v1/products').catch(() => ({ data: undefined, error: true })),
   ]);
-  if (error) throw new Error('Catalog unavailable');
-  return <CatalogView items={data?.items || []} user={user} />;
+  return (
+    <CatalogView
+      items={(data?.items || []).filter((a) => !a.products?.length)}
+      user={user}
+      apisFailed={!!error}
+      products={products.data?.items || []}
+      productsFailed={!!products.error}
+    />
+  );
 }

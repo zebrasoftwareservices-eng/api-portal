@@ -20,6 +20,7 @@ vi.mock('../lib/client', () => ({
   }),
 }));
 const detail: ApiDetail = {
+  products: [],
   id: 'api',
   slug: 'orders',
   title: 'Orders API',

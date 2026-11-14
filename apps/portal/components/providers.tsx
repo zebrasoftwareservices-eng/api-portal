@@ -7,6 +7,7 @@ type Reveal = {
   app: App;
   credential: IssuedCredential;
   variant: 'first' | 'additional';
+  notice?: string;
 };
 const Context = createContext<{
   user: User | null;
