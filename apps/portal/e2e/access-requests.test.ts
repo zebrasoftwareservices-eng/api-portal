@@ -313,11 +313,28 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
   );
   expect((await call()).status()).toBe(200);
   const anonymous = await playwright.request.newContext({ baseURL: origin });
-  expect.soft((await anonymous.get(`/products/${slug}`)).status()).toBe(404);
-  expect.soft((await anonymous.get(`/apis/${slug}`)).status()).toBe(404);
-  expect
-    .soft((await anonymous.get(`/apis/${slug}/changelog`)).status())
-    .toBe(404);
+  for (const visibility of ['hidden', 'internal', 'manual', 'hidden']) {
+    await json(
+      await operator.put(access, {
+        data: { visibility, teamIds: [], existingSubscriptions: 'keep' },
+      }),
+    );
+    for (const path of [
+      `/products/${slug}`,
+      `/apis/${slug}`,
+      `/apis/${slug}/changelog`,
+    ]) {
+      const response = await anonymous.get(path);
+      expect.soft(response.status(), `${visibility}: ${path}`).toBe(404);
+      expect.soft(await response.text()).toContain('Page not found');
+    }
+  }
+  for (const path of [
+    `/products/unknown-${slug}`,
+    `/apis/unknown-${slug}/changelog`,
+  ]) {
+    expect.soft((await anonymous.get(path)).status(), path).toBe(404);
+  }
   expect((await context.request.get(`/products/${slug}`)).status()).toBe(200);
   await expect
     .poll(() => Date.now() % 60000 < 30000, { timeout: 31000 })

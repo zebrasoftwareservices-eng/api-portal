@@ -365,7 +365,7 @@ desired-state loop skips non-active apps, so a revoked key can never come back.
 - [x] [qa] Integration with real Kong: approve → key works within plan limits; reject; Kong down on approve; plan-change keep key and limits; concurrent approve (AC 1–4, 6–8)
 - [x] [qa] Integration with real Kong: Manual assignment, keep vs revoke (401 after revoke), partial failure + retry idempotence + one email per team, reconcile doesn't resurrect (AC 11–13)
 - [ ] [qa] Playwright e2e: Sprint 4 demo step 3 (request Partner → admin approves → reveal key → call works; Hidden product 404 when signed out); quickstart smoke
-- [ ] [frontend] Fix: Invisible product and changelog pages return HTTP 200 instead of 404
+- [x] [frontend] Fix: Invisible product and changelog pages return HTTP 200 instead of 404
 
 ## UX  _(ui-designer)_
 Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access-requests-and-visibility.md). No new tokens.
@@ -381,7 +381,7 @@ Implemented all backend tasks: the generated `0007_parallel_ravenous` migration,
 
 Validation: `@portal/db`, `@portal/server` and `@portal/sdk` lint and typecheck pass; database tests **9/9** and server tests **271/271** pass, and SDK tests exit successfully with no test files. Added migration-upgrade/index tests, policy tests, request/approval/rejection/concurrency/failure/plan-change/revocation tests, and real pg-boss/Postgres tests for atomic job rollback and current recipient lookup. Docker-dependent checks required sandbox escalation; no workspace suite, browser or quickstart was run. The ownership guard includes prior design-stage files and the frontend owner's files; Elango explicitly authorized a scoped backend-only commit and feature-branch push despite that guard limitation.
 
-- Frontend: implemented approval requests, team request history, subscription reveal/revocation states, the admin request queue, and product visibility/assignment with Keep/Revoke confirmation. Existing product/API 404 handling is retained and changelog 404 handling is completed; the API-only demo remains unchanged. Portal lint/typecheck and all 329 package tests pass; generated SDK lint/typecheck/test pass (no SDK test files). The socket-based ingress tests require an escalated run because sandbox listening sockets fail with EPERM.
+- Frontend: implemented approval requests, team request history, subscription reveal/revocation states, the admin request queue, and product visibility/assignment with Keep/Revoke confirmation. Product and changelog layouts now await the visibility/not-found decision before their loading boundaries can stream HTTP 200; the changelog layout and page share a request-cached loader. Added five layout regression tests and expanded the existing e2e assertions for Hidden, Internal, Manual and unknown slugs. Portal lint, typecheck and all 334 package tests pass; browser/e2e and quickstart verification remains with QA. The ownership guard flags prior backend/design/SDK changes already on the feature branch; Elango authorized committing only this round's six portal files and the spec/log with an explicit pathspec.
 
 ## Test report  _(qa-tester)_
 Application commit tested: `005cd7d4e2b8a08c97f13b6ee05f914d5d8e4d3c`, with the QA tests in this worktree. Portal: `http://localhost:3019` (`node scripts/worktree-compose.mjs env`).
@@ -410,7 +410,7 @@ Quickstart: `node scripts/worktree-compose.mjs up -d --build --wait` succeeds af
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
-- [ ] Invisible product and changelog pages return HTTP 200 instead of 404 (major)
+- [x] Invisible product and changelog pages return HTTP 200 instead of 404 (major)
   - Current repro: signed-out `GET /products/access-d79f1b28-0612-43a7-9027-b072da0353a1` on the QA portal returns 200 with not-found content; the full browser run also reproduces Hidden product and changelog 200 responses. Expected 404.
 
 ## User testing  _(user-tester)_
