@@ -780,3 +780,6 @@ import './account-security.test';
 
 // Spec 008 team journeys run in the Compose-backed root suite.
 import './teams.test';
+
+// Spec 010 approval and visibility journeys against the isolated real gateway.
+import './access-requests.test';

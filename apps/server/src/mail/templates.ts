@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 export type Template =
-  'verify' | 'reset-password' | 'confirm-email' | 'test' | 'team-invitation';
+  | 'verify'
+  | 'reset-password'
+  | 'confirm-email'
+  | 'test'
+  | 'team-invitation'
+  | 'access-approved'
+  | 'access-rejected'
+  | 'subscription-assigned'
+  | 'subscription-revoked';
 const escape = (s: string) =>
   s.replace(
     /[&<>"']/g,
@@ -16,6 +24,10 @@ export function renderMail(
     email: string;
     link: string;
     portalUrl: string;
+    productName?: string;
+    planName?: string;
+    appName?: string;
+    note?: string | null;
     teamName?: string;
     inviterName?: string;
     role?: string;
@@ -26,6 +38,30 @@ export function renderMail(
 ) {
   const host = new URL(data.portalUrl).host;
   const content = {
+    'access-approved': {
+      subject: `Access approved on ${host}`,
+      body: `Your request for ${data.productName} / ${data.planName} was approved. Open ${data.appName} to reveal your API key.${data.note ? '\n\nNote from the administrator: ' + data.note : ''}`,
+      label: 'Open subscription',
+      footer: 'Your API key is available in the portal only.',
+    },
+    'access-rejected': {
+      subject: `Access request rejected on ${host}`,
+      body: `Your request for ${data.productName} / ${data.planName} was rejected.${data.note ? '\n\n' + data.note : ''}`,
+      label: 'View requests',
+      footer: 'Contact your portal administrator if you need help.',
+    },
+    'subscription-assigned': {
+      subject: `Subscription assigned on ${host}`,
+      body: `An administrator assigned ${data.appName} (${data.productName} / ${data.planName}) to ${data.teamName}. Open the subscription to reveal its API key.`,
+      label: 'Open subscription',
+      footer: 'Your API key is available in the portal only.',
+    },
+    'subscription-revoked': {
+      subject: `Subscription revoked on ${host}`,
+      body: `The subscription ${data.appName} (${data.productName} / ${data.planName}) for ${data.teamName} was revoked. Its API keys no longer work.`,
+      label: 'Open subscription',
+      footer: 'Contact your portal administrator if you need help.',
+    },
     'team-invitation': {
       subject: `Join ${data.teamName} on ${host}`,
       body: `${data.inviterName} invited you to join ${data.teamName} as ${data.role}. Sign in or create an account with ${data.email} to accept.`,

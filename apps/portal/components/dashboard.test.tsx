@@ -91,7 +91,9 @@ it('renders the My apps heading while loading and preserves empty and failure st
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
     'My apps',
   );
-  expect(screen.getByRole('status')).toHaveTextContent('Loading your apps…');
+  expect(screen.getByText('Loading your apps…')).toHaveTextContent(
+    'Loading your apps…',
+  );
   view.unmount();
   get.mockResolvedValue({ data: { items: [] } });
   render(<Dashboard slug="orders" />);

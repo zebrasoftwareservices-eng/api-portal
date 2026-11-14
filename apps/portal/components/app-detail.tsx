@@ -19,6 +19,7 @@ import { ResendVerification } from './account-shared';
 import { ProblemAlert } from './problem-alert';
 import { KeyRevealDialog } from './key-reveal-dialog';
 import { AppPlanActions, RegenerateKeyButton } from './app-plan-actions';
+import { AccessStatus } from './access-shared';
 import { DateValue } from './date';
 export function AppDetail({ appId }: { appId: string }) {
   const { teams } = useTeams();
@@ -72,6 +73,7 @@ export function AppDetail({ appId }: { appId: string }) {
       lock.current ||
       !app ||
       app.role === 'read-only' ||
+      (app.status && app.status !== 'active') ||
       active >= (app?.plan?.builtin === false ? 1 : 5)
     )
       return;
@@ -91,6 +93,7 @@ export function AppDetail({ appId }: { appId: string }) {
         }
         setRetry(retrySeconds(response));
         if (
+          error.type.endsWith('/app-revoked') ||
           error.type.endsWith('/credential-limit') ||
           error.type.endsWith('/team-role-forbidden')
         )
@@ -103,7 +106,11 @@ export function AppDetail({ appId }: { appId: string }) {
           status: data.status,
           createdAt: data.createdAt,
         };
-        setData({ ...app, credentials: [...app.credentials, summary] });
+        setData({
+          ...app,
+          keyIssued: true,
+          credentials: [...app.credentials, summary],
+        });
         setReveal({ app, credential: data, variant: 'additional' });
       }
     } catch {
@@ -195,6 +202,52 @@ export function AppDetail({ appId }: { appId: string }) {
       <h1 ref={heading} tabIndex={-1}>
         {app.name}
       </h1>
+      {app.status && app.status !== 'active' && (
+        <AccessStatus status={app.status} />
+      )}
+      {app.origin === 'request' && <p className="muted">Approved request</p>}
+      {app.origin === 'admin' && <p className="muted">Set up by your admin</p>}
+      {app.status === 'revoke-pending' && (
+        <div className="alert warning">
+          Access to this product was removed. We&apos;re deleting this key from
+          the gateway.
+        </div>
+      )}
+      {app.status === 'revoked' && (
+        <div className="alert error">
+          An admin removed access to {app.plan?.product?.name || 'this product'}
+          . This key no longer works.
+        </div>
+      )}
+      {app.pendingRequest && (
+        <div className="alert">
+          <h2>◷ Plan change requested</h2>
+          <p>
+            Change to {app.pendingRequest.plan.name} is waiting for an admin.
+            Your key keeps working on {app.plan?.name} until then.
+          </p>
+          <p>You already have a plan change waiting.</p>
+        </div>
+      )}
+      {app.status === 'active' && app.keyIssued === false && (
+        <Card className="stack access-ready">
+          <h2>✓ Your key is ready</h2>
+          <p>
+            {app.origin === 'admin'
+              ? `Your admin gave your team access to ${app.plan?.name}.`
+              : `An admin approved access to ${app.plan?.name}.`}{' '}
+            Reveal the key once and store it somewhere safe — you won&apos;t see
+            it again.
+          </p>
+          {app.role === 'read-only' ? (
+            <p>A team Admin or Member can reveal the key.</p>
+          ) : (
+            <Button disabled={pending} onClick={createKey}>
+              {pending ? 'Revealing…' : 'Reveal key'}
+            </Button>
+          )}
+        </Card>
+      )}
       {app.teamId && (
         <p>
           Team:{' '}
@@ -277,6 +330,8 @@ export function AppDetail({ appId }: { appId: string }) {
             </p>
           </div>
           {app.role !== 'read-only' &&
+            app.keyIssued !== false &&
+            (!app.status || app.status === 'active') &&
             !(app.plan?.builtin === false && active > 0) && (
               <Button
                 variant="secondary"
@@ -341,7 +396,7 @@ export function AppDetail({ appId }: { appId: string }) {
                   'This app already has 5 active keys. Revoke one, then create a new key.'
                 )
               ) : problem.status === 503 ? (
-                "The gateway didn't respond, so no key was created. Try again in a moment."
+                "The gateway is unavailable, so we couldn't create your key. Try again in a minute."
               ) : problem.status === 502 ? (
                 'The gateway rejected the request. No key was created. Try again, and if it keeps happening, tell the portal admin.'
               ) : undefined
@@ -404,27 +459,32 @@ export function AppDetail({ appId }: { appId: string }) {
                   </td>
                   {app.role !== 'read-only' && (
                     <td>
-                      {c.status === 'active' && (
-                        <RegenerateKeyButton
-                          app={app}
-                          credential={c}
-                          reload={reload}
-                        />
-                      )}
-                      {c.status === 'active' && (
-                        <Button
-                          variant="ghost"
-                          disabled={pending}
-                          onClick={(event) => {
-                            revokeTrigger.current = event.currentTarget;
-                            revokedId.current = null;
-                            setRevoke(c);
-                            setRevokeProblem(undefined);
-                          }}
-                        >
-                          Revoke
-                        </Button>
-                      )}
+                      {c.status === 'active' &&
+                        (!app.status || app.status === 'active') && (
+                          <RegenerateKeyButton
+                            app={app}
+                            credential={c}
+                            reload={reload}
+                          />
+                        )}
+                      {c.status === 'active' &&
+                        (!app.status || app.status === 'active') && (
+                          <Button
+                            variant="ghost"
+                            disabled={
+                              pending ||
+                              (!!app.status && app.status !== 'active')
+                            }
+                            onClick={(event) => {
+                              revokeTrigger.current = event.currentTarget;
+                              revokedId.current = null;
+                              setRevoke(c);
+                              setRevokeProblem(undefined);
+                            }}
+                          >
+                            Revoke
+                          </Button>
+                        )}
                     </td>
                   )}
                 </tr>

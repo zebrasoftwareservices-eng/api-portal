@@ -72,16 +72,20 @@ async function publish(request: APIRequestContext) {
 async function call(request: APIRequestContext, slug: string, key: string) {
   return request.get(`${proxy}/${slug}/get`, { headers: { apikey: key } });
 }
-// Rate windows are the subject of this test: synchronize to a clock boundary,
-// rather than retrying requests (which would alter the quota being measured).
-async function boundary() {
-  const target = Math.floor(Date.now() / 1000) + 1;
+// Observe Kong's clock: Docker's clock can differ from the host at a second
+// boundary. Admin status requests do not consume the subscription's quota.
+async function boundary(request: APIRequestContext) {
+  const gatewayTime = async () => {
+    const response = await request.get(`${kong}/status`);
+    expect(response.status()).toBe(200);
+    const date = Date.parse(response.headers().date!);
+    expect(Number.isFinite(date)).toBe(true);
+    return date;
+  };
+  const before = await gatewayTime();
   await expect
-    .poll(() => Math.floor(Date.now() / 1000), {
-      intervals: [10],
-      timeout: 2000,
-    })
-    .toBe(target);
+    .poll(gatewayTime, { intervals: [10], timeout: 3000 })
+    .toBeGreaterThan(before);
 }
 
 test('009 AC1–8: admin product/forms, two-API subscription, live rate/quota, upgrade, regenerate and cancel', async ({
@@ -191,7 +195,7 @@ test('009 AC1–8: admin product/forms, two-API subscription, live rate/quota, u
     expect(result.status()).toBe(200);
     expect((await result.json()).url).toContain('/get');
   }
-  await boundary();
+  await boundary(context.request);
   const burstStart = Date.now();
   const burst = [];
   for (let i = 0; i < 6; i++) {
@@ -207,7 +211,7 @@ test('009 AC1–8: admin product/forms, two-API subscription, live rate/quota, u
     JSON.stringify(burst),
   ).toEqual([200, 200, 200, 200, 200, 429]);
   expect(Date.now() - burstStart).toBeLessThan(900);
-  await boundary();
+  await boundary(context.request);
   expect(
     (await call(context.request, apis[0]!.slug, credential.key)).status(),
   ).toBe(200);
@@ -219,7 +223,7 @@ test('009 AC1–8: admin product/forms, two-API subscription, live rate/quota, u
   await expect(
     page.getByRole('status').filter({ hasText: 'Changed to Large' }),
   ).toBeVisible();
-  await boundary();
+  await boundary(context.request);
   for (let i = 0; i < 10; i++)
     expect(
       (await call(context.request, apis[i % 2]!.slug, credential.key)).status(),
@@ -270,14 +274,14 @@ test('009 AC1–8: admin product/forms, two-API subscription, live rate/quota, u
   expect(quota.status()).toBe(201);
   const bounded = await quota.json();
   for (let i = 0; i < 10; i++) {
-    if (i % 2 === 0) await boundary();
+    if (i % 2 === 0) await boundary(context.request);
     expect(
       (
         await call(context.request, apis[i % 2]!.slug, bounded.credential.key)
       ).status(),
     ).toBe(200);
   }
-  await boundary();
+  await boundary(context.request);
   expect(
     (
       await call(context.request, apis[0]!.slug, bounded.credential.key)

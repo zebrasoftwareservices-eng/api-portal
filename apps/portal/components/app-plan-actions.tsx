@@ -8,6 +8,8 @@ import type { App, Credential, Problem } from '../lib/types';
 import { usePortal } from './providers';
 import { ChangeProblem } from './product-actions';
 import { PlanLimits, PlanRadios, type Product } from './plans';
+import { RejectedPlanChange } from './access-requests';
+import { CountedTextarea } from './access-shared';
 import { ProblemAlert } from './problem-alert';
 export function AppPlanActions({
   app,
@@ -29,6 +31,8 @@ export function AppPlanActions({
   const [problem, setProblem] = useState<Problem>();
   const [pending, setPending] = useState(false);
   const [status, setStatus] = useState('');
+  const [reason, setReason] = useState('');
+  const [requestSent, setRequestSent] = useState(false);
   const lock = useRef(false);
   const trigger = useRef<HTMLButtonElement | null>(null);
   const dialogBody = useRef<HTMLDivElement>(null);
@@ -58,7 +62,26 @@ export function AppPlanActions({
     }
   }
   async function submit() {
-    if (lock.current || readOnly) return;
+    if (
+      lock.current ||
+      readOnly ||
+      app.status === 'revoke-pending' ||
+      (dialog === 'change' && (app.status === 'revoked' || app.pendingRequest))
+    )
+      return;
+    if (
+      dialog === 'change' &&
+      selected?.requiresApproval &&
+      (!reason.trim() || reason.trim().length > 1000)
+    ) {
+      setProblem({
+        type: '/problems/invalid-reason',
+        title:
+          'Tell the admin why your team needs this plan, in 1000 characters or fewer.',
+        status: 400,
+      });
+      return;
+    }
     lock.current = true;
     setPending(true);
     setProblem(undefined);
@@ -66,18 +89,28 @@ export function AppPlanActions({
       if (dialog === 'change') {
         const result = await api.PUT('/v1/apps/{appId}/plan', {
           params: { path: { appId: app.id } },
-          body: { planId },
+          body: {
+            planId,
+            ...(selected?.requiresApproval ? { reason: reason.trim() } : {}),
+          },
         });
         if (result.error) {
           setProblem(result.error);
-          if (result.error.status === 400) {
+          if (result.error.status === 400 && !selected?.requiresApproval) {
             setProblem({
               ...result.error,
               detail: 'This plan is no longer available. Choose another plan.',
             });
             await loadPlans();
           }
-        } else if (result.data) {
+        } else if (
+          result.data &&
+          result.response?.status === 202 &&
+          'kind' in result.data
+        ) {
+          setRequestSent(true);
+          setApp({ ...app, pendingRequest: result.data });
+        } else if (result.data && 'credentials' in result.data) {
           setApp(result.data);
           setDialog(null);
           setStatus(
@@ -126,8 +159,26 @@ export function AppPlanActions({
         <ChangeProblem problem={problem} unchanged="Nothing changed" />
       )}
       {section !== 'danger' && (
-        <Card className="stack">
+        <Card className="stack" id="plan">
           <h2>Plan</h2>
+          {app.plan?.product &&
+            app.teamId &&
+            !app.pendingRequest &&
+            (!app.status || app.status === 'active') && (
+              <RejectedPlanChange
+                appId={app.id}
+                teamId={app.teamId}
+                readOnly={readOnly}
+                onAgain={(id) => {
+                  setRequestSent(false);
+                  setReason('');
+                  setProblem(undefined);
+                  setDialog('change');
+                  setPlanId(id);
+                  void loadPlans();
+                }}
+              />
+            )}
           <div className="row">
             <span className="badge">{app.plan?.name || 'Unlimited'}</span>
             {app.plan?.product && (
@@ -138,7 +189,18 @@ export function AppPlanActions({
             {app.plan?.product && !readOnly && (
               <Button
                 variant="secondary"
+                disabled={
+                  !!app.pendingRequest ||
+                  (app.status && app.status !== 'active')
+                }
+                title={
+                  app.pendingRequest
+                    ? 'You already have a plan change waiting.'
+                    : undefined
+                }
                 onClick={(event) => {
+                  setRequestSent(false);
+                  setReason('');
                   trigger.current = event.currentTarget;
                   setProblem(undefined);
                   setStatus('');
@@ -168,14 +230,15 @@ export function AppPlanActions({
           )}
         </Card>
       )}
-      {section !== 'plan' && !readOnly && (
+      {section !== 'plan' && !readOnly && app.status !== 'revoke-pending' && (
         <section className="card stack">
           <h2>Danger zone</h2>
           <p>
-            {app.plan?.product
-              ? 'Cancel this subscription.'
-              : 'Delete this app.'}{' '}
-            Its key stops working at once.
+            {app.status === 'revoked'
+              ? 'Delete this revoked subscription from your team.'
+              : app.plan?.product
+                ? 'Cancel this subscription. Its key stops working at once.'
+                : 'Delete this app. Its key stops working at once.'}
           </p>
           <Button
             variant="destructive"
@@ -185,7 +248,11 @@ export function AppPlanActions({
               setDialog('cancel');
             }}
           >
-            {app.plan?.product ? 'Cancel subscription…' : 'Delete app…'}
+            {app.status === 'revoked'
+              ? 'Delete subscription'
+              : app.plan?.product
+                ? 'Cancel subscription…'
+                : 'Delete app…'}
           </Button>
         </section>
       )}
@@ -224,77 +291,103 @@ export function AppPlanActions({
               Your key stays the same. The new limits apply now, and this
               month&apos;s usage carries over.
             </Dialog.Description>
-            {loading ? (
-              <div role="status">Loading plans…</div>
-            ) : loadProblem ? (
-              <ProblemAlert
-                problem={loadProblem}
-                message="We couldn't load the plans."
-                onRetry={loadPlans}
-              />
+            {requestSent ? (
+              <div className="stack">
+                <h2>✓ Request sent</h2>
+                <p>
+                  We&apos;ll email you when an admin decides. Nothing changes
+                  until then.
+                </p>
+                <Button onClick={() => setDialog(null)}>Done</Button>
+              </div>
             ) : (
-              product && (
-                <>
-                  <p>Current: {app.plan?.name}</p>
-                  <PlanRadios
-                    current={app.plan?.id}
-                    plans={product.plans}
-                    value={planId}
-                    onChange={setPlanId}
-                    disabled={pending}
+              <>
+                {loading ? (
+                  <div role="status">Loading plans…</div>
+                ) : loadProblem ? (
+                  <ProblemAlert
+                    problem={loadProblem}
+                    message="We couldn't load the plans."
+                    onRetry={loadPlans}
                   />
-                  {selected &&
-                    app.subscriptions.some(
-                      (a) => !selected.apis.some((x) => x.id === a.apiId),
-                    ) && (
-                      <p className="alert warning">
-                        {selected.name} doesn&apos;t include{' '}
-                        {app.subscriptions
-                          .filter(
-                            (a) => !selected.apis.some((x) => x.id === a.apiId),
-                          )
-                          .map((a) => a.title)
-                          .join(', ')}
-                        . Calls to those APIs with this key will be refused.
-                      </p>
-                    )}
-                  {selected &&
-                    selected.monthlyQuota < (app.plan?.monthlyQuota || 0) && (
-                      <p>
-                        This month&apos;s requests so far count toward the new
-                        quota.
-                      </p>
-                    )}
-                </>
-              )
+                ) : (
+                  product && (
+                    <>
+                      <p>Current: {app.plan?.name}</p>
+                      <PlanRadios
+                        current={app.plan?.id}
+                        plans={product.plans}
+                        value={planId}
+                        onChange={setPlanId}
+                        disabled={pending}
+                      />
+                      {selected &&
+                        app.subscriptions.some(
+                          (a) => !selected.apis.some((x) => x.id === a.apiId),
+                        ) && (
+                          <p className="alert warning">
+                            {selected.name} doesn&apos;t include{' '}
+                            {app.subscriptions
+                              .filter(
+                                (a) =>
+                                  !selected.apis.some((x) => x.id === a.apiId),
+                              )
+                              .map((a) => a.title)
+                              .join(', ')}
+                            . Calls to those APIs with this key will be refused.
+                          </p>
+                        )}
+                      {selected &&
+                        selected.monthlyQuota <
+                          (app.plan?.monthlyQuota || 0) && (
+                          <p>
+                            This month&apos;s requests so far count toward the
+                            new quota.
+                          </p>
+                        )}
+                    </>
+                  )
+                )}
+                {selected?.requiresApproval && (
+                  <CountedTextarea
+                    label="Reason"
+                    value={reason}
+                    onChange={setReason}
+                    required
+                    hint={`Your key keeps working on ${app.plan?.name} while an admin reviews this.`}
+                  />
+                )}
+                {problem && (
+                  <ChangeProblem
+                    problem={problem}
+                    unchanged={unchanged}
+                    retry={submit}
+                  />
+                )}
+                <div className="actions">
+                  <Button
+                    variant="secondary"
+                    disabled={pending}
+                    onClick={() => setDialog(null)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={
+                      pending || loading || !selected || planId === app.plan?.id
+                    }
+                    aria-busy={pending}
+                    onClick={submit}
+                  >
+                    {pending
+                      ? 'Changing…'
+                      : selected?.requiresApproval
+                        ? 'Request plan change'
+                        : `Change to ${selected?.name || 'plan'}`}
+                  </Button>
+                </div>
+              </>
             )}
-            {problem && (
-              <ChangeProblem
-                problem={problem}
-                unchanged={unchanged}
-                retry={submit}
-              />
-            )}
-            <div className="actions">
-              <Button
-                variant="secondary"
-                disabled={pending}
-                onClick={() => setDialog(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                disabled={
-                  pending || loading || !selected || planId === app.plan?.id
-                }
-                aria-busy={pending}
-                onClick={submit}
-              >
-                {pending
-                  ? 'Changing…'
-                  : `Change to ${selected?.name || 'plan'}`}
-              </Button>
-            </div>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
@@ -316,11 +409,19 @@ export function AppPlanActions({
               if (pending) e.preventDefault();
             }}
           >
-            <AlertDialog.Title>Cancel {app.name}?</AlertDialog.Title>
+            <AlertDialog.Title>
+              {app.status === 'revoked' ? 'Delete' : 'Cancel'} {app.name}?
+            </AlertDialog.Title>
             <AlertDialog.Description>
-              Its key stops working at once and calls through the gateway are
-              refused. This can&apos;t be undone. To use these APIs again,
-              subscribe again and you&apos;ll get a new key.
+              {app.status === 'revoked' ? (
+                'Its key was already revoked. Delete this subscription from your team.'
+              ) : (
+                <>
+                  Its key stops working at once and calls through the gateway
+                  are refused. This can&apos;t be undone. To use these APIs
+                  again, subscribe again and you&apos;ll get a new key.
+                </>
+              )}
             </AlertDialog.Description>
             {problem && (
               <ChangeProblem
@@ -343,9 +444,11 @@ export function AppPlanActions({
               >
                 {pending
                   ? 'Cancelling…'
-                  : app.plan?.product
-                    ? 'Cancel subscription'
-                    : 'Delete app'}
+                  : app.status === 'revoked'
+                    ? 'Delete subscription'
+                    : app.plan?.product
+                      ? 'Cancel subscription'
+                      : 'Delete app'}
               </Button>
             </div>
           </AlertDialog.Content>
@@ -401,7 +504,8 @@ export function RegenerateKeyButton({
       setPending(false);
     }
   }
-  if (app.role === 'read-only') return null;
+  if (app.role === 'read-only' || (app.status && app.status !== 'active'))
+    return null;
   return (
     <>
       <AlertDialog.Root

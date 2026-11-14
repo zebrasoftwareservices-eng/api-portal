@@ -941,6 +941,7 @@ for (const width of [1280, 390]) {
     const sections = [
       ['/admin/apis', 'APIs'],
       ['/admin/products', 'Products'],
+      ['/admin/requests', 'Requests'],
       ['/admin/gateways', 'Gateways'],
       ['/admin/settings/mail', 'Mail'],
       ['/admin/settings/accounts', 'Accounts'],

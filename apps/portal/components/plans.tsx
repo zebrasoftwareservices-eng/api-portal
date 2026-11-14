@@ -59,6 +59,14 @@ export function PlanTable({
           </thead>
           <tbody>
             <tr>
+              <th scope="row">Access</th>
+              {product.plans.map((p) => (
+                <td key={p.id}>
+                  {p.requiresApproval ? '◷ Requires approval' : '✓ Instant key'}
+                </td>
+              ))}
+            </tr>
+            <tr>
               <th scope="row">Rate limit</th>
               {product.plans.map((p) => (
                 <td key={p.id}>
@@ -94,14 +102,16 @@ export function PlanTable({
                 ))}
               </tr>
             )}
-            <tr>
-              <th scope="row">
-                <span className="sr-only">Subscribe</span>
-              </th>
-              {product.plans.map((p) => (
-                <td key={p.id}>{action(p)}</td>
-              ))}
-            </tr>
+            {product.selfService !== false && (
+              <tr>
+                <th scope="row">
+                  <span className="sr-only">Subscribe</span>
+                </th>
+                {product.plans.map((p) => (
+                  <td key={p.id}>{action(p)}</td>
+                ))}
+              </tr>
+            )}
           </tbody>
         </table>
       </div>
@@ -110,6 +120,9 @@ export function PlanTable({
         {product.plans.map((p) => (
           <div className="card stack" key={p.id}>
             <h3>{p.name}</h3>
+            <p>
+              {p.requiresApproval ? '◷ Requires approval' : '✓ Instant key'}
+            </p>
             <dl>
               <dt>Rate limit and monthly quota</dt>
               <dd>
@@ -153,7 +166,11 @@ export function PlanRadios({
             onChange={() => onChange(p.id)}
             aria-describedby={`limits-${p.id}`}
           />{' '}
-          {p.name} {p.id === current && <span className="badge">Current</span>}
+          {p.name}{' '}
+          {p.requiresApproval && (
+            <span className="badge">◷ Requires approval</span>
+          )}{' '}
+          {p.id === current && <span className="badge">Current</span>}
           <span id={`limits-${p.id}`} className="stack muted">
             <PlanLimits plan={p} variant="inline" />
             {p.apis.map((a) => a.title).join(', ')}

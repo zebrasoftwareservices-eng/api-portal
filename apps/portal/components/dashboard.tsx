@@ -8,6 +8,8 @@ import { useResource } from './use-resource';
 import { ProblemAlert } from './problem-alert';
 import { SuccessNotice } from './success-notice';
 import { PlanLimits } from './plans';
+import { TeamRequests } from './access-requests';
+import { AccessStatus } from './access-shared';
 import { DateValue } from './date';
 
 function AccessLabel({ title }: { title?: string }) {
@@ -137,6 +139,9 @@ export function Dashboard({
                 >
                   <td>
                     <a href={`/dashboard/apps/${app.id}`}>{app.name}</a>
+                    {app.status && app.status !== 'active' && (
+                      <AccessStatus status={app.status} />
+                    )}
                     <AccessLabel title={app.accessTitle} />
                   </td>
                   <td>
@@ -166,6 +171,9 @@ export function Dashboard({
                 className={`card stack ${app.accessTitle ? 'highlight' : ''}`}
               >
                 <h2>{app.name}</h2>
+                {app.status && app.status !== 'active' && (
+                  <AccessStatus status={app.status} />
+                )}
                 <AccessLabel title={app.accessTitle} />
                 <dl>
                   <dt>Plan</dt>
@@ -195,6 +203,7 @@ export function Dashboard({
           </ul>
         </>
       )}
+      <TeamRequests />
     </>
   );
 }

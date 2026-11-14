@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { notFound } from 'next/navigation';
+import { changelogBySlug } from '../../../../lib/changelog-server';
 import { EmptyState, PageHeader } from '@portal/ui';
-import { serverClient } from '../../../../lib/server';
-import { isDemo } from '../../../../lib/demo';
-import { demoData } from '../../../../lib/demo-data';
 import { DateValue } from '../../../../components/date';
 import { ChangeList } from '../../../../components/change-list';
 import { PlainReleaseNote } from '../../../../components/release-note';
@@ -14,25 +11,7 @@ export default async function Page({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  let api;
-  let entries;
-  if (isDemo()) {
-    if (slug !== 'sample') notFound();
-    const demo = demoData();
-    api = demo.api;
-    entries = demo.changelog;
-  } else {
-    const client = await serverClient();
-    const [detail, changelog] = await Promise.all([
-      client.GET('/v1/apis/{slug}', { params: { path: { slug } } }),
-      client.GET('/v1/apis/{slug}/changelog', { params: { path: { slug } } }),
-    ]);
-    if (detail.error?.status === 404) notFound();
-    if (!detail.data || !changelog.data)
-      throw new Error("We couldn't load the changelog. Try again in a moment.");
-    api = detail.data;
-    entries = changelog.data.items;
-  }
+  const { api, entries } = await changelogBySlug(slug);
   return (
     <div className="stack">
       <PageHeader

@@ -27,6 +27,10 @@ it('JSO-182 hands focus to Try your key, then its reference link', async () => {
     createdAt: '2026-11-02T00:00:00Z',
   };
   const app = {
+    status: 'active',
+    origin: 'self',
+    keyIssued: true,
+    pendingRequest: null,
     plan: {
       id: 'unlimited',
       name: 'Unlimited',

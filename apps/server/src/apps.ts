@@ -2,10 +2,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { uuidv7 } from 'uuidv7';
-import { eq, and, desc, inArray, sql } from 'drizzle-orm';
+import { eq, ne, and, desc, inArray, sql } from 'drizzle-orm';
 import {
   apps,
-  subscriptions,
+  accessRequests,
   apis,
   plans,
   planApis,
@@ -33,6 +33,20 @@ import {
   type TeamRole,
 } from './teams.js';
 import { appApis, appPlan, planLimits } from './app-plans.js';
+import { canSeeApi, teamViewer } from './access-policy.js';
+import { requireSelfService, reasonSchema } from './access-requests.js';
+import {
+  pendingRequest,
+  createPlanRequest,
+  requestConflict,
+} from './access-request-model.js';
+import {
+  provisionApp,
+  applyAppPlan,
+  compensate,
+  type Compensations,
+} from './app-provisioning.js';
+import type { EnqueueMail } from './mail/queue.js';
 import { generateKey } from './crypto.js';
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
 const createSchema = z
@@ -67,7 +81,7 @@ function credentialView(c: typeof credentials.$inferSelect) {
     revokedAt: c.revokedAt?.toISOString() ?? null,
   };
 }
-async function view(
+export async function appView(
   db: Database | Tx,
   app: typeof apps.$inferSelect,
   role: TeamRole,
@@ -81,6 +95,11 @@ async function view(
       .orderBy(desc(credentials.createdAt)),
   ]);
   return {
+    status: app.status,
+    origin: app.origin,
+    keyIssued: app.keyIssued,
+    revokedAt: app.revokedAt?.toISOString() ?? null,
+    pendingRequest: await pendingRequest(db, app.id),
     id: app.id,
     teamId: app.teamId,
     role,
@@ -101,6 +120,7 @@ export function registerApps(
   db: Database,
   auth: Auth,
   connection: GatewayConnection,
+  enqueue: EnqueueMail,
 ) {
   server.get('/api/v1/apps', async (request) => {
     const user = await requireUser(auth, request);
@@ -116,26 +136,30 @@ export function registerApps(
       .where(eq(apps.teamId, teamId))
       .orderBy(desc(apps.createdAt));
     return {
-      items: await Promise.all(rows.map((a) => view(db, a, membership.role))),
+      items: await Promise.all(
+        rows.map((a) => appView(db, a, membership.role)),
+      ),
     };
   });
   server.get('/api/v1/apps/:appId', async (request) => {
     const user = await requireUser(auth, request);
     const { appId } = appParams.parse(request.params);
     const { app, role } = await appAccess(db, appId, user.id);
-    return view(db, app, role);
+    return appView(db, app, role);
   });
   server.post('/api/v1/apps', async (request, reply) => {
     const user = await requireUser(auth, request);
     await db.transaction((tx) => ensurePersonalTeam(tx, user.id));
-    const input = createSchema.parse(request.body);
+    const target = z
+      .object({ teamId: z.uuid().optional(), planId: z.uuid().optional() })
+      .parse(request.body);
     const appId = uuidv7(),
       id = uuidv7(),
       key = generateKey();
-    let gatewayAttempted = false;
-    let adapter: GatewayAdapter | undefined;
+    const rollback: Compensations = [];
     try {
       const result = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
         const [owner] = await tx
           .select({ id: users.id })
@@ -143,9 +167,29 @@ export function registerApps(
           .where(eq(users.id, user.id))
           .for('key share');
         if (!owner) throw notFound();
-        const teamId = input.teamId ?? (await currentTeamId(tx, user.id));
+        const teamId = target.teamId ?? (await currentTeamId(tx, user.id));
         const membership = await teamAccess(tx, teamId, user.id, 'write');
         await requireVerified(tx, user);
+        const [plan] = await tx
+          .select()
+          .from(plans)
+          .where(eq(plans.id, target.planId ?? BUILTIN_PLAN_ID))
+          .for('share');
+        if (!plan || (target.planId && plan.builtin)) throw notFound();
+        await requireSelfService(
+          tx,
+          plan.productId,
+          teamId,
+          user.id,
+          user.role === 'admin',
+        );
+        const input = createSchema.parse(request.body);
+        if (plan.requiresApproval)
+          throw new Problem(
+            409,
+            'approval-required',
+            'Request access to this plan.',
+          );
         // Serialize names before gateway writes, including simultaneous identical submissions.
         await tx.execute(
           sql`select pg_advisory_xact_lock(hashtextextended(${teamId + ':' + input.name},0))`,
@@ -153,19 +197,20 @@ export function registerApps(
         const [duplicate] = await tx
           .select({ id: apps.id })
           .from(apps)
-          .where(and(eq(apps.teamId, teamId), eq(apps.name, input.name)));
+          .where(
+            and(
+              eq(apps.teamId, teamId),
+              eq(apps.name, input.name),
+              ne(apps.status, 'revoked'),
+            ),
+          );
         if (duplicate)
           throw new Problem(
             409,
             'app-name-taken',
             'This team already has an app with this name.',
           );
-        const [plan] = await tx
-          .select()
-          .from(plans)
-          .where(eq(plans.id, input.planId ?? BUILTIN_PLAN_ID))
-          .for('share');
-        if (!plan || (input.planId && plan.builtin)) throw notFound();
+
         const apiIds =
           input.apiIds ??
           (
@@ -176,6 +221,14 @@ export function registerApps(
           .from(apis)
           .where(inArray(apis.id, apiIds));
         if (selected.length !== apiIds.length) throw notFound();
+        const viewer = await teamViewer(
+          tx,
+          [teamId],
+          user.id,
+          user.role === 'admin',
+        );
+        for (const apiId of apiIds)
+          if (!(await canSeeApi(tx, viewer, apiId))) throw notFound();
         if (
           input.apiIds &&
           (
@@ -196,50 +249,26 @@ export function registerApps(
               },
             ],
           );
-        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
-        const gateway = requireEnabled(await connection.load(tx));
-        adapter = gateway.adapter;
-        const gatewayId = gateway.row.id;
-        if (selected.some((a) => a.gatewayId !== gatewayId))
-          throw new Problem(
-            400,
-            'validation',
-            'APIs must use the configured gateway.',
-          );
-        gatewayAttempted = true;
-        const consumer = await adapter.ensureConsumer({ id: appId });
-        for (const serviceId of new Set(
-          selected.map((a) => a.gatewayServiceId),
-        ))
-          await adapter.grantAccess({ id: appId }, { id: serviceId });
-        if (!plan.builtin)
-          await adapter.applyPlanLimits({ id: appId }, planLimits(plan));
-        await adapter.issueCredential({ id: appId }, { id, key });
-        const [app] = await tx
-          .insert(apps)
-          .values({
+        const app = await provisionApp(
+          tx,
+          connection,
+          {
             id: appId,
             planId: plan.id,
             teamId,
-            createdBy: user.id,
             name: input.name,
             description: input.description,
-          })
-          .returning();
-        if (!app) throw new Error('Insert failed');
-        if (plan.builtin)
-          await tx
-            .insert(subscriptions)
-            .values(
-              selected.map((a) => ({ id: uuidv7(), appId, apiId: a.id })),
-            );
-        await tx.insert(gatewayConsumers).values({
-          id: uuidv7(),
-          appId,
-          gatewayId,
-          externalId: consumer.id,
-          username: consumer.username,
-        });
+            createdBy: user.id,
+            origin: 'self',
+            apiIds: input.apiIds,
+          },
+          rollback,
+        );
+        const { adapter, row: gateway } = requireEnabled(
+          await connection.load(tx),
+        );
+        const gatewayId = gateway.id;
+        await adapter.issueCredential({ id: appId }, { id, key });
         const [credential] = await tx
           .insert(credentials)
           .values({
@@ -252,7 +281,7 @@ export function registerApps(
           .returning();
         if (!credential) throw new Error('Insert failed');
         return {
-          app: await view(tx, app, membership.role),
+          app: await appView(tx, app, membership.role),
           credential: {
             ...credentialView(credential),
             key,
@@ -265,15 +294,7 @@ export function registerApps(
         .header('Location', `/api/v1/apps/${appId}`)
         .send(result);
     } catch (error) {
-      if (gatewayAttempted && adapter)
-        await adapter
-          .deleteConsumer({ id: appId })
-          .catch(() =>
-            server.log.warn(
-              { appId },
-              'Consumer compensation deferred to reconcile',
-            ),
-          );
+      await compensate(rollback, server.log);
       throw error;
     }
   });
@@ -286,8 +307,15 @@ export function registerApps(
     let adapter: GatewayAdapter | undefined;
     try {
       const result = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
         const { app } = await appAccess(tx, appId, user.id, 'write');
+        if (app.status !== 'active')
+          throw new Problem(
+            409,
+            'app-revoked',
+            'This subscription has been revoked.',
+          );
         const [plan] = await tx
           .select()
           .from(plans)
@@ -344,6 +372,10 @@ export function registerApps(
           })
           .returning();
         if (!credential) throw new Error('Insert failed');
+        await tx
+          .update(apps)
+          .set({ keyIssued: true })
+          .where(eq(apps.id, appId));
         return { ...credentialView(credential), key, headerName: 'apikey' };
       });
       return reply.code(201).send(result);
@@ -368,6 +400,7 @@ export function registerApps(
         .extend({ credentialId: z.uuid() })
         .parse(request.params);
       await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
         await appAccess(tx, appId, user.id, 'write');
         const [credential] = await tx
@@ -389,13 +422,15 @@ export function registerApps(
       return reply.code(204).send();
     },
   );
-  server.put('/api/v1/apps/:appId/plan', async (request) => {
+  server.put('/api/v1/apps/:appId/plan', async (request, reply) => {
     const user = await requireUser(auth, request);
     const { appId } = appParams.parse(request.params);
-    const { planId } = z.strictObject({ planId: z.uuid() }).parse(request.body);
-    let compensate: (() => Promise<void>) | undefined;
+    const { planId } = z.object({ planId: z.uuid() }).parse(request.body);
+    const rollback: Compensations = [];
+    let pending = false;
     try {
-      return await db.transaction(async (tx) => {
+      const result = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
         const { app, role } = await appAccess(tx, appId, user.id, 'write');
         await requireVerified(tx, user);
@@ -410,6 +445,22 @@ export function registerApps(
           .where(eq(plans.id, planId))
           .for('share');
         if (!newPlan) throw notFound();
+        await requireSelfService(
+          tx,
+          newPlan.productId,
+          app.teamId,
+          user.id,
+          user.role === 'admin',
+        );
+        const input = z
+          .strictObject({ planId: z.uuid(), reason: reasonSchema.optional() })
+          .parse(request.body);
+        if (app.status !== 'active')
+          throw new Problem(
+            409,
+            'app-revoked',
+            'This subscription has been revoked.',
+          );
         if (
           !oldPlan ||
           oldPlan.builtin ||
@@ -422,62 +473,77 @@ export function registerApps(
             'Choose a plan of this subscription’s product.',
             [{ pointer: '/planId', message: 'Choose a plan of this product.' }],
           );
-        const oldServices = new Set(
-          (await appApis(tx, app)).map((a) => a.gatewayServiceId),
+        if (await pendingRequest(tx, app.id))
+          throw new Problem(
+            409,
+            'request-pending',
+            'A plan change is already pending.',
+          );
+        if (newPlan.requiresApproval) {
+          const reason = reasonSchema.parse(input.reason);
+          pending = true;
+          return createPlanRequest(tx, app, newPlan.id, reason, user.id);
+        }
+        return appView(
+          tx,
+          await applyAppPlan(tx, connection, app, newPlan, rollback),
+          role,
         );
-        const newServices = new Set(
-          (await appApis(tx, { ...app, planId })).map(
-            (a) => a.gatewayServiceId,
-          ),
-        );
-        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
-        const { adapter } = requireEnabled(await connection.load(tx));
-        compensate = async () => {
-          const operations = [
-            () => adapter.applyPlanLimits({ id: appId }, planLimits(oldPlan)),
-            ...[...oldServices].map(
-              (id) => () => adapter.grantAccess({ id: appId }, { id }),
-            ),
-            ...[...newServices]
-              .filter((id) => !oldServices.has(id))
-              .map((id) => () => adapter.revokeAccess({ id: appId }, { id })),
-          ];
-          for (const operation of operations)
-            await operation().catch(() =>
-              server.log.warn(
-                { appId },
-                'Plan compensation deferred to reconcile',
-              ),
-            );
-        };
-        await adapter.applyPlanLimits({ id: appId }, planLimits(newPlan));
-        for (const id of newServices)
-          await adapter.grantAccess({ id: appId }, { id });
-        for (const id of oldServices)
-          if (!newServices.has(id))
-            await adapter.revokeAccess({ id: appId }, { id });
-        const [updated] = await tx
-          .update(apps)
-          .set({ planId, updatedAt: new Date() })
-          .where(eq(apps.id, appId))
-          .returning();
-        return view(tx, updated!, role);
       });
+      return reply.code(pending ? 202 : 200).send(result);
     } catch (e) {
-      await compensate?.();
-      throw e;
+      await compensate(rollback, server.log);
+      requestConflict(e);
     }
   });
   server.delete('/api/v1/apps/:appId', async (request, reply) => {
     const user = await requireUser(auth, request);
     const { appId } = appParams.parse(request.params);
+    const closed: string[] = [];
     await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
       await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
-      await appAccess(tx, appId, user.id, 'write');
-      await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
-      const { adapter } = requireEnabled(await connection.load(tx));
-      await adapter.deleteConsumer({ id: appId });
-      await tx.delete(apps).where(eq(apps.id, appId));
+      const { app } = await appAccess(tx, appId, user.id, 'write');
+      if (app.status === 'revoke-pending')
+        throw new Problem(
+          409,
+          'revoke-pending',
+          'Revocation is still being retried.',
+        );
+      if (app.status !== 'revoked') {
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+        const { adapter } = requireEnabled(await connection.load(tx));
+        await adapter.deleteConsumer({ id: appId });
+      }
+      const requests = await tx
+        .update(accessRequests)
+        .set({
+          status: 'rejected',
+          decidedAt: new Date(),
+          decidedBy: null,
+          decisionNote: 'This subscription was cancelled.',
+        })
+        .where(
+          and(
+            eq(accessRequests.appId, appId),
+            eq(accessRequests.status, 'pending'),
+          ),
+        )
+        .returning();
+      closed.push(...requests.map((r) => r.id));
+      for (const requestId of closed)
+        await enqueue({ template: 'access-rejected', requestId }, tx);
+      if (app.origin === 'admin' && app.status !== 'revoked') {
+        await tx
+          .update(apps)
+          .set({ status: 'revoked', revokedAt: new Date() })
+          .where(eq(apps.id, appId));
+        await tx
+          .update(credentials)
+          .set({ status: 'revoked', revokedAt: new Date() })
+          .where(eq(credentials.appId, appId));
+        await enqueue({ template: 'subscription-revoked', appId }, tx);
+      } else await tx.delete(apps).where(eq(apps.id, appId));
     });
     return reply.code(204).send();
   });
@@ -494,8 +560,15 @@ export function registerApps(
       let attempted = false;
       try {
         const result = await db.transaction(async (tx) => {
+          await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
           await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
-          await appAccess(tx, appId, user.id, 'write');
+          const { app } = await appAccess(tx, appId, user.id, 'write');
+          if (app.status !== 'active')
+            throw new Problem(
+              409,
+              'app-revoked',
+              'This subscription has been revoked.',
+            );
           await requireVerified(tx, user);
           const [old] = await tx
             .select()

@@ -18,6 +18,8 @@ import { type Product, type Plan } from './plans';
 import { useResource } from './use-resource';
 import { ProblemAlert } from './problem-alert';
 import { SuccessNotice } from './success-notice';
+import { ProductAccess } from './product-access';
+import { Confirmation } from './access-shared';
 import { DateValue } from './date';
 export function AdminProducts() {
   const { data, error, loading, reload } = useResource(() =>
@@ -122,6 +124,7 @@ export function AdminProduct({
           </li>
         ))}
       </ul>
+      <ProductAccess product={product} />
       <div className="page-header">
         <h2>Plans</h2>
         <a
@@ -156,7 +159,12 @@ export function AdminProduct({
           <tbody>
             {product.plans.map((p) => (
               <tr key={p.id}>
-                <td>{p.name}</td>
+                <td>
+                  {p.name}{' '}
+                  {p.requiresApproval && (
+                    <span className="badge">◷ Requires approval</span>
+                  )}
+                </td>
                 <td>
                   {p.rateLimit.toLocaleString('en')} requests per{' '}
                   {p.rateLimitUnit}
@@ -219,6 +227,10 @@ function Editor({
       ) || [],
   });
   const [slug, setSlug] = useState('');
+  const [requiresApproval, setRequiresApproval] = useState(
+    plan?.requiresApproval || false,
+  );
+  const [confirmation, setConfirmation] = useState<Problem>();
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [problem, setProblem] = useState<Problem>();
   const [pending, setPending] = useState(false);
@@ -237,7 +249,7 @@ function Editor({
   }, [errors, title]);
   const update = (field: keyof PlanFields, value: string | string[]) =>
     setValues((v) => ({ ...v, [field]: value }));
-  async function save() {
+  async function save(existingSubscriptions?: 'keep' | 'revoke') {
     if (lock.current) return;
     let invalid: Record<string, string> = {};
     if (planMode) invalid = validatePlan(values);
@@ -270,6 +282,8 @@ function Editor({
       if (planMode && product) {
         const planBody = {
           ...body,
+          requiresApproval,
+          ...(existingSubscriptions ? { existingSubscriptions } : {}),
           rateLimit: Number(values.rateLimit),
           rateLimitUnit: values.rateLimitUnit as 'second' | 'minute',
           monthlyQuota: Number(values.monthlyQuota),
@@ -294,6 +308,10 @@ function Editor({
             });
       if (result.error) {
         const error = result.error;
+        if (error.type.endsWith('/confirmation-required')) {
+          setConfirmation(error);
+          return;
+        }
         setProblem(error);
         const fields = Object.fromEntries(
           (error.errors || []).map((e) => [
@@ -455,6 +473,25 @@ function Editor({
           )}
           {planMode && (
             <>
+              <label>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={requiresApproval}
+                  onChange={(e) => setRequiresApproval(e.target.checked)}
+                />{' '}
+                Requires approval
+                <span className="hint">
+                  Developers send a request with a reason. You approve or reject
+                  it in Requests.
+                </span>
+              </label>
+              {!requiresApproval && plan?.requiresApproval && (
+                <p>
+                  Pending requests for this plan stay in Requests for you to
+                  decide.
+                </p>
+              )}
               <fieldset className="stack">
                 <legend>Rate limit</legend>
                 {textField('rateLimit', 'Rate limit')}
@@ -554,6 +591,14 @@ function Editor({
           </a>
         </div>
       </form>
+      <Confirmation
+        error={problem}
+        problem={confirmation}
+        pending={pending}
+        planName={values.name}
+        onCancel={() => setConfirmation(undefined)}
+        onSave={(choice) => void save(choice)}
+      />
     </div>
   );
 }

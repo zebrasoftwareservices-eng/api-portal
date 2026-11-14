@@ -21,6 +21,9 @@ import { registerCatalog } from './catalog.js';
 import { registerImport } from './import.js';
 import { registerTeams } from './teams.js';
 import { registerProducts } from './products.js';
+import { registerAccessRequests } from './access-requests.js';
+import { registerProductAccess } from './product-access.js';
+import type { EnqueueRevocation } from './revocation.js';
 import { registerApps } from './apps.js';
 import { registerSetup } from './setup.js';
 import { registerGateways } from './gateways.js';
@@ -31,6 +34,7 @@ export interface AppOptions {
   db: Database;
   config: Config;
   adapterFor?: AdapterFor;
+  enqueueRevocation?: EnqueueRevocation;
   enqueueReconcile?: () => Promise<unknown>;
   auth?: Auth;
   enqueueMail?: EnqueueMail;
@@ -46,7 +50,10 @@ export async function databaseReadiness(
     await Promise.race([
       db.execute(sql`select 1`),
       new Promise((_, reject) => {
-        timeout = setTimeout(() => reject(new Error('readiness timeout')), timeoutMs);
+        timeout = setTimeout(
+          () => reject(new Error('readiness timeout')),
+          timeoutMs,
+        );
       }),
     ]);
     return { status: 'ok', database: 'ok' } as const;
@@ -204,12 +211,31 @@ export async function createApp(options: AppOptions) {
     instance.instanceId,
     options.enqueueReconcile ?? (async () => {}),
   );
-  registerCatalog(app, db);
+  registerCatalog(app, db, auth);
   registerImport(app, db, auth, connection, linter);
   registerVersions(app, db, auth, linter);
   registerTeams(app, db, auth, config, enqueue);
-  registerApps(app, db, auth, connection);
-  registerProducts(app, db, auth, options.enqueueReconcile ?? (async () => {}));
-  await registerProxy(app, db, connection.adapterFor, options.proxyFetch);
+  registerApps(app, db, auth, connection, enqueue);
+  registerAccessRequests(app, db, auth, connection, enqueue);
+  registerProductAccess(
+    app,
+    db,
+    auth,
+    connection,
+    enqueue,
+    options.enqueueRevocation ?? (async () => {}),
+  );
+  registerProducts(
+    app,
+    db,
+    auth,
+    options.enqueueReconcile ?? (async () => {}),
+    connection,
+    enqueue,
+    options.enqueueRevocation ?? (async () => {}),
+  );
+  await registerProxy(app, db, connection.adapterFor, options.proxyFetch, {
+    auth,
+  });
   return { app, auth };
 }
