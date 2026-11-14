@@ -110,4 +110,25 @@ describe('spec 016 production install artifacts', () => {
     expect(main).toContain('restore the backup taken before the upgrade');
     expect(main).toContain('start the previous version');
   });
+
+  it('AC 7-10 failure paths: Helm smoke cannot report success before every runtime assertion', () => {
+    const smoke = read('deploy/helm/smoke.sh');
+    const success = smoke.indexOf('PASS: AC 7-10 runtime assertions');
+    expect(success).toBeGreaterThan(0);
+
+    for (const assertion of [
+      "fail 'portal did not answer through its Service'",
+      'runs as root',
+      'server replicas logged different setup tokens',
+      'setup token row remains after claim',
+      'NotReady servers remain in the Service Endpoints',
+      'server restarted during the database outage',
+      'externalDatabase release created a Postgres pod',
+      'invalid ingress error does not name publicUrl',
+    ]) {
+      const position = smoke.indexOf(assertion);
+      expect(position, assertion).toBeGreaterThan(0);
+      expect(position, assertion).toBeLessThan(success);
+    }
+  });
 });

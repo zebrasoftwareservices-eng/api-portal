@@ -1,7 +1,7 @@
 ---
 id: 016
 title: Production install — hardened Compose, Helm chart, backups and upgrades
-status: testing  # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-13
 linear: JSO-244
@@ -417,7 +417,7 @@ Kong objects; reconcile keeps running every 5 minutes as now and is idempotent.
 - [x] [frontend] Portal ingress answers `GET /healthz` (200 when the Next child answers on loopback, 503 otherwise).
 - [x] [frontend] `PORTAL_TRUSTED_PROXIES` in the portal ingress: keep client IP and `https` only from a trusted peer; unit tests for trusted, untrusted and spoofed headers.
 - [x] [frontend] Portal Dockerfile: `PORTAL_VERSION` build arg, OCI labels, runs with a read-only root filesystem (writable `/tmp` only, or the proven minimum).
-- [ ] [qa] Run `upgrade-smoke` and `helm-smoke` locally and in CI; record AC 2–11 evidence in the Test report.
+- [x] [qa] Run `upgrade-smoke` and `helm-smoke` locally and in CI; record AC 2–11 evidence in the Test report.
 - [x] [qa] Verify the quickstart is unchanged: `deploy/docker-compose.yml` up in under five minutes, existing smokes and `pnpm test:e2e` pass.
 - [ ] [qa] Production Compose on a Linux host with a real Kong: HTTPS via the Caddy profile, `NODE_ENV=production`, no host ports for Postgres/server, no Kong container, no sample API, claim and connect Kong (AC 1).
 - [x] [backend] Fix: Upgrade smoke cannot start Kong or verify upgrade and recovery criteria
@@ -454,33 +454,33 @@ No UI change: no new or changed screens, flows, states, copy or tokens (Out of s
   while the kind runtime smoke remains for CI because this worker has no `kind` binary.
 
 ## Test report  _(qa-tester)_
-Commit tested: `3dee2bb202f192760fc1fb5d2048e024ad08cb43` · Portal: `http://localhost:3005`
 
-| Criterion | Test file | Result |
+Tested commit: `6cff3d01eb789e325e80d05dd49044e671a7f997`
+
+Portal URL: `http://localhost:3005`
+
+| Criterion | Automated test | Result |
 | --- | --- | --- |
-| 1 | `apps/server/src/production-install.test.ts`; `deploy/smoke.mjs`; clean Ubuntu/Caddy/Kong walk | Partial — Compose isolation, hardening and the real-Kong quickstart pass; the required clean-Linux HTTPS/existing-Kong walk remains open. |
-| 2 | `apps/server/src/config.test.ts`; `deploy/upgrade-smoke.mjs` | Fail — missing-secret unit paths pass, but the upgrade smoke's candidate becomes unhealthy before the image-level missing-secret assertion. |
-| 3 | `scripts/release-tags.test.mjs`; `apps/server/src/production-install.test.ts` | Pass — exact tags accepted, invalid/latest refs rejected, pinned workflow has no `latest`. |
-| 4 | `deploy/upgrade-smoke.mjs`; `packages/db/src/migrate.test.ts` | Fail — baseline data and backup are created, but the candidate becomes unhealthy before retained sign-in/API/app/key assertions. |
-| 5 | `deploy/upgrade-smoke.mjs` | Fail — the candidate becomes unhealthy before backup/delete/restore assertions. |
-| 6 | `deploy/upgrade-smoke.mjs` | Fail — the candidate becomes unhealthy before rollback assertions. |
-| 7 | `deploy/helm/smoke.sh`; `apps/server/src/production-install.test.ts` | Fail — kind 1.37 workloads become Ready, but the smoke requests nonexistent host `portal-smoke-api-portal` instead of the rendered `portal-smoke-api-portal-portal` Service and stops before runtime assertions. |
-| 8 | `deploy/helm/smoke.sh`; `apps/server/src/production-install.test.ts` | Partial — ingress validation fails safely and names `publicUrl`; the Service-host failure prevents the external-database install assertion. |
-| 9 | `apps/server/src/health.test.ts`; `apps/server/src/app.test.ts`; `deploy/helm/smoke.sh` | Partial — health failure paths pass in Vitest; the Service-host failure prevents the kind outage, Endpoints, liveness and restart assertions. |
-| 10 | `apps/server/src/setup-gateways.test.ts`; `apps/server/src/startup.test.ts`; `deploy/helm/smoke.sh` | Partial — database token claim/restart failure paths pass; the Service-host failure prevents cross-replica runtime assertions. |
-| 11 | `packages/db/src/migrate.test.ts`; `deploy/upgrade-smoke.mjs` | Partial — the synthetic schema-ahead test passes without writes; the unhealthy candidate prevents the image-level refusal assertion. |
+| AC 1 | `apps/server/src/production-install.test.ts`; `deploy/e2e/quickstart.spec.ts`; `deploy/smoke.mjs` | PASS for Compose isolation, production flags, hardening, unchanged quickstart, signup, app/key and real Kong traffic. The clean Ubuntu 26.04/Caddy/existing-Kong walk remains the open QA task. |
+| AC 2 | `apps/server/src/config.test.ts`; `apps/server/src/production-install.test.ts`; `deploy/upgrade-smoke.mjs` | PASS: file secrets work; missing encryption key exits non-zero and logs only the setting name. |
+| AC 3 | `scripts/release-tags.test.mjs`; `apps/server/src/production-install.test.ts` | PASS: exact release/prerelease tags only, no `latest`, pinned workflow actions. |
+| AC 4 | `deploy/upgrade-smoke.mjs`; `packages/db/src/migrate.test.ts` | PASS: branch candidate migrates baseline data and preserves sign-in, API, app and key. |
+| AC 5 | `deploy/upgrade-smoke.mjs` | PASS: backup is read-only; restore recovers the deleted app and matching domain rows. |
+| AC 6 | `deploy/upgrade-smoke.mjs` | PASS: pre-upgrade backup restores and runs on the baseline image with preserved data. |
+| AC 7 | `deploy/helm/smoke.sh`; `apps/server/src/production-install.test.ts` | PASS on real kind Kubernetes 1.37: pods Ready, portal Service responds, containers are non-root, no infrastructure dependencies. |
+| AC 8 | `deploy/helm/smoke.sh`; `apps/server/src/production-install.test.ts` | PASS: external database release is Ready without a Postgres pod; ingress without `publicUrl` fails naming the value. |
+| AC 9 | `deploy/helm/smoke.sh`; `apps/server/src/app.test.ts` | PASS: database outage removes server endpoints while liveness holds; recovery returns Ready with unchanged restart counts. |
+| AC 10 | `deploy/helm/smoke.sh`; `deploy/upgrade-smoke.mjs`; `apps/server/src/production-install.test.ts` | PASS: two replicas share one token, cross-replica claim consumes it, later claims fail, and Compose restart retains it. |
+| AC 11 | `deploy/upgrade-smoke.mjs`; `packages/db/src/migrate.test.ts`; `apps/server/src/production-install.test.ts` | PASS: schema-ahead startup exits non-zero, names restore/previous-image steps, and leaves data byte-identical. |
 
-Regression pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`, the correctly isolated `pnpm test:e2e` run (95 passed, 2 skipped), and `deploy/smoke.mjs` passed. `deploy/upgrade-smoke.mjs` failed when the candidate became unhealthy; `deploy/helm/smoke.sh` failed on the wrong portal Service hostname before AC 7–10 runtime checks. The worktree quickstart remains healthy and running at the portal URL above; major findings remain open and the spec returns to `building`.
-
-Long notes go in `docs/specs/log/016.md`, not here.
-
+Failure-path coverage passes for missing/conflicting/unreadable secrets, invalid ingress configuration, database outage/recovery, shared-token replay, schema-ahead refusal, invalid input, missing permission, expired sessions, duplicate requests and gateway outages. Full pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`, corrected worktree-isolated `pnpm test:e2e` (95 passed, 2 skipped), upgrade smoke, real-kind Helm smoke, and quickstart smoke all passed.
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] Upgrade smoke cannot start Kong or verify upgrade and recovery criteria (major)
-- [ ] Helm smoke passes without required AC 7-10 runtime assertions (major)
-- [ ] Upgrade smoke candidate becomes unhealthy before recovery assertions (major)
-- [ ] Helm smoke uses nonexistent portal Service hostname (major)
+- [x] Upgrade smoke cannot start Kong or verify upgrade and recovery criteria (major)
+- [x] Helm smoke passes without required AC 7-10 runtime assertions (major)
+- [x] Upgrade smoke candidate becomes unhealthy before recovery assertions (major)
+- [x] Helm smoke uses nonexistent portal Service hostname (major)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
