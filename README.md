@@ -37,10 +37,14 @@ The default Compose file is for local evaluation. **Do not expose it to the inte
 it sets `NODE_ENV=development`, so anyone who reaches a fresh install can claim its
 first admin without a setup token. Production requires non-default authentication,
 encryption and database secrets. Until an admin exists, a production server prints a
-random single-use setup token at each start; enter that token in setup. Persist your
+random single-use setup token shared by every replica and preserved across restarts; enter that token in setup. Persist your
 `PORTAL_ENCRYPTION_KEY`: changing it makes stored gateway tokens unreadable until you
 enter them again. See [reaching the Kong Admin API](docs/connect-kong.md) for networking,
 a protected-route recipe, moving a connection and cleanup.
+
+For a real installation, use the [production Docker Compose guide](docs/install/production.md)
+or the [Kubernetes Helm guide](docs/install/helm.md). Both use exact-version images,
+forward-only migrations, persistent secrets, health probes, and documented backup and rollback procedures.
 
 For declarative configuration, set **both** `ADMIN_EMAIL` and `ADMIN_PASSWORD`, plus
 `KONG_ADMIN_URL` and the proxy URLs. In Compose the bundled Admin API is

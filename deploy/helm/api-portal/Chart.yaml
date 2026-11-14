@@ -1,0 +1,7 @@
+apiVersion: v2
+name: api-portal
+description: Self-hosted API Developer Portal
+type: application
+version: 0.8.0
+appVersion: 0.8.0
+kubeVersion: ">=1.37.0-0 <1.38.0-0"

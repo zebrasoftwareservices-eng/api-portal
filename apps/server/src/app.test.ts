@@ -234,7 +234,15 @@ describe('contract endpoints', () => {
     ).toBe(403);
     expect((await server.inject('/api/v1/health')).json()).toMatchObject({
       status: 'ok',
+      version: 'dev',
       gateway: { reachable: true },
+    });
+    expect((await server.inject('/api/v1/health/live')).json()).toEqual({
+      status: 'ok',
+    });
+    expect((await server.inject('/api/v1/health/ready')).json()).toEqual({
+      status: 'ok',
+      database: 'ok',
     });
   });
   it('serves catalog and rewritten OpenAPI without exposing gateway credentials', async () => {

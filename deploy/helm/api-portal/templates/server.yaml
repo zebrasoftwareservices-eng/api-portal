@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "api-portal.fullname" . }}-server
+spec:
+  selector: { app.kubernetes.io/component: server, app.kubernetes.io/instance: {{ .Release.Name }} }
+  ports: [{ name: http, port: 4000, targetPort: http }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "api-portal.fullname" . }}-server
+spec:
+  replicas: {{ .Values.server.replicas }}
+  selector:
+    matchLabels: { app.kubernetes.io/component: server, app.kubernetes.io/instance: {{ .Release.Name }} }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/component: server, app.kubernetes.io/instance: {{ .Release.Name }} }
+    spec:
+      imagePullSecrets: {{ toYaml .Values.imagePullSecrets | nindent 8 }}
+      securityContext: { runAsNonRoot: true, runAsUser: 1000, seccompProfile: { type: RuntimeDefault } }
+      containers:
+        - name: server
+          image: {{ .Values.image.registry }}/api-portal-server:{{ include "api-portal.tag" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: {{ toYaml .Values.server.resources | nindent 12 }}
+          ports: [{ name: http, containerPort: 4000 }]
+          env:
+            - { name: NODE_ENV, value: production }
+            - { name: SEED_SAMPLE, value: "false" }
+            - { name: PORTAL_VERSION, value: {{ include "api-portal.tag" . | quote }} }
+            - { name: PORTAL_PUBLIC_URL, value: {{ include "api-portal.publicUrl" . | quote }} }
+            - { name: PORTAL_PROXY_HOST, value: {{ include "api-portal.fullname" . }}-portal-headless }
+            - name: BETTER_AUTH_SECRET
+              valueFrom: { secretKeyRef: { name: {{ include "api-portal.secret" . }}, key: auth-secret } }
+            - name: PORTAL_ENCRYPTION_KEY
+              valueFrom: { secretKeyRef: { name: {{ include "api-portal.secret" . }}, key: encryption-key } }
+            {{- if .Values.externalDatabase.existingSecret }}
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ .Values.externalDatabase.existingSecret }}, key: {{ .Values.externalDatabase.key }} } }
+            {{- else if .Values.externalDatabase.url }}
+            - { name: DATABASE_URL, value: {{ .Values.externalDatabase.url | quote }} }
+            {{- else }}
+            - { name: DATABASE_URL, value: "postgres://portal@{{ include "api-portal.fullname" . }}-postgres:5432/portal" }
+            - name: DATABASE_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "api-portal.secret" . }}, key: db-password } }
+            {{- end }}
+            {{- if .Values.kong.adminUrl }}
+            - { name: KONG_ADMIN_URL, value: {{ .Values.kong.adminUrl | quote }} }
+            - { name: KONG_PROXY_PUBLIC_URL, value: {{ .Values.kong.proxyPublicUrl | quote }} }
+            - { name: KONG_PROXY_INTERNAL_URL, value: {{ .Values.kong.proxyInternalUrl | quote }} }
+            {{- end }}
+            {{- if .Values.kong.adminTokenSecret }}
+            - name: KONG_ADMIN_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ .Values.kong.adminTokenSecret }}, key: {{ .Values.kong.adminTokenKey }} } }
+            {{- end }}
+            {{- if .Values.smtp.host }}
+            - { name: SMTP_HOST, value: {{ .Values.smtp.host | quote }} }
+            - { name: SMTP_PORT, value: {{ .Values.smtp.port | quote }} }
+            - { name: SMTP_SECURITY, value: {{ .Values.smtp.security | quote }} }
+            - { name: SMTP_USERNAME, value: {{ .Values.smtp.username | quote }} }
+            - { name: SMTP_SENDER_ADDRESS, value: {{ .Values.smtp.senderAddress | quote }} }
+            {{- end }}
+            {{- if .Values.smtp.passwordSecret }}
+            - name: SMTP_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.smtp.passwordSecret }}, key: {{ .Values.smtp.passwordKey }} } }
+            {{- end }}
+          startupProbe: { httpGet: { path: /api/v1/health/live, port: http }, periodSeconds: 2, failureThreshold: 60 }
+          livenessProbe: { httpGet: { path: /api/v1/health/live, port: http } }
+          readinessProbe: { httpGet: { path: /api/v1/health/ready, port: http }, periodSeconds: 5, failureThreshold: 2 }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]

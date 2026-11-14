@@ -1,0 +1,12 @@
+{{- if .Values.ingress.enabled }}
+Open {{ include "api-portal.publicUrl" . }}.
+{{- else }}
+Forward the portal locally:
+  kubectl -n {{ .Release.Namespace }} port-forward service/{{ include "api-portal.fullname" . }}-portal 3000:3000
+Then open http://localhost:3000.
+{{- end }}
+
+The first admin setup token is in the server logs:
+  kubectl -n {{ .Release.Namespace }} logs deployment/{{ include "api-portal.fullname" . }}-server
+
+The bundled PostgreSQL is intended for evaluation and small installations. Use externalDatabase for an operator-managed production database.

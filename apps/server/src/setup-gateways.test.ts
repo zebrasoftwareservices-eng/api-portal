@@ -34,12 +34,14 @@ import { loadConfig } from './config.js';
 import { decrypt } from './crypto.js';
 import { gatewayConnection } from './gateway-connection.js';
 import { reconcile } from './reconcile.js';
+import { prepareSetupToken } from './setup.js';
 let container: StartedPostgreSqlContainer;
 let db: ReturnType<typeof connect>;
 let app: Awaited<ReturnType<typeof createApp>>['app'];
 let config: ReturnType<typeof loadConfig>;
 let cookie: string;
 let ownerId: string;
+let setupToken: string | undefined;
 let outcome: ConnectionCheck;
 let proxyReachable: boolean;
 const logs: string[] = [];
@@ -105,10 +107,14 @@ const boot = async (production = false) => {
     PORTAL_BUNDLED_KONG_ADMIN_URL: values.adminUrl,
   });
   if (production) config.NODE_ENV = 'production';
+  setupToken = await prepareSetupToken(
+    db.db,
+    config.PORTAL_ENCRYPTION_KEY,
+    production,
+  );
   ({ app } = await createApp({
     db: db.db,
     config,
-    setupToken: production ? 'one-time-setup-secret' : undefined,
     adapterFor: (row) => {
       seen.push({ adminUrl: row.adminUrl, adminToken: row.adminToken });
       return adapter;
@@ -136,7 +142,7 @@ async function claim(production = false) {
     {
       email: 'admin@example.com',
       password: 'test-password-123',
-      ...(production ? { setupToken: 'one-time-setup-secret' } : {}),
+      ...(production ? { setupToken } : {}),
     },
     '',
   );
@@ -180,7 +186,7 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   await db.client`set client_min_messages to warning`;
-  await db.client`truncate "user",gateways cascade`;
+  await db.client`truncate "user",gateways,setup_tokens cascade`;
   vi.clearAllMocks();
   outcome = { outcome: 'ok', version: '3.9.4' };
   proxyReachable = true;
@@ -233,6 +239,10 @@ it('starts empty, blocks sign-up and claims exactly one first admin concurrently
 });
 it('requires the production token and consumes it when an admin exists without exposing it', async () => {
   await boot(true);
+  const firstApp = app;
+  const firstToken = setupToken;
+  await boot(true);
+  expect(setupToken).toBe(firstToken);
   expect((await call('GET', 'setup')).json().setupTokenRequired).toBe(true);
   for (const setupToken of [undefined, 'wrong']) {
     const response = await call('POST', 'setup/admin', {
@@ -248,11 +258,12 @@ it('requires the production token and consumes it when an admin exists without e
       await call('POST', 'setup/admin', {
         email: 'second@example.com',
         password: 'test-password-123',
-        setupToken: 'one-time-setup-secret',
+        setupToken,
       })
     ).statusCode,
   ).toBe(409);
-  expect(logs.join('')).not.toContain('one-time-setup-secret');
+  expect(logs.join('')).not.toContain(firstToken);
+  await firstApp.close();
 });
 it('rate limits setup per IP with problem+json', async () => {
   await boot(true);

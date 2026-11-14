@@ -21,6 +21,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/health/live": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Liveness probe
+         * @description Answers 200 while the process can serve HTTP. It checks nothing else, not the database
+         *     and not the gateway, so a database outage never makes Kubernetes or Compose restart the
+         *     server (spec 016).
+         */
+        get: operations["getLiveness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/health/ready": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness probe
+         * @description Answers 200 when the server can reach PostgreSQL (`select 1`, 2-second timeout), and 503
+         *     when it cannot. The gateway is not checked: a portal without Kong is still ready. When
+         *     the database returns, the next check answers 200 again without a restart (spec 016).
+         */
+        get: operations["getReadiness"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/setup": {
         parameters: {
             query?: never;
@@ -54,9 +98,12 @@ export interface paths {
          * Create the first admin and sign them in
          * @description Atomic and serialized: of any number of submissions, at the same time or later, exactly
          *     one creates an admin. The response sets the session cookie. When
-         *     `NODE_ENV=production`, `setupToken` must match the token this server start wrote to its
-         *     logs. The token lives only in memory, is replaced on each start and stops working once an
-         *     admin exists. Rate-limited to 10 requests per minute per IP.
+         *     `NODE_ENV=production`, `setupToken` must match the install's setup token, which every
+         *     server replica prints to its log at start (spec 016, ADR 0009). The token is stored once,
+         *     encrypted, in a single database row created while no admin exists; restarts and other
+         *     replicas print the same token. A successful claim deletes the row in the same
+         *     transaction, after which every replica answers 409. Rate-limited to 10 requests per
+         *     minute per IP.
          */
         post: operations["createFirstAdmin"];
         delete?: never;
@@ -870,7 +917,7 @@ export interface components {
             /** @example Gateway unavailable */
             title: string;
             status: number;
-            /** @example The API gateway didn't respond. Nothing was created. Try again in a moment. */
+            /** @example The API gateway didn't respond. Try again in a moment. */
             detail?: string;
             instance?: string;
             /** @description With `/problems/gateway-in-use`: published APIs on this gateway */
@@ -907,9 +954,24 @@ export interface components {
             }[];
         };
         Slug: string;
+        Liveness: {
+            /** @enum {string} */
+            status: "ok";
+        };
+        Readiness: {
+            /** @enum {string} */
+            status: "ok";
+            /** @enum {string} */
+            database: "ok";
+        };
         Health: {
             /** @enum {string} */
             status: "ok" | "degraded";
+            /**
+             * @description The server image version (`PORTAL_VERSION`, set from the release tag at image build,
+             *     for example `0.8.0`); `dev` for an image built outside the release workflow.
+             * @example 0.8.0
+             */
             version: string;
             lint: {
                 /** @enum {string} */
@@ -1680,6 +1742,58 @@ export interface operations {
             };
         };
     };
+    getLiveness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The process is up */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Liveness"];
+                };
+            };
+        };
+    };
+    getReadiness: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ready to serve requests */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Readiness"];
+                };
+            };
+            /**
+             * @description The database is unreachable (`/problems/database-unavailable`). The body never
+             *     contains the database URL, host or credentials.
+             */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     getSetupStatus: {
         parameters: {
             query?: never;
@@ -1725,7 +1839,10 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationError"];
-            /** @description The setup token is missing or wrong (`/problems/setup-token-invalid`). No admin was created. */
+            /**
+             * @description The setup token is missing or wrong, or no token row exists yet
+             *     (`/problems/setup-token-invalid`; restart the server to create one). No admin was created.
+             */
             403: {
                 headers: {
                     [name: string]: unknown;

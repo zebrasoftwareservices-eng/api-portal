@@ -30,6 +30,15 @@ export const instanceSettings = pgTable(
   },
   (t) => [check('instance_singleton', sql`${t.id} = 1`)],
 );
+export const setupTokens = pgTable(
+  'setup_tokens',
+  {
+    id: smallint('id').primaryKey().default(1),
+    tokenCiphertext: text('token_ciphertext').notNull(),
+    createdAt: created(),
+  },
+  (t) => [check('setup_token_singleton', sql`${t.id} = 1`)],
+);
 export const gateways = pgTable(
   'gateways',
   {

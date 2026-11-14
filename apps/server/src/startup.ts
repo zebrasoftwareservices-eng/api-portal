@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-import { randomBytes } from 'node:crypto';
 import { connect, migrate, instanceSettings, gateways } from '@portal/db';
 import { eq, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
@@ -7,7 +6,7 @@ import PgBoss from 'pg-boss';
 import { GatewayUnavailableError } from '@portal/adapter-sdk';
 import type { KongAdapter } from '@portal/adapter-kong';
 import { gatewayConnection, requireEnabled } from './gateway-connection.js';
-import { adminExists, createFirstAdmin } from './setup.js';
+import { adminExists, createFirstAdmin, prepareSetupToken } from './setup.js';
 import type { Config } from './config.js';
 import { encrypt } from './crypto.js';
 import { createAuth } from './auth.js';
@@ -81,15 +80,15 @@ export async function start(config: Config) {
           throw error;
       }
     }
-    const setupToken =
-      config.NODE_ENV === 'production' && !(await adminExists(db))
-        ? randomBytes(32).toString('hex')
-        : undefined;
+    const setupToken = await prepareSetupToken(
+      db,
+      config.PORTAL_ENCRYPTION_KEY,
+      config.NODE_ENV === 'production',
+    );
     const { app } = await createApp({
       db,
       config,
       auth,
-      setupToken,
       enqueueMail,
       enqueueReconcile: () =>
         boss.send(

@@ -1,0 +1,42 @@
+image:
+  registry: ghcr.io/zebrasoftwareservices-eng
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+server:
+  replicas: 1
+  resources: {}
+portal:
+  replicas: 1
+  resources: {}
+publicUrl: ""
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  tls: []
+postgresql:
+  enabled: true
+  persistence:
+    size: 8Gi
+    storageClass: ""
+externalDatabase:
+  url: ""
+  existingSecret: ""
+  key: database-url
+secrets:
+  existingSecret: ""
+kong:
+  adminUrl: ""
+  proxyPublicUrl: http://localhost:8000
+  proxyInternalUrl: http://localhost:8000
+  adminTokenSecret: ""
+  adminTokenKey: kong-admin-token
+smtp:
+  host: ""
+  port: 587
+  security: starttls
+  username: ""
+  senderAddress: ""
+  passwordSecret: ""
+  passwordKey: smtp-password

@@ -113,6 +113,7 @@ export function problemHandler(app: FastifyInstance) {
               'gateway-not-connected': 'No gateway connected',
               'setup-complete': 'This portal already has an admin',
               'setup-token-invalid': 'Setup token not accepted',
+              'database-unavailable': 'Database unavailable',
               'sample-not-available': "The sample isn't available here",
               'gateway-service-has-acl':
                 'Another ACL plugin applies to this service',

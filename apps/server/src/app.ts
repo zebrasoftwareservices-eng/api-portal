@@ -24,16 +24,40 @@ import { registerApps } from './apps.js';
 import { registerSetup } from './setup.js';
 import { registerGateways } from './gateways.js';
 import { registerProxy } from './proxy.js';
+import { sql } from 'drizzle-orm';
+import { Problem } from './problem.js';
 export interface AppOptions {
   db: Database;
   config: Config;
   adapterFor?: AdapterFor;
-  setupToken?: string;
   enqueueReconcile?: () => Promise<unknown>;
   auth?: Auth;
   enqueueMail?: EnqueueMail;
   logger?: FastifyServerOptions['logger'];
   proxyFetch?: typeof fetch;
+}
+export async function databaseReadiness(
+  db: Pick<Database, 'execute'>,
+  timeoutMs = 2_000,
+) {
+  let timeout: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      db.execute(sql`select 1`),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('readiness timeout')), timeoutMs);
+      }),
+    ]);
+    return { status: 'ok', database: 'ok' } as const;
+  } catch {
+    throw new Problem(
+      503,
+      'database-unavailable',
+      "The server can't reach its database.",
+    );
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 export async function createApp(options: AppOptions) {
   const { db, config } = options;
@@ -142,6 +166,8 @@ export async function createApp(options: AppOptions) {
   });
   registerAccount(app, db, auth, connection, config, enqueue);
   registerAdminSettings(app, db, auth, config);
+  app.get('/api/v1/health/live', async () => ({ status: 'ok' }));
+  app.get('/api/v1/health/ready', async () => databaseReadiness(db));
   app.get('/api/v1/health', async () => {
     const gateway = await connection.load();
     const health = gateway?.adapter
@@ -150,7 +176,7 @@ export async function createApp(options: AppOptions) {
     return {
       status: linter.health.status === 'error' ? 'degraded' : 'ok',
       lint: linter.health,
-      version: '0.1.0',
+      version: config.PORTAL_VERSION,
       gateway: gateway
         ? {
             kind: 'kong',
@@ -167,7 +193,7 @@ export async function createApp(options: AppOptions) {
     db,
     auth,
     config.NODE_ENV === 'production',
-    options.setupToken,
+    config.NODE_ENV === 'production' ? config.PORTAL_ENCRYPTION_KEY : undefined,
   );
   await registerGateways(
     app,

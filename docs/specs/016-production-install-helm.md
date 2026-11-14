@@ -402,17 +402,17 @@ Kong objects; reconcile keeps running every 5 minutes as now and is idempotent.
   VM following only `docs/install/production.md`.
 
 ### Tasks
-- [ ] [backend] Regenerate `packages/sdk/src/schema.d.ts` from the updated `openapi.yaml`.
-- [ ] [backend] Config: `X_FILE` secrets, `DATABASE_PASSWORD[_FILE]`, production-required secrets, `ConfigError` with names only; `main.ts` exits 1 on config errors; unit tests incl. no secret value in output (AC 2).
-- [ ] [backend] `setup_tokens` table + generated migration `0005_setup_tokens`; token create/print at start and read/delete in the claim transaction; drop the in-memory token; tests for two app instances on one database and restart (AC 10).
-- [ ] [backend] Schema-ahead guard in `packages/db` `migrate()` with `SchemaAheadError`; `main.ts` logs the rollback steps and exits 1; test with a synthetic future migration row (AC 11).
-- [ ] [backend] `GET /api/v1/health/live` and `/api/v1/health/ready` per the contract; `PORTAL_VERSION` in `/api/v1/health`; outage test (AC 9).
-- [ ] [backend] Server Dockerfile: `PORTAL_VERSION` build arg, OCI labels, works with a read-only root filesystem.
-- [ ] [backend] `scripts/release-tags.mjs` + `node --test` test; `.github/workflows/release.yml` (exact-version tags only, pinned actions); `actionlint` in CI (AC 3).
-- [ ] [backend] `deploy/production/`: `compose.yaml`, `.env.example`, `secrets/README.md`, `Caddyfile`, `backup.sh`, `restore.sh` as designed (AC 1, 2, 5, 6).
-- [ ] [backend] Helm chart `deploy/helm/api-portal/` as designed, with NOTES.txt and `helm lint` clean (AC 7, 8, 9, 10).
-- [ ] [backend] CI jobs `upgrade-smoke` (`deploy/upgrade-smoke.mjs`, `deploy/ci/compose.upgrade.yaml`) and `helm-smoke` (`deploy/helm/smoke.sh`) (AC 2, 4–11).
-- [ ] [backend] `docs/install/production.md` (VM guide, Caddy, claim, connect Kong, backup cron, upgrade, rollback anchor `#roll-back`), `docs/install/helm.md`; README links them (AC 1, 4, 5, 6).
+- [x] [backend] Regenerate `packages/sdk/src/schema.d.ts` from the updated `openapi.yaml`.
+- [x] [backend] Config: `X_FILE` secrets, `DATABASE_PASSWORD[_FILE]`, production-required secrets, `ConfigError` with names only; `main.ts` exits 1 on config errors; unit tests incl. no secret value in output (AC 2).
+- [x] [backend] `setup_tokens` table + generated migration `0005_setup_tokens`; token create/print at start and read/delete in the claim transaction; drop the in-memory token; tests for two app instances on one database and restart (AC 10).
+- [x] [backend] Schema-ahead guard in `packages/db` `migrate()` with `SchemaAheadError`; `main.ts` logs the rollback steps and exits 1; test with a synthetic future migration row (AC 11).
+- [x] [backend] `GET /api/v1/health/live` and `/api/v1/health/ready` per the contract; `PORTAL_VERSION` in `/api/v1/health`; outage test (AC 9).
+- [x] [backend] Server Dockerfile: `PORTAL_VERSION` build arg, OCI labels, works with a read-only root filesystem.
+- [x] [backend] `scripts/release-tags.mjs` + `node --test` test; `.github/workflows/release.yml` (exact-version tags only, pinned actions); `actionlint` in CI (AC 3).
+- [x] [backend] `deploy/production/`: `compose.yaml`, `.env.example`, `secrets/README.md`, `Caddyfile`, `backup.sh`, `restore.sh` as designed (AC 1, 2, 5, 6).
+- [x] [backend] Helm chart `deploy/helm/api-portal/` as designed, with NOTES.txt and `helm lint` clean (AC 7, 8, 9, 10).
+- [x] [backend] CI jobs `upgrade-smoke` (`deploy/upgrade-smoke.mjs`, `deploy/ci/compose.upgrade.yaml`) and `helm-smoke` (`deploy/helm/smoke.sh`) (AC 2, 4–11).
+- [x] [backend] `docs/install/production.md` (VM guide, Caddy, claim, connect Kong, backup cron, upgrade, rollback anchor `#roll-back`), `docs/install/helm.md`; README links them (AC 1, 4, 5, 6).
 - [x] [frontend] Portal ingress proxies `/api/*` to `SERVER_URL` at runtime; middleware and `lib/server.ts` read it at runtime; test with a non-default server host.
 - [x] [frontend] Portal ingress answers `GET /healthz` (200 when the Next child answers on loopback, 503 otherwise).
 - [x] [frontend] `PORTAL_TRUSTED_PROXIES` in the portal ingress: keep client IP and `https` only from a trusted peer; unit tests for trusted, untrusted and spoofed headers.
@@ -428,6 +428,8 @@ No UI change: no new or changed screens, flows, states, copy or tokens (Out of s
 [`docs/design/016-production-install-helm.md`](../design/016-production-install-helm.md).
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Backend: added production file-secret configuration, persistent database setup tokens, schema-ahead protection, health probes/version reporting, exact-version release images, hardened Compose, the Kubernetes 1.37 Helm chart, upgrade/Helm CI smokes, and operator install/backup/rollback guides. Generated migration `0005_setup_tokens` and the SDK schema; `@portal/db` (7 tests), `@portal/server` (215 tests), and `@portal/sdk` checks pass, alongside Helm lint/templates, Compose config, actionlint, and release-tag tests. QA should run the new upgrade and kind smokes end to end and verify the production images under read-only filesystems.
 
 - Frontend: the public portal ingress now routes `/api/*` to runtime `SERVER_URL`, serves
   `/healthz` from a loopback Next probe, and sanitizes forwarding metadata with optional

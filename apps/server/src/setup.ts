@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import { uuidv7 } from 'uuidv7';
 import { eq, sql } from 'drizzle-orm';
-import { user, account, type Database } from '@portal/db';
+import { user, account, setupTokens, type Database } from '@portal/db';
 import type { FastifyInstance } from 'fastify';
 import type { Auth } from './auth.js';
 import { headersFor } from './auth.js';
 import { Problem } from './problem.js';
+import { decrypt, encrypt } from './crypto.js';
 const firstAdmin = z.strictObject({
   email: z.email(),
   password: z.string().min(8).max(128),
@@ -27,7 +28,7 @@ export async function createFirstAdmin(
   db: Database,
   auth: Auth,
   input: z.input<typeof firstAdmin>,
-  expectedToken?: string,
+  setupEncryptionKey?: string,
 ) {
   const values = firstAdmin.parse(input);
   return db.transaction(async (tx) => {
@@ -43,20 +44,34 @@ export async function createFirstAdmin(
         'setup-complete',
         "The first admin has already been created. A portal has only one first admin, so this one wasn't created.",
       );
-    if (
-      expectedToken &&
-      !timingSafeEqual(
+    if (setupEncryptionKey) {
+      const [row] = await tx.select().from(setupTokens).limit(1).for('update');
+      if (!row)
+        throw new Problem(
+          403,
+          'setup-token-invalid',
+          'The setup token is unavailable. Restart the server and use the token from its startup log.',
+        );
+      let expectedToken: string;
+      try {
+        expectedToken = decrypt(row.tokenCiphertext, setupEncryptionKey);
+      } catch {
+        throw new Problem(
+          403,
+          'setup-token-invalid',
+          'The setup token is unavailable. Restart the server and use the token from its startup log.',
+        );
+      }
+      if (!timingSafeEqual(
         createHash('sha256').update(expectedToken).digest(),
-        createHash('sha256')
-          .update(values.setupToken ?? '')
-          .digest(),
-      )
-    )
-      throw new Problem(
-        403,
-        'setup-token-invalid',
-        'The setup token is missing or wrong. No admin was created.',
-      );
+        createHash('sha256').update(values.setupToken ?? '').digest(),
+      ))
+        throw new Problem(
+          403,
+          'setup-token-invalid',
+          'The setup token is missing or wrong. No admin was created.',
+        );
+    }
     const email = values.email.toLowerCase();
     const [existing] = await tx
       .select({ id: user.id })
@@ -93,7 +108,38 @@ export async function createFirstAdmin(
       userId: id,
       password,
     });
+    await tx.delete(setupTokens);
     return { id, email, name: values.name, role: 'admin' as const };
+  });
+}
+
+export async function prepareSetupToken(
+  db: Database,
+  encryptionKey: string,
+  production: boolean,
+) {
+  if (!production) return undefined;
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(71833003)`);
+    const [admin] = await tx.select({ id: user.id }).from(user).where(eq(user.role, 'admin')).limit(1);
+    if (admin) {
+      await tx.delete(setupTokens);
+      return undefined;
+    }
+    const [stored] = await tx.select().from(setupTokens).limit(1);
+    if (stored) {
+      try {
+        return decrypt(stored.tokenCiphertext, encryptionKey);
+      } catch {
+        // A rotated encryption key makes the old token unusable; replace it atomically.
+      }
+    }
+    const token = randomBytes(32).toString('hex');
+    await tx.insert(setupTokens).values({ id: 1, tokenCiphertext: encrypt(token, encryptionKey) }).onConflictDoUpdate({
+      target: setupTokens.id,
+      set: { tokenCiphertext: encrypt(token, encryptionKey), createdAt: new Date() },
+    });
+    return token;
   });
 }
 export async function registerSetup(
@@ -101,7 +147,7 @@ export async function registerSetup(
   db: Database,
   auth: Auth,
   production: boolean,
-  setupToken?: string,
+  setupEncryptionKey?: string,
 ) {
   server.get('/api/v1/setup', async () => {
     const adminRequired = !(await adminExists(db));
@@ -120,18 +166,11 @@ export async function registerSetup(
     });
     app.post('/api/v1/setup/admin', async (request, reply) => {
       const input = firstAdmin.parse(request.body);
-      // A production app must never accidentally admit a claim without a startup token.
-      if (production && !setupToken && !(await adminExists(db)))
-        throw new Problem(
-          403,
-          'setup-token-invalid',
-          'The setup token is unavailable. Restart the server and use the token from its startup log.',
-        );
       const admin = await createFirstAdmin(
         db,
         auth,
         input,
-        production ? setupToken : undefined,
+        production ? setupEncryptionKey : undefined,
       );
       try {
         const signedIn = await auth.api.signInEmail({
