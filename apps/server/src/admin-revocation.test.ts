@@ -374,3 +374,51 @@ it('AC13: admin-assigned revocation persists on gateway failure and retries once
   await revokeApps(connection.db, conn, [appId], enqueue, server.log);
   await assertRevoked(appId, call);
 });
+
+it.each(['keep', 'revoke'] as const)(
+  'Manual → Internal %s protects unnamed assignments with a real Kong credential',
+  async (decision) => {
+    const { productId, planId, appId, call } = await fixture('manual');
+    const namedId = uuidv7();
+    await connection.db
+      .insert(teams)
+      .values({ id: namedId, name: 'Named team' });
+    const url = `/api/v1/admin/products/${productId}/access`;
+    const payload = { visibility: 'internal', teamIds: [namedId] };
+    const confirmation = await server.inject({ method: 'PUT', url, payload });
+    expect(confirmation.statusCode, confirmation.body).toBe(409);
+    expect(confirmation.json()).toMatchObject({
+      type: '/problems/confirmation-required',
+      affectedTeams: 1,
+      affectedSubscriptions: 1,
+    });
+    expect(await call()).toBe(200);
+    const applied = await server.inject({
+      method: 'PUT',
+      url,
+      payload: { ...payload, existingSubscriptions: decision },
+    });
+    expect(applied.statusCode, applied.body).toBe(200);
+    if (decision === 'revoke') await assertRevoked(appId, call);
+    else {
+      expect(await call()).toBe(200);
+      expect(enqueue).not.toHaveBeenCalled();
+    }
+    const before = await adapter.request('/consumers', 'GET');
+    const denied = await server.inject({
+      method: 'POST',
+      url: '/api/v1/admin/subscriptions',
+      payload: { teamId, planId, name: uuidv7() },
+    });
+    expect(denied.statusCode, denied.body).toBe(409);
+    expect(denied.json().type).toBe('/problems/team-not-named');
+    expect(await adapter.request('/consumers', 'GET')).toEqual(before);
+    const allowed = await server.inject({
+      method: 'POST',
+      url: '/api/v1/admin/subscriptions',
+      payload: { teamId: namedId, planId, name: uuidv7() },
+    });
+    expect(allowed.statusCode, allowed.body).toBe(201);
+    expect(allowed.json()).toMatchObject({ origin: 'admin', keyIssued: false });
+  },
+);

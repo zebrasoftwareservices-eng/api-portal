@@ -1,5 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type APIResponse,
+} from '@playwright/test';
 import { execFileSync } from 'node:child_process';
 const origin = process.env.PORTAL_PUBLIC_URL ?? 'http://localhost:3000';
 const kong = process.env.KONG_ADMIN_URL ?? 'http://localhost:8001';
@@ -12,7 +17,7 @@ const compose = (...args: string[]) =>
     stdio: 'pipe',
   });
 async function json(
-  response: { status(): number; text(): Promise<string>; json(): Promise<any> },
+  response: Pick<APIResponse, 'status' | 'text' | 'json'>,
   status = 200,
 ) {
   expect(response.status(), await response.text()).toBe(status);
@@ -32,7 +37,7 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
   playwright,
   browser,
 }) => {
-  test.setTimeout(180000);
+  test.setTimeout(240000);
   const operatorContext = await browser.newContext({
     baseURL: origin,
     extraHTTPHeaders: { origin },
@@ -143,12 +148,25 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
     .data;
   await page.goto(`/products/${slug}`);
   await page.setViewportSize({ width: 390, height: 844 });
-  console.log(
-    '010 minor mobile overflow px:',
-    await page.evaluate(
-      () => document.documentElement.scrollWidth - innerWidth,
-    ),
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+    )
+    .toBe(0);
+  const cards = page.locator('.plan-cards > *');
+  const bounds = await cards.evaluateAll((elements) =>
+    elements.map((el) => {
+      const { x, y, width, height } = el.getBoundingClientRect();
+      return { x, y, width, height };
+    }),
   );
+  expect(bounds.length).toBeGreaterThanOrEqual(2);
+  for (let i = 1; i < bounds.length; i++) {
+    expect(bounds[i]!.y).toBeGreaterThanOrEqual(
+      bounds[i - 1]!.y + bounds[i - 1]!.height,
+    );
+    expect(bounds[i]!.width).toBeCloseTo(bounds[0]!.width, 0);
+  }
   await page.setViewportSize({ width: 1280, height: 900 });
   await page
     .getByRole('button', { name: 'Request access', exact: true })
@@ -208,21 +226,21 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
     compose('start', '--wait', 'kong');
   }
   await adminPage.goto('/admin/requests');
-  await adminPage
+  const approveButton = adminPage
     .locator('article')
     .filter({ hasText: slug })
-    .getByRole('button', { name: 'Approve…' })
-    .click();
+    .getByRole('button', { name: 'Approve…' });
+  await approveButton.click();
   await adminPage.keyboard.press('Escape');
-  console.log(
-    '010 minor approval Escape focus:',
-    await adminPage.evaluate(() => document.activeElement?.tagName),
-  );
+  await expect(adminPage.getByRole('dialog')).toHaveCount(0);
+  await expect(approveButton).toBeFocused();
+  await approveButton.click();
   await adminPage
-    .locator('article')
-    .filter({ hasText: slug })
-    .getByRole('button', { name: 'Approve…' })
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Cancel', exact: true })
     .click();
+  await expect(approveButton).toBeFocused();
+  await approveButton.click();
   await adminPage
     .getByLabel('Note to the requester (included in the email)')
     .fill('Welcome partner');
@@ -438,6 +456,70 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
     201,
   );
   expect((await call(assignedKey.key)).status()).toBe(200);
+  // A second team is named while the assigned team is excluded by Manual → Internal.
+  const adminTeam = (await json(await operator.get('/api/v1/teams'))).items[0];
+  await adminPage.goto(`/admin/products/${slug}`);
+  await adminPage.getByRole('radio', { name: 'Internal', exact: true }).check();
+  await adminPage.getByRole('combobox').fill('admin@example.com');
+  await adminPage.getByRole('option', { name: /admin@example.com/ }).click();
+  await adminPage
+    .getByRole('button', { name: 'Save access', exact: true })
+    .click();
+  const confirmation = adminPage.getByRole('alertdialog');
+  await expect(confirmation.getByRole('heading')).toHaveText(
+    '1 team has an active subscription',
+  );
+  await expect(
+    confirmation.getByRole('radio', { name: /Keep them working/ }),
+  ).toBeChecked();
+  await confirmation
+    .getByRole('button', { name: 'Cancel', exact: true })
+    .click();
+  expect((await json(await operator.get(access))).visibility).toBe('manual');
+  expect((await call(assignedKey.key)).status()).toBe(200);
+  // Open assignment while still Manual, then let another admin change the setting.
+  await adminPage.reload();
+  await adminPage
+    .getByRole('button', { name: 'Assign to a team', exact: true })
+    .click();
+  const assignment = adminPage.getByRole('dialog');
+  await assignment.getByRole('combobox').fill(email);
+  await assignment
+    .getByRole('option', {
+      name: new RegExp(email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    })
+    .click();
+  await assignment
+    .getByLabel('Subscription name', { exact: true })
+    .fill('Excluded assignment');
+  await json(
+    await operator.put(access, {
+      data: {
+        visibility: 'internal',
+        teamIds: [adminTeam.id],
+        existingSubscriptions: 'keep',
+      },
+    }),
+  );
+  expect((await call(assignedKey.key)).status()).toBe(200);
+  const conflictResponse = adminPage.waitForResponse(
+    (r) =>
+      r.url().endsWith('/api/v1/admin/subscriptions') &&
+      r.request().method() === 'POST',
+  );
+  await assignment
+    .getByRole('button', { name: 'Create subscription', exact: true })
+    .click();
+  expect(await json(await conflictResponse, 409)).toMatchObject({
+    type: '/problems/team-not-named',
+  });
+  await expect(assignment.getByRole('alert')).toContainText(
+    'Add the team to this product first',
+  );
+  await expect(
+    assignment.getByLabel('Subscription name', { exact: true }),
+  ).toHaveValue('Excluded assignment');
+  await assignment.getByRole('button', { name: 'Cancel', exact: true }).click();
   // AC12–13: include origin:admin in confirmation, Keep, outage and retry.
   await json(await operator.put(access, { data: { visibility: 'open' } }));
   const assignedConfirmation = await json(
