@@ -420,8 +420,8 @@ Kong objects; reconcile keeps running every 5 minutes as now and is idempotent.
 - [ ] [qa] Run `upgrade-smoke` and `helm-smoke` locally and in CI; record AC 2–11 evidence in the Test report.
 - [x] [qa] Verify the quickstart is unchanged: `deploy/docker-compose.yml` up in under five minutes, existing smokes and `pnpm test:e2e` pass.
 - [ ] [qa] Production Compose on a Linux host with a real Kong: HTTPS via the Caddy profile, `NODE_ENV=production`, no host ports for Postgres/server, no Kong container, no sample API, claim and connect Kong (AC 1).
-- [ ] [backend] Fix: Upgrade smoke cannot start Kong or verify upgrade and recovery criteria
-- [ ] [backend] Fix: Helm smoke passes without required AC 7-10 runtime assertions
+- [x] [backend] Fix: Upgrade smoke cannot start Kong or verify upgrade and recovery criteria
+- [x] [backend] Fix: Helm smoke passes without required AC 7-10 runtime assertions
 ## UX  _(ui-designer)_
 No UI change: no new or changed screens, flows, states, copy or tokens (Out of scope). The
 `[frontend]` tasks are the portal container only: runtime `SERVER_URL` proxying, `GET /healthz`,
@@ -438,6 +438,12 @@ No UI change: no new or changed screens, flows, states, copy or tokens (Out of s
   `PORTAL_VERSION`/OCI metadata, remains uid 1000, and uses `/tmp` as its writable runtime path.
   Portal lint, typecheck, and all 285 tests pass; QA should exercise the image with a read-only
   root filesystem and the production proxy subnet.
+
+- Backend fixes: the upgrade smoke now starts a database-backed Kong and asserts upgrade data
+  preservation, backup/restore, rollback, missing-secret refusal, persistent setup tokens, and
+  schema-ahead recovery. The Helm smoke now exercises the portal Service, non-root containers,
+  shared-token cross-replica claim, database outage recovery without restarts, an external-database
+  release, and the required ingress failure; QA should rerun both CI smoke jobs end to end.
 
 ## Test report  _(qa-tester)_
 Commit tested: `f519283479e9de9d16678037f68c3273d4a3d44b` · Portal: `http://localhost:3005`
