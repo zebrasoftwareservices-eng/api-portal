@@ -6,6 +6,8 @@ import {
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import {
+  BUILTIN_PLAN_ID,
+  plans,
   connect,
   instanceSettings,
   gateways,
@@ -99,6 +101,9 @@ beforeEach(async () => {
   vi.mocked(adapter.deleteConsumer).mockReset().mockResolvedValue();
   await connection.client`set client_min_messages to warning`;
   await connection.client`truncate "user",rate_limit_hits,mail_settings cascade`;
+  await connection.db
+    .insert(plans)
+    .values({ id: BUILTIN_PLAN_ID, name: 'Unlimited', builtin: true });
   await connection.db.update(accountSettings).set({
     requireVerifiedEmail: false,
     signInFailureMax: 10,

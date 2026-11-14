@@ -109,3 +109,10 @@ it('requires admin credentials together', () => {
     'must be set together',
   );
 });
+it('defaults plan counters to cluster and accepts only supported policies', () => {
+  expect(loadConfig({}).PORTAL_RATE_LIMIT_POLICY).toBe('cluster');
+  expect(
+    loadConfig({ PORTAL_RATE_LIMIT_POLICY: 'local' }).PORTAL_RATE_LIMIT_POLICY,
+  ).toBe('local');
+  expect(() => loadConfig({ PORTAL_RATE_LIMIT_POLICY: 'redis' })).toThrow();
+});

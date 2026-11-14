@@ -42,6 +42,10 @@ info:
       (`/problems/team-role-forbidden`). Membership changes never call the gateway.
     - An API has one or more versions (spec 012, ADR 0007). Exactly one is the latest; the
       unversioned catalog paths serve it. Versions are named by the document's `info.version`.
+    - Products bundle published APIs; each product has free plans with a rate limit and a monthly
+      quota that Kong enforces (spec 009, ADR 0009). A subscription is an app on a product plan,
+      with one active key. Apps created without a product (spec 004 flow) are on the built-in
+      `Unlimited` plan. Monthly quotas count per calendar month in UTC.
 servers:
   - url: /api
 tags:
@@ -51,8 +55,10 @@ tags:
     description: Public API catalog and published OpenAPI documents
   - name: me
     description: The signed-in user
+  - name: products
+    description: Products and their free plans (spec 009, ADR 0009)
   - name: apps
-    description: A team's apps and their API keys (spec 008, ADR 0008)
+    description: A team's apps and subscriptions, and their API keys (spec 008, spec 009)
   - name: teams
     description: Teams, members and invitations (spec 008, ADR 0008)
   - name: setup
@@ -295,6 +301,44 @@ paths:
                     items: { $ref: '#/components/schemas/ChangelogEntry' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/products:
+    get:
+      tags: [products]
+      operationId: listProducts
+      summary: List products (public catalog)
+      description: |
+        Every product is public in this spec (hidden products are spec 010). The catalog shows
+        these plus the APIs whose `products` list is empty (`GET /v1/apis`).
+      security: []
+      responses:
+        '200':
+          description: Products, by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ProductSummary' }
+
+  /v1/products/{productSlug}:
+    get:
+      tags: [products]
+      operationId: getProduct
+      summary: Get one product with its APIs and plans
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProductSlug'
+      responses:
+        '200':
+          description: The product
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v1/me:
     get:
       tags: [me]
@@ -501,14 +545,22 @@ paths:
     post:
       tags: [apps]
       operationId: createApp
-      summary: Create an app, subscribe it to APIs and issue its first API key
+      summary: Create an app (or subscribe to a plan) and issue its first API key
       description: |
-        Atomic from the developer's point of view (spec 001 AC 6 and 8, spec 004 AC 8). The
-        server upserts the Kong consumer, grants access to each subscribed API, issues the
-        key-auth credential, then writes Postgres in one transaction. On any failure it deletes
-        whatever it created in Kong and stores nothing, so a retry creates exactly one consumer.
-        The returned `credential.key` is never shown again. The key works only on the APIs in
-        `apiIds`; Kong answers 403 on every other key-auth service (ADR 0005).
+        Atomic from the developer's point of view (spec 001 AC 6 and 8, spec 004 AC 8, spec 009
+        AC 3 and 9). The server upserts the Kong consumer, grants access to each API, applies the
+        plan's rate limit and quota, issues the key-auth credential, then writes Postgres in one
+        transaction. On any failure it deletes whatever it created in Kong and stores nothing, so
+        a retry creates exactly one consumer. The returned `credential.key` is never shown again.
+        The key works only on the app's APIs; Kong answers 403 on every other key-auth service
+        (ADR 0005).
+
+        Send exactly one of `planId` or `apiIds`:
+        - `planId` subscribes to a product plan (spec 009). The app reaches the plan's APIs, with
+          the plan's limits, and the subscription's name is the app's `name`.
+        - `apiIds` is the spec 004 flow for APIs in no product. The app goes on the built-in
+          `Unlimited` plan. An API that is in a product is refused with `/problems/validation`
+          (pointer `/apiIds`); subscribe to one of its plans instead.
         The app belongs to `teamId` (default: the caller's current team), and needs the
         `admin` or `member` role there (spec 008). The role is checked before email verification
         and before any gateway call.
@@ -531,7 +583,9 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/TeamForbiddenOrNotVerified' }
         '404':
-          description: One of `apiIds` is not a published API, or the caller isn't a member of `teamId`
+          description: |
+            One of `apiIds` is not a published API, `planId` is not a product plan, or the caller
+            isn't a member of `teamId`
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -562,6 +616,70 @@ paths:
               schema: { $ref: '#/components/schemas/App' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [apps]
+      operationId: deleteApp
+      summary: Cancel a subscription (delete an app)
+      description: |
+        Deletes the app's Kong consumer, which removes its keys, ACL groups and rate limit in
+        Kong, then deletes the app and its keys in Postgres (spec 009 AC 7). If Kong is
+        unreachable nothing changes and the call returns 503; the app and its keys keep working.
+        Works for any app, on any plan. Needs the `admin` or `member` role in the app's team;
+        `read-only` gets 403 and nothing changes (spec 009 AC 10). A second delete returns 404.
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+      responses:
+        '204': { description: Cancelled }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TeamRoleForbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/GatewayRejected' }
+        '503': { $ref: '#/components/responses/GatewayUnavailable' }
+
+  /v1/apps/{appId}/plan:
+    put:
+      tags: [apps]
+      operationId: changeAppPlan
+      summary: Change a subscription's plan, keeping its key
+      description: |
+        Moves the app to another plan of the same product (spec 009 AC 6). Keys don't change.
+        The server applies the new rate limit and quota in Kong, grants the new plan's APIs,
+        removes APIs the new plan doesn't include, then updates Postgres. Kong's request counters
+        carry over, so the month's quota is not reset. If any Kong call fails the server puts the
+        old plan back in Kong (and the next reconcile does so if that fails too), stores nothing
+        and returns 502 or 503. Choosing the current plan returns 200 and calls Kong anyway, which
+        repairs drift. Needs the `admin` or `member` role in the app's team; `read-only` gets 403.
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePlanRequest' }
+      responses:
+        '200':
+          description: Plan changed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/App' }
+        '400':
+          description: |
+            `/problems/validation` with pointer `/planId`: the plan belongs to another product, or
+            the app is on the built-in `Unlimited` plan (spec 004 apps can't move onto a product
+            plan; subscribe instead)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TeamForbiddenOrNotVerified' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The connection is disabled (`/problems/gateway-disabled`) or missing (`/problems/gateway-not-connected`). Nothing changed.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '502': { $ref: '#/components/responses/GatewayRejected' }
+        '503': { $ref: '#/components/responses/GatewayUnavailable' }
 
   /v1/apps/{appId}/credentials:
     post:
@@ -587,7 +705,9 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: |
-            `type` is one of `/problems/credential-limit` (the app already has 5 active keys),
+            `type` is one of `/problems/credential-limit` (the app already has 5 active keys, or
+            it is a subscription on a product plan and already has its one active key; regenerate
+            it instead),
             `/problems/gateway-disabled` (the connection is disabled) or
             `/problems/gateway-not-connected` (no gateway exists). Nothing was created.
           content:
@@ -616,6 +736,40 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/TeamRoleForbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '502': { $ref: '#/components/responses/GatewayRejected' }
+        '503': { $ref: '#/components/responses/GatewayUnavailable' }
+
+  /v1/apps/{appId}/credentials/{credentialId}/regenerate:
+    post:
+      tags: [apps]
+      operationId: regenerateCredential
+      summary: Replace an active API key with a new one
+      description: |
+        Issues a new key-auth credential in Kong, deletes the old one in Kong, then in one
+        transaction stores the new key and marks the old one `revoked` (spec 009 AC 8). The new
+        `key` is shown once. If issuing fails nothing changes; if deleting the old key fails the
+        server deletes the new one again and returns 502 or 503, so the old key keeps working and
+        Kong never holds a key the portal doesn't know (AC 9). Works for any app. Needs the
+        `admin` or `member` role; `read-only` gets 403.
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+        - $ref: '#/components/parameters/CredentialId'
+      responses:
+        '201':
+          description: New key issued; the old key is revoked
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IssuedCredential' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/TeamForbiddenOrNotVerified' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            `/problems/credential-revoked` (the key is already revoked; nothing to replace),
+            `/problems/gateway-disabled` or `/problems/gateway-not-connected`. Nothing changed.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
         '502': { $ref: '#/components/responses/GatewayRejected' }
         '503': { $ref: '#/components/responses/GatewayUnavailable' }
 
@@ -833,6 +987,144 @@ paths:
             `type` is one of `/problems/invitation-cancelled`, `/problems/invitation-used`,
             `/problems/invitation-expired` or `/problems/invitation-wrong-account` (signed in with
             another address; the invitation stays pending).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/admin/products:
+    post:
+      tags: [admin, products]
+      operationId: createProduct
+      summary: Create a product from published APIs
+      description: |
+        Postgres only; no Kong call. A product with no plans is listed in the catalog with an
+        empty plan table. `slug` can't be changed later.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProductRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              schema: { type: string }
+              description: /api/v1/products/{productSlug}
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404':
+          description: One of `apiIds` is not a published API (`/problems/not-found`)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: Another product has this slug (`/problems/product-slug-taken`)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/admin/products/{productId}:
+    patch:
+      tags: [admin, products]
+      operationId: updateProduct
+      summary: Edit a product's name, description or APIs
+      description: |
+        `apiIds` replaces the product's API list. Removing an API that one of the product's
+        plans includes is refused with `/problems/api-in-plan`; remove it from those plans first.
+        Postgres only.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProductRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            `/problems/api-in-plan`: a removed API is in a plan; `errors[].pointer` is `/apiIds`
+            and `errors[].message` names the plans. Nothing was saved.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/admin/products/{productId}/plans:
+    post:
+      tags: [admin, products]
+      operationId: createPlan
+      summary: Add a free plan to a product
+      description: |
+        Postgres only; Kong is called when a developer subscribes. Every invalid field is
+        returned in `errors[]` with its pointer (`/rateLimit`, `/rateLimitUnit`, `/monthlyQuota`,
+        `/apiIds`, `/name`), and nothing is saved (spec 009 AC 2). `monthlyQuota` must be at
+        least `rateLimit`, because Kong refuses a month limit below the second or minute limit.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanInput' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Plan' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The product already has a plan with this name (`/problems/plan-name-taken`)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/admin/products/{productId}/plans/{planId}:
+    put:
+      tags: [admin, products]
+      operationId: updatePlan
+      summary: Replace a plan's name, limits and APIs
+      description: |
+        Same validation as `createPlan`. Saves to Postgres, then starts a gateway reconcile run
+        right away, which moves every subscriber's rate limit, quota and API access in Kong to the
+        new values, usually within seconds (ADR 0009). Until that run finishes subscribers keep
+        the old limits. Kong's counters carry over, so the month's quota is not reset.
+      parameters:
+        - $ref: '#/components/parameters/ProductId'
+        - $ref: '#/components/parameters/PlanId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlanInput' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Plan' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Another plan of this product has this name (`/problems/plan-name-taken`)
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -1526,6 +1818,21 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    ProductSlug:
+      name: productSlug
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Slug' }
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PlanId:
+      name: planId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
 
   responses:
     ValidationError:
@@ -1987,11 +2294,17 @@ components:
 
     ApiSummary:
       type: object
-      required: [id, slug, title, version, gatewayBaseUrl, publishedAt]
+      required: [id, slug, title, version, gatewayBaseUrl, publishedAt, products]
       properties:
         id: { type: string, format: uuid }
         slug: { $ref: '#/components/schemas/Slug' }
         title: { type: string, description: The latest version's info.title }
+        products:
+          type: array
+          description: |
+            Products that include this API, by name (spec 009). Empty means the API is in no
+            product: the catalog lists it on its own and it keeps the spec 004 per-API key flow.
+          items: { $ref: '#/components/schemas/ProductRef' }
         version: { type: string, description: The latest version's info.version }
         description: { type: [string, 'null'], description: The latest version's info.description (Markdown) }
         gatewayBaseUrl: { type: string, format: uri, examples: ['http://localhost:8000/sample'] }
@@ -2319,10 +2632,22 @@ components:
 
     CreateAppRequest:
       type: object
-      required: [name, apiIds]
+      description: Exactly one of `planId` (subscribe to a product plan) or `apiIds` (APIs in no product).
+      required: [name]
+      oneOf:
+        - required: [planId]
+        - required: [apiIds]
       additionalProperties: false
       properties:
-        name: { type: string, minLength: 1, maxLength: 80 }
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+          description: Unique in the team. For a subscription this is its name, such as `staging` or `prod`.
+        planId:
+          type: string
+          format: uuid
+          description: A product plan (not the built-in plan)
         description: { type: string, maxLength: 500 }
         teamId:
           type: string
@@ -2337,10 +2662,11 @@ components:
 
     App:
       type: object
-      required: [id, teamId, role, name, subscriptions, credentials, createdAt]
+      required: [id, teamId, role, name, plan, subscriptions, credentials, createdAt]
       properties:
         id: { type: string, format: uuid }
         teamId: { type: string, format: uuid }
+        plan: { $ref: '#/components/schemas/AppPlan' }
         role:
           $ref: '#/components/schemas/TeamRole'
           description: The caller's role in the app's team. `read-only` can't create or revoke keys.
@@ -2348,6 +2674,9 @@ components:
         description: { type: [string, 'null'] }
         subscriptions:
           type: array
+          description: |
+            The APIs this app's keys reach. For an app on a product plan, the plan's APIs; for an
+            app on the built-in plan, the APIs chosen at creation.
           items:
             type: object
             required: [apiId, slug, title]
@@ -2390,6 +2719,157 @@ components:
       properties:
         app: { $ref: '#/components/schemas/App' }
         credential: { $ref: '#/components/schemas/IssuedCredential' }
+
+    ChangePlanRequest:
+      type: object
+      required: [planId]
+      additionalProperties: false
+      properties:
+        planId: { type: string, format: uuid }
+
+    ProductRef:
+      type: object
+      required: [id, slug, name]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { $ref: '#/components/schemas/Slug' }
+        name: { type: string }
+
+    ProductSummary:
+      allOf:
+        - $ref: '#/components/schemas/ProductRef'
+        - type: object
+          required: [description, apiCount, planCount, createdAt]
+          properties:
+            description: { type: string, description: Markdown }
+            apiCount: { type: integer, minimum: 0 }
+            planCount: { type: integer, minimum: 0 }
+            createdAt: { type: string, format: date-time }
+
+    ProductDetail:
+      allOf:
+        - $ref: '#/components/schemas/ProductSummary'
+        - type: object
+          required: [apis, plans]
+          properties:
+            apis:
+              type: array
+              description: The product's APIs, by title
+              items: { $ref: '#/components/schemas/ApiSummary' }
+            plans:
+              type: array
+              description: The product's plans, oldest first (the plan comparison table's columns)
+              items: { $ref: '#/components/schemas/Plan' }
+
+    CreateProductRequest:
+      type: object
+      required: [name, description, apiIds]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, minLength: 1, maxLength: 2000, description: Markdown }
+        slug:
+          $ref: '#/components/schemas/Slug'
+          description: Defaults to a slug of `name`. Fixed once created.
+        apiIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items: { type: string, format: uuid }
+
+    UpdateProductRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        description: { type: string, minLength: 1, maxLength: 2000 }
+        apiIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items: { type: string, format: uuid }
+
+    RateLimitUnit:
+      type: string
+      enum: [second, minute]
+
+    PlanInput:
+      type: object
+      required: [name, rateLimit, rateLimitUnit, monthlyQuota, apiIds]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 40, description: Unique within the product }
+        description: { type: string, maxLength: 280 }
+        rateLimit:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+          description: Requests per `rateLimitUnit`, for all of the plan's APIs together
+        rateLimitUnit: { $ref: '#/components/schemas/RateLimitUnit' }
+        monthlyQuota:
+          type: integer
+          minimum: 1
+          maximum: 2000000000
+          description: |
+            Requests per calendar month in UTC, for all of the plan's APIs together. Resets at
+            00:00 UTC on the 1st. Must be at least `rateLimit`.
+        apiIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          description: APIs of the plan's product
+          items: { type: string, format: uuid }
+
+    Plan:
+      type: object
+      required: [id, productId, name, description, rateLimit, rateLimitUnit, monthlyQuota, quotaPeriod, apis, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        rateLimit: { type: integer, minimum: 1 }
+        rateLimitUnit: { $ref: '#/components/schemas/RateLimitUnit' }
+        monthlyQuota: { type: integer, minimum: 1 }
+        quotaPeriod:
+          type: string
+          enum: [calendar-month-utc]
+          description: The quota resets at 00:00 UTC on the first of each month
+        apis:
+          type: array
+          items:
+            type: object
+            required: [id, slug, title]
+            properties:
+              id: { type: string, format: uuid }
+              slug: { $ref: '#/components/schemas/Slug' }
+              title: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    AppPlan:
+      type: object
+      description: |
+        The app's plan. `builtin` true is the `Unlimited` plan of apps made without a product;
+        its product and limit fields are null.
+      required: [id, name, builtin, product, rateLimit, rateLimitUnit, monthlyQuota]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, examples: [Free, Unlimited] }
+        builtin: { type: boolean }
+        product:
+          oneOf:
+            - $ref: '#/components/schemas/ProductRef'
+            - type: 'null'
+        rateLimit: { type: [integer, 'null'] }
+        rateLimitUnit:
+          oneOf:
+            - $ref: '#/components/schemas/RateLimitUnit'
+            - type: 'null'
+        monthlyQuota: { type: [integer, 'null'] }
 
 security:
   - sessionCookie: []

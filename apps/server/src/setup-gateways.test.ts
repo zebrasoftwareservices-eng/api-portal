@@ -14,6 +14,8 @@ import {
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import {
+  BUILTIN_PLAN_ID,
+  plans,
   connect,
   migrate,
   instanceSettings,
@@ -83,6 +85,7 @@ const adapter = {
   deleteConsumer: vi.fn(async () => {}),
   issueCredential: issue,
   revokeCredential: revoke,
+  applyPlanLimits: vi.fn(async () => {}),
   grantAccess: grant,
   revokeAccess: vi.fn(async () => {}),
   protectService: protect,
@@ -187,6 +190,9 @@ beforeAll(async () => {
 beforeEach(async () => {
   await db.client`set client_min_messages to warning`;
   await db.client`truncate "user",gateways,setup_tokens cascade`;
+  await db.db
+    .insert(plans)
+    .values({ id: BUILTIN_PLAN_ID, name: 'Unlimited', builtin: true });
   vi.clearAllMocks();
   outcome = { outcome: 'ok', version: '3.9.4' };
   proxyReachable = true;
@@ -475,14 +481,12 @@ it('disables with no Kong call, blocks discovery/import/sample/app/key creation,
   const apiId = await publish(id);
   const appId = uuidv7(),
     credentialId = uuidv7();
-  await db.db
-    .insert(apps)
-    .values({
-      id: appId,
-      teamId: await ensurePersonalTeam(db.db, ownerId),
-      createdBy: ownerId,
-      name: 'existing',
-    });
+  await db.db.insert(apps).values({
+    id: appId,
+    teamId: await ensurePersonalTeam(db.db, ownerId),
+    createdBy: ownerId,
+    name: 'existing',
+  });
   await db.db.insert(subscriptions).values({ id: uuidv7(), appId, apiId });
   await db.db.insert(credentials).values({
     id: credentialId,
@@ -557,14 +561,12 @@ it('counts dependent APIs and keys, then removes without Kong calls and preserve
   const id = await connectGateway();
   const apiId = await publish(id);
   const appId = uuidv7();
-  await db.db
-    .insert(apps)
-    .values({
-      id: appId,
-      teamId: await ensurePersonalTeam(db.db, ownerId),
-      createdBy: ownerId,
-      name: 'existing',
-    });
+  await db.db.insert(apps).values({
+    id: appId,
+    teamId: await ensurePersonalTeam(db.db, ownerId),
+    createdBy: ownerId,
+    name: 'existing',
+  });
   await db.db.insert(credentials).values({
     id: uuidv7(),
     appId,
@@ -614,14 +616,12 @@ it('warns and requires confirmation for missing consumers, then reprovisions the
   const id = await connectGateway();
   const apiId = await publish(id);
   const appId = uuidv7();
-  await db.db
-    .insert(apps)
-    .values({
-      id: appId,
-      teamId: await ensurePersonalTeam(db.db, ownerId),
-      createdBy: ownerId,
-      name: 'existing',
-    });
+  await db.db.insert(apps).values({
+    id: appId,
+    teamId: await ensurePersonalTeam(db.db, ownerId),
+    createdBy: ownerId,
+    name: 'existing',
+  });
   await db.db.insert(subscriptions).values({ id: uuidv7(), appId, apiId });
   await db.db.insert(credentials).values({
     id: uuidv7(),

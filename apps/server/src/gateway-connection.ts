@@ -33,6 +33,7 @@ export function gatewayConnection(
       adminUrl: row.adminUrl,
       adminToken: row.adminToken,
       instanceId,
+      rateLimitPolicy: config.PORTAL_RATE_LIMIT_POLICY,
     }),
 ): GatewayConnection {
   return {

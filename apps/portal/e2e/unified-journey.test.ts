@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page, type BrowserContext } from '@playwright/test';
+import './products.test';
 
 const password = 'QA-password-123';
 const noAccess =
@@ -264,6 +265,7 @@ test('019 AC4,7,8: revoked-key access, long names, several apps and unfiltered h
     if (width === 1280) {
       await expect(container.getByRole('columnheader')).toHaveText([
         'Name',
+        'Plan',
         'APIs',
         'Active keys',
         'Created',
@@ -286,7 +288,7 @@ test('019 AC4,7,8: revoked-key access, long names, several apps and unfiltered h
       );
       await expect(container.locator('li').first()).toContainText('Created');
       await expect(
-        container.locator('li').first().locator('dd').nth(1),
+        container.locator('li').first().locator('dd').nth(2),
       ).toHaveText('None');
       await expect(
         container.locator('li').first().locator('time'),

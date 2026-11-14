@@ -46,12 +46,12 @@ it('keeps the server problem title when loading apps fails outside admin import'
   expect(alert).toHaveTextContent('⚠ Team unavailable');
   expect(alert).not.toHaveTextContent('Import failed');
 });
-it('keeps every app in order, highlights only matching apps, and keeps four table columns', async () => {
+it('keeps every app in order, highlights only matching apps, and shows the plan column', async () => {
   render(<Dashboard slug="orders" />);
   const table = within(await screen.findByRole('table', { name: 'My apps' }));
   expect(
     table.getAllByRole('columnheader').map((cell) => cell.textContent),
-  ).toEqual(['Name', 'APIs', 'Active keys', 'Created']);
+  ).toEqual(['Name', 'Plan', 'APIs', 'Active keys', 'Created']);
   const rows = table.getAllByRole('row').slice(1);
   expect(rows.map((row) => within(row).getByRole('link').textContent)).toEqual(
     apps.map((app) => app.name),

@@ -7,6 +7,9 @@ import { Providers, usePortal } from './providers';
 import { AppDetail } from './app-detail';
 import type { App, IssuedCredential } from '../lib/types';
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock('../lib/client', () => ({
   api: { GET: get },
   networkProblem: vi.fn(),
@@ -24,6 +27,15 @@ it('JSO-182 hands focus to Try your key, then its reference link', async () => {
     createdAt: '2026-11-02T00:00:00Z',
   };
   const app = {
+    plan: {
+      id: 'unlimited',
+      name: 'Unlimited',
+      builtin: true,
+      product: null,
+      rateLimit: null,
+      rateLimitUnit: null,
+      monthlyQuota: null,
+    },
     id: 'app',
     teamId: 'team',
     role: 'admin',

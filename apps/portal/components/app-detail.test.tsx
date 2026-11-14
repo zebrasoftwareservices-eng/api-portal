@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
     | undefined
     | { email: string; emailVerified: boolean; verificationRequired: boolean },
 }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock('../lib/client', () => ({
   api: { GET: mocks.get, POST: mocks.post, DELETE: mocks.del },
   retrySeconds: () => 0,
@@ -194,4 +197,29 @@ it('JSO-161 returns focus to the initiating Revoke button after Escape', async (
   await user.click(revoke);
   await user.keyboard('{Escape}');
   await waitFor(() => expect(revoke).toHaveFocus());
+});
+it('enforces the single active key rule on product subscriptions without hiding regeneration', async () => {
+  mocks.get.mockResolvedValue({
+    data: {
+      ...app,
+      role: 'member',
+      plan: {
+        id: 'free',
+        name: 'Free',
+        builtin: false,
+        product: { id: 'orders', slug: 'orders', name: 'Orders' },
+        rateLimit: 5,
+        rateLimitUnit: 'second',
+        monthlyQuota: 10000,
+      },
+    },
+  });
+  render(<AppDetail appId="app-1" />);
+  expect(
+    await screen.findByRole('button', { name: /Regenerate key/ }),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: /New key|Create key/ }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByText(/5 requests per second/)).toBeInTheDocument();
 });

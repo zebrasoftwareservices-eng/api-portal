@@ -85,12 +85,15 @@ export async function appAccess(
   const [app] = await db.select().from(apps).where(eq(apps.id, appId));
   if (!app) throw notFound();
   const membership = await teamAccess(db, app.teamId, userId, need);
-  if (need === 'write')
-    await db
-      .select({ id: apps.id })
+  if (need === 'write') {
+    const [locked] = await db
+      .select()
       .from(apps)
       .where(eq(apps.id, appId))
       .for('update');
+    if (!locked) throw notFound();
+    return { app: locked, role: membership.role };
+  }
   return { app, role: membership.role };
 }
 async function selectTeam(db: Database | Tx, teamId: string, userId: string) {

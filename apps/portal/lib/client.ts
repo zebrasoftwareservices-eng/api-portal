@@ -20,7 +20,11 @@ api.use({
         `/sign-in?next=${encodeURIComponent(window.location.pathname + window.location.search)}`,
       );
     }
-    if (response.status === 403 && schemaPath !== '/v1/setup/admin') {
+    if (
+      response.status === 403 &&
+      schemaPath !== '/v1/setup/admin' &&
+      !schemaPath.startsWith('/v1/admin/products')
+    ) {
       const problem = (await response
         .clone()
         .json()

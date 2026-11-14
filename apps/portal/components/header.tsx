@@ -37,7 +37,11 @@ export function Header() {
       <a
         href="/"
         aria-current={
-          pathname === '/' || pathname.startsWith('/apis/') ? 'page' : undefined
+          pathname === '/' ||
+          pathname.startsWith('/apis/') ||
+          pathname.startsWith('/products/')
+            ? 'page'
+            : undefined
         }
       >
         APIs

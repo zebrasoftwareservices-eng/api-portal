@@ -17,7 +17,18 @@ export function CreateApp({ slug }: { slug?: string }) {
   const { setReveal, user, setUser } = usePortal();
   const verificationBlocked =
     !!user?.verificationRequired && !user.emailVerified;
-  const resource = useResource(() => api.GET('/v1/apis'));
+  const resource = useResource(async () => {
+    const result = await api.GET('/v1/apis');
+    return {
+      ...result,
+      data: result.data
+        ? {
+            ...result.data,
+            items: result.data.items.filter((a) => !a.products?.length),
+          }
+        : undefined,
+    };
+  });
   const { data, loading, error, reload } = resource;
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');

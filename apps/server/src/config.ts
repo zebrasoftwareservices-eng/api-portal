@@ -41,6 +41,7 @@ const envSchema = z.object({
   BETTER_AUTH_SECRET: z.string().min(32),
   PORTAL_ENCRYPTION_KEY: z.string().refine((v) => Buffer.from(v, 'base64').length === 32, 'Must encode 32 bytes'),
   PORTAL_VERSION: z.string().min(1).default('dev'),
+  PORTAL_RATE_LIMIT_POLICY: z.enum(['cluster', 'local']).default('cluster'),
   PORTAL_LINT_RULESET: z.string().optional(),
   PORTAL_PROXY_HOST: z.string().min(1).default('localhost'),
   PORTAL_PUBLIC_URL: z.url().default('http://localhost:3000'),

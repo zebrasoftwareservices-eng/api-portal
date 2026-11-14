@@ -1,5 +1,5 @@
 {
-  "id": "3e1a9389-1a45-4524-9577-7c64b03b4c22",
+  "id": "c3d4f15f-5f7f-4d0f-9137-2562b217a999",
   "prevId": "ff06ff51-0520-495f-820a-47026b1862e3",
   "version": "7",
   "dialect": "postgresql",
@@ -434,6 +434,13 @@
       "name": "apps",
       "schema": "",
       "columns": {
+        "plan_id": {
+          "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'01937a00-0000-7000-8000-000000000009'"
+        },
         "id": {
           "name": "id",
           "type": "uuid",
@@ -500,9 +507,37 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "app_plan_idx": {
+          "name": "app_plan_idx",
+          "columns": [
+            {
+              "expression": "plan_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
+        "apps_plan_id_plans_id_fk": {
+          "name": "apps_plan_id_plans_id_fk",
+          "tableFrom": "apps",
+          "tableTo": "plans",
+          "columnsFrom": [
+            "plan_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
         "apps_team_id_teams_id_fk": {
           "name": "apps_team_id_teams_id_fk",
           "tableFrom": "apps",
@@ -1091,6 +1126,378 @@
       },
       "isRLSEnabled": false
     },
+    "public.plan_apis": {
+      "name": "plan_apis",
+      "schema": "",
+      "columns": {
+        "plan_id": {
+          "name": "plan_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product_id": {
+          "name": "product_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "api_id": {
+          "name": "api_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "plan_apis_plan_id_product_id_plans_id_product_id_fk": {
+          "name": "plan_apis_plan_id_product_id_plans_id_product_id_fk",
+          "tableFrom": "plan_apis",
+          "tableTo": "plans",
+          "columnsFrom": [
+            "plan_id",
+            "product_id"
+          ],
+          "columnsTo": [
+            "id",
+            "product_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "plan_apis_product_id_api_id_product_apis_product_id_api_id_fk": {
+          "name": "plan_apis_product_id_api_id_product_apis_product_id_api_id_fk",
+          "tableFrom": "plan_apis",
+          "tableTo": "product_apis",
+          "columnsFrom": [
+            "product_id",
+            "api_id"
+          ],
+          "columnsTo": [
+            "product_id",
+            "api_id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "plan_apis_plan_id_api_id_pk": {
+          "name": "plan_apis_plan_id_api_id_pk",
+          "columns": [
+            "plan_id",
+            "api_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.plans": {
+      "name": "plans",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "product_id": {
+          "name": "product_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rate_limit": {
+          "name": "rate_limit",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rate_limit_unit": {
+          "name": "rate_limit_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "monthly_quota": {
+          "name": "monthly_quota",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "builtin": {
+          "name": "builtin",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "plan_product_name_unique": {
+          "name": "plan_product_name_unique",
+          "columns": [
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "plan_id_product_unique": {
+          "name": "plan_id_product_unique",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "product_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "plan_builtin_unique": {
+          "name": "plan_builtin_unique",
+          "columns": [
+            {
+              "expression": "builtin",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"plans\".\"builtin\"",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "plans_product_id_products_id_fk": {
+          "name": "plans_product_id_products_id_fk",
+          "tableFrom": "plans",
+          "tableTo": "products",
+          "columnsFrom": [
+            "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "plan_builtin_product": {
+          "name": "plan_builtin_product",
+          "value": "\"plans\".\"builtin\" = (\"plans\".\"product_id\" is null)"
+        },
+        "plan_limits": {
+          "name": "plan_limits",
+          "value": "(\"plans\".\"builtin\" and \"plans\".\"rate_limit\" is null and \"plans\".\"rate_limit_unit\" is null and \"plans\".\"monthly_quota\" is null) or (not \"plans\".\"builtin\" and \"plans\".\"rate_limit\" is not null and \"plans\".\"rate_limit_unit\" is not null and \"plans\".\"monthly_quota\" is not null and \"plans\".\"rate_limit\" > 0 and \"plans\".\"rate_limit_unit\" in ('second','minute') and \"plans\".\"monthly_quota\" >= \"plans\".\"rate_limit\")"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.product_apis": {
+      "name": "product_apis",
+      "schema": "",
+      "columns": {
+        "product_id": {
+          "name": "product_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "api_id": {
+          "name": "api_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "product_apis_product_id_products_id_fk": {
+          "name": "product_apis_product_id_products_id_fk",
+          "tableFrom": "product_apis",
+          "tableTo": "products",
+          "columnsFrom": [
+            "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "product_apis_api_id_apis_id_fk": {
+          "name": "product_apis_api_id_apis_id_fk",
+          "tableFrom": "product_apis",
+          "tableTo": "apis",
+          "columnsFrom": [
+            "api_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "product_apis_product_id_api_id_pk": {
+          "name": "product_apis_product_id_api_id_pk",
+          "columns": [
+            "product_id",
+            "api_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.products": {
+      "name": "products",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_by": {
+          "name": "created_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "products_created_by_user_id_fk": {
+          "name": "products_created_by_user_id_fk",
+          "tableFrom": "products",
+          "tableTo": "user",
+          "columnsFrom": [
+            "created_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "products_slug_unique": {
+          "name": "products_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "product_name": {
+          "name": "product_name",
+          "value": "length(btrim(\"products\".\"name\")) between 1 and 80"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.rate_limit_hits": {
       "name": "rate_limit_hits",
       "schema": "",
@@ -1158,44 +1565,6 @@
         "rate_bucket": {
           "name": "rate_bucket",
           "value": "\"rate_limit_hits\".\"bucket\" in ('sign-in-failure','password-reset','verification-email','team-invitation')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.setup_tokens": {
-      "name": "setup_tokens",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "smallint",
-          "primaryKey": true,
-          "notNull": true,
-          "default": 1
-        },
-        "token_ciphertext": {
-          "name": "token_ciphertext",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "setup_token_singleton": {
-          "name": "setup_token_singleton",
-          "value": "\"setup_tokens\".\"id\" = 1"
         }
       },
       "isRLSEnabled": false

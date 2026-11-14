@@ -6,6 +6,8 @@ import { useTeams } from './team-context';
 import { api } from '../lib/client';
 import { useResource } from './use-resource';
 import { ProblemAlert } from './problem-alert';
+import { SuccessNotice } from './success-notice';
+import { PlanLimits } from './plans';
 import { DateValue } from './date';
 
 function AccessLabel({ title }: { title?: string }) {
@@ -15,7 +17,13 @@ function AccessLabel({ title }: { title?: string }) {
     </Badge>
   ) : null;
 }
-export function Dashboard({ slug }: { slug?: string }) {
+export function Dashboard({
+  slug,
+  notice,
+}: {
+  slug?: string;
+  notice?: string;
+}) {
   const { current, unavailable } = useTeams();
   const readOnly = current?.role === 'read-only';
   const { data, error, loading, reload } = useResource(() =>
@@ -51,6 +59,7 @@ export function Dashboard({ slug }: { slug?: string }) {
   }));
   return (
     <>
+      <SuccessNotice message={notice} />
       <PageHeader
         title="My apps"
         actions={
@@ -70,6 +79,9 @@ export function Dashboard({ slug }: { slug?: string }) {
           create apps.
         </p>
       )}
+      <p>
+        Or <a href="/">browse products</a> to subscribe to a plan.
+      </p>
       {loading ? (
         <div role="status" className="skeleton">
           {current ? `Loading ${current.name}'s apps…` : 'Loading your apps…'}
@@ -110,7 +122,7 @@ export function Dashboard({ slug }: { slug?: string }) {
             </caption>
             <thead>
               <tr>
-                {['Name', 'APIs', 'Active keys', 'Created'].map((h) => (
+                {['Name', 'Plan', 'APIs', 'Active keys', 'Created'].map((h) => (
                   <th scope="col" key={h}>
                     {h}
                   </th>
@@ -126,6 +138,17 @@ export function Dashboard({ slug }: { slug?: string }) {
                   <td>
                     <a href={`/dashboard/apps/${app.id}`}>{app.name}</a>
                     <AccessLabel title={app.accessTitle} />
+                  </td>
+                  <td>
+                    <span className="badge">
+                      {app.plan?.name || 'Unlimited'}
+                    </span>
+                    {app.plan?.product && <div>{app.plan.product.name}</div>}
+                    {app.plan && (
+                      <div className="muted">
+                        <PlanLimits plan={app.plan} variant="inline" />
+                      </div>
+                    )}
                   </td>
                   <td>{app.apiTitles}</td>
                   <td>{app.activeKeys}</td>
@@ -145,6 +168,11 @@ export function Dashboard({ slug }: { slug?: string }) {
                 <h2>{app.name}</h2>
                 <AccessLabel title={app.accessTitle} />
                 <dl>
+                  <dt>Plan</dt>
+                  <dd>
+                    {app.plan?.name || 'Unlimited'}
+                    {app.plan?.product && ` · ${app.plan.product.name}`}
+                  </dd>
                   <dt>APIs</dt>
                   <dd>{app.apiTitles}</dd>
                   <dt>Active keys</dt>

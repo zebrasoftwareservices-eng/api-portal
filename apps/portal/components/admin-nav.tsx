@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from 'next/navigation';
 const items = [
   ['/admin/apis', 'APIs'],
+  ['/admin/products', 'Products'],
   ['/admin/gateways', 'Gateways'],
   ['/admin/settings/mail', 'Mail'],
   ['/admin/settings/accounts', 'Accounts'],

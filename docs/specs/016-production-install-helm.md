@@ -175,7 +175,7 @@ health routes are additive; non-production starts are unchanged).
 | Where | Change | Why |
 | --- | --- | --- |
 | `apps/server/src/config.ts`, `main.ts` | `X_FILE` for every secret; `DATABASE_PASSWORD[_FILE]`; production requires secrets with no defaults; config errors print setting names only and exit 1 | AC 1, 2 |
-| `packages/db` | `setup_tokens` table + migration `0005_setup_tokens`; `migrate()` runs a schema-ahead check first and throws `SchemaAheadError` | AC 10, 11 |
+| `packages/db` | `setup_tokens` table + migration `0006_high_catseye` (after spec 009's `0005_watery_rachel_grey`); `migrate()` runs a schema-ahead check first and throws `SchemaAheadError` | AC 10, 11 |
 | `apps/server/src/setup.ts`, `startup.ts` | token row create/print at start, read and delete in the claim transaction; no in-memory token | AC 10 |
 | `apps/server/src/app.ts` | `GET /api/v1/health/live`, `GET /api/v1/health/ready`; `/api/v1/health` reports `PORTAL_VERSION` | AC 7, 9 |
 | `apps/server/Dockerfile`, `apps/portal/Dockerfile` | `ARG PORTAL_VERSION=dev` → `ENV PORTAL_VERSION`, OCI labels (`org.opencontainers.image.source`, `.version`); both run as `node` (uid 1000) and tolerate a read-only root filesystem with `/tmp` writable | AC 3, 7 |
@@ -225,7 +225,7 @@ health routes are additive; non-production starts are unchanged).
 - **`setup_tokens`** (new, `packages/db/src/schema.ts`):
   `id smallint primary key default 1` with `check (id = 1)`,
   `token_ciphertext text not null`, `created_at timestamptz not null default now()`.
-  Migration `0005_setup_tokens`, generated with
+  Migration `0006_high_catseye`, generated with
   `pnpm --filter @portal/db exec drizzle-kit generate`. No backfill. Forward-only.
 - **Start (production only, no admin):** in one transaction under
   `pg_advisory_xact_lock(71833003)` (the claim's lock): re-check no admin; read the row; if

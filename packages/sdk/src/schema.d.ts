@@ -217,6 +217,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List products (public catalog)
+         * @description Every product is public in this spec (hidden products are spec 010). The catalog shows
+         *     these plus the APIs whose `products` list is empty (`GET /v1/apis`).
+         */
+        get: operations["listProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/products/{productSlug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one product with its APIs and plans */
+        get: operations["getProduct"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -331,13 +369,21 @@ export interface paths {
         get: operations["listApps"];
         put?: never;
         /**
-         * Create an app, subscribe it to APIs and issue its first API key
-         * @description Atomic from the developer's point of view (spec 001 AC 6 and 8, spec 004 AC 8). The
-         *     server upserts the Kong consumer, grants access to each subscribed API, issues the
-         *     key-auth credential, then writes Postgres in one transaction. On any failure it deletes
-         *     whatever it created in Kong and stores nothing, so a retry creates exactly one consumer.
-         *     The returned `credential.key` is never shown again. The key works only on the APIs in
-         *     `apiIds`; Kong answers 403 on every other key-auth service (ADR 0005).
+         * Create an app (or subscribe to a plan) and issue its first API key
+         * @description Atomic from the developer's point of view (spec 001 AC 6 and 8, spec 004 AC 8, spec 009
+         *     AC 3 and 9). The server upserts the Kong consumer, grants access to each API, applies the
+         *     plan's rate limit and quota, issues the key-auth credential, then writes Postgres in one
+         *     transaction. On any failure it deletes whatever it created in Kong and stores nothing, so
+         *     a retry creates exactly one consumer. The returned `credential.key` is never shown again.
+         *     The key works only on the app's APIs; Kong answers 403 on every other key-auth service
+         *     (ADR 0005).
+         *
+         *     Send exactly one of `planId` or `apiIds`:
+         *     - `planId` subscribes to a product plan (spec 009). The app reaches the plan's APIs, with
+         *       the plan's limits, and the subscription's name is the app's `name`.
+         *     - `apiIds` is the spec 004 flow for APIs in no product. The app goes on the built-in
+         *       `Unlimited` plan. An API that is in a product is refused with `/problems/validation`
+         *       (pointer `/apiIds`); subscribe to one of its plans instead.
          *     The app belongs to `teamId` (default: the caller's current team), and needs the
          *     `admin` or `member` role there (spec 008). The role is checked before email verification
          *     and before any gateway call.
@@ -362,6 +408,40 @@ export interface paths {
          */
         get: operations["getApp"];
         put?: never;
+        post?: never;
+        /**
+         * Cancel a subscription (delete an app)
+         * @description Deletes the app's Kong consumer, which removes its keys, ACL groups and rate limit in
+         *     Kong, then deletes the app and its keys in Postgres (spec 009 AC 7). If Kong is
+         *     unreachable nothing changes and the call returns 503; the app and its keys keep working.
+         *     Works for any app, on any plan. Needs the `admin` or `member` role in the app's team;
+         *     `read-only` gets 403 and nothing changes (spec 009 AC 10). A second delete returns 404.
+         */
+        delete: operations["deleteApp"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{appId}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Change a subscription's plan, keeping its key
+         * @description Moves the app to another plan of the same product (spec 009 AC 6). Keys don't change.
+         *     The server applies the new rate limit and quota in Kong, grants the new plan's APIs,
+         *     removes APIs the new plan doesn't include, then updates Postgres. Kong's request counters
+         *     carry over, so the month's quota is not reset. If any Kong call fails the server puts the
+         *     old plan back in Kong (and the next reconcile does so if that fails too), stores nothing
+         *     and returns 502 or 503. Choosing the current plan returns 200 and calls Kong anyway, which
+         *     repairs drift. Needs the `admin` or `member` role in the app's team; `read-only` gets 403.
+         */
+        put: operations["changeAppPlan"];
         post?: never;
         delete?: never;
         options?: never;
@@ -413,6 +493,31 @@ export interface paths {
          *     revoke any of the team's keys, whoever created them.
          */
         delete: operations["revokeCredential"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apps/{appId}/credentials/{credentialId}/regenerate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace an active API key with a new one
+         * @description Issues a new key-auth credential in Kong, deletes the old one in Kong, then in one
+         *     transaction stores the new key and marks the old one `revoked` (spec 009 AC 8). The new
+         *     `key` is shown once. If issuing fails nothing changes; if deleting the old key fails the
+         *     server deletes the new one again and returns 502 or 503, so the old key keeps working and
+         *     Kong never holds a key the portal doesn't know (AC 9). Works for any app. Needs the
+         *     `admin` or `member` role; `read-only` gets 403.
+         */
+        post: operations["regenerateCredential"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -579,6 +684,95 @@ export interface paths {
          *     that inbox). On any refusal nothing changes.
          */
         post: operations["acceptInvitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a product from published APIs
+         * @description Postgres only; no Kong call. A product with no plans is listed in the catalog with an
+         *     empty plan table. `slug` can't be changed later.
+         */
+        post: operations["createProduct"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/products/{productId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Edit a product's name, description or APIs
+         * @description `apiIds` replaces the product's API list. Removing an API that one of the product's
+         *     plans includes is refused with `/problems/api-in-plan`; remove it from those plans first.
+         *     Postgres only.
+         */
+        patch: operations["updateProduct"];
+        trace?: never;
+    };
+    "/v1/admin/products/{productId}/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a free plan to a product
+         * @description Postgres only; Kong is called when a developer subscribes. Every invalid field is
+         *     returned in `errors[]` with its pointer (`/rateLimit`, `/rateLimitUnit`, `/monthlyQuota`,
+         *     `/apiIds`, `/name`), and nothing is saved (spec 009 AC 2). `monthlyQuota` must be at
+         *     least `rateLimit`, because Kong refuses a month limit below the second or minute limit.
+         */
+        post: operations["createPlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/products/{productId}/plans/{planId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace a plan's name, limits and APIs
+         * @description Same validation as `createPlan`. Saves to Postgres, then starts a gateway reconcile run
+         *     right away, which moves every subscriber's rate limit, quota and API access in Kong to the
+         *     new values, usually within seconds (ADR 0009). Until that run finishes subscribers keep
+         *     the old limits. Kong's counters carry over, so the month's quota is not reset.
+         */
+        put: operations["updatePlan"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1196,6 +1390,11 @@ export interface components {
             slug: components["schemas"]["Slug"];
             /** @description The latest version's info.title */
             title: string;
+            /**
+             * @description Products that include this API, by name (spec 009). Empty means the API is in no
+             *     product: the catalog lists it on its own and it keeps the spec 004 per-API key flow.
+             */
+            products: components["schemas"]["ProductRef"][];
             /** @description The latest version's info.version */
             version: string;
             /** @description The latest version's info.description (Markdown) */
@@ -1454,25 +1653,37 @@ export interface components {
             /** @enum {string} */
             state: "pending" | "accepted" | "cancelled" | "expired";
         };
+        /** @description Exactly one of `planId` (subscribe to a product plan) or `apiIds` (APIs in no product). */
         CreateAppRequest: {
+            /** @description Unique in the team. For a subscription this is its name, such as `staging` or `prod`. */
             name: string;
+            /**
+             * Format: uuid
+             * @description A product plan (not the built-in plan)
+             */
+            planId?: string;
             description?: string;
             /**
              * Format: uuid
              * @description The team the app belongs to. Defaults to the caller's current team; the portal always sends it.
              */
             teamId?: string;
-            apiIds: string[];
-        };
+            apiIds?: string[];
+        } & (unknown | unknown);
         App: {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
             teamId: string;
+            plan: components["schemas"]["AppPlan"];
             /** @description The caller's role in the app's team. `read-only` can't create or revoke keys. */
             role: components["schemas"]["TeamRole"];
             name: string;
             description?: string | null;
+            /**
+             * @description The APIs this app's keys reach. For an app on a product plan, the plan's APIs; for an
+             *     app on the built-in plan, the APIs chosen at creation.
+             */
             subscriptions: {
                 /** Format: uuid */
                 apiId: string;
@@ -1516,6 +1727,102 @@ export interface components {
         CreateAppResponse: {
             app: components["schemas"]["App"];
             credential: components["schemas"]["IssuedCredential"];
+        };
+        ChangePlanRequest: {
+            /** Format: uuid */
+            planId: string;
+        };
+        ProductRef: {
+            /** Format: uuid */
+            id: string;
+            slug: components["schemas"]["Slug"];
+            name: string;
+        };
+        ProductSummary: components["schemas"]["ProductRef"] & {
+            /** @description Markdown */
+            description: string;
+            apiCount: number;
+            planCount: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ProductDetail: components["schemas"]["ProductSummary"] & {
+            /** @description The product's APIs, by title */
+            apis: components["schemas"]["ApiSummary"][];
+            /** @description The product's plans, oldest first (the plan comparison table's columns) */
+            plans: components["schemas"]["Plan"][];
+        };
+        CreateProductRequest: {
+            name: string;
+            /** @description Markdown */
+            description: string;
+            /** @description Defaults to a slug of `name`. Fixed once created. */
+            slug?: components["schemas"]["Slug"];
+            apiIds: string[];
+        };
+        UpdateProductRequest: {
+            name?: string;
+            description?: string;
+            apiIds?: string[];
+        };
+        /** @enum {string} */
+        RateLimitUnit: "second" | "minute";
+        PlanInput: {
+            /** @description Unique within the product */
+            name: string;
+            description?: string;
+            /** @description Requests per `rateLimitUnit`, for all of the plan's APIs together */
+            rateLimit: number;
+            rateLimitUnit: components["schemas"]["RateLimitUnit"];
+            /**
+             * @description Requests per calendar month in UTC, for all of the plan's APIs together. Resets at
+             *     00:00 UTC on the 1st. Must be at least `rateLimit`.
+             */
+            monthlyQuota: number;
+            /** @description APIs of the plan's product */
+            apiIds: string[];
+        };
+        Plan: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            productId: string;
+            name: string;
+            description: string | null;
+            rateLimit: number;
+            rateLimitUnit: components["schemas"]["RateLimitUnit"];
+            monthlyQuota: number;
+            /**
+             * @description The quota resets at 00:00 UTC on the first of each month
+             * @enum {string}
+             */
+            quotaPeriod: "calendar-month-utc";
+            apis: {
+                /** Format: uuid */
+                id: string;
+                slug: components["schemas"]["Slug"];
+                title: string;
+            }[];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * @description The app's plan. `builtin` true is the `Unlimited` plan of apps made without a product;
+         *     its product and limit fields are null.
+         */
+        AppPlan: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @example Free
+             * @example Unlimited
+             */
+            name: string;
+            builtin: boolean;
+            product: components["schemas"]["ProductRef"] | null;
+            rateLimit: number | null;
+            rateLimitUnit: components["schemas"]["RateLimitUnit"] | null;
+            monthlyQuota: number | null;
         };
     };
     responses: {
@@ -1709,6 +2016,9 @@ export interface components {
         TeamId: string;
         UserId: string;
         InvitationId: string;
+        ProductSlug: components["schemas"]["Slug"];
+        ProductId: string;
+        PlanId: string;
     };
     requestBodies: never;
     headers: never;
@@ -1980,6 +2290,51 @@ export interface operations {
                     "application/json": {
                         items: components["schemas"]["ChangelogEntry"][];
                     };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listProducts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Products, by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ProductSummary"][];
+                    };
+                };
+            };
+        };
+    };
+    getProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productSlug: components["parameters"]["ProductSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The product */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductDetail"];
                 };
             };
             404: components["responses"]["NotFound"];
@@ -2260,7 +2615,10 @@ export interface operations {
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["TeamForbiddenOrNotVerified"];
-            /** @description One of `apiIds` is not a published API, or the caller isn't a member of `teamId` */
+            /**
+             * @description One of `apiIds` is not a published API, `planId` is not a product plan, or the caller
+             *     isn't a member of `teamId`
+             */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -2310,6 +2668,84 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    deleteApp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appId: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["TeamRoleForbidden"];
+            404: components["responses"]["NotFound"];
+            502: components["responses"]["GatewayRejected"];
+            503: components["responses"]["GatewayUnavailable"];
+        };
+    };
+    changeAppPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appId: components["parameters"]["AppId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description Plan changed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            /**
+             * @description `/problems/validation` with pointer `/planId`: the plan belongs to another product, or
+             *     the app is on the built-in `Unlimited` plan (spec 004 apps can't move onto a product
+             *     plan; subscribe instead)
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["TeamForbiddenOrNotVerified"];
+            404: components["responses"]["NotFound"];
+            /** @description The connection is disabled (`/problems/gateway-disabled`) or missing (`/problems/gateway-not-connected`). Nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["GatewayRejected"];
+            503: components["responses"]["GatewayUnavailable"];
+        };
+    };
     createCredential: {
         parameters: {
             query?: never;
@@ -2334,7 +2770,9 @@ export interface operations {
             403: components["responses"]["TeamForbiddenOrNotVerified"];
             404: components["responses"]["NotFound"];
             /**
-             * @description `type` is one of `/problems/credential-limit` (the app already has 5 active keys),
+             * @description `type` is one of `/problems/credential-limit` (the app already has 5 active keys, or
+             *     it is a subscription on a product plan and already has its one active key; regenerate
+             *     it instead),
              *     `/problems/gateway-disabled` (the connection is disabled) or
              *     `/problems/gateway-not-connected` (no gateway exists). Nothing was created.
              */
@@ -2372,6 +2810,46 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["TeamRoleForbidden"];
             404: components["responses"]["NotFound"];
+            502: components["responses"]["GatewayRejected"];
+            503: components["responses"]["GatewayUnavailable"];
+        };
+    };
+    regenerateCredential: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                appId: components["parameters"]["AppId"];
+                credentialId: components["parameters"]["CredentialId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description New key issued; the old key is revoked */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssuedCredential"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["TeamForbiddenOrNotVerified"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `/problems/credential-revoked` (the key is already revoked; nothing to replace),
+             *     `/problems/gateway-disabled` or `/problems/gateway-not-connected`. Nothing changed.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             502: components["responses"]["GatewayRejected"];
             503: components["responses"]["GatewayUnavailable"];
         };
@@ -2645,6 +3123,174 @@ export interface operations {
              *     `/problems/invitation-expired` or `/problems/invitation-wrong-account` (signed in with
              *     another address; the invitation stays pending).
              */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateProductRequest"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    /** @description /api/v1/products/{productSlug} */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description One of `apiIds` is not a published API (`/problems/not-found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Another product has this slug (`/problems/product-slug-taken`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updateProduct: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProductRequest"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `/problems/api-in-plan`: a removed API is in a plan; `errors[].pointer` is `/apiIds`
+             *     and `errors[].message` names the plans. Nothing was saved.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    createPlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanInput"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The product already has a plan with this name (`/problems/plan-name-taken`) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    updatePlan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+                planId: components["parameters"]["PlanId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanInput"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plan"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Another plan of this product has this name (`/problems/plan-name-taken`) */
             409: {
                 headers: {
                     [name: string]: unknown;

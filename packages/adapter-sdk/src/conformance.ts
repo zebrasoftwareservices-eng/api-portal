@@ -7,6 +7,9 @@ interface AccessFixture {
   memberships(
     appId: string,
   ): Promise<{ id: string; group: string; tags: string[] }[]>;
+  ratePlugins(
+    appId: string,
+  ): Promise<{ id: string; config: Record<string, unknown>; tags: string[] }[]>;
   unavailable(): GatewayAdapter;
   refused?(): GatewayAdapter;
 }
@@ -61,6 +64,46 @@ export function conformance(
         await expect(
           fixture.unavailable().revokeAccess(app, service),
         ).rejects.toBeInstanceOf(GatewayUnavailableError);
+      } finally {
+        await adapter.deleteConsumer(app);
+      }
+    });
+    it('applies, replaces and removes idempotent consumer plan limits', async () => {
+      const adapter = factory(),
+        fixture = access!(),
+        app = { id: randomUUID() };
+      expect(adapter.capabilities().plans).toBe(true);
+      try {
+        await adapter.ensureConsumer(app);
+        const limits = {
+          rate: { unit: 'second' as const, limit: 5 },
+          monthlyQuota: 10,
+        };
+        await adapter.applyPlanLimits(app, limits);
+        const first = await fixture.ratePlugins(app.id);
+        expect(first).toHaveLength(1);
+        expect(first[0]!.config).toMatchObject({
+          second: 5,
+          month: 10,
+          limit_by: 'consumer',
+          policy: 'cluster',
+        });
+        expect(first[0]!.tags).toContain(`portal-app-${app.id}`);
+        await adapter.applyPlanLimits(app, limits);
+        expect((await fixture.ratePlugins(app.id)).map((p) => p.id)).toEqual(
+          first.map((p) => p.id),
+        );
+        await adapter.applyPlanLimits(app, {
+          rate: { unit: 'minute', limit: 20 },
+          monthlyQuota: 30,
+        });
+        const replaced = await fixture.ratePlugins(app.id);
+        expect(replaced[0]!.id).toBe(first[0]!.id);
+        expect(replaced[0]!.config).toMatchObject({ minute: 20, month: 30 });
+        expect(replaced[0]!.config.second).toBeNull();
+        await adapter.applyPlanLimits(app, null);
+        await adapter.applyPlanLimits(app, null);
+        expect(await fixture.ratePlugins(app.id)).toEqual([]);
       } finally {
         await adapter.deleteConsumer(app);
       }

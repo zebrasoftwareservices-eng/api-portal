@@ -7,7 +7,10 @@ import {
   apps,
   subscriptions,
   apis,
-  apiVersions,
+  plans,
+  planApis,
+  productApis,
+  BUILTIN_PLAN_ID,
   credentials,
   gatewayConsumers,
   user as users,
@@ -29,18 +32,30 @@ import {
   appAccess,
   type TeamRole,
 } from './teams.js';
+import { appApis, appPlan, planLimits } from './app-plans.js';
 import { generateKey } from './crypto.js';
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
-const createSchema = z.strictObject({
-  name: z.string().min(1).max(80),
-  teamId: z.uuid().optional(),
-  description: z.string().max(500).optional(),
-  apiIds: z
-    .array(z.uuid())
-    .min(1)
-    .max(10)
-    .refine((v) => new Set(v).size === v.length, 'API IDs must be unique'),
-});
+const createSchema = z
+  .strictObject({
+    name: z.string().min(1).max(80),
+    teamId: z.uuid().optional(),
+    description: z.string().max(500).optional(),
+    apiIds: z
+      .array(z.uuid())
+      .min(1)
+      .max(10)
+      .refine((v) => new Set(v).size === v.length, 'API IDs must be unique')
+      .optional(),
+    planId: z.uuid().optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (Boolean(v.apiIds) === Boolean(v.planId))
+      ctx.addIssue({
+        code: 'custom',
+        path: ['apiIds'],
+        message: 'Send exactly one of apiIds or planId.',
+      });
+  });
 const appParams = z.object({ appId: z.uuid() });
 function credentialView(c: typeof credentials.$inferSelect) {
   return {
@@ -58,12 +73,7 @@ async function view(
   role: TeamRole,
 ) {
   const [subs, keys] = await Promise.all([
-    db
-      .select({ apiId: apis.id, slug: apis.slug, title: apiVersions.title })
-      .from(subscriptions)
-      .innerJoin(apis, eq(subscriptions.apiId, apis.id))
-      .innerJoin(apiVersions, eq(apis.latestVersionId, apiVersions.id))
-      .where(eq(subscriptions.appId, app.id)),
+    appApis(db, app),
     db
       .select()
       .from(credentials)
@@ -76,7 +86,12 @@ async function view(
     role,
     name: app.name,
     description: app.description,
-    subscriptions: subs,
+    plan: await appPlan(db, app.planId),
+    subscriptions: subs.map(({ apiId, slug, title }) => ({
+      apiId,
+      slug,
+      title,
+    })),
     credentials: keys.map(credentialView),
     createdAt: app.createdAt.toISOString(),
   };
@@ -145,11 +160,42 @@ export function registerApps(
             'app-name-taken',
             'This team already has an app with this name.',
           );
+        const [plan] = await tx
+          .select()
+          .from(plans)
+          .where(eq(plans.id, input.planId ?? BUILTIN_PLAN_ID))
+          .for('share');
+        if (!plan || (input.planId && plan.builtin)) throw notFound();
+        const apiIds =
+          input.apiIds ??
+          (
+            await tx.select().from(planApis).where(eq(planApis.planId, plan.id))
+          ).map((a) => a.apiId);
         const selected = await tx
           .select()
           .from(apis)
-          .where(inArray(apis.id, input.apiIds));
-        if (selected.length !== input.apiIds.length) throw notFound();
+          .where(inArray(apis.id, apiIds));
+        if (selected.length !== apiIds.length) throw notFound();
+        if (
+          input.apiIds &&
+          (
+            await tx
+              .select()
+              .from(productApis)
+              .where(inArray(productApis.apiId, apiIds))
+          ).length
+        )
+          throw new Problem(
+            400,
+            'validation',
+            'Subscribe using a product plan.',
+            [
+              {
+                pointer: '/apiIds',
+                message: 'APIs in a product require a plan.',
+              },
+            ],
+          );
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
         const gateway = requireEnabled(await connection.load(tx));
         adapter = gateway.adapter;
@@ -166,11 +212,14 @@ export function registerApps(
           selected.map((a) => a.gatewayServiceId),
         ))
           await adapter.grantAccess({ id: appId }, { id: serviceId });
+        if (!plan.builtin)
+          await adapter.applyPlanLimits({ id: appId }, planLimits(plan));
         await adapter.issueCredential({ id: appId }, { id, key });
         const [app] = await tx
           .insert(apps)
           .values({
             id: appId,
+            planId: plan.id,
             teamId,
             createdBy: user.id,
             name: input.name,
@@ -178,9 +227,12 @@ export function registerApps(
           })
           .returning();
         if (!app) throw new Error('Insert failed');
-        await tx
-          .insert(subscriptions)
-          .values(selected.map((a) => ({ id: uuidv7(), appId, apiId: a.id })));
+        if (plan.builtin)
+          await tx
+            .insert(subscriptions)
+            .values(
+              selected.map((a) => ({ id: uuidv7(), appId, apiId: a.id })),
+            );
         await tx.insert(gatewayConsumers).values({
           id: uuidv7(),
           appId,
@@ -235,7 +287,12 @@ export function registerApps(
     try {
       const result = await db.transaction(async (tx) => {
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
-        await appAccess(tx, appId, user.id, 'write');
+        const { app } = await appAccess(tx, appId, user.id, 'write');
+        const [plan] = await tx
+          .select()
+          .from(plans)
+          .where(eq(plans.id, app.planId));
+        if (!plan) throw notFound();
         await requireVerified(tx, user);
         const active = await tx
           .select({ id: credentials.id })
@@ -243,11 +300,11 @@ export function registerApps(
           .where(
             and(eq(credentials.appId, appId), eq(credentials.status, 'active')),
           );
-        if (active.length >= 5)
+        if (active.length >= (plan.builtin ? 5 : 1))
           throw new Problem(
             409,
             'credential-limit',
-            'This app already has five active keys. Revoke one before creating another.',
+            'This app has reached its active key limit. Revoke one before creating another.',
           );
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
         const gateway = requireEnabled(await connection.load(tx));
@@ -255,13 +312,13 @@ export function registerApps(
         const gatewayId = gateway.row.id;
         attempted = true;
         const consumer = await adapter.ensureConsumer({ id: appId });
-        const services = await tx
-          .select({ id: apis.gatewayServiceId })
-          .from(subscriptions)
-          .innerJoin(apis, eq(subscriptions.apiId, apis.id))
-          .where(eq(subscriptions.appId, appId));
-        for (const serviceId of new Set(services.map((s) => s.id)))
+        const services = await appApis(tx, app);
+        for (const serviceId of new Set(
+          services.map((s) => s.gatewayServiceId),
+        ))
           await adapter.grantAccess({ id: appId }, { id: serviceId });
+        if (!plan.builtin)
+          await adapter.applyPlanLimits({ id: appId }, planLimits(plan));
         await tx
           .insert(gatewayConsumers)
           .values({
@@ -330,6 +387,168 @@ export function registerApps(
           .where(eq(credentials.id, credentialId));
       });
       return reply.code(204).send();
+    },
+  );
+  server.put('/api/v1/apps/:appId/plan', async (request) => {
+    const user = await requireUser(auth, request);
+    const { appId } = appParams.parse(request.params);
+    const { planId } = z.strictObject({ planId: z.uuid() }).parse(request.body);
+    let compensate: (() => Promise<void>) | undefined;
+    try {
+      return await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
+        const { app, role } = await appAccess(tx, appId, user.id, 'write');
+        await requireVerified(tx, user);
+        const [oldPlan] = await tx
+          .select()
+          .from(plans)
+          .where(eq(plans.id, app.planId))
+          .for('share');
+        const [newPlan] = await tx
+          .select()
+          .from(plans)
+          .where(eq(plans.id, planId))
+          .for('share');
+        if (!newPlan) throw notFound();
+        if (
+          !oldPlan ||
+          oldPlan.builtin ||
+          newPlan.builtin ||
+          oldPlan.productId !== newPlan.productId
+        )
+          throw new Problem(
+            400,
+            'validation',
+            'Choose a plan of this subscription’s product.',
+            [{ pointer: '/planId', message: 'Choose a plan of this product.' }],
+          );
+        const oldServices = new Set(
+          (await appApis(tx, app)).map((a) => a.gatewayServiceId),
+        );
+        const newServices = new Set(
+          (await appApis(tx, { ...app, planId })).map(
+            (a) => a.gatewayServiceId,
+          ),
+        );
+        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+        const { adapter } = requireEnabled(await connection.load(tx));
+        compensate = async () => {
+          const operations = [
+            () => adapter.applyPlanLimits({ id: appId }, planLimits(oldPlan)),
+            ...[...oldServices].map(
+              (id) => () => adapter.grantAccess({ id: appId }, { id }),
+            ),
+            ...[...newServices]
+              .filter((id) => !oldServices.has(id))
+              .map((id) => () => adapter.revokeAccess({ id: appId }, { id })),
+          ];
+          for (const operation of operations)
+            await operation().catch(() =>
+              server.log.warn(
+                { appId },
+                'Plan compensation deferred to reconcile',
+              ),
+            );
+        };
+        await adapter.applyPlanLimits({ id: appId }, planLimits(newPlan));
+        for (const id of newServices)
+          await adapter.grantAccess({ id: appId }, { id });
+        for (const id of oldServices)
+          if (!newServices.has(id))
+            await adapter.revokeAccess({ id: appId }, { id });
+        const [updated] = await tx
+          .update(apps)
+          .set({ planId, updatedAt: new Date() })
+          .where(eq(apps.id, appId))
+          .returning();
+        return view(tx, updated!, role);
+      });
+    } catch (e) {
+      await compensate?.();
+      throw e;
+    }
+  });
+  server.delete('/api/v1/apps/:appId', async (request, reply) => {
+    const user = await requireUser(auth, request);
+    const { appId } = appParams.parse(request.params);
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
+      await appAccess(tx, appId, user.id, 'write');
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+      const { adapter } = requireEnabled(await connection.load(tx));
+      await adapter.deleteConsumer({ id: appId });
+      await tx.delete(apps).where(eq(apps.id, appId));
+    });
+    return reply.code(204).send();
+  });
+  server.post(
+    '/api/v1/apps/:appId/credentials/:credentialId/regenerate',
+    async (request, reply) => {
+      const user = await requireUser(auth, request);
+      const { appId, credentialId } = appParams
+        .extend({ credentialId: z.uuid() })
+        .parse(request.params);
+      const id = uuidv7(),
+        key = generateKey();
+      let adapter: GatewayAdapter | undefined;
+      let attempted = false;
+      try {
+        const result = await db.transaction(async (tx) => {
+          await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
+          await appAccess(tx, appId, user.id, 'write');
+          await requireVerified(tx, user);
+          const [old] = await tx
+            .select()
+            .from(credentials)
+            .where(
+              and(
+                eq(credentials.id, credentialId),
+                eq(credentials.appId, appId),
+              ),
+            );
+          if (!old) throw notFound();
+          if (old.status !== 'active')
+            throw new Problem(
+              409,
+              'credential-revoked',
+              'This key has already been revoked.',
+            );
+          await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+          const gateway = requireEnabled(await connection.load(tx));
+          adapter = gateway.adapter;
+          await adapter.ensureConsumer({ id: appId });
+          attempted = true;
+          await adapter.issueCredential({ id: appId }, { id, key });
+          await adapter.revokeCredential({ id: appId }, credentialId);
+          const [row] = await tx
+            .insert(credentials)
+            .values({
+              id,
+              appId,
+              gatewayId: gateway.row.id,
+              keyHint: key.slice(-4),
+              status: 'active',
+            })
+            .returning();
+          await tx
+            .update(credentials)
+            .set({ status: 'revoked', revokedAt: new Date() })
+            .where(eq(credentials.id, credentialId));
+          return { ...credentialView(row!), key, headerName: 'apikey' };
+        });
+        return reply.code(201).send(result);
+      } catch (e) {
+        if (attempted && adapter)
+          await adapter
+            .revokeCredential({ id: appId }, id)
+            .catch(() =>
+              server.log.warn(
+                { appId, credentialId: id },
+                'Credential compensation deferred to reconcile',
+              ),
+            );
+        throw e;
+      }
     },
   );
 }
