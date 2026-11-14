@@ -15,5 +15,9 @@ if [ "$assume_yes" = false ]; then
   [ "$answer" = RESTORE ] || { printf 'Restore cancelled.\n'; exit 1; }
 fi
 docker compose stop server portal
-docker compose exec -T postgres pg_restore -U portal -d portal --clean --if-exists --single-transaction --no-owner < "$file"
+restore_sql=$(mktemp)
+trap 'rm -f "$restore_sql"' EXIT INT TERM
+printf 'DROP SCHEMA IF EXISTS pgboss CASCADE;\n' > "$restore_sql"
+docker compose exec -T postgres pg_restore --clean --if-exists --no-owner --file=- < "$file" >> "$restore_sql"
+docker compose exec -T postgres psql -U portal -d portal --single-transaction --set ON_ERROR_STOP=1 < "$restore_sql"
 printf 'Restored %s. Set the desired PORTAL_VERSION, then run docker compose up -d.\n' "$file"

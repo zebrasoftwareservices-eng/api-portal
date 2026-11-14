@@ -7,6 +7,7 @@ chart=deploy/helm/api-portal
 release=portal-smoke
 external_release=external
 portal_deployment="$release-api-portal-portal"
+portal_service="$release-api-portal-portal"
 postgres_statefulset="$release-api-portal-postgres"
 cleanup() {
   [ -z "${forward_pid:-}" ] || kill "$forward_pid" 2>/dev/null || true
@@ -51,7 +52,7 @@ helm upgrade --install "$release" "$chart" --set image.registry=local --set imag
 kubectl rollout status deployment/"$release"-api-portal-server --timeout=2m
 kubectl rollout status deployment/"$release"-api-portal-portal --timeout=2m
 kubectl exec deployment/"$portal_deployment" -- node -e \
-  "fetch('http://$release-api-portal:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))" \
+  "fetch('http://$portal_service:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))" \
   || fail 'portal did not answer through its Service'
 for pod in $(kubectl get pods -l "app.kubernetes.io/instance=$release" -o name); do
   for container in $(kubectl get "$pod" -o jsonpath='{.spec.containers[*].name}'); do

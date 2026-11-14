@@ -24,6 +24,9 @@ const run = (command, args, options = {}) =>
   execFileSync(command, args, { cwd: root, stdio: 'inherit', ...options });
 const output = (command, args, options = {}) =>
   execFileSync(command, args, { cwd: root, encoding: 'utf8', ...options });
+// PR branches can lag origin/main; test the upgrade from the branch's actual base
+// instead of feeding unrelated, newer migrations to the candidate image.
+const baselineRef = output('git', ['merge-base', 'origin/main', 'HEAD']).trim();
 const composeEnv = (serverImage, extra = {}) => ({
   ...process.env,
   SERVER_IMAGE: serverImage,
@@ -47,12 +50,33 @@ const composeOutput = (
     env: composeEnv(serverImage, extra),
   });
 const server = 'http://127.0.0.1:4006';
-const request = (path, options = {}) => fetch(server + path, options);
+const request = async (path, options = {}) => {
+  let lastError;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      return await fetch(server + path, options);
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw lastError;
+};
 const jsonRequest = (path, options = {}) =>
   request(path, {
     ...options,
     headers: { 'content-type': 'application/json', ...options.headers },
   });
+const waitForResponse = async (path, expectedStatus) => {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try {
+      const response = await request(path);
+      if (response.status === expectedStatus) return response;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+  throw new Error(`${path} did not return ${expectedStatus}`);
+};
 const cookie = (response) =>
   response.headers
     .getSetCookie()
@@ -101,6 +125,25 @@ const domainFingerprint = () =>
     'credentials',(select jsonb_agg(to_jsonb(t) order by id) from (select id,app_id,key_hint,status from credentials) t)
   )::text)
 `);
+const publicSchemaDump = () =>
+  output(
+    'docker',
+    [
+      ...compose,
+      'exec',
+      '-T',
+      'postgres',
+      'pg_dump',
+      '-U',
+      'portal',
+      '-d',
+      'portal',
+      '--schema=public',
+      '--no-owner',
+      '--no-privileges',
+    ],
+    { env: composeEnv('portal-server:candidate') },
+  ).replace(/^\\(?:un)?restrict [^\n]*\n/gm, '');
 const backup = (directory) => {
   run('sh', ['deploy/production/backup.sh', directory], {
     env: composeEnv('portal-server:candidate'),
@@ -157,7 +200,7 @@ try {
     smtp_password: '',
   }))
     writeFileSync(join(production, 'secrets', name), value);
-  run('git', ['worktree', 'add', '--detach', baseline, 'origin/main']);
+  run('git', ['worktree', 'add', '--detach', baseline, baselineRef]);
   run('docker', [
     'build',
     '-f',
@@ -225,7 +268,7 @@ try {
   startServer('portal-server:candidate');
   composeRun(['up', '-d', '--wait', 'portal']);
   assert.equal(
-    (await request('/api/v1/health/ready')).status,
+    (await waitForResponse('/api/v1/health/ready', 200)).status,
     200,
     'candidate is ready',
   );
@@ -354,24 +397,7 @@ try {
   sql(
     "insert into drizzle.__drizzle_migrations(hash,created_at) values ('future-smoke-migration', 4102444800000)",
   );
-  const publicBefore = output(
-    'docker',
-    [
-      ...compose,
-      'exec',
-      '-T',
-      'postgres',
-      'pg_dump',
-      '-U',
-      'portal',
-      '-d',
-      'portal',
-      '--schema=public',
-      '--no-owner',
-      '--no-privileges',
-    ],
-    { env: composeEnv('portal-server:candidate') },
-  );
+  const publicBefore = publicSchemaDump();
   let aheadLogs = '';
   let schemaAheadFailed = false;
   try {
@@ -397,24 +423,7 @@ try {
     /start the previous version/i,
     'schema-ahead log explains rollback image',
   );
-  const publicAfter = output(
-    'docker',
-    [
-      ...compose,
-      'exec',
-      '-T',
-      'postgres',
-      'pg_dump',
-      '-U',
-      'portal',
-      '-d',
-      'portal',
-      '--schema=public',
-      '--no-owner',
-      '--no-privileges',
-    ],
-    { env: composeEnv('portal-server:candidate') },
-  );
+  const publicAfter = publicSchemaDump();
   assert.equal(
     publicAfter,
     publicBefore,

@@ -422,8 +422,8 @@ Kong objects; reconcile keeps running every 5 minutes as now and is idempotent.
 - [ ] [qa] Production Compose on a Linux host with a real Kong: HTTPS via the Caddy profile, `NODE_ENV=production`, no host ports for Postgres/server, no Kong container, no sample API, claim and connect Kong (AC 1).
 - [x] [backend] Fix: Upgrade smoke cannot start Kong or verify upgrade and recovery criteria
 - [x] [backend] Fix: Helm smoke passes without required AC 7-10 runtime assertions
-- [ ] [backend] Fix: Upgrade smoke candidate becomes unhealthy before recovery assertions
-- [ ] [backend] Fix: Helm smoke uses nonexistent portal Service hostname
+- [x] [backend] Fix: Upgrade smoke candidate becomes unhealthy before recovery assertions
+- [x] [backend] Fix: Helm smoke uses nonexistent portal Service hostname
 ## UX  _(ui-designer)_
 No UI change: no new or changed screens, flows, states, copy or tokens (Out of scope). The
 `[frontend]` tasks are the portal container only: runtime `SERVER_URL` proxying, `GET /healthz`,
@@ -446,6 +446,12 @@ No UI change: no new or changed screens, flows, states, copy or tokens (Out of s
   schema-ahead recovery. The Helm smoke now exercises the portal Service, non-root containers,
   shared-token cross-replica claim, database outage recovery without restarts, an external-database
   release, and the required ingress failure; QA should rerun both CI smoke jobs end to end.
+
+- Backend retest fixes: the upgrade smoke now builds its baseline from the feature branch's merge
+  base, retries transient host-port remaps, restores pg-boss partitions atomically, and normalizes
+  PostgreSQL 17 dump guards; the complete upgrade/recovery smoke passes. The Helm smoke requests the
+  rendered `portal-smoke-api-portal-portal` Service; chart lint/template and all 224 server tests pass,
+  while the kind runtime smoke remains for CI because this worker has no `kind` binary.
 
 ## Test report  _(qa-tester)_
 Commit tested: `3dee2bb202f192760fc1fb5d2048e024ad08cb43` · Portal: `http://localhost:3005`
