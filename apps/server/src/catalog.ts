@@ -10,8 +10,16 @@ import {
 import { eq, desc } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { orderVersions, versionDocumentUrl } from './versions.js';
+import {
+  anonymous,
+  canSeeApi,
+  loadViewer,
+  productVisible,
+  type Viewer,
+} from './access-policy.js';
+import type { Auth } from './auth.js';
 import { notFound } from './problem.js';
-export async function publishedApis(db: Database) {
+export async function publishedApis(db: Database, viewer?: Viewer) {
   const rows = await db
     .select({ api: apis, version: apiVersions, gateway: gateways })
     .from(apis)
@@ -27,9 +35,27 @@ export async function publishedApis(db: Database) {
     })
     .from(productApis)
     .innerJoin(products, eq(products.id, productApis.productId));
-  return rows.map((row) => ({
+  const visibleRows = viewer
+    ? (
+        await Promise.all(
+          rows.map(async (r) =>
+            (await canSeeApi(db, viewer, r.api.id)) ? r : null,
+          ),
+        )
+      ).filter((r) => r !== null)
+    : rows;
+  const visibleLinks = viewer
+    ? (
+        await Promise.all(
+          links.map(async (l) =>
+            (await productVisible(db, viewer, l.id)) ? l : null,
+          ),
+        )
+      ).filter((l) => l !== null)
+    : links;
+  return visibleRows.map((row) => ({
     ...row,
-    products: links
+    products: visibleLinks
       .filter((l) => l.apiId === row.api.id)
       .map((l) => ({ id: l.id, slug: l.slug, name: l.name }))
       .sort((a, b) => a.name.localeCompare(b.name)),
@@ -96,20 +122,31 @@ export function publicDocument(
   }
   return document;
 }
-export function registerCatalog(app: FastifyInstance, db: Database) {
-  const find = async (slug: string) => {
-    const row = (await publishedApis(db)).find((r) => r.api.slug === slug);
+export function registerCatalog(
+  app: FastifyInstance,
+  db: Database,
+  auth: Auth,
+) {
+  const find = async (slug: string, viewer: Viewer = anonymous) => {
+    const row = (await publishedApis(db, viewer)).find(
+      (r) => r.api.slug === slug,
+    );
     if (!row) throw notFound();
     return row;
   };
-  app.get('/api/v1/apis', async () => ({
-    items: (await publishedApis(db)).map(apiSummary),
+  app.get('/api/v1/apis', async (req) => ({
+    items: (await publishedApis(db, await loadViewer(db, auth, req))).map(
+      apiSummary,
+    ),
   }));
   app.get<{ Params: { slug: string } }>('/api/v1/apis/:slug', async (req) =>
-    apiDetail(db, await find(req.params.slug)),
+    apiDetail(db, await find(req.params.slug, await loadViewer(db, auth, req))),
   );
   app.get<{ Params: { slug: string } }>(
     '/api/v1/apis/:slug/openapi.json',
-    async (req) => publicDocument(await find(req.params.slug)),
+    async (req) =>
+      publicDocument(
+        await find(req.params.slug, await loadViewer(db, auth, req)),
+      ),
   );
 }

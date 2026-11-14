@@ -6,12 +6,25 @@ import {
 } from './gateway-connection.js';
 import type { FastifyBaseLogger } from 'fastify';
 import { appApis, planLimits } from './app-plans.js';
+import type { EnqueueMail } from './mail/queue.js';
+import { revokeApps } from './revocation.js';
 import { sql, eq } from 'drizzle-orm';
 export async function reconcile(
   db: Database,
   connection: GatewayConnection,
   log: Pick<FastifyBaseLogger, 'warn'>,
+  enqueueMail: EnqueueMail = async () => {},
 ) {
+  const pending = await db
+    .select({ id: apps.id })
+    .from(apps)
+    .where(eq(apps.status, 'revoke-pending'));
+  await revokeApps(
+    db,
+    connection,
+    pending.map((a) => a.id),
+    enqueueMail,
+  );
   await db.transaction(async (tx) => {
     const lock = await tx.execute(
       sql`select pg_try_advisory_xact_lock(71833002) as acquired`,
@@ -25,7 +38,9 @@ export async function reconcile(
       tx.select().from(apps),
       tx.select().from(credentials),
     ]);
-    const appIds = new Set(appRows.map((a) => a.id));
+    const appIds = new Set(
+      appRows.filter((a) => a.status === 'active').map((a) => a.id),
+    );
     const found = new Set<string>();
     for (const consumer of owned) {
       if (!appIds.has(consumer.appId)) {
@@ -51,19 +66,23 @@ export async function reconcile(
       .select({ id: apis.gatewayServiceId, slug: apis.slug })
       .from(apis);
     const desired = await Promise.all(
-      appRows.map(async (app) => {
-        const [plan] = await tx
-          .select()
-          .from(plans)
-          .where(eq(plans.id, app.planId));
-        return {
-          app: { id: app.id },
-          services: [
-            ...new Set((await appApis(tx, app)).map((a) => a.gatewayServiceId)),
-          ].map((id) => ({ id })),
-          limits: planLimits(plan!),
-        };
-      }),
+      appRows
+        .filter((a) => a.status === 'active')
+        .map(async (app) => {
+          const [plan] = await tx
+            .select()
+            .from(plans)
+            .where(eq(plans.id, app.planId));
+          return {
+            app: { id: app.id },
+            services: [
+              ...new Set(
+                (await appApis(tx, app)).map((a) => a.gatewayServiceId),
+              ),
+            ].map((id) => ({ id })),
+            limits: planLimits(plan!),
+          };
+        }),
     );
     const report = await adapter.applyAccessPolicy({
       services: apiRows.map((a) => ({ id: a.id })),

@@ -12,6 +12,8 @@ import { encrypt } from './crypto.js';
 import { createAuth } from './auth.js';
 import { createApp } from './app.js';
 import { seedSample } from './seed.js';
+import { jobDb } from './job-db.js';
+import { revokeApps } from './revocation.js';
 import { reconcile } from './reconcile.js';
 import { mailQueue, processMail } from './mail/queue.js';
 import { housekeeping } from './auth-limits.js';
@@ -90,6 +92,18 @@ export async function start(config: Config) {
       config,
       auth,
       enqueueMail,
+      enqueueRevocation: (appIds, tx) =>
+        boss.send(
+          'access-revoke',
+          { appIds },
+          {
+            db: tx ? jobDb(tx) : undefined,
+            singletonKey: appIds.slice().sort().join(':'),
+            retryLimit: 10,
+            retryBackoff: true,
+            retryDelay: 5,
+          },
+        ),
       enqueueReconcile: () =>
         boss.send(
           'gateway-reconcile',
@@ -150,6 +164,21 @@ export async function start(config: Config) {
           );
       },
     );
+    await boss.createQueue('access-revoke', {
+      name: 'access-revoke',
+      policy: 'singleton',
+    });
+    await boss.work<{ appIds: string[] }>('access-revoke', async (jobs) => {
+      for (const job of jobs) {
+        const result = await revokeApps(
+          db,
+          connection,
+          job.data.appIds,
+          enqueueMail,
+        );
+        if (result.pending) throw new Error('Access revocation is pending');
+      }
+    });
     await boss.createQueue('auth-housekeeping');
     await boss.work('auth-housekeeping', async () => {
       await housekeeping(db);
@@ -166,7 +195,7 @@ export async function start(config: Config) {
     await boss.work(
       'gateway-reconcile',
       backgroundJob('gateway-reconcile', app.log, () =>
-        reconcile(db, connection, app.log),
+        reconcile(db, connection, app.log, enqueueMail),
       ),
     );
     await boss.work(

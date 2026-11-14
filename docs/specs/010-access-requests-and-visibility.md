@@ -350,13 +350,13 @@ desired-state loop skips non-active apps, so a revoked key can never come back.
 - **Quickstart.** Seed data stays Open and self-service; `docker compose up` path unchanged.
 
 ### Tasks
-- [ ] [backend] Schema + migration: `products.visibility`, `product_teams`, `plans.requires_approval`, `apps.status/origin/key_issued/revoked_at/revoke_reason`, partial name index, `access_requests` with partial unique indexes; migration test for upgraded rows (AC 9)
-- [ ] [backend] `access-policy.ts` with unit tests; apply it to products, APIs, OpenAPI documents, versions, changelog and try-it target (AC 9–11)
-- [ ] [backend] `createApp` / `changeAppPlan` / `deleteApp` / `createCredential` changes: approval-required, admin-assigned-only, 202 plan-change request, revoke states, `key_issued`, Pending plan-change closed on cancel (AC 2, 7, 8)
-- [ ] [backend] Access requests: developer list/create, admin queue, approve (provisionApp without key; plan-change via existing routine; row lock), reject (AC 1–6, 8)
-- [ ] [backend] Product access + plan `requiresApproval`: confirmation-required flow, named teams, `closeInvisibleRequests`, `GET /v1/admin/teams`, `POST /v1/admin/subscriptions` (AC 10–12)
-- [ ] [backend] Revocation: `revokeApps`, `access-revoke` pg-boss queue with backoff, reconcile skips/deletes non-active apps, once-only revoke email (AC 12–13)
-- [ ] [backend] Mail templates and id-based payloads: access-approved (with note), access-rejected (with note), subscription-assigned, subscription-revoked; regenerate `packages/sdk`
+- [x] [backend] Schema + migration: `products.visibility`, `product_teams`, `plans.requires_approval`, `apps.status/origin/key_issued/revoked_at/revoke_reason`, partial name index, `access_requests` with partial unique indexes; migration test for upgraded rows (AC 9)
+- [x] [backend] `access-policy.ts` with unit tests; apply it to products, APIs, OpenAPI documents, versions, changelog and try-it target (AC 9–11)
+- [x] [backend] `createApp` / `changeAppPlan` / `deleteApp` / `createCredential` changes: approval-required, admin-assigned-only, 202 plan-change request, revoke states, `key_issued`, Pending plan-change closed on cancel (AC 2, 7, 8)
+- [x] [backend] Access requests: developer list/create, admin queue, approve (provisionApp without key; plan-change via existing routine; row lock), reject (AC 1–6, 8)
+- [x] [backend] Product access + plan `requiresApproval`: confirmation-required flow, named teams, `closeInvisibleRequests`, `GET /v1/admin/teams`, `POST /v1/admin/subscriptions` (AC 10–12)
+- [x] [backend] Revocation: `revokeApps`, `access-revoke` pg-boss queue with backoff, reconcile skips/deletes non-active apps, once-only revoke email (AC 12–13)
+- [x] [backend] Mail templates and id-based payloads: access-approved (with note), access-rejected (with note), subscription-assigned, subscription-revoked; regenerate `packages/sdk`
 - [x] [frontend] Product page: Request access dialog (name, reason counter, 400/409 messages), no subscribe for `selfService: false`, `notFound()` on 404 for product and API pages (AC 1, 2, 9–11)
 - [x] [frontend] Team views: Requests list with status and note, app status badges, Pending plan-change banner, plan-change dialog reason + 202 result, Reveal key while `keyIssued` is false (AC 3, 4, 7, 8, 11)
 - [x] [frontend] Admin request queue with approve note ("Note to the requester (included in the email)") and required reject note; gateway-unavailable error (AC 3, 4, 6)
@@ -374,6 +374,11 @@ Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access
 - An invisible product is the standard 404 page, never a locked card. Admins alone see Hidden/Internal/Manual badges in the catalog. New components: `StatusBadge`, `CountedTextarea`, `VisibilityBadge`, `TeamCombobox`. Exact copy, email text, every state, the keyboard path and the 375/1280px layouts are in the design file.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Backend — 2026-11-14
+Implemented all backend tasks: the generated `0007_parallel_ravenous` migration, shared visibility policy across every public API surface, request/decision endpoints, admin access settings and assignment, deferred key issuance, plan-change requests, revocation retries/reconcile and SDK regeneration. Access mutations share an advisory transaction lock so approvals, cancellation and restrictions cannot cross; mail and revocation jobs are inserted into pg-boss in the same transaction as their state changes, with id-only access mail payloads and current-row recipient loading. Admin-origin cancellations retain a revoked app record for the id-based revocation email; all revoked apps reject key issuance and reconciliation never restores their consumers.
+
+Validation: `@portal/db`, `@portal/server` and `@portal/sdk` lint and typecheck pass; database tests **9/9** and server tests **271/271** pass, and SDK tests exit successfully with no test files. Added migration-upgrade/index tests, policy tests, request/approval/rejection/concurrency/failure/plan-change/revocation tests, and real pg-boss/Postgres tests for atomic job rollback and current recipient lookup. Docker-dependent checks required sandbox escalation; no workspace suite, browser or quickstart was run. The ownership guard includes prior design-stage files and the frontend owner's files; Elango explicitly authorized a scoped backend-only commit and feature-branch push despite that guard limitation.
 
 - Frontend: implemented approval requests, team request history, subscription reveal/revocation states, the admin request queue, and product visibility/assignment with Keep/Revoke confirmation. Existing product/API 404 handling is retained and changelog 404 handling is completed; the API-only demo remains unchanged. Portal lint/typecheck and all 329 package tests pass; generated SDK lint/typecheck/test pass (no SDK test files). The socket-based ingress tests require an escalated run because sandbox listening sockets fail with EPERM.
 

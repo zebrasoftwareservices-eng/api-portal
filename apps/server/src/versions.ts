@@ -6,6 +6,7 @@ import { uuidv7 } from 'uuidv7';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { requireUser, type Auth } from './auth.js';
+import { loadViewer, canSeeApi } from './access-policy.js';
 import { Problem, notFound } from './problem.js';
 import { importDocument, specSchema, versionName } from './import.js';
 import { apiDetail, publishedApis, publicDocument } from './catalog.js';
@@ -47,6 +48,8 @@ export function registerVersions(
     '/api/v1/apis/:slug/changelog',
     async (req) => {
       const row = await find(req.params.slug);
+      if (!(await canSeeApi(db, await loadViewer(db, auth, req), row.api.id)))
+        throw notFound();
       return {
         items: (
           await db
@@ -62,6 +65,8 @@ export function registerVersions(
     '/api/v1/apis/:slug/versions/:version/openapi.json',
     async (req) => {
       const row = await find(req.params.slug);
+      if (!(await canSeeApi(db, await loadViewer(db, auth, req), row.api.id)))
+        throw notFound();
       const [version] = await db
         .select()
         .from(apiVersions)
@@ -100,6 +105,8 @@ export function registerVersions(
         })
         .parse(req.body);
       const row = await find(req.params.slug);
+      if (!(await canSeeApi(db, await loadViewer(db, auth, req), row.api.id)))
+        throw notFound();
       const imported = await importDocument(
         input.spec,
         fetch,

@@ -191,6 +191,10 @@ export const products = pgTable(
   {
     id: uuid('id').primaryKey(),
     slug: text('slug').notNull().unique(),
+    visibility: text('visibility')
+      .notNull()
+      .default('open')
+      .$type<'open' | 'hidden' | 'internal' | 'manual'>(),
     name: text('name').notNull(),
     description: text('description').notNull(),
     createdBy: uuid('created_by').references(() => user.id, {
@@ -200,8 +204,25 @@ export const products = pgTable(
     updatedAt: updated(),
   },
   (t) => [
+    check(
+      'product_visibility',
+      sql`${t.visibility} in ('open','hidden','internal','manual')`,
+    ),
     check('product_name', sql`length(btrim(${t.name})) between 1 and 80`),
   ],
+);
+export const productTeams = pgTable(
+  'product_teams',
+  {
+    productId: uuid('product_id')
+      .notNull()
+      .references(() => products.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    createdAt: created(),
+  },
+  (t) => [primaryKey({ columns: [t.productId, t.teamId] })],
 );
 export const productApis = pgTable(
   'product_apis',
@@ -227,6 +248,7 @@ export const plans = pgTable(
     rateLimit: integer('rate_limit'),
     rateLimitUnit: text('rate_limit_unit').$type<'second' | 'minute'>(),
     monthlyQuota: integer('monthly_quota'),
+    requiresApproval: boolean('requires_approval').notNull().default(false),
     builtin: boolean('builtin').notNull().default(false),
     createdAt: created(),
     updatedAt: updated(),
@@ -266,6 +288,17 @@ export const planApis = pgTable(
 export const apps = pgTable(
   'apps',
   {
+    status: text('status')
+      .notNull()
+      .default('active')
+      .$type<'active' | 'revoke-pending' | 'revoked'>(),
+    origin: text('origin')
+      .notNull()
+      .default('self')
+      .$type<'self' | 'request' | 'admin'>(),
+    keyIssued: boolean('key_issued').notNull().default(true),
+    revokedAt: time('revoked_at'),
+    revokeReason: text('revoke_reason').$type<'visibility' | 'approval'>(),
     planId: uuid('plan_id')
       .notNull()
       .default(BUILTIN_PLAN_ID)
@@ -283,7 +316,21 @@ export const apps = pgTable(
     updatedAt: updated(),
   },
   (t) => [
-    uniqueIndex('app_team_name_unique').on(t.teamId, t.name),
+    check(
+      'app_status',
+      sql`${t.status} in ('active','revoke-pending','revoked')`,
+    ),
+    check('app_origin', sql`${t.origin} in ('self','request','admin')`),
+    check(
+      'app_revoke_reason',
+      sql`${t.revokeReason} in ('visibility','approval')`,
+    ),
+    index('app_revoke_pending_idx')
+      .on(t.status)
+      .where(sql`${t.status} = 'revoke-pending'`),
+    uniqueIndex('app_team_name_unique')
+      .on(t.teamId, t.name)
+      .where(sql`${t.status} <> 'revoked'`),
     index('app_plan_idx').on(t.planId),
   ],
 );
@@ -425,5 +472,57 @@ export const rateLimitHits = pgTable(
       sql`${t.bucket} in ('sign-in-failure','password-reset','verification-email','team-invitation')`,
     ),
     index('rate_limit_window_idx').on(t.bucket, t.subjectHash, t.createdAt),
+  ],
+);
+
+export const accessRequests = pgTable(
+  'access_requests',
+  {
+    id: uuid('id').primaryKey(),
+    kind: text('kind').notNull().$type<'subscribe' | 'plan-change'>(),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'restrict' }),
+    planId: uuid('plan_id')
+      .notNull()
+      .references(() => plans.id, { onDelete: 'restrict' }),
+    fromPlanId: uuid('from_plan_id').references(() => plans.id, {
+      onDelete: 'restrict',
+    }),
+    appId: uuid('app_id').references(() => apps.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    reason: text('reason').notNull(),
+    status: text('status')
+      .notNull()
+      .default('pending')
+      .$type<'pending' | 'approved' | 'rejected'>(),
+    requestedBy: uuid('requested_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    decidedBy: uuid('decided_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    decisionNote: text('decision_note'),
+    submittedAt: time('submitted_at').notNull().defaultNow(),
+    decidedAt: time('decided_at'),
+  },
+  (t) => [
+    check('request_kind', sql`${t.kind} in ('subscribe','plan-change')`),
+    check(
+      'request_status',
+      sql`${t.status} in ('pending','approved','rejected')`,
+    ),
+    check('request_name', sql`length(${t.name}) between 1 and 80`),
+    check('request_reason', sql`length(${t.reason}) between 1 and 1000`),
+    check('request_note', sql`length(${t.decisionNote}) <= 1000`),
+    uniqueIndex('request_subscribe_pending_unique')
+      .on(t.teamId, t.planId)
+      .where(sql`${t.status} = 'pending' and ${t.kind} = 'subscribe'`),
+    uniqueIndex('request_change_pending_unique')
+      .on(t.appId)
+      .where(sql`${t.status} = 'pending' and ${t.kind} = 'plan-change'`),
+    index('request_queue_idx').on(t.status, t.submittedAt),
+    index('request_team_idx').on(t.teamId, t.submittedAt.desc()),
   ],
 );

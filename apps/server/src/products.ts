@@ -2,7 +2,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { uuidv7 } from 'uuidv7';
-import { eq, and, asc, inArray } from 'drizzle-orm';
+import { eq, and, asc, inArray, sql } from 'drizzle-orm';
 import {
   products,
   productApis,
@@ -14,6 +14,24 @@ import {
 } from '@portal/db';
 import { requireUser, type Auth } from './auth.js';
 import { Problem, notFound } from './problem.js';
+import type { GatewayConnection } from './gateway-connection.js';
+import type { EnqueueMail } from './mail/queue.js';
+import {
+  markRevocations,
+  revokeApps,
+  type EnqueueRevocation,
+} from './revocation.js';
+import {
+  productSubscriptions,
+  confirmSubscriptions,
+} from './product-access.js';
+import {
+  loadViewer,
+  visibleProductIds,
+  productVisible,
+  canSelfSubscribe,
+  type Viewer,
+} from './access-policy.js';
 import { publishedApis, apiSummary } from './catalog.js';
 import type { Db } from './app-plans.js';
 const ids = z
@@ -39,6 +57,8 @@ export const planSchema = z
     rateLimitUnit: z.enum(['second', 'minute']),
     monthlyQuota: z.number().int().min(1).max(2000000000),
     apiIds: ids,
+    requiresApproval: z.boolean().default(false),
+    existingSubscriptions: z.enum(['keep', 'revoke']).optional(),
   })
   .superRefine((v, ctx) => {
     if (v.monthlyQuota < v.rateLimit)
@@ -76,12 +96,17 @@ async function planView(db: Db, plan: typeof plans.$inferSelect) {
     rateLimit: plan.rateLimit,
     rateLimitUnit: plan.rateLimitUnit,
     monthlyQuota: plan.monthlyQuota,
+    requiresApproval: plan.requiresApproval,
     quotaPeriod: 'calendar-month-utc',
     apis: included,
     createdAt: plan.createdAt.toISOString(),
   };
 }
-async function detail(db: Database, product: typeof products.$inferSelect) {
+async function detail(
+  db: Database,
+  product: typeof products.$inferSelect,
+  viewer?: Viewer,
+) {
   const links = await db
     .select()
     .from(productApis)
@@ -91,10 +116,12 @@ async function detail(db: Database, product: typeof products.$inferSelect) {
     .from(plans)
     .where(eq(plans.productId, product.id))
     .orderBy(asc(plans.createdAt), asc(plans.id));
-  const included = (await publishedApis(db))
+  const included = (await publishedApis(db, viewer))
     .filter((r) => links.some((l) => l.apiId === r.api.id))
     .sort((a, b) => a.version.title.localeCompare(b.version.title));
   return {
+    visibility: product.visibility,
+    selfService: canSelfSubscribe(product),
     id: product.id,
     slug: product.slug,
     name: product.name,
@@ -116,23 +143,31 @@ export function registerProducts(
   db: Database,
   auth: Auth,
   enqueue: () => Promise<unknown>,
+  connection: GatewayConnection,
+  enqueueMail: EnqueueMail,
+  enqueueRevocation: EnqueueRevocation,
 ) {
-  server.get('/api/v1/products', async () => ({
+  server.get('/api/v1/products', async (request) => ({
     items: await Promise.all(
-      (await db.select().from(products).orderBy(asc(products.name))).map(
-        async (p) => {
-          const result = await detail(db, p);
-          return {
-            id: result.id,
-            slug: result.slug,
-            name: result.name,
-            description: result.description,
-            apiCount: result.apiCount,
-            planCount: result.planCount,
-            createdAt: result.createdAt,
-          };
-        },
-      ),
+      (
+        await db
+          .select()
+          .from(products)
+          .where(visibleProductIds(db, await loadViewer(db, auth, request)))
+          .orderBy(asc(products.name))
+      ).map(async (p) => {
+        const result = await detail(db, p, await loadViewer(db, auth, request));
+        return {
+          visibility: result.visibility,
+          id: result.id,
+          slug: result.slug,
+          name: result.name,
+          description: result.description,
+          apiCount: result.apiCount,
+          planCount: result.planCount,
+          createdAt: result.createdAt,
+        };
+      }),
     ),
   }));
   server.get('/api/v1/products/:productSlug', async (request) => {
@@ -143,8 +178,9 @@ export function registerProducts(
       .select()
       .from(products)
       .where(eq(products.slug, productSlug));
-    if (!row) throw notFound();
-    return detail(db, row);
+    const viewer = await loadViewer(db, auth, request);
+    if (!row || !(await productVisible(db, viewer, row.id))) throw notFound();
+    return detail(db, row, viewer);
   });
   server.post('/api/v1/admin/products', async (request, reply) => {
     const user = await requireUser(auth, request, true);
@@ -261,8 +297,10 @@ export function registerProducts(
       .extend({ planId: z.uuid().optional() })
       .parse(request.params);
     const parsed = planSchema.safeParse(request.body);
+    let revokeIds: string[] = [];
     try {
-      return await db.transaction(async (tx) => {
+      const result = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
         const [product] = await tx
           .select()
           .from(products)
@@ -321,6 +359,7 @@ export function registerProducts(
           rateLimit: input.rateLimit,
           rateLimitUnit: input.rateLimitUnit,
           monthlyQuota: input.monthlyQuota,
+          requiresApproval: input.requiresApproval,
         };
         if (update) {
           const [old] = await tx
@@ -328,6 +367,18 @@ export function registerProducts(
             .from(plans)
             .where(and(eq(plans.id, planId!), eq(plans.productId, productId)));
           if (!old) throw notFound();
+          if (!old.requiresApproval && input.requiresApproval) {
+            const affected = (
+              await productSubscriptions(tx, productId, old.id)
+            ).filter(
+              (r) => r.app.status === 'active' && r.app.origin !== 'admin',
+            );
+            confirmSubscriptions(affected, input.existingSubscriptions);
+            if (input.existingSubscriptions === 'revoke') {
+              revokeIds = affected.map((r) => r.app.id);
+              await markRevocations(tx, revokeIds, 'approval');
+            }
+          }
           [row] = (await tx
             .update(plans)
             .set({ ...values, updatedAt: new Date() })
@@ -345,8 +396,13 @@ export function registerProducts(
           .values(
             input.apiIds.map((apiId) => ({ planId: row.id, productId, apiId })),
           );
+        if (revokeIds.length) await enqueueRevocation(revokeIds, tx);
         return planView(tx, row);
       });
+      if (revokeIds.length) {
+        await revokeApps(db, connection, revokeIds, enqueueMail);
+      }
+      return result;
     } catch (e) {
       if (pgCode(e) === '23505')
         throw new Problem(

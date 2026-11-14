@@ -18,6 +18,8 @@ export class Problem extends Error {
       column?: number;
     }[],
     readonly fields?: {
+      affectedTeams?: number;
+      affectedSubscriptions?: number;
       teams?: { id: string; name: string }[];
       apis?: number;
       activeKeys?: number;

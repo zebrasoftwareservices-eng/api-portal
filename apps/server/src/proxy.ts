@@ -5,7 +5,9 @@ import type { AdapterFor } from './gateway-connection.js';
 import type { Database } from '@portal/db';
 import { publishedApis, baseUrl, type PublishedApi } from './catalog.js';
 import { readLimited } from './import.js';
-import { Problem } from './problem.js';
+import type { Auth } from './auth.js';
+import { loadViewer, canSeeApi } from './access-policy.js';
+import { notFound, Problem } from './problem.js';
 const LIMIT = 1024 * 1024;
 const blocked = new Set([
   'connection',
@@ -65,7 +67,7 @@ export async function registerProxy(
   db: Database,
   adapterFor: AdapterFor,
   fetcher: typeof fetch = fetch,
-  options: { resetToken?: string } = {},
+  options: { resetToken?: string; auth?: Auth } = {},
 ) {
   // A new generation abandons the previous in-memory buckets without a restart.
   let rateGeneration = 0;
@@ -114,6 +116,15 @@ export async function registerProxy(
             'try-it-target-not-allowed',
             'The target URL is not part of a published API.',
           );
+        if (
+          options.auth &&
+          !(await canSeeApi(
+            db,
+            await loadViewer(db, options.auth, request),
+            target.row.api.id,
+          ))
+        )
+          throw notFound();
         const names = new Set([
           'apikey',
           'accept',
