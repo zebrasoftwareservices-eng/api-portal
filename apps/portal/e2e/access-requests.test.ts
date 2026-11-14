@@ -313,10 +313,20 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
   );
   expect((await call()).status()).toBe(200);
   const anonymous = await playwright.request.newContext({ baseURL: origin });
+  await json(
+    await operator.put(access, {
+      data: { visibility: 'internal', teamIds: [], existingSubscriptions: 'keep' },
+    }),
+    400,
+  );
   for (const visibility of ['hidden', 'internal', 'manual', 'hidden']) {
     await json(
       await operator.put(access, {
-        data: { visibility, teamIds: [], existingSubscriptions: 'keep' },
+        data: {
+          visibility,
+          ...(visibility === 'internal' ? { teamIds: [teamId] } : {}),
+          existingSubscriptions: 'keep',
+        },
       }),
     );
     for (const path of [
@@ -331,11 +341,21 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
   }
   for (const path of [
     `/products/unknown-${slug}`,
+    `/apis/unknown-${slug}`,
     `/apis/unknown-${slug}/changelog`,
   ]) {
     expect.soft((await anonymous.get(path)).status(), path).toBe(404);
   }
-  expect((await context.request.get(`/products/${slug}`)).status()).toBe(200);
+  for (const path of [
+    `/products/${slug}`,
+    `/apis/${slug}`,
+    `/apis/${slug}/changelog`,
+  ]) {
+    expect(
+      (await context.request.get(path)).status(),
+      `signed-in Hidden: ${path}`,
+    ).toBe(200);
+  }
   await expect
     .poll(() => Date.now() % 60000 < 30000, { timeout: 31000 })
     .toBe(true);

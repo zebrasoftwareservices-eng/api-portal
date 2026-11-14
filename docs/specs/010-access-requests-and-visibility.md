@@ -1,7 +1,7 @@
 ---
 id: 010
 title: Access requests and catalog visibility
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-238
@@ -364,7 +364,7 @@ desired-state loop skips non-active apps, so a revoked key can never come back.
 - [x] [qa] Integration: visibility matrix over every product/API/plan endpoint (anonymous, outsider, insider, admin), 403 matrix for admin endpoints and read-only (AC 5, 9–11)
 - [x] [qa] Integration with real Kong: approve → key works within plan limits; reject; Kong down on approve; plan-change keep key and limits; concurrent approve (AC 1–4, 6–8)
 - [x] [qa] Integration with real Kong: Manual assignment, keep vs revoke (401 after revoke), partial failure + retry idempotence + one email per team, reconcile doesn't resurrect (AC 11–13)
-- [ ] [qa] Playwright e2e: Sprint 4 demo step 3 (request Partner → admin approves → reveal key → call works; Hidden product 404 when signed out); quickstart smoke
+- [x] [qa] Playwright e2e: Sprint 4 demo step 3 (request Partner → admin approves → reveal key → call works; Hidden product 404 when signed out); quickstart smoke
 - [x] [frontend] Fix: Invisible product and changelog pages return HTTP 200 instead of 404
 
 ## UX  _(ui-designer)_
@@ -384,34 +384,37 @@ Validation: `@portal/db`, `@portal/server` and `@portal/sdk` lint and typecheck 
 - Frontend: implemented approval requests, team request history, subscription reveal/revocation states, the admin request queue, and product visibility/assignment with Keep/Revoke confirmation. Product and changelog layouts now await the visibility/not-found decision before their loading boundaries can stream HTTP 200; the changelog layout and page share a request-cached loader. Added five layout regression tests and expanded the existing e2e assertions for Hidden, Internal, Manual and unknown slugs. Portal lint, typecheck and all 334 package tests pass; browser/e2e and quickstart verification remains with QA. The ownership guard flags prior backend/design/SDK changes already on the feature branch; Elango authorized committing only this round's six portal files and the spec/log with an explicit pathspec.
 
 ## Test report  _(qa-tester)_
-Application commit tested: `005cd7d4e2b8a08c97f13b6ee05f914d5d8e4d3c`, with the QA tests in this worktree. Portal: `http://localhost:3019` (`node scripts/worktree-compose.mjs env`).
 
-Test files below: **server** = `apps/server/src/access-requests.test.ts`; **browser** = `apps/portal/e2e/access-requests.test.ts`; **UI** = `apps/portal/components/access-flows.test.tsx`; **mail** = `apps/server/src/mail/access-mail.test.ts`.
+2026-11-14 retest of application commit `043b2a8bb3f6f4ff7e0fa1d7ba571d639aea21fe`, with this QA round's browser-test changes. Rebuilt using `node scripts/worktree-compose.mjs up -d --build --wait`; stack remains healthy and running at **http://localhost:3019**, as reported by `node scripts/worktree-compose.mjs env` (API 4019, Kong proxy 18019).
 
-| Criterion | Automated test file / case | Result |
+| Acceptance criterion | Automated tests and evidence | Result |
 | --- | --- | --- |
-| 1 — Pending request, queue metadata, no credential | server: creates request without Kong; browser: request form → queue → no consumer change | Pass |
-| 2 — Invalid reason and duplicate Pending | server: blank/whitespace/1001-character reasons, pending uniqueness; browser: validation and 409; UI: duplicate message preserves fields | Pass |
-| 3 — Approval note, email, reveal and live limits | server: concurrent decisions and deferred reveal; browser: admin approves → Mailpit note → one-time reveal → Kong 200/429; mail: recipient loading | Pass |
-| 4 — Required rejection note and resubmit | server: rejects blank note, trims note and allows a new subscription request; browser: blank 400 → reject → email note → repeat plan request; UI: rejection validation | Pass |
-| 5 — Admin-only endpoints and team roles | server: admin route 403 matrix, read-only request/reveal 403, expired session 401; UI: read-only cannot reveal | Pass |
-| 6 — Unreachable Kong approval | server: rollback, Pending, no mail, retry; browser: stop real Kong → 503 problem, Pending, no approval email → restart → approve | Pass |
-| 7 — Pending plan change preserves Basic and key | server: Pending without adapter mutation; browser: Basic retained, original key 200, duplicate 409 | Pass |
-| 8 — Approve/reject plan change and immediate downgrade | server: same credential, limits/grants, rejection; browser: Partner→Basic immediate, rejection/retry/approval with same key and Partner plugin + live limit | Pass |
-| 9 — Open upgrade; Hidden audience and page 404 | `packages/db/src/access-migration.test.ts`; server: four-level visibility matrix; browser: Hidden anonymous page | **Fail**: product and changelog pages render not-found with HTTP 200; JSON/reference/version endpoints return 404 |
-| 10 — Internal named team and outsider | server: anonymous/outsider/insider/admin matrix, insider Basic subscription + Partner request and excluded plan change 404 | API pass; page-status regression remains under the visibility bug |
-| 11 — Manual assignment, email, reveal and audience | server: assignment and Manual self-service denial; browser: no admin key, assigned email, team reveal → real Kong 200, outsider product page | **Fail**: anonymous Manual product page returns 200; assignment/key/API policy pass |
-| 12 — Restriction confirmation, Keep/Revoke | server: three affected teams, Keep and approval confirmation; UI: Keep default; browser: Keep key 200, Revoke key 401 and team mail | Pass |
-| 13 — Saved restriction and revocation retry | server: partial adapter failure, replay twice, exactly-once enqueue, reconcile skips revoked; UI: retry notice; browser: real Kong down → persisted pending/no email → restart → revoked/401 and one mail | Pass (partial per-credential failure and reconcile use fake adapter + real Postgres; outage/retry uses real Kong) |
+| 1 Pending request, queue metadata, no credential | `apps/server/src/access-requests.test.ts` request/approval concurrency; `apps/portal/e2e/access-requests.test.ts` request dialog, queue and unchanged Kong consumers | Pass |
+| 2 Invalid reason and duplicate request | `apps/server/src/access-requests.test.ts` validation/uniqueness; `apps/portal/components/access-flows.test.tsx` validation and retained fields; access-request e2e empty reason and 409 | Pass |
+| 3 Approve, email note, one-time key and live plan limits | Access-request integration + e2e: Mailpit note, no key before reveal, browser reveal, real Kong 200/429 | Pass |
+| 4 Reject, required note, email and re-request | Access-request integration + e2e rejection/retry; `apps/portal/components/access-flows.test.tsx` required note and escaped notes | Pass |
+| 5 Admin and read-only permission failures | Access-request integration admin route matrix, read-only and expired-session tests; access-flow component read-only controls | Pass |
+| 6 Kong outage preserves Pending and sends no email; retry | Access-request integration compensation + e2e stop/start real Kong, 503 problem+json, Pending/no mail, successful retry; component error retention | Pass |
+| 7 Pending plan change preserves Basic and working key; duplicate 409 | Access-request integration + e2e Basic/Partner request, unchanged plan/key and duplicate refusal; component 202 state | Pass |
+| 8 Approve/reject changes with same key; self-service immediate | Access-request integration + e2e reject/re-request/approve, Kong limits and direct Basic change | Pass |
+| 9 Open defaults; Hidden catalog and real HTTP 404 | `packages/db/src/access-migration.test.ts`; `apps/server/src/access-policy.test.ts`; access-request endpoint matrix and e2e; `apps/portal/components/visibility-layouts.test.tsx` | Pass |
+| 10 Internal named-team access and outsider 404 | Access-request integration insider subscribe/request and excluded viewer matrix; e2e anonymous product/API/changelog 404 and empty-team 400 | Pass |
+| 11 Manual assignment, team email, reveal and visibility | Access-request integration + e2e assignment, Mailpit, no returned key, team reveal and real Kong call; component keyboard assignment | Pass |
+| 12 Confirmation counts/default Keep, Keep/Revoke and email | Access-request integration three-team count and approval confirmation; access-flow component default Keep; e2e Keep retains call and Revoke yields 401/email | Pass |
+| 13 Persisted pending revocations, retry and idempotence | Access-request integration partial failure/replay/reconcile; `apps/server/src/mail/access-mail.test.ts` atomic id-only jobs/current recipients; e2e real Kong outage, pending/no mail, retry/401/one mail; component retry notice | Pass |
 
-Validation: workspace lint and typecheck pass. One full workspace test pass: server **279/279**, portal **329/329**, database **9/9**, Kong adapter **60/60**; the two subsequent server coverage additions pass in the focused suite (**21/21**). The completed full browser pass reports **95 passed, 3 failed, 2 skipped** (7.8 minutes); two failures were stale navigation expectations missing the new Requests section, corrected in `apps/portal/e2e/account-security.test.ts` and passing **2/2** on focused retest. The remaining failure is the spec 010 invisible-page status regression; the new browser test keeps its 404 assertions failing rather than accepting 200.
+Validation: `pnpm lint` and `pnpm typecheck` pass. `pnpm test` passes all 12 workspace tasks, including server **281/281**, portal **334/334**, database **9/9**, and Kong adapter **60/60** (some unchanged tasks used Turbo cache); Docker-dependent execution required sandbox escalation. Portal typecheck was rerun after the browser-test edits.
 
-Quickstart: `node scripts/worktree-compose.mjs up -d --build --wait` succeeds after the coordinator freed Mailpit port 8025; fresh `/setup` returned 200, the automated setup journey passed its five-minute assertion, and the seeded environment path started successfully. The isolated stack is left up for the next stage. There were no open bugs at intake; the new major was reproduced and kept open with `linear bug 010 open`. The ownership guard flags only earlier-stage committed application/design files; Elango authorized the explicit QA-only commit despite that limitation. At Elango’s direction, the bug and frontend Fix task are tracked only in this spec; no Linear issue will be created. Status is **building**.
+The single full `pnpm test:e2e` pass completed with **97 passed, 2 skipped, 1 failed**: the expanded visibility fixture sent an invalid empty Internal team list. Corrected that test to name the Internal team and omit team IDs for other levels, retained an explicit empty-team 400 assertion, and reran only spec 010: **1/1 passed** (30.9 seconds), including Hidden/Internal/Manual and unknown product/API/changelog HTTP 404, signed-in Hidden HTTP 200, and the full real-Kong/Mailpit journey. No application failure remains. Quickstart smoke and fresh installation journeys passed; the fresh wizard journey completed in 37.3 seconds.
+
+Harness notes: initial sandbox attempts could not access Docker/launch Chromium and were rerun with escalation. An initial browser attempt omitted the raw-Compose worktree variables; legacy setup tests addressed the default `portal` project before that run was stopped. The completed full run and targeted retest supplied all worktree project/image/port variables; no additional action was taken on the default project.
+
+Commit guard: `guard qa-tester` flags application/design/schema files already committed on the feature branch because it checks the entire branch diff. Elango explicitly authorized committing only this round’s browser test, spec and stage log with an explicit path list; no flagged application file was modified or restored. The raw-Compose hazard is recorded as a spec-only follow-up and does not block UAT.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 - [x] Invisible product and changelog pages return HTTP 200 instead of 404 (major)
-  - Current repro: signed-out `GET /products/access-d79f1b28-0612-43a7-9027-b072da0353a1` on the QA portal returns 200 with not-found content; the full browser run also reproduces Hidden product and changelog 200 responses. Expected 404.
+  - Verified on rebuilt `043b2a8`: anonymous Hidden, Internal and Manual product/API/changelog pages and unknown slugs return HTTP 404; signed-in Hidden pages return HTTP 200. Confirmed with `linear bug 010 done`; no Linear issue exists or was created, per Elango.
 
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
@@ -433,3 +436,6 @@ return the spec to building. Earlier rounds go in `docs/specs/log/010.md`.
 - [ ] API contract, README and docs updated
 - [ ] Tech-lead review has no blocking findings
 - [ ] Elango merged the PR
+
+### Follow-ups
+- Browser setup tests run docker compose down -v against the default portal project when worktree Compose variables are missing; refuse unless the project is worktree-scoped
