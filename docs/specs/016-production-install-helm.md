@@ -1,7 +1,7 @@
 ---
 id: 016
 title: Production install — hardened Compose, Helm chart, backups and upgrades
-status: review  # draft → ready → designed → building → testing → uat → review → approved → done
+status: building  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-13
 linear: JSO-244
@@ -424,6 +424,7 @@ Kong objects; reconcile keeps running every 5 minutes as now and is idempotent.
 - [x] [backend] Fix: Helm smoke passes without required AC 7-10 runtime assertions
 - [x] [backend] Fix: Upgrade smoke candidate becomes unhealthy before recovery assertions
 - [x] [backend] Fix: Helm smoke uses nonexistent portal Service hostname
+- [ ] [backend] Fix: Install guides do not authenticate to the private GHCR packages
 ## UX  _(ui-designer)_
 No UI change: no new or changed screens, flows, states, copy or tokens (Out of scope). The
 `[frontend]` tasks are the portal container only: runtime `SERVER_URL` proxying, `GET /healthz`,
@@ -493,6 +494,15 @@ Full evidence: `docs/uat/016/report.md`. No blocker or major UAT bug is open.
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/016.md`.
+
+Reviewed `git diff main...HEAD` at `5a2b7b4`. The Test report names `6cff3d0`; the only code change since is a static test in `apps/server/src/production-install.test.ts`, re-run here (9 passed). CI has not run on this branch: every job since the first push stops in 2–4 s with GitHub's "recent account payments have failed" billing block, and `main` shows the same. The CI second run therefore does not exist yet.
+
+Checked and fine: config secrets and error output (`apps/server/src/config.ts`, `main.ts`), the setup-token row under the advisory lock and its delete in the claim transaction (`apps/server/src/setup.ts:116`), the schema-ahead guard before any write (`packages/db/src/index.ts:21`), readiness timeout and problem body (`apps/server/src/app.ts:39`), runtime `/api` proxying and trusted-proxy handling (`apps/portal/ingress/proxy.ts`), the Helm chart, the release workflow (exact tags, pinned SHAs, no `latest`), and backup/restore. Checked on Docker 29.9: the pinned Postgres image reads a `0600` secret owned by uid 1000, and the pinned Caddy image starts with `read_only`, `cap_drop: [ALL]` and `no-new-privileges`. The quickstart is unchanged.
+
+- **blocking** — Neither install guide authenticates to the private GHCR packages. AC 3 keeps the packages private, but `docs/install/production.md:10` goes straight to `docker compose pull`. `docs/install/helm.md:5` installs with no `imagePullSecrets`. Someone following only the guide stops at "unauthorized" on a clean VM or cluster, so AC 1 cannot pass. Fix: add a step before the pull: `docker login ghcr.io -u <github-user>` with a token that has `read:packages`. Add the matching `kubectl create secret docker-registry` and `--set imagePullSecrets[0].name=…` to the Helm guide.
+- **blocking** — AC 1 has no evidence. The Caddy profile has never been started by any test. Only a static check in `production-install.test.ts:27` covers it. The open `[qa]` task "Production Compose on a Linux host with a real Kong" is the fix for this, so no new task is added. QA can run it on any Docker host without a clean VM. Use `deploy/production/compose.yaml` with the candidate images retagged, `--profile caddy` and `PORTAL_DOMAIN=localhost` (Caddy issues a local certificate), and a separately started Kong. Then record HTTPS, `NODE_ENV=production`, no host ports for Postgres or the server, no Kong container, no sample API, the claim, and the Kong connection. If no clean Ubuntu 26.04 VM exists, the timed 30-minute walk goes to Elango at the release gate.
+- **suggestion** — `.github/workflows/ci.yml:68` and `:78` use tag-pinned actions (`actions/checkout@v4`, `helm/kind-action@v1.12.0`), but `release.yml` pins SHAs. Pin the new jobs the same way when CI is next touched.
+- **suggestion** — `deploy/production/secrets/README.md:11` uses `chmod 600`. This works only when the files belong to uid 1000, the server's user. Ubuntu's first user is uid 1000, but files created under `sudo` are root-owned, and the server then fails with "cannot read". Say to create them as uid 1000 or `chown 1000`.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
