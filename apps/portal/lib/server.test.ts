@@ -2,7 +2,8 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { currentUser, serverClient } from './server';
-const { get, middleware } = vi.hoisted(() => ({
+const { createSdkClient, get, middleware } = vi.hoisted(() => ({
+  createSdkClient: vi.fn(),
   get: vi.fn(),
   middleware: vi.fn(),
 }));
@@ -10,10 +11,11 @@ vi.mock('next/headers', () => ({
   cookies: async () => ({ toString: () => '' }),
 }));
 vi.mock('@portal/sdk', () => ({
-  createClient: () => ({ GET: get, use: middleware }),
+  createClient: createSdkClient,
 }));
 beforeEach(() => {
   vi.clearAllMocks();
+  createSdkClient.mockReturnValue({ GET: get, use: middleware });
   vi.stubEnv('PORTAL_DEMO_ACTIVE', 'false');
 });
 afterEach(() => vi.unstubAllEnvs());
@@ -45,4 +47,13 @@ it('JSO-190 marks network and server errors so production error boundaries recog
   expect(() =>
     handlers.onResponse({ response: new Response(null, { status: 503 }) }),
   ).toThrow(expect.objectContaining({ digest: 'PORTAL_SERVER_UNAVAILABLE' }));
+});
+it('reads the server URL at request time', async () => {
+  vi.stubEnv('SERVER_URL', 'http://runtime-server.example:4400');
+  await serverClient();
+  expect(createSdkClient).toHaveBeenCalledWith(
+    expect.objectContaining({
+      baseUrl: 'http://runtime-server.example:4400/api',
+    }),
+  );
 });

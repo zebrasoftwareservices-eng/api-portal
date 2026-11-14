@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { it, expect } from 'vitest';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
-import { connect, migrate } from './index.js';
+import { connect, migrate, SchemaAheadError } from './index.js';
 it('serializes migrations and enforces singleton, roles and credential status', async () => {
   const container = await new PostgreSqlContainer('postgres:17-alpine').start();
   const url = container.getConnectionUri();
@@ -22,6 +22,23 @@ it('serializes migrations and enforces singleton, roles and credential status', 
       await client.end();
     }
   } finally {
+    await container.stop();
+  }
+});
+
+it('refuses a database with a synthetic future migration without changing it', async () => {
+  const container = await new PostgreSqlContainer('postgres:17-alpine').start();
+  const url = container.getConnectionUri();
+  const { client } = connect(url);
+  try {
+    await migrate(url);
+    await client`insert into drizzle.__drizzle_migrations (hash, created_at) values ('future-image-hash', 9999999999999)`;
+    const before = await client`select schemaname,tablename from pg_tables where schemaname in ('public','drizzle') order by 1,2`;
+    await expect(migrate(url)).rejects.toBeInstanceOf(SchemaAheadError);
+    const after = await client`select schemaname,tablename from pg_tables where schemaname in ('public','drizzle') order by 1,2`;
+    expect(after).toEqual(before);
+  } finally {
+    await client.end();
     await container.stop();
   }
 });

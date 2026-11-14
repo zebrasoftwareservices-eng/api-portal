@@ -1,0 +1,66 @@
+services:
+  postgres:
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../postgres-init.sql:/docker-entrypoint-initdb.d/01-kong.sql:ro
+  server:
+    image: ${SERVER_IMAGE:-portal-server:candidate}
+    environment:
+      DATABASE_URL: postgres://portal:upgrade-db-password@postgres:5432/portal
+      DATABASE_PASSWORD_FILE: null
+      BETTER_AUTH_SECRET: upgrade-auth-secret-change-me-1234567890
+      BETTER_AUTH_SECRET_FILE: null
+      PORTAL_ENCRYPTION_KEY: BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=
+      PORTAL_ENCRYPTION_KEY_FILE: null
+      KONG_ADMIN_TOKEN_FILE: null
+      SMTP_PASSWORD_FILE: null
+      ADMIN_EMAIL: ${ADMIN_EMAIL-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD-upgrade-password}
+      KONG_ADMIN_URL: http://kong:8001
+      KONG_PROXY_INTERNAL_URL: http://kong:8000
+      KONG_PROXY_PUBLIC_URL: http://127.0.0.1:8000
+      SEED_SAMPLE: 'true'
+    ports: ['127.0.0.1:${UPGRADE_SERVER_PORT:-4006}:4000']
+    depends_on:
+      postgres: { condition: service_healthy }
+      kong: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://localhost:4000/api/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+  portal:
+    image: ${PORTAL_IMAGE:-portal-portal:candidate}
+  kong-migrations:
+    image: kong:3.9
+    command: kong migrations bootstrap
+    environment: &kong-environment
+      KONG_DATABASE: postgres
+      KONG_PG_HOST: postgres
+      KONG_PG_USER: portal
+      KONG_PG_PASSWORD: upgrade-db-password
+      KONG_PG_DATABASE: kong
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [database]
+    restart: on-failure
+  kong:
+    image: kong:3.9
+    environment:
+      <<: *kong-environment
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_WORKER_CONSISTENCY: strict
+    depends_on:
+      kong-migrations: { condition: service_completed_successfully }
+    networks: [database, app]
+    healthcheck:
+      test: [CMD, kong, health]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  httpbin:
+    image: mccutchen/go-httpbin:v2.15.0
+    networks: [app]

@@ -89,6 +89,47 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Health' }
 
+  /v1/health/live:
+    get:
+      tags: [system]
+      operationId: getLiveness
+      summary: Liveness probe
+      description: |
+        Answers 200 while the process can serve HTTP. It checks nothing else, not the database
+        and not the gateway, so a database outage never makes Kubernetes or Compose restart the
+        server (spec 016).
+      security: []
+      responses:
+        '200':
+          description: The process is up
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Liveness' }
+
+  /v1/health/ready:
+    get:
+      tags: [system]
+      operationId: getReadiness
+      summary: Readiness probe
+      description: |
+        Answers 200 when the server can reach PostgreSQL (`select 1`, 2-second timeout), and 503
+        when it cannot. The gateway is not checked: a portal without Kong is still ready. When
+        the database returns, the next check answers 200 again without a restart (spec 016).
+      security: []
+      responses:
+        '200':
+          description: Ready to serve requests
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Readiness' }
+        '503':
+          description: |
+            The database is unreachable (`/problems/database-unavailable`). The body never
+            contains the database URL, host or credentials.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
   /v1/setup:
     get:
       tags: [setup]
@@ -112,9 +153,12 @@ paths:
       description: |
         Atomic and serialized: of any number of submissions, at the same time or later, exactly
         one creates an admin. The response sets the session cookie. When
-        `NODE_ENV=production`, `setupToken` must match the token this server start wrote to its
-        logs. The token lives only in memory, is replaced on each start and stops working once an
-        admin exists. Rate-limited to 10 requests per minute per IP.
+        `NODE_ENV=production`, `setupToken` must match the install's setup token, which every
+        server replica prints to its log at start (spec 016, ADR 0009). The token is stored once,
+        encrypted, in a single database row created while no admin exists; restarts and other
+        replicas print the same token. A successful claim deletes the row in the same
+        transaction, after which every replica answers 409. Rate-limited to 10 requests per
+        minute per IP.
       security: []
       requestBody:
         required: true
@@ -133,7 +177,9 @@ paths:
               schema: { $ref: '#/components/schemas/User' }
         '400': { $ref: '#/components/responses/ValidationError' }
         '403':
-          description: The setup token is missing or wrong (`/problems/setup-token-invalid`). No admin was created.
+          description: |
+            The setup token is missing or wrong, or no token row exists yet
+            (`/problems/setup-token-invalid`; restart the server to create one). No admin was created.
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -1949,12 +1995,28 @@ components:
       minLength: 2
       maxLength: 64
 
+    Liveness:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok] }
+    Readiness:
+      type: object
+      required: [status, database]
+      properties:
+        status: { type: string, enum: [ok] }
+        database: { type: string, enum: [ok] }
     Health:
       type: object
       required: [status, version, gateway, lint]
       properties:
         status: { type: string, enum: [ok, degraded] }
-        version: { type: string }
+        version:
+          type: string
+          description: |
+            The server image version (`PORTAL_VERSION`, set from the release tag at image build,
+            for example `0.8.0`); `dev` for an image built outside the release workflow.
+          examples: ['0.8.0']
         lint:
           type: object
           required: [ruleset, status]

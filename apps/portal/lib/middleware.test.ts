@@ -4,18 +4,22 @@ import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 let middleware: typeof import('../middleware').middleware;
 
-const { getSession, getSetup } = vi.hoisted(() => ({
+const { createAuthClient, createSdkClient, getSession, getSetup } = vi.hoisted(() => ({
+  createAuthClient: vi.fn(),
+  createSdkClient: vi.fn(),
   getSession: vi.fn(),
   getSetup: vi.fn(),
 }));
-vi.mock('@portal/sdk', () => ({ createClient: () => ({ GET: getSetup }) }));
+vi.mock('@portal/sdk', () => ({ createClient: createSdkClient }));
 vi.mock('better-auth/client', () => ({
-  createAuthClient: () => ({ getSession }),
+  createAuthClient,
 }));
 
 describe('protected portal routes', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
+    createAuthClient.mockReturnValue({ getSession });
+    createSdkClient.mockReturnValue({ GET: getSetup });
     vi.stubEnv('PORTAL_DEMO_ACTIVE', 'false');
     getSetup.mockResolvedValue({
       data: { adminRequired: false, setupTokenRequired: false },
@@ -87,6 +91,20 @@ describe('protected portal routes', () => {
       fetchOptions: { headers: { cookie: 'session=example' } },
     });
     expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
+
+  it('reads the server URL at request time', async () => {
+    vi.stubEnv('SERVER_URL', 'http://runtime-server.example:4400');
+    getSession.mockResolvedValue({ data: { user: { role: 'developer' } } });
+    await middleware(new NextRequest('https://portal.example/dashboard'));
+    expect(createSdkClient).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseUrl: 'http://runtime-server.example:4400/api',
+      }),
+    );
+    expect(createAuthClient).toHaveBeenCalledWith({
+      baseURL: 'http://runtime-server.example:4400',
+    });
   });
 
   it.each([{ role: 'developer' }, {}])(

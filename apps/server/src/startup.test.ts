@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
   const db = {
     insert: () => query,
     update: () => query,
+    delete: () => query,
     select: () => query,
     execute: vi.fn(),
     transaction: async (run: (tx: unknown) => unknown) => run(db),
@@ -40,7 +41,7 @@ const mocks = vi.hoisted(() => {
     on: (event: string, handler: (err: Error) => void) =>
       handlers.set(event, handler),
     start: vi.fn(),
-    stop: vi.fn(),
+    stop: vi.fn(async () => {}),
     createQueue: vi.fn(),
     work: vi.fn(),
     schedule: vi.fn(),
@@ -56,6 +57,7 @@ const mocks = vi.hoisted(() => {
     reconcile: vi.fn(),
     adminExists: vi.fn(async () => true),
     createFirstAdmin: vi.fn(),
+    prepareSetupToken: vi.fn(async () => undefined as string | undefined),
     loaded: { row: { id: 'gateway', enabled: true }, adapter: {} } as {
       row: { id: string; enabled: boolean };
       adapter: object;
@@ -80,6 +82,7 @@ vi.mock('./app.js', () => ({ createApp: mocks.createApp }));
 vi.mock('./setup.js', () => ({
   adminExists: mocks.adminExists,
   createFirstAdmin: mocks.createFirstAdmin,
+  prepareSetupToken: mocks.prepareSetupToken,
 }));
 vi.mock('./gateway-connection.js', async (original) => ({
   ...(await original<typeof import('./gateway-connection.js')>()),
@@ -93,6 +96,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.handlers.clear();
   mocks.adminExists.mockResolvedValue(true);
+  mocks.prepareSetupToken.mockResolvedValue(undefined);
   mocks.loaded = { row: { id: 'gateway', enabled: true }, adapter: {} };
 });
 describe('startup error diagnostics', () => {
@@ -193,25 +197,22 @@ it.each(['missing', 'disabled'])(
     ).toBe(false);
   },
 );
-it('generates a new production setup token on each start until an admin exists', async () => {
+it('prints the shared production setup token returned by the database', async () => {
   mocks.adminExists.mockResolvedValue(false);
+  mocks.prepareSetupToken.mockResolvedValue('shared-setup-token');
   const config = loadConfig({});
   config.NODE_ENV = 'production';
   await start(config);
-  const first = mocks.createApp.mock.calls.at(-1)![0].setupToken;
-  expect(first).toMatch(/^[a-f0-9]{64}$/);
   expect(mocks.log.info).toHaveBeenCalledWith(
-    `Setup token for the first admin: ${first}`,
+    'Setup token for the first admin: shared-setup-token',
   );
   await start(config);
-  expect(mocks.createApp.mock.calls.at(-1)![0].setupToken).not.toBe(first);
   expect(mocks.log.info).toHaveBeenLastCalledWith(
-    `Setup token for the first admin: ${mocks.createApp.mock.calls.at(-1)![0].setupToken}`,
+    'Setup token for the first admin: shared-setup-token',
   );
-  mocks.adminExists.mockResolvedValue(true);
+  mocks.prepareSetupToken.mockResolvedValue(undefined);
   mocks.log.info.mockClear();
   await start(config);
-  expect(mocks.createApp.mock.calls.at(-1)![0].setupToken).toBeUndefined();
   expect(mocks.log.info).not.toHaveBeenCalledWith(
     expect.stringContaining('Setup token'),
   );

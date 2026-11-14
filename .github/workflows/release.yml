@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Release images
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+  packages: write
+jobs:
+  images:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - id: version
+        run: echo "version=$(node scripts/release-tags.mjs "$GITHUB_REF")" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          push: true
+          build-args: PORTAL_VERSION=${{ steps.version.outputs.version }}
+          tags: ghcr.io/zebrasoftwareservices-eng/api-portal-server:${{ steps.version.outputs.version }}
+      - uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991
+        with:
+          context: .
+          file: apps/portal/Dockerfile
+          push: true
+          build-args: PORTAL_VERSION=${{ steps.version.outputs.version }}
+          tags: ghcr.io/zebrasoftwareservices-eng/api-portal-portal:${{ steps.version.outputs.version }}

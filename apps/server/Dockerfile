@@ -16,7 +16,10 @@ COPY . .
 RUN pnpm install --offline --frozen-lockfile
 RUN pnpm --filter @portal/server... build
 FROM node:22-alpine AS runtime
-ENV NODE_ENV=production
+ARG PORTAL_VERSION=dev
+ENV NODE_ENV=production PORTAL_VERSION=${PORTAL_VERSION}
+LABEL org.opencontainers.image.source="https://github.com/zebrasoftwareservices-eng/api-portal" \
+      org.opencontainers.image.version="${PORTAL_VERSION}"
 WORKDIR /app
 COPY --from=production-deps /app/node_modules ./node_modules
 COPY --from=production-deps /app/packages ./packages
