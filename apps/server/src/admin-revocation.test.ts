@@ -333,3 +333,44 @@ it('requires approval confirms admin assignment, Keep preserves its key, and Rev
   expect(revoked.statusCode, revoked.body).toBe(200);
   await assertRevoked(appId, call);
 });
+
+it('AC13: admin-assigned revocation persists on gateway failure and retries once without restoring access', async () => {
+  const { productId, appId, call } = await fixture('open');
+  const deletion = vi
+    .spyOn(adapter, 'deleteConsumer')
+    .mockRejectedValueOnce(new Error('Gateway unavailable'));
+  try {
+    const restricted = await server.inject({
+      method: 'PUT',
+      url: `/api/v1/admin/products/${productId}/access`,
+      payload: { visibility: 'hidden', existingSubscriptions: 'revoke' },
+    });
+    expect(restricted.statusCode, restricted.body).toBe(200);
+    expect(restricted.json().revocation).toEqual({ revoked: 0, pending: 1 });
+    expect(
+      (
+        await connection.db
+          .select()
+          .from(products)
+          .where(eq(products.id, productId))
+      )[0]!.visibility,
+    ).toBe('hidden');
+    expect(
+      (await connection.db.select().from(apps).where(eq(apps.id, appId)))[0]!
+        .status,
+    ).toBe('revoke-pending');
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(await call()).toBe(200);
+  } finally {
+    deletion.mockRestore();
+  }
+  const conn = gatewayConnection(
+    connection.db,
+    loadConfig({ DATABASE_URL: postgres.getConnectionUri() }),
+    instanceId,
+    server.log,
+    () => adapter,
+  );
+  await revokeApps(connection.db, conn, [appId], enqueue);
+  await assertRevoked(appId, call);
+});

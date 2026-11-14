@@ -142,6 +142,14 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
   const consumersBefore = (await json(await operator.get(`${kong}/consumers`)))
     .data;
   await page.goto(`/products/${slug}`);
+  await page.setViewportSize({ width: 390, height: 844 });
+  console.log(
+    '010 minor mobile overflow px:',
+    await page.evaluate(
+      () => document.documentElement.scrollWidth - innerWidth,
+    ),
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page
     .getByRole('button', { name: 'Request access', exact: true })
     .click();
@@ -200,6 +208,16 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
     compose('start', '--wait', 'kong');
   }
   await adminPage.goto('/admin/requests');
+  await adminPage
+    .locator('article')
+    .filter({ hasText: slug })
+    .getByRole('button', { name: 'Approve…' })
+    .click();
+  await adminPage.keyboard.press('Escape');
+  console.log(
+    '010 minor approval Escape focus:',
+    await adminPage.evaluate(() => document.activeElement?.tagName),
+  );
   await adminPage
     .locator('article')
     .filter({ hasText: slug })
@@ -315,7 +333,11 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
   const anonymous = await playwright.request.newContext({ baseURL: origin });
   await json(
     await operator.put(access, {
-      data: { visibility: 'internal', teamIds: [], existingSubscriptions: 'keep' },
+      data: {
+        visibility: 'internal',
+        teamIds: [],
+        existingSubscriptions: 'keep',
+      },
     }),
     400,
   );
@@ -416,6 +438,55 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
     201,
   );
   expect((await call(assignedKey.key)).status()).toBe(200);
+  // AC12–13: include origin:admin in confirmation, Keep, outage and retry.
+  await json(await operator.put(access, { data: { visibility: 'open' } }));
+  const assignedConfirmation = await json(
+    await operator.put(access, { data: { visibility: 'hidden' } }),
+    409,
+  );
+  expect(assignedConfirmation).toMatchObject({
+    affectedTeams: 1,
+    affectedSubscriptions: 1,
+  });
+  await json(
+    await operator.put(access, {
+      data: { visibility: 'hidden', existingSubscriptions: 'keep' },
+    }),
+  );
+  expect((await call(assignedKey.key)).status()).toBe(200);
+  compose('stop', 'kong');
+  try {
+    const restricted = await json(
+      await operator.put(access, {
+        data: { visibility: 'manual', existingSubscriptions: 'revoke' },
+      }),
+    );
+    expect(restricted.revocation).toEqual({ revoked: 0, pending: 1 });
+    expect(
+      (await json(await context.request.get(`/api/v1/apps/${assigned.id}`)))
+        .status,
+    ).toBe('revoke-pending');
+    expect(await messages('Subscription revoked')).toHaveLength(1);
+  } finally {
+    compose('start', '--wait', 'kong');
+  }
+  await expect
+    .poll(async () => (await call(assignedKey.key)).status(), {
+      timeout: 30000,
+    })
+    .toBe(401);
+  await emailContains('Subscription revoked', 'Assigned', 2);
+  await json(
+    await operator.put(access, {
+      data: { visibility: 'manual', existingSubscriptions: 'revoke' },
+    }),
+  );
+  expect(
+    (await json(await context.request.get(`/api/v1/apps/${assigned.id}`)))
+      .status,
+  ).toBe('revoked');
+  expect((await call(assignedKey.key)).status()).toBe(401);
+  expect(await messages('Subscription revoked')).toHaveLength(2);
   await anonymous.dispose();
   await operatorContext.close();
 });
