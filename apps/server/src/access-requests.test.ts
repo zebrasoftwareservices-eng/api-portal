@@ -70,6 +70,7 @@ const adapter = {
 } as unknown as GatewayAdapter;
 let role = 'admin';
 let signedIn = true;
+const logs: string[] = [];
 const auth = {
   api: {
     getSession: async () =>
@@ -169,6 +170,13 @@ beforeAll(async () => {
     db: connection.db,
     config: loadConfig({ DATABASE_URL: url }),
     auth,
+    logger: {
+      stream: {
+        write: (line: string) => {
+          logs.push(line);
+        },
+      },
+    },
     adapterFor: () => adapter,
     enqueueReconcile: async () => {},
     enqueueMail: enqueue,
@@ -195,6 +203,7 @@ beforeEach(async () => {
   ] as const)
     vi.spyOn(adapter, method);
   vi.clearAllMocks();
+  logs.length = 0;
   role = 'developer';
   signedIn = true;
   await connection.db.delete(accessRequests);
@@ -459,8 +468,8 @@ it('saves a restriction atomically, closes invisible pending requests, retries p
     () => adapter,
   );
   const ids = [first.app.id, second.app.id];
-  await revokeApps(connection.db, conn, ids, enqueue);
-  await revokeApps(connection.db, conn, ids, enqueue);
+  await revokeApps(connection.db, conn, ids, enqueue, server.log);
+  await revokeApps(connection.db, conn, ids, enqueue, server.log);
   expect(
     enqueue.mock.calls.filter(([p]) => p.template === 'subscription-revoked'),
   ).toHaveLength(2);
@@ -807,4 +816,218 @@ it('counts three affected teams, defaults to confirmation without side effects a
   ).toEqual(['active', 'active', 'active']);
   expect(adapter.deleteConsumer).not.toHaveBeenCalled();
   expect(enqueue).not.toHaveBeenCalled();
+});
+
+it('plan PUT preserves omitted approval and allows explicit false; create defaults false', async () => {
+  role = 'admin';
+  const payload = {
+    name: 'Free',
+    rateLimit: 5,
+    rateLimitUnit: 'second',
+    monthlyQuota: 10,
+    apiIds: [apiId],
+  };
+  const url = `/api/v1/admin/products/${productId}/plans/${planId}`;
+  await connection.db
+    .update(plans)
+    .set({ requiresApproval: true })
+    .where(eq(plans.id, planId));
+  const retained = await server.inject({ method: 'PUT', url, payload });
+  expect(retained.statusCode, retained.body).toBe(200);
+  expect(retained.json().requiresApproval).toBe(true);
+  const cleared = await server.inject({
+    method: 'PUT',
+    url,
+    payload: { ...payload, requiresApproval: false },
+  });
+  expect(cleared.statusCode, cleared.body).toBe(200);
+  expect(cleared.json().requiresApproval).toBe(false);
+  const created = await server.inject({
+    method: 'POST',
+    url: `/api/v1/admin/products/${productId}/plans`,
+    payload: { ...payload, name: uuidv7() },
+  });
+  expect(created.statusCode, created.body).toBe(201);
+  expect(created.json().requiresApproval).toBe(false);
+});
+
+it.each(['keep', 'revoke'] as const)(
+  'Manual → Internal requires a decision for unnamed assignments (%s)',
+  async (decision) => {
+    role = 'admin';
+    await connection.db
+      .update(products)
+      .set({ visibility: 'manual' })
+      .where(eq(products.id, productId));
+    const namedId = uuidv7();
+    await connection.db
+      .insert(teams)
+      .values({ id: namedId, name: 'Named team' });
+    const assigned = await server.inject({
+      method: 'POST',
+      url: '/api/v1/admin/subscriptions',
+      payload: { teamId, planId, name: uuidv7() },
+    });
+    expect(assigned.statusCode, assigned.body).toBe(201);
+    const url = `/api/v1/admin/products/${productId}/access`;
+    const payload = { visibility: 'internal', teamIds: [namedId] };
+    const confirmation = await server.inject({ method: 'PUT', url, payload });
+    expect(confirmation.statusCode).toBe(409);
+    expect(confirmation.json()).toMatchObject({
+      type: '/problems/confirmation-required',
+      affectedTeams: 1,
+      affectedSubscriptions: 1,
+    });
+    expect(
+      (
+        await connection.db
+          .select()
+          .from(products)
+          .where(eq(products.id, productId))
+      )[0]!.visibility,
+    ).toBe('manual');
+    expect(adapter.deleteConsumer).not.toHaveBeenCalled();
+    const applied = await server.inject({
+      method: 'PUT',
+      url,
+      payload: { ...payload, existingSubscriptions: decision },
+    });
+    expect(applied.statusCode, applied.body).toBe(200);
+    expect(
+      (
+        await connection.db
+          .select()
+          .from(apps)
+          .where(eq(apps.id, assigned.json().id))
+      )[0]!.status,
+    ).toBe(decision === 'keep' ? 'active' : 'revoked');
+    expect(applied.json().revocation).toEqual({
+      revoked: decision === 'revoke' ? 1 : 0,
+      pending: 0,
+    });
+  },
+);
+
+it('Internal admin assignment requires a named team before provisioning or mail', async () => {
+  role = 'admin';
+  await connection.db
+    .update(products)
+    .set({ visibility: 'internal' })
+    .where(eq(products.id, productId));
+  const payload = { teamId, planId, name: uuidv7() };
+  const denied = await server.inject({
+    method: 'POST',
+    url: '/api/v1/admin/subscriptions',
+    payload,
+  });
+  expect(denied.statusCode).toBe(409);
+  expect(denied.json().type).toBe('/problems/team-not-named');
+  expect(await connection.db.select().from(apps)).toHaveLength(0);
+  expect(adapter.ensureConsumer).not.toHaveBeenCalled();
+  expect(enqueue).not.toHaveBeenCalled();
+  await connection.db.insert(productTeams).values({ productId, teamId });
+  const allowed = await server.inject({
+    method: 'POST',
+    url: '/api/v1/admin/subscriptions',
+    payload,
+  });
+  expect(allowed.statusCode, allowed.body).toBe(201);
+  expect(allowed.json()).toMatchObject({ origin: 'admin', keyIssued: false });
+});
+
+it('product listing loads a single viewer snapshot for all rows', async () => {
+  const session = vi.spyOn(auth.api, 'getSession');
+  const response = await server.inject({ url: '/api/v1/products' });
+  expect(response.statusCode, response.body).toBe(200);
+  expect(response.json().items.length).toBeGreaterThan(0);
+  expect(session).toHaveBeenCalledTimes(1);
+});
+
+it('logs revocation failure with app id and error class without adapter secrets', async () => {
+  const created = await subscribe();
+  role = 'admin';
+  vi.spyOn(adapter, 'deleteConsumer').mockRejectedValueOnce(
+    new TypeError('secret-admin-token'),
+  );
+  const response = await server.inject({
+    method: 'PUT',
+    url: `/api/v1/admin/products/${productId}/access`,
+    payload: { visibility: 'hidden', existingSubscriptions: 'revoke' },
+  });
+  expect(response.statusCode, response.body).toBe(200);
+  expect(response.json().revocation).toEqual({ revoked: 0, pending: 1 });
+  const warning = logs
+    .map((line) => JSON.parse(line))
+    .find(
+      (entry) =>
+        entry.msg === 'App revocation failed; pending row will be retried',
+    );
+  expect(warning).toMatchObject({
+    appId: created.app.id,
+    errorClass: 'TypeError',
+  });
+  expect(logs.join('')).not.toContain('secret-admin-token');
+});
+
+it('logs consumer rollback failures without hiding the original error', async () => {
+  role = 'admin';
+  vi.spyOn(adapter, 'grantAccess').mockRejectedValueOnce(
+    new GatewayUnavailableError(),
+  );
+  vi.spyOn(adapter, 'deleteConsumer').mockRejectedValueOnce(
+    new TypeError('secret-admin-token'),
+  );
+  const response = await server.inject({
+    method: 'POST',
+    url: '/api/v1/admin/subscriptions',
+    payload: { teamId, planId, name: uuidv7() },
+  });
+  expect(response.statusCode, response.body).toBe(503);
+  const warning = logs
+    .map((line) => JSON.parse(line))
+    .find(
+      (entry) => entry.msg === 'App compensation failed; reconcile will retry',
+    );
+  expect(warning).toMatchObject({
+    appId: expect.any(String),
+    errorClass: 'TypeError',
+  });
+  expect(logs.join('')).not.toContain('secret-admin-token');
+  expect(await connection.db.select().from(apps)).toHaveLength(0);
+});
+
+it('logs each failed plan restoration and continues remaining compensation', async () => {
+  const created = await subscribe();
+  vi.spyOn(adapter, 'applyPlanLimits')
+    .mockRejectedValueOnce(new GatewayUnavailableError())
+    .mockRejectedValueOnce(new TypeError('secret-plan-token'));
+  const response = await server.inject({
+    method: 'PUT',
+    url: `/api/v1/apps/${created.app.id}/plan`,
+    payload: { planId: nextPlanId },
+  });
+  expect(response.statusCode, response.body).toBe(503);
+  const warning = logs
+    .map((line) => JSON.parse(line))
+    .find(
+      (entry) => entry.msg === 'App compensation failed; reconcile will retry',
+    );
+  expect(warning).toMatchObject({
+    appId: created.app.id,
+    errorClass: 'TypeError',
+  });
+  expect(logs.join('')).not.toContain('secret-plan-token');
+  expect(adapter.grantAccess).toHaveBeenCalledWith(
+    { id: created.app.id },
+    { id: apiId },
+  );
+  expect(adapter.revokeAccess).toHaveBeenCalledWith(
+    { id: created.app.id },
+    { id: secondApiId },
+  );
+  expect(
+    (
+      await connection.db.select().from(apps).where(eq(apps.id, created.app.id))
+    )[0]!.planId,
+  ).toBe(planId);
 });

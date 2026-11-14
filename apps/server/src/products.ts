@@ -57,7 +57,7 @@ export const planSchema = z
     rateLimitUnit: z.enum(['second', 'minute']),
     monthlyQuota: z.number().int().min(1).max(2000000000),
     apiIds: ids,
-    requiresApproval: z.boolean().default(false),
+    requiresApproval: z.boolean().optional(),
     existingSubscriptions: z.enum(['keep', 'revoke']).optional(),
   })
   .superRefine((v, ctx) => {
@@ -147,29 +147,32 @@ export function registerProducts(
   enqueueMail: EnqueueMail,
   enqueueRevocation: EnqueueRevocation,
 ) {
-  server.get('/api/v1/products', async (request) => ({
-    items: await Promise.all(
-      (
-        await db
-          .select()
-          .from(products)
-          .where(visibleProductIds(db, await loadViewer(db, auth, request)))
-          .orderBy(asc(products.name))
-      ).map(async (p) => {
-        const result = await detail(db, p, await loadViewer(db, auth, request));
-        return {
-          visibility: result.visibility,
-          id: result.id,
-          slug: result.slug,
-          name: result.name,
-          description: result.description,
-          apiCount: result.apiCount,
-          planCount: result.planCount,
-          createdAt: result.createdAt,
-        };
-      }),
-    ),
-  }));
+  server.get('/api/v1/products', async (request) => {
+    const viewer = await loadViewer(db, auth, request);
+    return {
+      items: await Promise.all(
+        (
+          await db
+            .select()
+            .from(products)
+            .where(visibleProductIds(db, viewer))
+            .orderBy(asc(products.name))
+        ).map(async (p) => {
+          const result = await detail(db, p, viewer);
+          return {
+            visibility: result.visibility,
+            id: result.id,
+            slug: result.slug,
+            name: result.name,
+            description: result.description,
+            apiCount: result.apiCount,
+            planCount: result.planCount,
+            createdAt: result.createdAt,
+          };
+        }),
+      ),
+    };
+  });
   server.get('/api/v1/products/:productSlug', async (request) => {
     const { productSlug } = z
       .object({ productSlug: z.string() })
@@ -398,7 +401,7 @@ export function registerProducts(
         return planView(tx, row);
       });
       if (revokeIds.length) {
-        await revokeApps(db, connection, revokeIds, enqueueMail);
+        await revokeApps(db, connection, revokeIds, enqueueMail, server.log);
       }
       return result;
     } catch (e) {

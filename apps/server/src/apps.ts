@@ -294,7 +294,7 @@ export function registerApps(
         .header('Location', `/api/v1/apps/${appId}`)
         .send(result);
     } catch (error) {
-      await compensate(rollback);
+      await compensate(rollback, server.log);
       throw error;
     }
   });
@@ -492,7 +492,7 @@ export function registerApps(
       });
       return reply.code(pending ? 202 : 200).send(result);
     } catch (e) {
-      await compensate(rollback);
+      await compensate(rollback, server.log);
       requestConflict(e);
     }
   });

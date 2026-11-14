@@ -175,6 +175,7 @@ export async function start(config: Config) {
           connection,
           job.data.appIds,
           enqueueMail,
+          app.log,
         );
         if (result.pending) throw new Error('Access revocation is pending');
       }

@@ -371,13 +371,13 @@ desired-state loop skips non-active apps, so a revoked key can never come back.
 - [x] [qa] Playwright e2e: Sprint 4 demo step 3 (request Partner → admin approves → reveal key → call works; Hidden product 404 when signed out); quickstart smoke
 - [x] [frontend] Fix: Invisible product and changelog pages return HTTP 200 instead of 404
 - [x] [backend] Fix: Revoke-on-restrict leaves admin-assigned subscription keys working
-- [ ] [backend] Fix: Log revocation and compensation failures with `appId` and error class, no secrets (`revocation.ts:64`, `app-provisioning.ts:22`, `:137`)
-- [ ] [backend] Fix: Plan PUT that omits `requiresApproval` keeps the current value instead of turning approval off (`products.ts:60`)
-- [ ] [backend] Fix: Treat Manual→Internal as restricting so Keep/Revoke appears for unnamed teams holding assignments (`product-access.ts:183`)
-- [ ] [backend] Fix: `POST /v1/admin/subscriptions` on an Internal product for a team that isn't named returns 409 `/problems/team-not-named` (`product-access.ts:281`)
+- [x] [backend] Fix: Log revocation and compensation failures with `appId` and error class, no secrets (`revocation.ts:64`, `app-provisioning.ts:22`, `:137`)
+- [x] [backend] Fix: Plan PUT that omits `requiresApproval` keeps the current value instead of turning approval off (`products.ts:60`)
+- [x] [backend] Fix: Treat Manual→Internal as restricting so Keep/Revoke appears for unnamed teams holding assignments (`product-access.ts:183`)
+- [x] [backend] Fix: `POST /v1/admin/subscriptions` on an Internal product for a team that isn't named returns 409 `/problems/team-not-named` (`product-access.ts:281`)
 - [x] [frontend] Fix: Assign dialog shows the 409 `team-not-named` message "Add the team to this product first"
-- [ ] [backend] Fix: `GET /v1/products` loads the viewer once per request (`products.ts:156`, `:159`)
-- [ ] [backend] Fix: One-line Build note on why `testcontainers` was added to `apps/server` dev dependencies
+- [x] [backend] Fix: `GET /v1/products` loads the viewer once per request (`products.ts:156`, `:159`)
+- [x] [backend] Fix: One-line Build note on why `testcontainers` was added to `apps/server` dev dependencies
 - [x] [frontend] Fix: Mobile plan cards overflow at 390px
 - [x] [frontend] Fix: Escape from the approval dialog returns focus to the Approve button
 ## UX  _(ui-designer)_
@@ -388,6 +388,13 @@ Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access
 - An invisible product is the standard 404 page, never a locked card. Admins alone see Hidden/Internal/Manual badges in the catalog. New components: `StatusBadge`, `CountedTextarea`, `VisibilityBadge`, `TeamCombobox`. Exact copy, email text, every state, the keyboard path and the 375/1280px layouts are in the design file.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Backend review fixes — 2026-11-14
+Preserved omitted `requiresApproval` values on plan updates (creation still defaults to false), added Manual→Internal Keep/Revoke confirmation, enforced named teams for Internal admin assignment with 409 `team-not-named`, and reused one viewer snapshot per product list request. Revocation and each compensation failure now log only the app ID and error class; regression tests cover the state changes, rollback continuation and secret-free diagnostics.
+
+`testcontainers` is a direct server dev dependency because the real-Kong revocation regression uses its container, network and wait APIs alongside the PostgreSQL helper.
+
+Validation: server lint, typecheck and **293/293** tests pass, including nine new regression cases; SDK lint/typecheck and its no-test-files test command pass. Generated SDK commit `434e726` was pushed early for the frontend. The ownership guard flags only prior committed stage files (and parallel frontend paths); the standing authorization permits this round’s explicit backend/spec/log paths. No workspace suite, browser, quickstart or default portal Docker project was used.
 
 ### Frontend review fixes — 2026-11-14
 Assignment now keeps the dialog and fields on 409 `/problems/team-not-named` and shows “Add the team to this product first”. Mobile plan cards and their caption stack at full width with wrapping; cancelling or escaping an approval dialog restores its originating button, while successful decisions retain the queue-heading focus path. Added assignment-error, second-card Escape/Cancel focus, and 375/390px CSS-cascade regressions; portal lint, typecheck and all **338/338** tests pass. CSS tests verify responsive rules without a layout engine; browser verification remains with QA. The guard flags earlier committed branch files and the parallel backend developer's files; the standing authorization permits a commit of only this round's explicit portal/spec/log paths.

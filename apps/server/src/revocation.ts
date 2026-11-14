@@ -4,6 +4,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { GatewayConnection } from './gateway-connection.js';
 import { requireGateway } from './gateway-connection.js';
 import type { EnqueueMail } from './mail/queue.js';
+import type { FastifyBaseLogger } from 'fastify';
 import type { Db } from './app-plans.js';
 export type EnqueueRevocation = (
   appIds: string[],
@@ -29,6 +30,7 @@ export async function revokeApps(
   connection: GatewayConnection,
   appIds: string[],
   enqueueMail: EnqueueMail,
+  log: Pick<FastifyBaseLogger, 'warn'>,
 ) {
   let revoked = 0;
   for (const appId of appIds) {
@@ -61,8 +63,15 @@ export async function revokeApps(
         return true;
       });
       if (changed) revoked++;
-    } catch {
-      /* The persisted pending row is retried by the queue and reconcile. */
+    } catch (error) {
+      log.warn(
+        {
+          appId,
+          errorClass:
+            error instanceof Error ? error.constructor.name : typeof error,
+        },
+        'App revocation failed; pending row will be retried',
+      );
     }
   }
   const pending = appIds.length

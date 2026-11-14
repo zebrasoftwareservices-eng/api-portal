@@ -343,7 +343,7 @@ export function registerAccessRequests(
             return requestView(tx, updated!);
           });
         } catch (error) {
-          await compensate(rollback);
+          await compensate(rollback, server.log);
           throw error;
         }
         return result;

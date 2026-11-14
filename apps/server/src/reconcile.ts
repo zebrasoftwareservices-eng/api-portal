@@ -24,6 +24,7 @@ export async function reconcile(
     connection,
     pending.map((a) => a.id),
     enqueueMail,
+    log,
   );
   await db.transaction(async (tx) => {
     const lock = await tx.execute(

@@ -248,7 +248,7 @@ async function assertRevoked(appId: string, call: () => Promise<number>) {
     server.log,
     () => adapter,
   );
-  await revokeApps(connection.db, conn, [appId], enqueue);
+  await revokeApps(connection.db, conn, [appId], enqueue, server.log);
   await reconcile(connection.db, conn, server.log, enqueue);
   expect(await call()).toBe(401);
   expect(
@@ -371,6 +371,6 @@ it('AC13: admin-assigned revocation persists on gateway failure and retries once
     server.log,
     () => adapter,
   );
-  await revokeApps(connection.db, conn, [appId], enqueue);
+  await revokeApps(connection.db, conn, [appId], enqueue, server.log);
   await assertRevoked(appId, call);
 });

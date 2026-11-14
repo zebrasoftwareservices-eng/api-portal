@@ -183,6 +183,8 @@ export function registerProductAccess(
       const restricting =
         changed &&
         (product.visibility === 'open' ||
+          (product.visibility === 'manual' &&
+            input.visibility === 'internal') ||
           (product.visibility === 'hidden' &&
             ['internal', 'manual'].includes(input.visibility)) ||
           (product.visibility === 'internal' &&
@@ -221,7 +223,13 @@ export function registerProductAccess(
       if (revokeIds.length) await enqueueRevocation(revokeIds, tx);
       return closed;
     });
-    const result = await revokeApps(db, connection, revokeIds, enqueue);
+    const result = await revokeApps(
+      db,
+      connection,
+      revokeIds,
+      enqueue,
+      server.log,
+    );
     const pending = await db
       .select({ id: apps.id })
       .from(apps)
@@ -303,11 +311,29 @@ export function registerProductAccess(
           .from(plans)
           .where(eq(plans.id, input.planId));
         if (!target?.productId) throw notFound();
-        await tx
+        const [product] = await tx
           .select()
           .from(products)
           .where(eq(products.id, target.productId))
           .for('update');
+        if (!product) throw notFound();
+        if (product.visibility === 'internal') {
+          const [named] = await tx
+            .select()
+            .from(productTeams)
+            .where(
+              and(
+                eq(productTeams.productId, product.id),
+                eq(productTeams.teamId, input.teamId),
+              ),
+            );
+          if (!named)
+            throw new Problem(
+              409,
+              'team-not-named',
+              'Add the team to this product first.',
+            );
+        }
         const app = await provisionApp(
           tx,
           connection,
@@ -318,7 +344,7 @@ export function registerProductAccess(
         return app;
       });
     } catch (e) {
-      await compensate(rollback);
+      await compensate(rollback, server.log);
       throw e;
     }
     return reply.code(201).send(await appView(db, app, 'admin'));

@@ -15,11 +15,27 @@ import {
   type GatewayConnection,
 } from './gateway-connection.js';
 import { checkAppName } from './access-request-model.js';
+import type { FastifyBaseLogger } from 'fastify';
 import { notFound, Problem } from './problem.js';
-export type Compensations = (() => Promise<unknown>)[];
-export async function compensate(operations: Compensations) {
-  for (const operation of operations.reverse())
-    await operation().catch(() => {});
+export type Compensations = { appId: string; run: () => Promise<unknown> }[];
+export async function compensate(
+  operations: Compensations,
+  log: Pick<FastifyBaseLogger, 'warn'>,
+) {
+  for (const { appId, run } of operations.reverse()) {
+    try {
+      await run();
+    } catch (error) {
+      log.warn(
+        {
+          appId,
+          errorClass:
+            error instanceof Error ? error.constructor.name : typeof error,
+        },
+        'App compensation failed; reconcile will retry',
+      );
+    }
+  }
 }
 export async function provisionApp(
   db: Db,
@@ -65,7 +81,7 @@ export async function provisionApp(
       'APIs must use the configured gateway.',
     );
   const appId = input.id ?? uuidv7();
-  rollback.push(() => adapter.deleteConsumer({ id: appId }));
+  rollback.push({ appId, run: () => adapter.deleteConsumer({ id: appId }) });
   const consumer = await adapter.ensureConsumer({ id: appId });
   for (const id of new Set(selected.map((a) => a.api.gatewayServiceId)))
     await adapter.grantAccess({ id: appId }, { id });
@@ -90,15 +106,13 @@ export async function provisionApp(
       .values(
         selected.map(({ api }) => ({ id: uuidv7(), appId, apiId: api.id })),
       );
-  await db
-    .insert(gatewayConsumers)
-    .values({
-      id: uuidv7(),
-      appId,
-      gatewayId: gateway.id,
-      externalId: consumer.id,
-      username: consumer.username,
-    });
+  await db.insert(gatewayConsumers).values({
+    id: uuidv7(),
+    appId,
+    gatewayId: gateway.id,
+    externalId: consumer.id,
+    username: consumer.username,
+  });
   return app!;
 }
 export async function applyAppPlan(
@@ -124,18 +138,16 @@ export async function applyAppPlan(
   );
   await db.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
   const { adapter } = requireEnabled(await connection.load(db));
-  rollback.push(async () => {
-    const restore = [
-      () => adapter.applyPlanLimits({ id: app.id }, planLimits(oldPlan)),
-      ...[...oldServices].map(
-        (id) => () => adapter.grantAccess({ id: app.id }, { id }),
-      ),
-      ...[...newServices]
-        .filter((id) => !oldServices.has(id))
-        .map((id) => () => adapter.revokeAccess({ id: app.id }, { id })),
-    ];
-    for (const operation of restore) await operation().catch(() => {});
-  });
+  const restore = [
+    () => adapter.applyPlanLimits({ id: app.id }, planLimits(oldPlan)),
+    ...[...oldServices].map(
+      (id) => () => adapter.grantAccess({ id: app.id }, { id }),
+    ),
+    ...[...newServices]
+      .filter((id) => !oldServices.has(id))
+      .map((id) => () => adapter.revokeAccess({ id: app.id }, { id })),
+  ];
+  rollback.push(...restore.reverse().map((run) => ({ appId: app.id, run })));
   await adapter.applyPlanLimits({ id: app.id }, planLimits(newPlan));
   for (const id of newServices)
     await adapter.grantAccess({ id: app.id }, { id });
