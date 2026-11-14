@@ -1,7 +1,7 @@
 ---
 id: 010
 title: Access requests and catalog visibility
-status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-238
@@ -193,12 +193,178 @@ approvals and revoke-on-restrict were all decided into this spec.
 <!-- Sections below are filled by later stages. -->
 
 ## Technical design  _(tech-lead)_
-Components · API contract · Data model · Adapter calls · Risks
+ADR: [0010 — one visibility policy, access requests beside apps, keys issued on reveal](../adr/0010-visibility-policy-and-access-requests.md).
+Contract: `apps/server/openapi.yaml` (spec 010 sections). No new dependency.
+
+**Decided by the tech lead (open question 4):** a request reason is 1–1000 characters and a
+decision note 0–1000 (reject needs 1–1000), both trimmed before checking, stored as plain text
+and always rendered escaped, in the portal and the email.
+
+**Provisional, pending Elango** (each lives in one function so changing it is a small diff):
+- Manual subscriptions are admin-created only: `canSelfSubscribe()` is false for `manual`, so
+  `createApp`, `createAccessRequest` and `changeAppPlan` on a Manual product answer 403
+  `/problems/admin-assigned-only`, and `ProductDetail.selfService` is false.
+- Turning "requires approval" off leaves Pending requests for the admin (`updatePlan` does nothing
+  to them).
+- Losing visibility auto-rejects the team's Pending requests for that product with the system
+  note "This product is no longer available to your team." and emails the requester
+  (`closeInvisibleRequests()` in `access-requests.ts`, called by `updateProductAccess`).
+- Cancelling an `origin: admin` subscription (spec 009 `DELETE /v1/apps/{appId}`) sends the
+  team the same `subscription-revoked` email as a revoke.
+
+### Components
+- `packages/db` — schema and one migration (below).
+- `apps/server`
+  - `access-policy.ts` (new): `Viewer`, `loadViewer(req)`, `canSeeProduct`, `visibleProductIds`
+    (SQL condition for lists), `canSeeApi`, `canSelfSubscribe`, `requiresConfirmation` /
+    `affectedSubscriptions(product|plan, before, after)`. Pure functions plus one query helper;
+    unit-tested on their own. Specs 020/021 import it.
+  - `catalog.ts`, `products.ts`, `versions.ts`, `changes.ts`, `proxy.ts` (try-it target check):
+    take the viewer and filter or 404 through the policy. The product, API, OpenAPI document,
+    version and changelog endpoints answer 404 for an invisible product or an API only in
+    invisible products. Catalog/product GETs accept an optional session (admins see all).
+  - `apps.ts`: `createApp` (visibility → 404, approval → 409, Manual → 403), `changeAppPlan`
+    (approval → 202 + request, `reason`), `deleteApp` (revoked/revoke-pending, closes Pending
+    plan-change with a system note, Manual email), `createCredential` (sets `key_issued`,
+    refuses non-active apps), `App` mapping (`status`, `origin`, `keyIssued`, `pendingRequest`).
+    Extract the Kong provisioning half of `createApp` (consumer + grants + limits, rollback)
+    into `provisionApp()` so approval and admin assignment reuse it without issuing a key; reuse
+    the existing plan-change Kong routine for plan-change approval.
+  - `access-requests.ts` (new): developer list/create, admin queue, approve, reject,
+    `closeInvisibleRequests()`.
+  - `product-access.ts` (new): `GET/PUT /v1/admin/products/{id}/access`, `GET /v1/admin/teams`,
+    `POST /v1/admin/subscriptions`; `products.ts` `updatePlan` gains `requiresApproval` and the
+    same confirmation flow.
+  - `revocation.ts` (new): `revokeApps(appIds)` and the `access-revoke` pg-boss worker; wired in
+    `startup.ts` (`createQueue('access-revoke', { policy: 'singleton' })`, retryLimit 10,
+    retryBackoff true). `reconcile.ts` calls `revokeApps` for every `revoke-pending` app and
+    treats non-`active` apps as not desired (delete their consumer, never re-grant).
+  - `mail/templates.ts`, `mail/queue.ts`: templates `access-approved`, `access-rejected`,
+    `subscription-assigned`, `subscription-revoked`. Payloads carry ids
+    (`{ template, requestId }`, `{ template, appId }`); the worker loads rows and recipients
+    (requester for decisions; the team's `admin` and `member` users for assigned/revoked), so a
+    retried job renders current data and no secret ever enters a job.
+- `packages/sdk` — regenerate from the contract.
+- `apps/portal`
+  - Catalog, product page, API reference pages: no change in fetching (already `no-store` with
+    the cookie); render `notFound()` on 404 for every product/API fetch.
+  - Product page plan table: "Request access" for `requiresApproval` plans; no subscribe for
+    `selfService: false`.
+  - Request dialog (name, reason with 1000-char counter) → `createAccessRequest`; plan-change
+    dialog gains a reason field when the target requires approval and shows the 202 Pending
+    result.
+  - Team dashboard: "Requests" list (status, note, plan, submitted); app page: status badge
+    (`revoke-pending`, `revoked`), Pending plan-change banner, "Reveal key" while
+    `keyIssued` is false (calls `createCredential`, shows the existing one-time key dialog;
+    hidden for `read-only`).
+  - Admin: `/admin/requests` queue (approve with "Note to the requester (included in the
+    email)", reject with a required note; gateway-unavailable error keeps the row); product
+    admin page gains an Access panel (visibility radio, team picker via `listAdminTeams`,
+    confirmation dialog on `/problems/confirmation-required` with "Keep them working" default /
+    "Revoke them", revoke-pending list with a "being retried" notice); plan form gains
+    "Requires approval" with the same confirmation; "Assign to a team" on Manual products →
+    `createAdminSubscription`.
+  - Demo fixtures: every product `visibility: 'open'`, plans `requiresApproval: false`.
+
+### API contract
+All in `apps/server/openapi.yaml`; problem types are new unless noted.
+
+| Operation | Change |
+| --- | --- |
+| `GET /v1/products`, `GET /v1/products/{slug}`, `GET /v1/apis*` | Optional session; filtered/404 by `access-policy`. `ProductSummary.visibility`, `ProductDetail.selfService`, `Plan.requiresApproval`. |
+| `POST /v1/apps` | 404 invisible product; 409 `/problems/approval-required`; 403 `/problems/admin-assigned-only`. |
+| `PUT /v1/apps/{id}/plan` | `reason` (1–1000). Approval plan → **202** `AccessRequest`; 409 `/problems/request-pending`, `/problems/app-revoked`; 403 `admin-assigned-only`. |
+| `DELETE /v1/apps/{id}` | 409 `/problems/revoke-pending`; deletes a revoked app without Kong. |
+| `POST /v1/apps/{id}/credentials` | Reveals the first key of approved/admin-created apps; 409 `/problems/app-revoked`. |
+| `GET/POST /v1/access-requests` | Team list; create (`planId`, `teamId`, `name`, `reason`, `description`). 400 reason, 403 role/verify/Manual, 404, 409 `request-pending` / `approval-not-required` / `app-name-taken`. |
+| `GET /v1/admin/access-requests` | Queue, `status` default `pending`, oldest first. |
+| `POST /v1/admin/access-requests/{id}/approve` | Optional `note`. 409 `/problems/request-decided`, `app-name-taken`; 502/503 keep it Pending. |
+| `POST /v1/admin/access-requests/{id}/reject` | Required `note`; 400 blank; 409 `request-decided`. |
+| `GET/PUT /v1/admin/products/{id}/access` | `visibility`, `teamIds` (internal only), `existingSubscriptions` `keep`/`revoke`. 409 `/problems/confirmation-required` with `affectedTeams`, `affectedSubscriptions`. Response `ProductAccess` with `revocation.{revoked,pending}`. |
+| `PUT /v1/admin/products/{id}/plans/{planId}` | `requiresApproval`, `existingSubscriptions`; same 409 confirmation. |
+| `GET /v1/admin/teams` | Team picker (`q`, `limit`), `ownerEmail` for personal teams. |
+| `POST /v1/admin/subscriptions` | `planId`, `teamId`, `name`; 201 `App` with no key; emails the team. |
+
+Every admin endpoint is 403 `/problems/forbidden` for non-admins (existing `requireAdmin`), with
+the check before any read or write (AC 5). Ordering on developer endpoints: session (401) →
+team membership (404) → role (403) → visibility (404) → body (400) → state (409) → gateway.
+"Affected" subscriptions (AC 12) = `active` apps on the product (or plan) whose team isn't named
+by the new setting, excluding `origin: admin`. For Open→Hidden that is every active
+subscription, matching AC 12's wording.
+
+### Data model (one migration, generated with drizzle-kit)
+- `products.visibility text not null default 'open'`, check in (`open`,`hidden`,`internal`,
+  `manual`). Existing rows become `open` (AC 9).
+- `product_teams (product_id → products cascade, team_id → teams cascade, created_at)`, PK both.
+  Rows exist only while `visibility = 'internal'`; the PUT replaces them in its transaction.
+- `plans.requires_approval boolean not null default false`.
+- `apps.status text not null default 'active'` check (`active`,`revoke-pending`,`revoked`);
+  `apps.origin text not null default 'self'` check (`self`,`request`,`admin`);
+  `apps.key_issued boolean not null default true` (existing apps have keys; new
+  `request`/`admin` apps insert false; `createCredential` sets true); `apps.revoked_at`;
+  `apps.revoke_reason text` (`visibility`, `approval`). Replace `app_team_name_unique` with a
+  partial unique index `where status <> 'revoked'`. Index `(status) where status = 'revoke-pending'`.
+- `access_requests`: `id uuid pk`, `kind text` check (`subscribe`,`plan-change`), `team_id → teams
+  restrict`, `plan_id → plans restrict`, `from_plan_id → plans` (plan-change), `app_id → apps set
+  null` (plan-change: set at create; subscribe: set on approve), `name text` (1–80),
+  `description text`, `reason text not null` check `length between 1 and 1000`, `status text`
+  check (`pending`,`approved`,`rejected`), `requested_by → user set null`, `decided_by → user set
+  null` (null + `decided_at` set = system), `decision_note text` check `length <= 1000`,
+  `submitted_at`, `decided_at`. Partial unique indexes: `(team_id, plan_id) where status =
+  'pending' and kind = 'subscribe'`; `(app_id) where status = 'pending' and kind = 'plan-change'`.
+  Index `(status, submitted_at)` for the queue, `(team_id, submitted_at desc)` for the team list.
+  A `23505` on either partial index maps to 409 `/problems/request-pending`.
+
+### Adapter calls (Kong; no adapter interface change)
+| Action | Calls | Failure |
+| --- | --- | --- |
+| Create request, reject, plan-change request | none | — |
+| Approve `subscribe` / admin subscription | `ensureConsumer`, `grantAccess` per plan API, `applyPlanLimits` — no `issueCredential` | Roll back with `deleteConsumer`; nothing stored; 502/503; request stays Pending; no email (AC 6). Retry safe: consumer name is `portal-app-<appId>` and the app id is generated per attempt, the rollback removes the earlier attempt. |
+| Approve `plan-change` | Existing plan-change routine (`applyPlanLimits`, `grantAccess`/`revokeAccess`) | Existing compensation puts the old plan back; request stays Pending. |
+| Reveal key | Existing `createCredential` | Existing 502/503. |
+| Revoke (restrict, `revoke`) | `deleteConsumer` per app (404 tolerated) | App stays `revoke-pending`; `access-revoke` job retries with backoff; reconcile retries every 5 min. Email enqueued only on the `revoke-pending → revoked` transition (`singletonKey revoke-mail:<appId>`). |
+| Cancel (spec 009) | unchanged `deleteConsumer` | unchanged |
+
+Every created Kong object keeps the existing portal tags (instance id + app id).
+Reconcile change: an owned consumer whose app is missing **or not `active`** is deleted, and the
+desired-state loop skips non-active apps, so a revoked key can never come back.
+
+### Risks and how to test them
+- **Leaking an invisible product** through one forgotten endpoint (APIs, OpenAPI JSON, versions,
+  changelog, try-it, product page). Test: one integration table test that, for a Hidden,
+  Internal and Manual product, calls every product/API/plan/subscribe/request endpoint as
+  anonymous, outsider team and insider team and asserts 404 vs 200, plus a Playwright check of
+  the 404 page.
+- **Double decision / double email** when two admins click at once. Test: two concurrent
+  approves → one 200, one 409 `request-decided`; one email.
+- **Approval while Kong is down** (AC 6). Test with Testcontainers Kong stopped: 503, request
+  Pending, no consumer, no mail job; start Kong, approve → 200.
+- **Revoke partial failure and replay** (AC 13). Unit-test `revokeApps` with a fake adapter that
+  fails for one app; integration with Kong stopped mid-way: setting saved, `revocation.pending`
+  > 0, no email; restart Kong, run the job twice → keys 401, exactly one email per team.
+- **Reconcile resurrecting revoked access.** Test: revoke, then run reconcile → consumer absent.
+- **Name collision on approval.** Test: team creates an app named like the Pending request →
+  approve 409 `app-name-taken`, request still Pending.
+- **Upgrade from spec 009** (AC 9). Migration test: existing products `open`, plans
+  `requires_approval = false`, apps `active` / `self` / `key_issued = true`; quickstart smoke.
+- **Quickstart.** Seed data stays Open and self-service; `docker compose up` path unchanged.
 
 ### Tasks
-- [ ] [backend] …
-- [ ] [frontend] …
-- [ ] [qa] …
+- [ ] [backend] Schema + migration: `products.visibility`, `product_teams`, `plans.requires_approval`, `apps.status/origin/key_issued/revoked_at/revoke_reason`, partial name index, `access_requests` with partial unique indexes; migration test for upgraded rows (AC 9)
+- [ ] [backend] `access-policy.ts` with unit tests; apply it to products, APIs, OpenAPI documents, versions, changelog and try-it target (AC 9–11)
+- [ ] [backend] `createApp` / `changeAppPlan` / `deleteApp` / `createCredential` changes: approval-required, admin-assigned-only, 202 plan-change request, revoke states, `key_issued`, Pending plan-change closed on cancel (AC 2, 7, 8)
+- [ ] [backend] Access requests: developer list/create, admin queue, approve (provisionApp without key; plan-change via existing routine; row lock), reject (AC 1–6, 8)
+- [ ] [backend] Product access + plan `requiresApproval`: confirmation-required flow, named teams, `closeInvisibleRequests`, `GET /v1/admin/teams`, `POST /v1/admin/subscriptions` (AC 10–12)
+- [ ] [backend] Revocation: `revokeApps`, `access-revoke` pg-boss queue with backoff, reconcile skips/deletes non-active apps, once-only revoke email (AC 12–13)
+- [ ] [backend] Mail templates and id-based payloads: access-approved (with note), access-rejected (with note), subscription-assigned, subscription-revoked; regenerate `packages/sdk`
+- [ ] [frontend] Product page: Request access dialog (name, reason counter, 400/409 messages), no subscribe for `selfService: false`, `notFound()` on 404 for product and API pages (AC 1, 2, 9–11)
+- [ ] [frontend] Team views: Requests list with status and note, app status badges, Pending plan-change banner, plan-change dialog reason + 202 result, Reveal key while `keyIssued` is false (AC 3, 4, 7, 8, 11)
+- [ ] [frontend] Admin request queue with approve note ("Note to the requester (included in the email)") and required reject note; gateway-unavailable error (AC 3, 4, 6)
+- [ ] [frontend] Admin product Access panel, plan "Requires approval" toggle, Keep/Revoke confirmation, revoke-pending notice, Assign to a team; demo fixtures stay Open (AC 10–13)
+- [ ] [qa] Integration: visibility matrix over every product/API/plan endpoint (anonymous, outsider, insider, admin), 403 matrix for admin endpoints and read-only (AC 5, 9–11)
+- [ ] [qa] Integration with real Kong: approve → key works within plan limits; reject; Kong down on approve; plan-change keep key and limits; concurrent approve (AC 1–4, 6–8)
+- [ ] [qa] Integration with real Kong: Manual assignment, keep vs revoke (401 after revoke), partial failure + retry idempotence + one email per team, reconcile doesn't resurrect (AC 11–13)
+- [ ] [qa] Playwright e2e: Sprint 4 demo step 3 (request Partner → admin approves → reveal key → call works; Hidden product 404 when signed out); quickstart smoke
 
 ## UX  _(ui-designer)_
 Summary + link to `docs/design/010-*.md`
