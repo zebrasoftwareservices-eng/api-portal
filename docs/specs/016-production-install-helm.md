@@ -1,7 +1,7 @@
 ---
 id: 016
 title: Production install — hardened Compose, Helm chart, backups and upgrades
-status: uat  # draft → ready → designed → building → testing → uat → review → approved → done
+status: review  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-13
 linear: JSO-244
@@ -484,10 +484,11 @@ Failure-path coverage passes for missing/conflicting/unreadable secrets, invalid
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
+| Production Compose install on clean Ubuntu 26.04 LTS with Caddy HTTPS, claim, and existing Kong (AC 1) | Not run — environment unavailable | No clean Ubuntu VM or VM runner was available; the open `[qa]` task remains unticked. |
+| Portal continuity through the changed container/proxy path | Pass | First-time account → “UAT 016 App” → “Sample HTTP API” returned “200 OK” on desktop and 390×844 mobile. |
+| Keyboard-only main journey | Pass | Tab and Enter reached “My apps,” “UAT 016 App,” and “Open Sample HTTP API reference”; the reference rendered “Inspect a GET request.” |
 
-One row per user-visible criterion. Evidence is a short quote of what was on the screen.
-Name an image only for an open failure. On a retest, change only the failed rows.
-Earlier rounds go in `docs/specs/log/016.md`. The full report is `docs/uat/016/report.md`.
+Full evidence: `docs/uat/016/report.md`. No blocker or major UAT bug is open.
 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
