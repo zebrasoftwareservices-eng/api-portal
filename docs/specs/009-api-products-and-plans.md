@@ -1,7 +1,7 @@
 ---
 id: 009
 title: API products and free plans with rate limits
-status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
+status: done   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-11
 linear: JSO-237
