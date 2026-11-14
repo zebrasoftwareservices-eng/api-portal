@@ -361,10 +361,11 @@ desired-state loop skips non-active apps, so a revoked key can never come back.
 - [x] [frontend] Team views: Requests list with status and note, app status badges, Pending plan-change banner, plan-change dialog reason + 202 result, Reveal key while `keyIssued` is false (AC 3, 4, 7, 8, 11)
 - [x] [frontend] Admin request queue with approve note ("Note to the requester (included in the email)") and required reject note; gateway-unavailable error (AC 3, 4, 6)
 - [x] [frontend] Admin product Access panel, plan "Requires approval" toggle, Keep/Revoke confirmation, revoke-pending notice, Assign to a team; demo fixtures stay Open (AC 10–13)
-- [ ] [qa] Integration: visibility matrix over every product/API/plan endpoint (anonymous, outsider, insider, admin), 403 matrix for admin endpoints and read-only (AC 5, 9–11)
-- [ ] [qa] Integration with real Kong: approve → key works within plan limits; reject; Kong down on approve; plan-change keep key and limits; concurrent approve (AC 1–4, 6–8)
-- [ ] [qa] Integration with real Kong: Manual assignment, keep vs revoke (401 after revoke), partial failure + retry idempotence + one email per team, reconcile doesn't resurrect (AC 11–13)
+- [x] [qa] Integration: visibility matrix over every product/API/plan endpoint (anonymous, outsider, insider, admin), 403 matrix for admin endpoints and read-only (AC 5, 9–11)
+- [x] [qa] Integration with real Kong: approve → key works within plan limits; reject; Kong down on approve; plan-change keep key and limits; concurrent approve (AC 1–4, 6–8)
+- [x] [qa] Integration with real Kong: Manual assignment, keep vs revoke (401 after revoke), partial failure + retry idempotence + one email per team, reconcile doesn't resurrect (AC 11–13)
 - [ ] [qa] Playwright e2e: Sprint 4 demo step 3 (request Partner → admin approves → reveal key → call works; Hidden product 404 when signed out); quickstart smoke
+- [ ] [frontend] Fix: Invisible product and changelog pages return HTTP 200 instead of 404
 
 ## UX  _(ui-designer)_
 Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access-requests-and-visibility.md). No new tokens.
@@ -383,16 +384,34 @@ Validation: `@portal/db`, `@portal/server` and `@portal/sdk` lint and typecheck 
 - Frontend: implemented approval requests, team request history, subscription reveal/revocation states, the admin request queue, and product visibility/assignment with Keep/Revoke confirmation. Existing product/API 404 handling is retained and changelog 404 handling is completed; the API-only demo remains unchanged. Portal lint/typecheck and all 329 package tests pass; generated SDK lint/typecheck/test pass (no SDK test files). The socket-based ingress tests require an escalated run because sandbox listening sockets fail with EPERM.
 
 ## Test report  _(qa-tester)_
-Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
+Application commit tested: `005cd7d4e2b8a08c97f13b6ee05f914d5d8e4d3c`, with the QA tests in this worktree. Portal: `http://localhost:3019` (`node scripts/worktree-compose.mjs env`).
 
-| Criterion | Test file | Result |
+Test files below: **server** = `apps/server/src/access-requests.test.ts`; **browser** = `apps/portal/e2e/access-requests.test.ts`; **UI** = `apps/portal/components/access-flows.test.tsx`; **mail** = `apps/server/src/mail/access-mail.test.ts`.
+
+| Criterion | Automated test file / case | Result |
 | --- | --- | --- |
+| 1 — Pending request, queue metadata, no credential | server: creates request without Kong; browser: request form → queue → no consumer change | Pass |
+| 2 — Invalid reason and duplicate Pending | server: blank/whitespace/1001-character reasons, pending uniqueness; browser: validation and 409; UI: duplicate message preserves fields | Pass |
+| 3 — Approval note, email, reveal and live limits | server: concurrent decisions and deferred reveal; browser: admin approves → Mailpit note → one-time reveal → Kong 200/429; mail: recipient loading | Pass |
+| 4 — Required rejection note and resubmit | server: rejects blank note, trims note and allows a new subscription request; browser: blank 400 → reject → email note → repeat plan request; UI: rejection validation | Pass |
+| 5 — Admin-only endpoints and team roles | server: admin route 403 matrix, read-only request/reveal 403, expired session 401; UI: read-only cannot reveal | Pass |
+| 6 — Unreachable Kong approval | server: rollback, Pending, no mail, retry; browser: stop real Kong → 503 problem, Pending, no approval email → restart → approve | Pass |
+| 7 — Pending plan change preserves Basic and key | server: Pending without adapter mutation; browser: Basic retained, original key 200, duplicate 409 | Pass |
+| 8 — Approve/reject plan change and immediate downgrade | server: same credential, limits/grants, rejection; browser: Partner→Basic immediate, rejection/retry/approval with same key and Partner plugin + live limit | Pass |
+| 9 — Open upgrade; Hidden audience and page 404 | `packages/db/src/access-migration.test.ts`; server: four-level visibility matrix; browser: Hidden anonymous page | **Fail**: product and changelog pages render not-found with HTTP 200; JSON/reference/version endpoints return 404 |
+| 10 — Internal named team and outsider | server: anonymous/outsider/insider/admin matrix, insider Basic subscription + Partner request and excluded plan change 404 | API pass; page-status regression remains under the visibility bug |
+| 11 — Manual assignment, email, reveal and audience | server: assignment and Manual self-service denial; browser: no admin key, assigned email, team reveal → real Kong 200, outsider product page | **Fail**: anonymous Manual product page returns 200; assignment/key/API policy pass |
+| 12 — Restriction confirmation, Keep/Revoke | server: three affected teams, Keep and approval confirmation; UI: Keep default; browser: Keep key 200, Revoke key 401 and team mail | Pass |
+| 13 — Saved restriction and revocation retry | server: partial adapter failure, replay twice, exactly-once enqueue, reconcile skips revoked; UI: retry notice; browser: real Kong down → persisted pending/no email → restart → revoked/401 and one mail | Pass (partial per-credential failure and reconcile use fake adapter + real Postgres; outage/retry uses real Kong) |
 
-Long notes go in `docs/specs/log/010.md`, not here.
+Validation: workspace lint and typecheck pass. One full workspace test pass: server **279/279**, portal **329/329**, database **9/9**, Kong adapter **60/60**; the two subsequent server coverage additions pass in the focused suite (**21/21**). The completed full browser pass reports **95 passed, 3 failed, 2 skipped** (7.8 minutes); two failures were stale navigation expectations missing the new Requests section, corrected in `apps/portal/e2e/account-security.test.ts` and passing **2/2** on focused retest. The remaining failure is the spec 010 invisible-page status regression; the new browser test keeps its 404 assertions failing rather than accepting 200.
+
+Quickstart: `node scripts/worktree-compose.mjs up -d --build --wait` succeeds after the coordinator freed Mailpit port 8025; fresh `/setup` returned 200, the automated setup journey passed its five-minute assertion, and the seeded environment path started successfully. The isolated stack is left up for the next stage. There were no open bugs at intake; the new major was reproduced and kept open with `linear bug 010 open`. The ownership guard flags only earlier-stage committed application/design files; Elango authorized the explicit QA-only commit despite that limitation. At Elango’s direction, the bug and frontend Fix task are tracked only in this spec; no Linear issue will be created. Status is **building**.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
-- [ ] …
+- [ ] Invisible product and changelog pages return HTTP 200 instead of 404 (major)
+  - Current repro: signed-out `GET /products/access-d79f1b28-0612-43a7-9027-b072da0353a1` on the QA portal returns 200 with not-found content; the full browser run also reproduces Hidden product and changelog 200 responses. Expected 404.
 
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |

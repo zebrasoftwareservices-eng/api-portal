@@ -334,6 +334,9 @@ it('checks pending uniqueness, rejects with a required trimmed note and rechecks
     url: `/api/v1/access-requests?teamId=${teamId}&status=pending`,
   });
   expect(filtered.json().items).toEqual([]);
+  await connection.db.delete(apps);
+  role = 'developer';
+  expect((await requestAccess()).status).toBe('pending');
 });
 it('keeps the old plan and key during a plan-change request; rejection and cancellation close it', async () => {
   const { app, credential } = await subscribe();
@@ -605,4 +608,178 @@ it('searches teams by any member email with the contract limits', async () => {
   expect(
     (await server.inject({ url: '/api/v1/admin/teams?limit=51' })).statusCode,
   ).toBe(400);
+});
+
+it.each(['', '   ', 'x'.repeat(1001)])(
+  'rejects invalid request reason without any side effect (%j)',
+  async (reason) => {
+    await connection.db
+      .update(plans)
+      .set({ requiresApproval: true })
+      .where(eq(plans.id, nextPlanId));
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/v1/access-requests',
+      payload: { teamId, planId: nextPlanId, name: 'Invalid', reason },
+    });
+    expect(response.statusCode, response.body).toBe(400);
+    expect(response.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(await connection.db.select().from(accessRequests)).toEqual([]);
+    expect(adapter.ensureConsumer).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  },
+);
+
+it('denies read-only and expired sessions request creation and key reveal without side effects', async () => {
+  const { app } = await subscribe();
+  await connection.db
+    .update(plans)
+    .set({ requiresApproval: true })
+    .where(eq(plans.id, nextPlanId));
+  await connection.db
+    .update(teamMembers)
+    .set({ role: 'read-only' })
+    .where(eq(teamMembers.teamId, teamId));
+  vi.clearAllMocks();
+  for (const status of [403, 401]) {
+    if (status === 401) signedIn = false;
+    for (const response of [
+      await server.inject({
+        method: 'POST',
+        url: '/api/v1/access-requests',
+        payload: {
+          teamId,
+          planId: nextPlanId,
+          name: 'Denied',
+          reason: 'Please',
+        },
+      }),
+      await server.inject({
+        method: 'POST',
+        url: `/api/v1/apps/${app.id}/credentials`,
+      }),
+    ]) {
+      expect(response.statusCode, response.body).toBe(status);
+      expect(response.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+    }
+  }
+  expect(await connection.db.select().from(accessRequests)).toEqual([]);
+  expect(adapter.issueCredential).not.toHaveBeenCalled();
+  expect(enqueue).not.toHaveBeenCalled();
+});
+
+it.each(['open', 'hidden', 'internal', 'manual'] as const)(
+  'visibility matrix for %s covers lists, documents, versions and mutations',
+  async (visibility) => {
+    await connection.db.update(products).set({ visibility });
+    await connection.db.insert(productTeams).values({ productId, teamId });
+    const urls = [
+      '/api/v1/products/product',
+      `/api/v1/apis/api-${apiId}`,
+      `/api/v1/apis/api-${apiId}/openapi.json`,
+      `/api/v1/apis/api-${apiId}/changelog`,
+      `/api/v1/apis/api-${apiId}/versions/1/openapi.json`,
+    ];
+    for (const viewer of ['anonymous', 'outsider', 'insider', 'admin']) {
+      signedIn = viewer !== 'anonymous';
+      role = viewer === 'admin' ? 'admin' : 'developer';
+      await connection.db.delete(productTeams);
+      if (viewer === 'insider')
+        await connection.db.insert(productTeams).values({ productId, teamId });
+      const visible =
+        viewer === 'admin' ||
+        visibility === 'open' ||
+        (visibility === 'hidden' && signedIn) ||
+        (visibility === 'internal' && viewer === 'insider');
+      for (const url of urls) {
+        const response = await server.inject({ url });
+        expect(
+          response.statusCode,
+          `${viewer} ${visibility} ${url}: ${response.body}`,
+        ).toBe(visible ? 200 : 404);
+      }
+      for (const url of ['/api/v1/products', '/api/v1/apis']) {
+        const response = await server.inject({ url });
+        expect(
+          response.json().items.length,
+          `${viewer} ${visibility} ${url}`,
+        ).toBe(visible ? (url.endsWith('/apis') ? 2 : 1) : 0);
+      }
+      if (signedIn && !visible) {
+        for (const url of ['/api/v1/apps', '/api/v1/access-requests']) {
+          const response = await server.inject({
+            method: 'POST',
+            url,
+            payload: {
+              teamId,
+              planId: nextPlanId,
+              name: 'Invisible',
+              reason: 'Please',
+            },
+          });
+          expect(response.statusCode, response.body).toBe(404);
+        }
+      }
+    }
+    expect(adapter.ensureConsumer).not.toHaveBeenCalled();
+  },
+);
+
+it('lets an Internal insider subscribe and request approval while an excluded team gets 404', async () => {
+  await connection.db.update(products).set({ visibility: 'internal' });
+  await connection.db.insert(productTeams).values({ productId, teamId });
+  await connection.db
+    .update(plans)
+    .set({ requiresApproval: true })
+    .where(eq(plans.id, nextPlanId));
+  await subscribe();
+  const pending = await requestAccess();
+  expect(pending.status).toBe('pending');
+  await connection.db.delete(productTeams);
+  const hiddenPlan = await server.inject({
+    method: 'PUT',
+    url: `/api/v1/apps/${(await connection.db.select().from(apps))[0]!.id}/plan`,
+    payload: { planId: nextPlanId, reason: 'Please' },
+  });
+  expect(hiddenPlan.statusCode).toBe(404);
+});
+
+it('counts three affected teams, defaults to confirmation without side effects and keeps their subscriptions', async () => {
+  for (let i = 0; i < 3; i++) {
+    const id = uuidv7();
+    await connection.db.insert(teams).values({ id, name: `Affected ${id}` });
+    await connection.db
+      .insert(apps)
+      .values({ id: uuidv7(), teamId: id, planId, name: 'Existing' });
+  }
+  role = 'admin';
+  const url = `/api/v1/admin/products/${productId}/access`;
+  const confirmation = await server.inject({
+    method: 'PUT',
+    url,
+    payload: { visibility: 'manual' },
+  });
+  expect(confirmation.statusCode).toBe(409);
+  expect(confirmation.json()).toMatchObject({
+    affectedTeams: 3,
+    affectedSubscriptions: 3,
+  });
+  expect((await connection.db.select().from(products))[0]!.visibility).toBe(
+    'open',
+  );
+  const kept = await server.inject({
+    method: 'PUT',
+    url,
+    payload: { visibility: 'manual', existingSubscriptions: 'keep' },
+  });
+  expect(kept.statusCode).toBe(200);
+  expect(
+    (await connection.db.select().from(apps)).map((a) => a.status),
+  ).toEqual(['active', 'active', 'active']);
+  expect(adapter.deleteConsumer).not.toHaveBeenCalled();
+  expect(enqueue).not.toHaveBeenCalled();
 });
