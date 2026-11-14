@@ -1,7 +1,7 @@
 ---
 id: 010
 title: Access requests and catalog visibility
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-238
@@ -367,7 +367,11 @@ desired-state loop skips non-active apps, so a revoked key can never come back.
 - [ ] [qa] Playwright e2e: Sprint 4 demo step 3 (request Partner → admin approves → reveal key → call works; Hidden product 404 when signed out); quickstart smoke
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/010-*.md`
+Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access-requests-and-visibility.md). No new tokens.
+
+- **Developer**: the plan table labels each plan "Instant key" (**Subscribe**) or "Requires approval" (**Request access**). The request dialog takes team, name and a reason with a 1000-character counter. Requests show on the team dashboard as Pending, Approved or Rejected with the admin's note. An approved or admin-assigned subscription shows a "Your key is ready" card with **Reveal key** (not shown to Read-only members). Pending plan changes show a banner saying the current key keeps working.
+- **Admin**: `/admin/requests` is a card queue, oldest first, with a pending count in the nav. Approve has the optional "Note to the requester (included in the email)", Reject needs a note, and a gateway error keeps the request Pending inside the dialog. The product page gets an Access panel (four visibility radios, a team combobox for Internal, Assign to a team for Manual) and a Keep/Revoke confirmation that defaults to "Keep them working". Revoke-pending subscriptions show a "retrying automatically" notice.
+- An invisible product is the standard 404 page, never a locked card. Admins alone see Hidden/Internal/Manual badges in the catalog. New components: `StatusBadge`, `CountedTextarea`, `VisibilityBadge`, `TeamCombobox`. Exact copy, email text, every state, the keyboard path and the 375/1280px layouts are in the design file.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
