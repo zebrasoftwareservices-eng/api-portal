@@ -920,7 +920,8 @@ export interface paths {
         /**
          * Create a subscription for a team without seeing its key
          * @description Spec 010 AC 11. Works on any product plan, and is the only way onto a plan of a `manual`
-         *     product (provisional, pending Elango). Bypasses `requiresApproval`. Like `createApp` it
+         *     product. On an `internal` product the team must be one of its named teams, otherwise 409
+         *     `/problems/team-not-named`. Bypasses `requiresApproval`. Like `createApp` it
          *     upserts the Kong consumer, grants the plan's APIs and applies its limits, rolling back on
          *     failure, but issues no key: the response has no key, and a team `admin` or `member`
          *     issues it once with `createCredential`. The app has `origin: admin`. On success the
@@ -2034,10 +2035,10 @@ export interface components {
             /** @description APIs of the plan's product */
             apiIds: string[];
             /**
-             * @description Subscribing, or moving a subscription onto this plan, needs an admin's approval (spec 010)
-             * @default false
+             * @description Subscribing, or moving a subscription onto this plan, needs an admin's approval (spec 010).
+             *     When omitted, `createPlan` uses `false` and `updatePlan` keeps the plan's current value.
              */
-            requiresApproval: boolean;
+            requiresApproval?: boolean;
             /** @description `updatePlan` only (ignored by `createPlan`): the answer to `/problems/confirmation-required` */
             existingSubscriptions?: components["schemas"]["ExistingSubscriptionsChoice"];
         };
@@ -3971,7 +3972,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
-            /** @description `/problems/app-name-taken`, `/problems/gateway-disabled` or `/problems/gateway-not-connected`. Nothing was created. */
+            /** @description `/problems/app-name-taken`, `/problems/team-not-named` (the product is `internal` and the team is not one of its named teams; add the team to the product first), `/problems/gateway-disabled` or `/problems/gateway-not-connected`. Nothing was created. */
             409: {
                 headers: {
                     [name: string]: unknown;
