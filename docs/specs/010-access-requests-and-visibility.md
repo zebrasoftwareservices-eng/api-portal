@@ -1,7 +1,7 @@
 ---
 id: 010
 title: Access requests and catalog visibility
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-238
@@ -443,9 +443,9 @@ Ownership guard limitation: `guard qa-tester` includes application/design/SDK fi
 - [x] Revoke-on-restrict leaves admin-assigned subscription keys working (major).
   - Retested with real Kong: admin-origin assignments are counted, Keep preserves 200, Revoke/retry returns 401, and reconcile does not restore access; Manual→Internal Keep/Revoke also passes. Verified with `linear bug 010 done`.
 - [x] Mobile plan cards and caption remain in narrow side-by-side columns at 390px with horizontal overflow (minor).
-  - Browser assertions pass: caption/cards stack vertically at equal full width and document overflow is zero. Verified with `linear bug 010 done`.
+  - UAT review-fix retest at 390×844: caption above stacked 358px cards; document and viewport widths both 390. Verified with `linear bug 010 done`.
 - [x] Escape from the approval dialog returns focus to BODY instead of the originating Approve button (minor).
-  - Browser assertions pass for both Escape and Cancel returning focus to the originating Approve button. Verified with `linear bug 010 done`.
+  - UAT keyboard-only review-fix retest: Escape and Tab/Enter on Cancel both returned focus to BUTTON “Approve…”. Verified with `linear bug 010 done`.
 
 - [x] Existing product-plan browser rate-limit test intermittently crosses the gateway's second boundary when synchronized to the host clock (minor test defect).
   - Full-run evidence showed the gateway Date advancing mid-burst; corrected the test helper to observe Kong's own Date. Package typecheck, scoped ESLint and the affected browser journey pass after correction; no application code changed.
@@ -454,7 +454,7 @@ No open spec findings; no Linear issues were created, per Elango's instruction.
 
 ## User testing  _(user-tester)_
 
-2026-11-14 UAT retest of rows 12–13 on QA’s running stack with fix `ba6d948` (checkout `ef055f6`) at http://localhost:3019: **passed; review**. Other rows retain the original walk’s evidence; the two minor findings remain open. Full evidence: `docs/uat/010/report.md`; no Linear bug was created, per Elango.
+2026-11-14 focused review-fix UAT at checkout `6eff692`, http://localhost:3019: **passed; review; no open findings**. Retested only Internal assignment refusal, Manual→Internal Keep/Revoke confirmation and the two minor findings; unaffected rows retain prior evidence. Full evidence: `docs/uat/010/report.md`; no Linear issues created, per Elango.
 
 | User story / criterion | Result | Evidence |
 | --- | --- | --- |
@@ -468,13 +468,13 @@ No open spec findings; no Linear issues were created, per Elango's instruction.
 | 8 Decide plan change | Pass | Rejection retained Basic; approval retained the same key at Partner limits; immediate Basic downgrade. |
 | 9 Open / Hidden (UI) | Pass | Open listed signed out; Hidden showed “Page not found” anonymously and plans signed in. |
 | 10 Internal (UI) | Pass | Named team subscribed/requested; outsider and signed-out visitor saw “Page not found.” |
-| 11 Manual assignment | Pass | “Set up by your admin”; no admin key; assignment email; recipient reveal and Kong 200. |
-| 12 Restrict existing access | Pass (retest) | Visibility and approval both counted all three teams, including admin assignment; default Keep retained 200 for all keys. Visibility Revoke plus automatic retry gave 401 for all three. Separate approval Revoke counted its sole admin-assigned subscription and changed its key from 200 to 401; admin showed “Revoked.” |
+| 11 Manual assignment | Pass | “Set up by your admin”; no admin key; assignment email; recipient reveal and Kong 200. Review retest: unnamed Internal assignment showed “Add the team to this product first”. |
+| 12 Restrict existing access | Pass (retest) | Visibility and approval both counted all three teams, including admin assignment; default Keep retained 200 for all keys. Visibility Revoke plus automatic retry gave 401 for all three. Separate approval Revoke counted its sole admin-assigned subscription and changed its key from 200 to 401; admin showed “Revoked.” Manual→Internal with unnamed assigned Payments showed “1 team has an active subscription”, default Keep and Revoke; Keep saved. |
 | 13 Revoke retry | Pass (retest) | Kong stopped: Hidden persisted after reload, all three named “Revoke pending,” no revocation email. Kong restarted: pending notice cleared, all three keys 401, Mailpit “1-3 of 3” remained stable on later refresh; separate approval Revoke added one fourth email. |
-| Mobile main journey | Pass with minor | Request → approval → reveal → Kong 200; narrow side-by-side cards and overflow in `mobile-plan-layout-fail.png`. |
-| Keyboard main journey | Pass with minor | Tab/Enter approved; Escape closed dialog but focus returned to BODY and next Tab to “Skip to content.” |
+| Mobile main journey | Pass (review-fix retest) | At 390×844, caption above vertically stacked 358px cards; document and viewport width both 390. Request sent → “Request pending”; `success-mobile.png`. |
+| Keyboard main journey | Pass (review-fix retest) | Tab/Enter opened approval; Escape and Tab/Enter on Cancel each restored focus to BUTTON “Approve…”. |
 
-Backend-only HTTP/problem+json matrices, credential absence and mail/retry idempotence were not independently repeated; QA's Test report covers those assertions. Console inspection returned `"entries": []`, so no actual console error was available to quote. The obsolete assigned-key failure image was removed; no new images, committed PNGs or browser logs.
+Console inspection on both current tabs returned `"entries": []`; no actual console error was available to quote. One local mobile success PNG replaces the deleted fixed-finding image; no PNGs or browser logs are committed. QA's backend-only assertions and earlier successful rows were not repeated; the worktree stack was stopped after this retest.
 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
