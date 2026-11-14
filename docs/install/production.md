@@ -7,8 +7,9 @@ This guide installs one API Developer Portal on an Ubuntu 26.04 LTS VM. It expec
 1. Download an exact release of this repository and enter `deploy/production`.
 2. Copy `.env.example` to `.env`. Set `PORTAL_VERSION` to an exact published version, `PORTAL_DOMAIN`, and the matching HTTPS `PORTAL_PUBLIC_URL`.
 3. Follow `secrets/README.md`. Keep the encryption key with your off-host backups.
-4. Start the private portal endpoint with `docker compose pull && docker compose up -d`. For automatic HTTPS on ports 80 and 443, instead run `docker compose --profile caddy up -d`.
-5. Check `docker compose ps`. PostgreSQL and the server have no host ports; only the portal is bound to `127.0.0.1:3000` unless the Caddy profile is enabled.
+4. Authenticate to GHCR before pulling the private images. Run `docker login ghcr.io -u <github-user>` and enter a GitHub personal access token with the `read:packages` scope when prompted.
+5. Start the private portal endpoint with `docker compose pull && docker compose up -d`. For automatic HTTPS on ports 80 and 443, instead run `docker compose --profile caddy up -d`.
+6. Check `docker compose ps`. PostgreSQL and the server have no host ports; only the portal is bound to `127.0.0.1:3000` unless the Caddy profile is enabled.
 
 Retrieve the shared first-admin token without copying other log data:
 

@@ -2,10 +2,22 @@
 
 The chart supports Kubernetes 1.37 and Helm 3. It installs only the portal, server, and—by default—a small bundled PostgreSQL StatefulSet. It does not install Kong, an ingress controller, cert-manager, or any other cluster infrastructure.
 
+Create the namespace and an image pull Secret for the private GHCR packages. Use a GitHub personal access token with the `read:packages` scope:
+
+```sh
+kubectl create namespace portal
+kubectl create secret docker-registry ghcr-pull \
+  --namespace portal \
+  --docker-server=ghcr.io \
+  --docker-username=<github-user> \
+  --docker-password=<github-token>
+```
+
 ```sh
 helm upgrade --install portal deploy/helm/api-portal \
   --namespace portal --create-namespace \
-  --set image.tag=0.8.0
+  --set image.tag=0.8.0 \
+  --set 'imagePullSecrets[0].name=ghcr-pull'
 ```
 
 Without ingress, follow `NOTES.txt` to port-forward the portal. With ingress, both a host and public URL are required:
@@ -17,7 +29,8 @@ helm upgrade --install portal deploy/helm/api-portal \
   --set ingress.enabled=true \
   --set ingress.className=nginx \
   --set ingress.host=portal.example.com \
-  --set publicUrl=https://portal.example.com
+  --set publicUrl=https://portal.example.com \
+  --set 'imagePullSecrets[0].name=ghcr-pull'
 ```
 
 The generated authentication, encryption, and database secrets are retained across upgrades and uninstall. For controlled secret management, set `secrets.existingSecret` to a Secret containing `auth-secret`, `encryption-key`, and `db-password`.

@@ -424,7 +424,7 @@ Kong objects; reconcile keeps running every 5 minutes as now and is idempotent.
 - [x] [backend] Fix: Helm smoke passes without required AC 7-10 runtime assertions
 - [x] [backend] Fix: Upgrade smoke candidate becomes unhealthy before recovery assertions
 - [x] [backend] Fix: Helm smoke uses nonexistent portal Service hostname
-- [ ] [backend] Fix: Install guides do not authenticate to the private GHCR packages
+- [x] [backend] Fix: Install guides do not authenticate to the private GHCR packages
 ## UX  _(ui-designer)_
 No UI change: no new or changed screens, flows, states, copy or tokens (Out of scope). The
 `[frontend]` tasks are the portal container only: runtime `SERVER_URL` proxying, `GET /healthz`,
@@ -453,6 +453,11 @@ No UI change: no new or changed screens, flows, states, copy or tokens (Out of s
   PostgreSQL 17 dump guards; the complete upgrade/recovery smoke passes. The Helm smoke requests the
   rendered `portal-smoke-api-portal-portal` Service; chart lint/template and all 224 server tests pass,
   while the kind runtime smoke remains for CI because this worker has no `kind` binary.
+
+- Backend install-guide fix: the production Compose guide now authenticates Docker to private GHCR
+  packages before pulling, and the Helm guide creates and configures a GHCR image pull Secret. Both
+  flows require a GitHub token scoped to `read:packages`; QA should use credentials that can read the
+  repository packages when completing the remaining production-host verification.
 
 ## Test report  _(qa-tester)_
 
