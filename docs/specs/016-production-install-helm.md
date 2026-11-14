@@ -1,7 +1,7 @@
 ---
 id: 016
 title: Production install — hardened Compose, Helm chart, backups and upgrades
-status: testing  # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-13
 linear: JSO-244
@@ -419,7 +419,7 @@ Kong objects; reconcile keeps running every 5 minutes as now and is idempotent.
 - [x] [frontend] Portal Dockerfile: `PORTAL_VERSION` build arg, OCI labels, runs with a read-only root filesystem (writable `/tmp` only, or the proven minimum).
 - [x] [qa] Run `upgrade-smoke` and `helm-smoke` locally and in CI; record AC 2–11 evidence in the Test report.
 - [x] [qa] Verify the quickstart is unchanged: `deploy/docker-compose.yml` up in under five minutes, existing smokes and `pnpm test:e2e` pass.
-- [ ] [qa] Production Compose on a Linux host with a real Kong: HTTPS via the Caddy profile, `NODE_ENV=production`, no host ports for Postgres/server, no Kong container, no sample API, claim and connect Kong (AC 1).
+- [x] [qa] Production Compose on a Linux host with a real Kong: HTTPS via the Caddy profile, `NODE_ENV=production`, no host ports for Postgres/server, no Kong container, no sample API, claim and connect Kong (AC 1).
 - [x] [backend] Fix: Upgrade smoke cannot start Kong or verify upgrade and recovery criteria
 - [x] [backend] Fix: Helm smoke passes without required AC 7-10 runtime assertions
 - [x] [backend] Fix: Upgrade smoke candidate becomes unhealthy before recovery assertions
@@ -461,13 +461,15 @@ No UI change: no new or changed screens, flows, states, copy or tokens (Out of s
 
 ## Test report  _(qa-tester)_
 
-Tested commit: `6cff3d01eb789e325e80d05dd49044e671a7f997`
+Tested commit: `975e9d0493ccb5356ca36d9c722bb4b04c84a08c`
 
 Portal URL: `http://localhost:3005`
 
+Production Caddy URL: `https://localhost` (local Caddy certificate)
+
 | Criterion | Automated test | Result |
 | --- | --- | --- |
-| AC 1 | `apps/server/src/production-install.test.ts`; `deploy/e2e/quickstart.spec.ts`; `deploy/smoke.mjs` | PASS for Compose isolation, production flags, hardening, unchanged quickstart, signup, app/key and real Kong traffic. The clean Ubuntu 26.04/Caddy/existing-Kong walk remains the open QA task. |
+| AC 1 | `apps/server/src/production-install.test.ts`; `deploy/e2e/quickstart.spec.ts`; `deploy/smoke.mjs`; production Compose/Caddy walk | PASS: locally retagged candidate images served `https://localhost` through the Caddy profile; the server reported `NODE_ENV=production`; Postgres and server published no host ports; the Compose project contained no Kong; the empty catalog proved no sample API; setup-token claim returned 201 and replay returned 409; and the separately started Kong 3.9.4 was connected and reachable. The timed clean-Ubuntu 30-minute walk remains with Elango at the release gate. |
 | AC 2 | `apps/server/src/config.test.ts`; `apps/server/src/production-install.test.ts`; `deploy/upgrade-smoke.mjs` | PASS: file secrets work; missing encryption key exits non-zero and logs only the setting name. |
 | AC 3 | `scripts/release-tags.test.mjs`; `apps/server/src/production-install.test.ts` | PASS: exact release/prerelease tags only, no `latest`, pinned workflow actions. |
 | AC 4 | `deploy/upgrade-smoke.mjs`; `packages/db/src/migrate.test.ts` | PASS: branch candidate migrates baseline data and preserves sign-in, API, app and key. |
@@ -479,7 +481,7 @@ Portal URL: `http://localhost:3005`
 | AC 10 | `deploy/helm/smoke.sh`; `deploy/upgrade-smoke.mjs`; `apps/server/src/production-install.test.ts` | PASS: two replicas share one token, cross-replica claim consumes it, later claims fail, and Compose restart retains it. |
 | AC 11 | `deploy/upgrade-smoke.mjs`; `packages/db/src/migrate.test.ts`; `apps/server/src/production-install.test.ts` | PASS: schema-ahead startup exits non-zero, names restore/previous-image steps, and leaves data byte-identical. |
 
-Failure-path coverage passes for missing/conflicting/unreadable secrets, invalid ingress configuration, database outage/recovery, shared-token replay, schema-ahead refusal, invalid input, missing permission, expired sessions, duplicate requests and gateway outages. Full pass: `pnpm lint`, `pnpm typecheck`, `pnpm test`, corrected worktree-isolated `pnpm test:e2e` (95 passed, 2 skipped), upgrade smoke, real-kind Helm smoke, and quickstart smoke all passed.
+Failure-path coverage passes for missing/conflicting/unreadable secrets, invalid ingress configuration, database outage/recovery, shared-token replay, schema-ahead refusal, invalid input, missing permission, expired sessions, duplicate requests and gateway outages. The full pass at `6cff3d0` still stands because later commits changed only tests, guides, and factory records; at `975e9d0`, `@portal/server` typecheck and all 225 server tests passed, the production Compose/Caddy walk passed, and `node scripts/worktree-compose.mjs up -d --build --wait` left the quickstart healthy at `http://localhost:3005`.
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
