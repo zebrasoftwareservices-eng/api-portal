@@ -1,7 +1,7 @@
 ---
 id: 010
 title: Access requests and catalog visibility
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-238
@@ -179,15 +179,19 @@ approvals and revoke-on-restrict were all decided into this spec.
   the field is labelled "Note to the requester (included in the email)" (criterion 3).
 - [x] Search (020) and `/llms.txt` (021) — Elango accepted the proposal: one shared visibility
   check, `/llms.txt` lists Open products only (Constraints).
-- [ ] Once a Manual product is assigned to team A, can team A create more subscriptions on it
-  themselves, or does every subscription come from the admin? The criteria assume neither. — Elango
-- [ ] What happens to a Pending request when the admin turns off "requires approval" for its
-  plan, or the product becomes invisible to the requesting team? Proposed: turning approval off
-  leaves Pending requests for the admin to decide; losing visibility rejects them with an
-  automatic note. — Elango
-- [ ] Does cancelling an admin-created Manual subscription (spec 009 cancel) count as revoking it,
-  with the same email? — Elango
-- [ ] Maximum length of a request reason and a decision note. — tech lead
+- [x] Once a Manual product is assigned to team A, can team A create more subscriptions on it
+  themselves, or does every subscription come from the admin? — Elango accepted the provisional
+  default: Manual is admin-assigned only; self-subscribe, request and plan change answer 403
+  `/problems/admin-assigned-only`.
+- [x] What happens to a Pending request when the admin turns off "requires approval" for its
+  plan, or the product becomes invisible to the requesting team? — Elango accepted the provisional
+  default: turning approval off leaves Pending requests for the admin to decide; losing visibility
+  auto-rejects them with a system note and emails the requester.
+- [x] Does cancelling an admin-created Manual subscription (spec 009 cancel) count as revoking it,
+  with the same email? — Elango accepted the provisional default: yes, the team gets the revoke
+  email.
+- [x] Maximum length of a request reason and a decision note. — tech lead: reason 1–1000, note
+  0–1000 (reject 1–1000), trimmed (Technical design).
 
 ---
 <!-- Sections below are filled by later stages. -->
@@ -200,7 +204,7 @@ Contract: `apps/server/openapi.yaml` (spec 010 sections). No new dependency.
 decision note 0–1000 (reject needs 1–1000), both trimmed before checking, stored as plain text
 and always rendered escaped, in the portal and the email.
 
-**Provisional, pending Elango** (each lives in one function so changing it is a small diff):
+**Provisional defaults, accepted by Elango on 2026-11-14** (each lives in one function):
 - Manual subscriptions are admin-created only: `canSelfSubscribe()` is false for `manual`, so
   `createApp`, `createAccessRequest` and `changeAppPlan` on a Manual product answer 403
   `/problems/admin-assigned-only`, and `ProductDetail.selfService` is false.
@@ -367,6 +371,15 @@ desired-state loop skips non-active apps, so a revoked key can never come back.
 - [x] [qa] Playwright e2e: Sprint 4 demo step 3 (request Partner → admin approves → reveal key → call works; Hidden product 404 when signed out); quickstart smoke
 - [x] [frontend] Fix: Invisible product and changelog pages return HTTP 200 instead of 404
 - [x] [backend] Fix: Revoke-on-restrict leaves admin-assigned subscription keys working
+- [ ] [backend] Fix: Log revocation and compensation failures with `appId` and error class, no secrets (`revocation.ts:64`, `app-provisioning.ts:22`, `:137`)
+- [ ] [backend] Fix: Plan PUT that omits `requiresApproval` keeps the current value instead of turning approval off (`products.ts:60`)
+- [ ] [backend] Fix: Treat Manual→Internal as restricting so Keep/Revoke appears for unnamed teams holding assignments (`product-access.ts:183`)
+- [ ] [backend] Fix: `POST /v1/admin/subscriptions` on an Internal product for a team that isn't named returns 409 `/problems/team-not-named` (`product-access.ts:281`)
+- [ ] [frontend] Fix: Assign dialog shows the 409 `team-not-named` message "Add the team to this product first"
+- [ ] [backend] Fix: `GET /v1/products` loads the viewer once per request (`products.ts:156`, `:159`)
+- [ ] [backend] Fix: One-line Build note on why `testcontainers` was added to `apps/server` dev dependencies
+- [ ] [frontend] Fix: Mobile plan cards overflow at 390px
+- [ ] [frontend] Fix: Escape from the approval dialog returns focus to the Approve button
 ## UX  _(ui-designer)_
 Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access-requests-and-visibility.md). No new tokens.
 
@@ -450,6 +463,47 @@ Backend-only HTTP/problem+json matrices, credential absence and mail/retry idemp
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/010.md`.
+
+Review 2026-11-14 of `d454f9c` (`git diff main...HEAD`). The Test report covers application commit
+`ba6d948`; later commits change only tests and docs, and the full suite passed, so it was not re-run.
+CI on the pushed branch is the second run. Every acceptance criterion 1–13 maps to a passing
+automated test. The code matches the contract and data model: one drizzle-kit migration with safe
+upgrade defaults, problem+json everywhere, no secrets in mail jobs (id payloads only), Kong objects
+tagged through the existing adapter, and reconcile never re-grants a non-`active` app. The quickstart
+passed in 172.8 s. **Result: changes requested.** Per Elango, the cheap suggestions below are fixed
+now, so they're Blocking with Fix tasks.
+
+**Blocking** (each has a Fix task):
+- `apps/server/src/revocation.ts:64` swallows the Kong/DB error with no log, and
+  `app-provisioning.ts:22` and `:137` dropped spec 009's "compensation deferred to reconcile"
+  warning. Log `{ appId }` and the error class (never a key or credential) so an operator can see
+  why a revocation stays pending.
+- `apps/server/src/products.ts:60` — `requiresApproval: z.boolean().default(false)` means a plan PUT
+  that omits it turns approval off. On update, an omitted value keeps the current one (on create it
+  stays `false`). The contract documents this; no shape change.
+- `apps/server/src/product-access.ts:183` — Manual→Internal isn't treated as restricting, so a team
+  holding an active admin assignment that isn't named loses visibility with no Keep/Revoke prompt.
+  Count those subscriptions as affected and use the same confirmation.
+- `apps/server/src/product-access.ts:281` — `POST /v1/admin/subscriptions` on an Internal product
+  for a team that isn't named answers 409 `/problems/team-not-named` and creates nothing (contract
+  updated). The admin assign dialog shows "Add the team to this product first".
+- `apps/server/src/products.ts:156` and `:159` — `GET /v1/products` calls `loadViewer` for the
+  filter and again for every product. Load it once per request and pass it down.
+- `apps/server/package.json:41` adds `testcontainers` (dev only) for the real-Kong revocation test
+  without a recorded reason. Add one line to Build notes.
+- UAT minor: mobile plan cards overflow by 20px at 390px (Bugs).
+- UAT minor: Escape from the approval dialog returns focus to BODY instead of the Approve button
+  (Bugs).
+
+**Suggestions** (follow-ups, no Fix task):
+- `apps/server/src/revocation.ts:37` and every subscription write in `apps.ts`,
+  `access-requests.ts` and `product-access.ts` take the global advisory lock `71833005` and hold it
+  across Kong HTTP calls, so subscription writes run one at a time. Fine at single-tenant scale;
+  narrow it to a per-product or per-app lock if contention shows up.
+- `apps/server/src/catalog.ts` `publishedApis` runs `canSeeApi`/`productVisible` per row (N+1).
+  Fine at seed size; batch it with `visibleProductIds` later.
+
+The four provisional product defaults were accepted by Elango (Open questions).
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
