@@ -516,9 +516,15 @@ it('Manual assignments provide visibility and no key until reveal; cancelling em
     (await server.inject({ url: '/api/v1/products/product' })).statusCode,
   ).toBe(404);
 });
-it('approval flag confirmation excludes admin-created subscriptions and keep leaves keys active', async () => {
+it('approval flag confirmation includes admin-created subscriptions and Keep preserves them before Revoke', async () => {
   await subscribe();
   role = 'admin';
+  const assigned = await server.inject({
+    method: 'POST',
+    url: '/api/v1/admin/subscriptions',
+    payload: { teamId, planId, name: 'Assigned approval' },
+  });
+  expect(assigned.statusCode, assigned.body).toBe(201);
   const url = `/api/v1/admin/products/${productId}/plans/${planId}`;
   const payload = {
     name: 'Free',
@@ -528,9 +534,12 @@ it('approval flag confirmation excludes admin-created subscriptions and keep lea
     apiIds: [apiId],
     requiresApproval: true,
   };
-  expect(
-    (await server.inject({ method: 'PUT', url, payload })).statusCode,
-  ).toBe(409);
+  const confirmation = await server.inject({ method: 'PUT', url, payload });
+  expect(confirmation.statusCode).toBe(409);
+  expect(confirmation.json()).toMatchObject({
+    affectedTeams: 1,
+    affectedSubscriptions: 2,
+  });
   expect(
     (
       await server.inject({
@@ -542,6 +551,22 @@ it('approval flag confirmation excludes admin-created subscriptions and keep lea
   ).toBe(200);
   expect((await connection.db.select().from(apps))[0]!.status).toBe('active');
   expect(adapter.deleteConsumer).not.toHaveBeenCalled();
+  await connection.db
+    .update(plans)
+    .set({ requiresApproval: false })
+    .where(eq(plans.id, planId));
+  const revoked = await server.inject({
+    method: 'PUT',
+    url,
+    payload: { ...payload, existingSubscriptions: 'revoke' },
+  });
+  expect(revoked.statusCode, revoked.body).toBe(200);
+  expect(
+    (await connection.db.select().from(apps)).map((a) => a.status),
+  ).toEqual(['revoked', 'revoked']);
+  expect(adapter.deleteConsumer).toHaveBeenCalledWith({
+    id: assigned.json().id,
+  });
 });
 it('filters every public API surface and denies admin routes before reading target ids', async () => {
   await connection.db.update(products).set({ visibility: 'hidden' });

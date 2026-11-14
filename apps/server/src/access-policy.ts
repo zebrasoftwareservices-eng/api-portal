@@ -153,10 +153,7 @@ export function affectedSubscriptions<
   T extends { status: string; origin: string; teamId: string },
 >(rows: T[], namedTeamIds: string[] = []) {
   return rows.filter(
-    (a) =>
-      a.status === 'active' &&
-      a.origin !== 'admin' &&
-      !namedTeamIds.includes(a.teamId),
+    (a) => a.status === 'active' && !namedTeamIds.includes(a.teamId),
   );
 }
 export const requiresConfirmation = (rows: unknown[]) => rows.length > 0;

@@ -38,7 +38,7 @@ describe('shared product policy', () => {
     expect(canSelfSubscribe({ visibility: 'manual' })).toBe(false);
     expect(canSelfSubscribe({ visibility: 'internal' })).toBe(true);
   });
-  it('only active self-service subscriptions outside the named teams are affected', () => {
+  it('active subscriptions of every origin outside the named teams are affected', () => {
     const rows = [
       { teamId: 'a', status: 'active', origin: 'self' },
       { teamId: 'b', status: 'active', origin: 'request' },
@@ -46,7 +46,7 @@ describe('shared product policy', () => {
       { teamId: 'a', status: 'revoked', origin: 'self' },
       { teamId: 'a', status: 'revoke-pending', origin: 'self' },
     ];
-    expect(affectedSubscriptions(rows, ['b'])).toEqual([rows[0]]);
+    expect(affectedSubscriptions(rows, ['b'])).toEqual([rows[0], rows[2]]);
     expect(requiresConfirmation(affectedSubscriptions(rows))).toBe(true);
     expect(requiresConfirmation([])).toBe(false);
   });

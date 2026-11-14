@@ -172,6 +172,9 @@ importers:
       '@types/semver':
         specifier: ^7.8.0
         version: 7.8.0
+      testcontainers:
+        specifier: ^11.14.0
+        version: 11.14.0
       tsx:
         specifier: ^4.20.6
         version: 4.23.15

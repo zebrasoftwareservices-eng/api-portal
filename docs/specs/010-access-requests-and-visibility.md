@@ -289,8 +289,8 @@ Every admin endpoint is 403 `/problems/forbidden` for non-admins (existing `requ
 the check before any read or write (AC 5). Ordering on developer endpoints: session (401) →
 team membership (404) → role (403) → visibility (404) → body (400) → state (409) → gateway.
 "Affected" subscriptions (AC 12) = `active` apps on the product (or plan) whose team isn't named
-by the new setting, excluding `origin: admin`. For Open→Hidden that is every active
-subscription, matching AC 12's wording.
+by the new setting, including every origin (`self`, `request`, `admin`). For Open→Hidden that
+is every active subscription, matching AC 12's wording.
 
 ### Data model (one migration, generated with drizzle-kit)
 - `products.visibility text not null default 'open'`, check in (`open`,`hidden`,`internal`,
@@ -366,7 +366,7 @@ desired-state loop skips non-active apps, so a revoked key can never come back.
 - [x] [qa] Integration with real Kong: Manual assignment, keep vs revoke (401 after revoke), partial failure + retry idempotence + one email per team, reconcile doesn't resurrect (AC 11–13)
 - [x] [qa] Playwright e2e: Sprint 4 demo step 3 (request Partner → admin approves → reveal key → call works; Hidden product 404 when signed out); quickstart smoke
 - [x] [frontend] Fix: Invisible product and changelog pages return HTTP 200 instead of 404
-- [ ] [backend] Fix: Revoke-on-restrict leaves admin-assigned subscription keys working
+- [x] [backend] Fix: Revoke-on-restrict leaves admin-assigned subscription keys working
 ## UX  _(ui-designer)_
 Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access-requests-and-visibility.md). No new tokens.
 
@@ -375,6 +375,9 @@ Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access
 - An invisible product is the standard 404 page, never a locked card. Admins alone see Hidden/Internal/Manual badges in the catalog. New components: `StatusBadge`, `CountedTextarea`, `VisibilityBadge`, `TeamCombobox`. Exact copy, email text, every state, the keyboard path and the 375/1280px layouts are in the design file.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Backend revocation fix — 2026-11-14
+Removed the admin-origin exclusion from visibility and requires-approval confirmation/revocation, matching AC 12 across self, request and admin subscriptions. Regression tests failed before the fix; isolated Postgres/Kong tests now cover Open→Hidden and Manual→Open→Hidden assignment counts, working keys before restriction, 401 after Revoke, revoked rows/credentials, retry/reconcile persistence and a single revocation email job per assigned subscription/team; the approval test also verifies Keep preserves access. Server lint, typecheck and all **284/284** tests pass with Docker-enabled Testcontainers; no browser, workspace suite, quickstart or default `portal` Docker project was used. Elango authorized committing only the nine explicit backend/spec paths despite the guard flagging earlier branch files; the two minor UAT findings remain open.
 
 ### Backend — 2026-11-14
 Implemented all backend tasks: the generated `0007_parallel_ravenous` migration, shared visibility policy across every public API surface, request/decision endpoints, admin access settings and assignment, deferred key issuance, plan-change requests, revocation retries/reconcile and SDK regeneration. Access mutations share an advisory transaction lock so approvals, cancellation and restrictions cannot cross; mail and revocation jobs are inserted into pg-boss in the same transaction as their state changes, with id-only access mail payloads and current-row recipient loading. Admin-origin cancellations retain a revoked app record for the id-based revocation email; all revoked apps reject key issuance and reconciliation never restores their consumers.
@@ -415,7 +418,7 @@ Commit guard: `guard qa-tester` flags application/design/schema files already co
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 - [x] Invisible product and changelog pages return HTTP 200 instead of 404 (major)
   - Verified on rebuilt `043b2a8`: anonymous Hidden, Internal and Manual product/API/changelog pages and unknown slugs return HTTP 404; signed-in Hidden pages return HTTP 200. Confirmed with `linear bug 010 done`; no Linear issue exists or was created, per Elango.
-- [ ] Revoke-on-restrict leaves admin-assigned subscription keys working (major)
+- [x] Revoke-on-restrict leaves admin-assigned subscription keys working (major)
 - [ ] Mobile plan cards and caption remain in narrow side-by-side columns at 390px with 20px horizontal overflow (minor); request/reveal journey still works. Evidence: `docs/uat/010/mobile-plan-layout-fail.png`.
 - [ ] Escape from the approval dialog returns focus to BODY instead of the originating Approve button (minor); Tab restarts at Skip to content, but approval remains possible.
 

@@ -370,9 +370,7 @@ export function registerProducts(
           if (!old.requiresApproval && input.requiresApproval) {
             const affected = (
               await productSubscriptions(tx, productId, old.id)
-            ).filter(
-              (r) => r.app.status === 'active' && r.app.origin !== 'admin',
-            );
+            ).filter((r) => r.app.status === 'active');
             confirmSubscriptions(affected, input.existingSubscriptions);
             if (input.existingSubscriptions === 'revoke') {
               revokeIds = affected.map((r) => r.app.id);
