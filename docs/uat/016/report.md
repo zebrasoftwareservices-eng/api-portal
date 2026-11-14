@@ -1,30 +1,23 @@
 # UAT report — production install
 
-- Date: 2026-11-13
-- Commit: `c4333a0`
-- Portal: `http://localhost:3005`
-- Viewports: desktop 1280×800; mobile 390×844 at device scale 1
-- Outcome: conditional pass; no blocker or major product bug found
+- Date: 2026-11-14
+- Tested commit: `628ad45`
+- Production URL: `https://localhost` (Caddy local certificate)
+- Browser walk URL: `http://localhost:3100` (the same production portal container, used because Orca's embedded browser rejected the local Caddy CA)
+- Viewports: 1280×800 desktop; 390×844 mobile
 
-## Results
+This retest covers the previously unrun production-install row only. It does not claim the timed clean-Ubuntu 30-minute release-gate walk, which remains with Elango.
 
-| User story / journey | Result | What I saw |
+| User story / check | Result | Evidence |
 | --- | --- | --- |
-| Production Compose on a clean Ubuntu 26.04 LTS VM, HTTPS through Caddy, setup-token claim, and connection to an existing Kong (AC 1) | Not run — environment unavailable | This worktree exposed only Docker Desktop contexts; no clean Ubuntu VM or VM runner was available. The open `[qa]` task remains unticked, and the quickstart stack was not treated as production-install evidence. |
-| Versioned private GHCR images with no moving `latest` tag (AC 3) | Not user-visible in this pass | Release publishing is workflow evidence rather than a portal-browser journey and was not repeated during UAT. |
-| Upgrade, backup, restore, and rollback preserve operator data (AC 4–6) | Not user-visible in this pass | These destructive/runtime checks require the production install or CI smoke environment and were not repeated against the quickstart evaluation stack. |
-| Helm default/external-database installs, readiness behavior, and shared setup token (AC 7–10) | Not user-visible in this pass | These are Kubernetes runtime criteria and were not repeated in the browser journey. |
-| Schema-ahead rollback guard (AC 11) | Not user-visible in this pass | Startup/log behavior is not exposed in the portal UI and was not repeated during UAT. |
-| Portal continuity through the changed container/proxy path | Pass | As a first-time developer I opened “Sample HTTP API,” created account `uat016-20261113@example.test`, created “UAT 016 App,” received a one-time key, and the authenticated GET returned “200 OK.” The same app → reference → authenticated GET journey returned “200 OK” at 390×844. |
-| Keyboard-only main journey | Pass | Using Tab and Enter only, focus reached “My apps,” “UAT 016 App,” and “Open Sample HTTP API reference”; Enter opened each destination and the reference rendered “Inspect a GET request.” |
+| Production Compose install through Caddy HTTPS (AC 1, local user-visible portion) | Pass | `https://localhost/` and `https://localhost/healthz` each returned HTTP 200. The production portal showed “APIs,” “How it works,” and “No APIs yet,” confirming that no sample API was seeded. Docker showed the production server and Postgres with no published host ports and the existing Kong as a separate container. The setup-token claim and Kong connection had already been completed on the QA-provided stack, so this retest did not attempt to reclaim it. |
+| Mobile pass of the production portal | Pass | At 390×844 the page exposed “Open menu”; the dialog showed “Mobile navigation,” and “Sign in” opened the responsive sign-in form. |
+| Keyboard-only pass of the production portal | Pass | Tab and Enter activated “Skip to content,” traversed the primary navigation, and opened the “Sign in” page without pointer input. |
 
-## Browser evidence
+## Console
 
-- Desktop success: `success-desktop.png` (local, not committed)
-- Mobile success: `success-mobile.png` (local, not committed)
-- Console: no error-level entries appeared in the last 50 entries, so there was no console error line to quote. The final console line was the informational entry `"addDocument: 34 ms"`.
-- No failure screenshots or browser/network/console dumps were saved.
+After the main journey, Orca returned no console entries on either the HTTPS interstitial page or the production portal page: `entries: []`. There was therefore no console error line to quote; no error was invented.
 
-## Open acceptance gap
+## Findings
 
-AC 1 still needs the clean Ubuntu 26.04 LTS production-Compose walkthrough described by the open `[qa]` task. This is an environment gap, not a reproduced blocker or major product bug, so no bug was added and the spec advances to review under the user-tester status rule.
+No blocker, major, or minor product finding is open. Orca's embedded browser did not trust the local Caddy CA, so browser interactions used the production portal container's loopback-only port while HTTPS reachability was verified separately with certificate verification disabled; this is a local test-harness limitation, not a portal defect.

@@ -1,7 +1,7 @@
 ---
 id: 016
 title: Production install — hardened Compose, Helm chart, backups and upgrades
-status: uat  # draft → ready → designed → building → testing → uat → review → approved → done
+status: review  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-13
 linear: JSO-244
@@ -492,9 +492,9 @@ Failure-path coverage passes for missing/conflicting/unreadable secrets, invalid
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
-| Production Compose install on clean Ubuntu 26.04 LTS with Caddy HTTPS, claim, and existing Kong (AC 1) | Not run — environment unavailable | No clean Ubuntu VM or VM runner was available; the open `[qa]` task remains unticked. |
-| Portal continuity through the changed container/proxy path | Pass | First-time account → “UAT 016 App” → “Sample HTTP API” returned “200 OK” on desktop and 390×844 mobile. |
-| Keyboard-only main journey | Pass | Tab and Enter reached “My apps,” “UAT 016 App,” and “Open Sample HTTP API reference”; the reference rendered “Inspect a GET request.” |
+| Production Compose installation through Caddy HTTPS (AC 1, local user-visible portion) | Pass | `https://localhost/` and `/healthz` returned 200; the production portal showed “No APIs yet,” and the server/Postgres had no published host ports. QA had already claimed the install and connected the separate existing Kong. The timed clean-Ubuntu 30-minute walk remains with Elango at the release gate. |
+| Mobile production-portal pass | Pass | At 390×844, “Open menu” exposed “Mobile navigation,” and “Sign in” opened the responsive form. |
+| Keyboard-only production-portal pass | Pass | Tab and Enter activated “Skip to content,” traversed primary navigation, and opened “Sign in” without pointer input. |
 
 Full evidence: `docs/uat/016/report.md`. No blocker or major UAT bug is open.
 
