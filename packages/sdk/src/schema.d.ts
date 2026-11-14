@@ -226,8 +226,11 @@ export interface paths {
         };
         /**
          * List products (public catalog)
-         * @description Every product is public in this spec (hidden products are spec 010). The catalog shows
-         *     these plus the APIs whose `products` list is empty (`GET /v1/apis`).
+         * @description The products the caller can see (spec 010, ADR 0010): `open` for everyone, plus `hidden`
+         *     when signed in, plus `internal` products that name one of the caller's teams, plus
+         *     `manual` products on which one of the caller's teams holds an active admin-created
+         *     subscription. Portal admins get every product. The catalog shows these plus the APIs
+         *     whose `products` list is empty (`GET /v1/apis`).
          */
         get: operations["listProducts"];
         put?: never;
@@ -245,7 +248,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get one product with its APIs and plans */
+        /**
+         * Get one product with its APIs and plans
+         * @description 404 when the caller can't see the product (same rule as `listProducts`).
+         */
         get: operations["getProduct"];
         put?: never;
         post?: never;
@@ -387,6 +393,12 @@ export interface paths {
          *     The app belongs to `teamId` (default: the caller's current team), and needs the
          *     `admin` or `member` role there (spec 008). The role is checked before email verification
          *     and before any gateway call.
+         *
+         *     Spec 010: the plan's product must be visible to `teamId`'s members (otherwise 404). A
+         *     plan with `requiresApproval` is refused with 409 `/problems/approval-required`; send an
+         *     access request instead (`POST /v1/access-requests`). A plan of a `manual` product is
+         *     refused with 403 `/problems/admin-assigned-only` (provisional, pending Elango: only a
+         *     portal admin creates subscriptions on a Manual product).
          */
         post: operations["createApp"];
         delete?: never;
@@ -416,6 +428,12 @@ export interface paths {
          *     unreachable nothing changes and the call returns 503; the app and its keys keep working.
          *     Works for any app, on any plan. Needs the `admin` or `member` role in the app's team;
          *     `read-only` gets 403 and nothing changes (spec 009 AC 10). A second delete returns 404.
+         *
+         *     Spec 010: deleting a `revoked` app removes it from the list with no Kong call. A
+         *     `revoke-pending` app returns 409 `/problems/revoke-pending` (the retry owns it). A Pending
+         *     plan-change request on the app is closed as `rejected` with a system note. Cancelling an
+         *     admin-created (`origin: admin`) subscription emails the team's Admins and Members the same
+         *     message as a revocation (provisional, pending Elango).
          */
         delete: operations["deleteApp"];
         options?: never;
@@ -440,6 +458,14 @@ export interface paths {
          *     old plan back in Kong (and the next reconcile does so if that fails too), stores nothing
          *     and returns 502 or 503. Choosing the current plan returns 200 and calls Kong anyway, which
          *     repairs drift. Needs the `admin` or `member` role in the app's team; `read-only` gets 403.
+         *
+         *     Spec 010 (AC 7–8): when the target plan has `requiresApproval` (and isn't the current
+         *     plan), nothing changes in Kong; the server creates a Pending `plan-change` access request
+         *     tied to the app and returns 202 with it. The app stays on its plan with the same key until
+         *     an admin decides. `reason` is required then. Moving onto a self-service plan applies at
+         *     once, as before, and ignores `reason`. Apps on a `manual` product get 403
+         *     `/problems/admin-assigned-only` (provisional, pending Elango). Only `active` apps can
+         *     change plan (409 `/problems/app-revoked` otherwise).
          */
         put: operations["changeAppPlan"];
         post?: never;
@@ -465,6 +491,11 @@ export interface paths {
          *     that doesn't have the app's consumer yet (spec 005 AC 7(e)). Needs the `admin` or
          *     `member` role in the app's team; `read-only` gets 403 and nothing changes in Kong or
          *     Postgres (spec 008 AC 4).
+         *
+         *     Spec 010: this is also how a team reveals the key of an approved request or an
+         *     admin-created subscription. Those apps are created with no key (`keyIssued: false`); the
+         *     first call issues it and returns it once. Refused with 409 `/problems/app-revoked` for an
+         *     app that isn't `active`.
          */
         post: operations["createCredential"];
         delete?: never;
@@ -517,6 +548,39 @@ export interface paths {
          *     `admin` or `member` role; `read-only` gets 403.
          */
         post: operations["regenerateCredential"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List a team's access requests
+         * @description Any role in the team. Without `teamId`, the caller's current team. Newest first, all
+         *     statuses. A caller who isn't a member of `teamId` gets 404.
+         */
+        get: operations["listAccessRequests"];
+        put?: never;
+        /**
+         * Request a subscription on a plan that requires approval
+         * @description Spec 010 AC 1–2. Postgres only; no Kong call and no key. Needs the `admin` or `member`
+         *     role in `teamId` (`read-only` gets 403) and, like `createApp`, a verified email when the
+         *     admin requires one. Checked in this order: team membership (404), role (403), product
+         *     visibility to the team (404), `reason` and `name` (400), the plan requires approval
+         *     (otherwise 409 `/problems/approval-not-required`; use `createApp`), no Pending
+         *     `subscribe` request from this team for this plan (409 `/problems/request-pending`), and
+         *     no app in the team with this `name` (409 `/problems/app-name-taken`). The name is checked
+         *     again on approval. Plans of a `manual` product get 403 `/problems/admin-assigned-only`
+         *     (provisional, pending Elango).
+         */
+        post: operations["createAccessRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -770,9 +834,168 @@ export interface paths {
          *     right away, which moves every subscriber's rate limit, quota and API access in Kong to the
          *     new values, usually within seconds (ADR 0009). Until that run finishes subscribers keep
          *     the old limits. Kong's counters carry over, so the month's quota is not reset.
+         *
+         *     Spec 010 AC 12: turning `requiresApproval` on while the plan has active subscriptions
+         *     needs `existingSubscriptions`. Without it the server saves nothing and answers 409
+         *     `/problems/confirmation-required` with `affectedTeams` and `affectedSubscriptions`.
+         *     `keep` saves and leaves them working; `revoke` saves, marks them `revoke-pending` in the
+         *     same transaction, then deletes their Kong consumers (see `updateProductAccess`). Turning
+         *     it on with no active subscription, or turning it off, needs no confirmation. Turning it
+         *     off leaves Pending requests for the admin to decide (provisional, pending Elango).
          */
         put: operations["updatePlan"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/products/{productId}/access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A product's visibility, named teams and subscriptions */
+        get: operations["getProductAccess"];
+        /**
+         * Set a product's visibility and named teams
+         * @description Spec 010 AC 9–13. `teamIds` is required for, and only allowed with, `internal`.
+         *
+         *     A change is *restricting* when it is Open→Hidden/Internal/Manual, Hidden→Internal/Manual,
+         *     Internal→Manual, or removes teams from Internal. The affected subscriptions are the
+         *     product's `active` subscriptions whose team isn't named by the new setting, excluding
+         *     admin-created ones (`origin: admin`). If a restricting change affects any, the request
+         *     needs `existingSubscriptions`; without it the server saves nothing and answers 409
+         *     `/problems/confirmation-required` with `affectedTeams` and `affectedSubscriptions`. A
+         *     change that affects none is saved directly and ignores `existingSubscriptions`.
+         *
+         *     `keep` saves the setting; every affected key keeps working. `revoke` saves the setting
+         *     and marks the affected apps `revoke-pending` in one transaction, then deletes each app's
+         *     Kong consumer (idempotent: a missing consumer counts as deleted). Each success marks the
+         *     app `revoked`, its keys `revoked`, and emails the team's Admins and Members once. Failures
+         *     stay `revoke-pending`, are listed in `revocation.pending`, and are retried by the
+         *     `access-revoke` job with backoff and by every gateway reconcile run; the response is still
+         *     200 because the setting was saved.
+         *
+         *     Pending access requests from teams that can no longer see the product are closed as
+         *     `rejected` with a system note, and the requester is emailed (provisional, pending Elango).
+         */
+        put: operations["updateProductAccess"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/teams": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Find teams to name on an Internal product or to assign a subscription to */
+        get: operations["listAdminTeams"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a subscription for a team without seeing its key
+         * @description Spec 010 AC 11. Works on any product plan, and is the only way onto a plan of a `manual`
+         *     product (provisional, pending Elango). Bypasses `requiresApproval`. Like `createApp` it
+         *     upserts the Kong consumer, grants the plan's APIs and applies its limits, rolling back on
+         *     failure, but issues no key: the response has no key, and a team `admin` or `member`
+         *     issues it once with `createCredential`. The app has `origin: admin`. On success the
+         *     team's Admins and Members are emailed. The admin doesn't need to be a team member.
+         */
+        post: operations["createAdminSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/access-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The admin's request queue
+         * @description Default `status=pending`, oldest first (the queue). Other statuses newest first.
+         */
+        get: operations["listAdminAccessRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/access-requests/{requestId}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve a Pending request
+         * @description Spec 010 AC 3, 6, 8. The request row is locked (`select … for update`) for the whole
+         *     call, so two admins can't both decide it.
+         *     - `subscribe`: creates the app (`origin: request`) like `createApp` does in Kong (consumer,
+         *       plan APIs, limits, rolled back on failure) but issues no key. The team reveals it once
+         *       with `createCredential`.
+         *     - `plan-change`: moves the app to the plan like `changeAppPlan`, keeping its key.
+         *     On a gateway failure nothing is stored, the request stays Pending, no email is sent, and
+         *     the response is 502/503; approving again is safe. On success the request becomes
+         *     `approved` with the note, and the requester is emailed (with the note when given).
+         */
+        post: operations["approveAccessRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/access-requests/{requestId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a Pending request with a note
+         * @description Spec 010 AC 4, 8. Postgres only. The request becomes `rejected` with the note, and the
+         *     requester is emailed with it. A rejected `plan-change` leaves the app on its plan.
+         */
+        post: operations["rejectAccessRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1140,6 +1363,10 @@ export interface components {
             }[];
             /** @description Only on `/problems/openapi-lint-failed`: total number of error findings */
             errorCount?: number;
+            /** @description With `/problems/confirmation-required`: teams with affected active subscriptions */
+            affectedTeams?: number;
+            /** @description With `/problems/confirmation-required`: affected active subscriptions */
+            affectedSubscriptions?: number;
             /** @description With `/problems/team-needs-admin` from `DELETE /v1/me`: the teams where the caller is the only Admin and others are members */
             teams?: {
                 /** Format: uuid */
@@ -1675,6 +1902,23 @@ export interface components {
             id: string;
             /** Format: uuid */
             teamId: string;
+            /**
+             * @description `revoke-pending`: an admin revoked it and the gateway deletion is being retried; its
+             *     key may still work until then. `revoked`: Kong holds nothing for it (spec 010 AC 12–13).
+             * @enum {string}
+             */
+            status: "active" | "revoke-pending" | "revoked";
+            /** Format: date-time */
+            revokedAt?: string | null;
+            /**
+             * @description `self` (created by the team), `request` (an approved access request), `admin` (created by a portal admin)
+             * @enum {string}
+             */
+            origin: "self" | "request" | "admin";
+            /** @description False until the app's first key is issued. The portal offers "Reveal key" while false. */
+            keyIssued: boolean;
+            /** @description The app's Pending plan-change request, if any */
+            pendingRequest: components["schemas"]["AccessRequest"] | null;
             plan: components["schemas"]["AppPlan"];
             /** @description The caller's role in the app's team. `read-only` can't create or revoke keys. */
             role: components["schemas"]["TeamRole"];
@@ -1731,6 +1975,8 @@ export interface components {
         ChangePlanRequest: {
             /** Format: uuid */
             planId: string;
+            /** @description Required when `planId` requires approval; ignored otherwise */
+            reason?: components["schemas"]["RequestReason"];
         };
         ProductRef: {
             /** Format: uuid */
@@ -1741,12 +1987,18 @@ export interface components {
         ProductSummary: components["schemas"]["ProductRef"] & {
             /** @description Markdown */
             description: string;
+            visibility: components["schemas"]["ProductVisibility"];
             apiCount: number;
             planCount: number;
             /** Format: date-time */
             createdAt: string;
         };
         ProductDetail: components["schemas"]["ProductSummary"] & {
+            /**
+             * @description False for a `manual` product: plans can't be subscribed to or requested, only
+             *     assigned by an admin (provisional, pending Elango).
+             */
+            selfService: boolean;
             /** @description The product's APIs, by title */
             apis: components["schemas"]["ApiSummary"][];
             /** @description The product's plans, oldest first (the plan comparison table's columns) */
@@ -1781,6 +2033,13 @@ export interface components {
             monthlyQuota: number;
             /** @description APIs of the plan's product */
             apiIds: string[];
+            /**
+             * @description Subscribing, or moving a subscription onto this plan, needs an admin's approval (spec 010)
+             * @default false
+             */
+            requiresApproval: boolean;
+            /** @description `updatePlan` only (ignored by `createPlan`): the answer to `/problems/confirmation-required` */
+            existingSubscriptions?: components["schemas"]["ExistingSubscriptionsChoice"];
         };
         Plan: {
             /** Format: uuid */
@@ -1788,6 +2047,7 @@ export interface components {
             /** Format: uuid */
             productId: string;
             name: string;
+            requiresApproval: boolean;
             description: string | null;
             rateLimit: number;
             rateLimitUnit: components["schemas"]["RateLimitUnit"];
@@ -1823,6 +2083,159 @@ export interface components {
             rateLimit: number | null;
             rateLimitUnit: components["schemas"]["RateLimitUnit"] | null;
             monthlyQuota: number | null;
+        };
+        /**
+         * @description `open` everyone, even signed out (default); `hidden` signed-in users; `internal` members
+         *     of the named teams; `manual` members of teams holding an active admin-created
+         *     subscription on it. Portal admins see every product.
+         * @enum {string}
+         */
+        ProductVisibility: "open" | "hidden" | "internal" | "manual";
+        /** @enum {string} */
+        ExistingSubscriptionsChoice: "keep" | "revoke";
+        /** @description Trimmed before checking; blank after trimming is refused. Plain text, shown escaped. */
+        RequestReason: string;
+        /** @description Trimmed. Plain text, shown escaped and included in the requester's email. */
+        DecisionNote: string;
+        /** @enum {string} */
+        AccessRequestStatus: "pending" | "approved" | "rejected";
+        CreateAccessRequest: {
+            /** Format: uuid */
+            planId: string;
+            /**
+             * Format: uuid
+             * @description Defaults to the caller's current team; the portal always sends it
+             */
+            teamId?: string;
+            /** @description The subscription's name once approved; unique in the team */
+            name: string;
+            description?: string;
+            reason: components["schemas"]["RequestReason"];
+        };
+        ApproveAccessRequest: {
+            /** @description Optional; blank is stored as no note */
+            note?: components["schemas"]["DecisionNote"];
+        };
+        RejectAccessRequest: {
+            /** @description Required; blank after trimming is refused */
+            note: components["schemas"]["DecisionNote"];
+        };
+        AccessRequest: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "subscribe" | "plan-change";
+            status: components["schemas"]["AccessRequestStatus"];
+            team: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            product: components["schemas"]["ProductRef"];
+            /** @description The requested plan */
+            plan: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            /** @description `plan-change` only: the app's plan when the request was made */
+            fromPlan: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            } | null;
+            /** @description The app, once it exists (`plan-change` always; `subscribe` once approved) */
+            app: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            } | null;
+            /** @description The requested subscription name (`subscribe`) or the app's name (`plan-change`) */
+            name: string;
+            reason: string;
+            /** @description `null` if the requester's account was deleted */
+            requester: {
+                /** Format: uuid */
+                userId: string;
+                name: string;
+                /** Format: email */
+                email: string;
+            } | null;
+            /** Format: date-time */
+            submittedAt: string;
+            /** @description `null` while Pending */
+            decision: {
+                note: string | null;
+                /** Format: date-time */
+                decidedAt: string;
+                /** @description True when the portal closed it (the product became invisible to the team, or the subscription was cancelled) */
+                system: boolean;
+            } | null;
+        };
+        UpdateProductAccessRequest: {
+            visibility: components["schemas"]["ProductVisibility"];
+            /** @description Required for, and only allowed with, `internal`. Replaces the named teams. */
+            teamIds?: string[];
+            existingSubscriptions?: components["schemas"]["ExistingSubscriptionsChoice"];
+        };
+        AdminTeam: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            personal: boolean;
+            memberCount: number;
+            /**
+             * Format: email
+             * @description For a personal team, its member's email (personal teams are all named `Personal`); otherwise null
+             */
+            ownerEmail: string | null;
+        };
+        ProductAccess: {
+            /** Format: uuid */
+            productId: string;
+            visibility: components["schemas"]["ProductVisibility"];
+            /** @description The named teams (`internal` only; empty otherwise), by name */
+            teams: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+                personal: boolean;
+            }[];
+            /** @description The product's subscriptions that aren't `revoked`, plus those revoked in the last 30 days, by team name */
+            subscriptions: {
+                /** Format: uuid */
+                appId: string;
+                name: string;
+                team: {
+                    /** Format: uuid */
+                    id: string;
+                    name: string;
+                };
+                plan: {
+                    /** Format: uuid */
+                    id: string;
+                    name: string;
+                };
+                /** @enum {string} */
+                status: "active" | "revoke-pending" | "revoked";
+                /** @enum {string} */
+                origin: "self" | "request" | "admin";
+            }[];
+            /** @description Result of this save's revocations (all zero on GET or `keep`) */
+            revocation: {
+                revoked: number;
+                /** @description Still `revoke-pending` for this product; retried automatically */
+                pending: number;
+            };
+        };
+        CreateAdminSubscriptionRequest: {
+            /** Format: uuid */
+            planId: string;
+            /** Format: uuid */
+            teamId: string;
+            /** @description Unique in the team */
+            name: string;
+            description?: string;
         };
     };
     responses: {
@@ -2019,6 +2432,7 @@ export interface components {
         ProductSlug: components["schemas"]["Slug"];
         ProductId: string;
         PlanId: string;
+        RequestId: string;
     };
     requestBodies: never;
     headers: never;
@@ -2614,10 +3028,22 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
-            403: components["responses"]["TeamForbiddenOrNotVerified"];
             /**
-             * @description One of `apiIds` is not a published API, `planId` is not a product plan, or the caller
-             *     isn't a member of `teamId`
+             * @description `/problems/team-role-forbidden`, `/problems/email-not-verified` (see
+             *     `TeamForbiddenOrNotVerified`) or `/problems/admin-assigned-only` (the plan is on a
+             *     `manual` product). Nothing was created, in Kong or the portal.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description One of `apiIds` is not a published API, `planId` is not a product plan, the plan's
+             *     product isn't visible to the caller, or the caller isn't a member of `teamId`
              */
             404: {
                 headers: {
@@ -2628,9 +3054,9 @@ export interface operations {
                 };
             };
             /**
-             * @description The team already has an app with this name (`/problems/app-name-taken`), or the
-             *     API's gateway connection is disabled (`/problems/gateway-disabled`). When disabled,
-             *     nothing is created in Kong or Postgres.
+             * @description The team already has an app with this name (`/problems/app-name-taken`), the plan
+             *     requires approval (`/problems/approval-required`), or the API's gateway connection is
+             *     disabled (`/problems/gateway-disabled`). Nothing is created in Kong or Postgres.
              */
             409: {
                 headers: {
@@ -2689,6 +3115,15 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["TeamRoleForbidden"];
             404: components["responses"]["NotFound"];
+            /** @description The app's revocation is still being retried (`/problems/revoke-pending`). Nothing changed. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
             502: components["responses"]["GatewayRejected"];
             503: components["responses"]["GatewayUnavailable"];
         };
@@ -2717,10 +3152,20 @@ export interface operations {
                     "application/json": components["schemas"]["App"];
                 };
             };
+            /** @description The target plan requires approval; a Pending access request was created */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRequest"];
+                };
+            };
             /**
              * @description `/problems/validation` with pointer `/planId`: the plan belongs to another product, or
              *     the app is on the built-in `Unlimited` plan (spec 004 apps can't move onto a product
-             *     plan; subscribe instead)
+             *     plan; subscribe instead). Pointer `/reason`: missing, blank or over 1000 characters
+             *     when the plan requires approval.
              */
             400: {
                 headers: {
@@ -2733,7 +3178,12 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["TeamForbiddenOrNotVerified"];
             404: components["responses"]["NotFound"];
-            /** @description The connection is disabled (`/problems/gateway-disabled`) or missing (`/problems/gateway-not-connected`). Nothing changed. */
+            /**
+             * @description The connection is disabled (`/problems/gateway-disabled`) or missing
+             *     (`/problems/gateway-not-connected`), the app already has a Pending plan-change request
+             *     (`/problems/request-pending`), or the app isn't active (`/problems/app-revoked`).
+             *     Nothing changed.
+             */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2852,6 +3302,87 @@ export interface operations {
             };
             502: components["responses"]["GatewayRejected"];
             503: components["responses"]["GatewayUnavailable"];
+        };
+    };
+    listAccessRequests: {
+        parameters: {
+            query?: {
+                teamId?: string;
+                status?: components["schemas"]["AccessRequestStatus"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requests, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AccessRequest"][];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description Pending request created */
+            201: {
+                headers: {
+                    /** @description /api/v1/access-requests?teamId={teamId} */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRequest"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            /**
+             * @description `/problems/team-role-forbidden`, `/problems/email-not-verified` or
+             *     `/problems/admin-assigned-only`. Nothing was created.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `/problems/request-pending`, `/problems/approval-not-required` or
+             *     `/problems/app-name-taken`. Nothing was created.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     listTeams: {
@@ -3290,7 +3821,279 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-            /** @description Another plan of this product has this name (`/problems/plan-name-taken`) */
+            /**
+             * @description Another plan of this product has this name (`/problems/plan-name-taken`), or the
+             *     change needs `existingSubscriptions` (`/problems/confirmation-required`, with
+             *     `affectedTeams` and `affectedSubscriptions`). Nothing was saved.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    getProductAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The product's access settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductAccess"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateProductAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProductAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductAccess"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description The product, or one of `teamIds`, doesn't exist (`/problems/not-found`, pointer `/teamIds/<n>`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `/problems/confirmation-required`, with `affectedTeams` and `affectedSubscriptions`. Nothing was saved. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    listAdminTeams: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive match on the team name or a member's email */
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Teams, by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AdminTeam"][];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createAdminSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAdminSubscriptionRequest"];
+            };
+        };
+        responses: {
+            /** @description Created, with no key */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["App"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description `planId` or `teamId` doesn't exist (`/problems/not-found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description `/problems/app-name-taken`, `/problems/gateway-disabled` or `/problems/gateway-not-connected`. Nothing was created. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["GatewayRejected"];
+            503: components["responses"]["GatewayUnavailable"];
+        };
+    };
+    listAdminAccessRequests: {
+        parameters: {
+            query?: {
+                status?: components["schemas"]["AccessRequestStatus"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requests */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["AccessRequest"][];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    approveAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: components["parameters"]["RequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["ApproveAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description Approved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRequest"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `/problems/request-decided` (no longer Pending), `/problems/app-name-taken` (the team
+             *     created an app with this name meanwhile; the request stays Pending and can be
+             *     rejected), `/problems/gateway-disabled` or `/problems/gateway-not-connected`.
+             *     Nothing changed.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            502: components["responses"]["GatewayRejected"];
+            503: components["responses"]["GatewayUnavailable"];
+        };
+    };
+    rejectAccessRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: components["parameters"]["RequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description Rejected */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessRequest"];
+                };
+            };
+            /** @description `/problems/validation`, pointer `/note`: missing, blank or over 1000 characters. The request stays Pending. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description `/problems/request-decided`. Nothing changed. */
             409: {
                 headers: {
                     [name: string]: unknown;

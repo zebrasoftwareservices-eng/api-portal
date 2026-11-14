@@ -27,7 +27,7 @@ export default async function Page({
       client.GET('/v1/apis/{slug}', { params: { path: { slug } } }),
       client.GET('/v1/apis/{slug}/changelog', { params: { path: { slug } } }),
     ]);
-    if (detail.error?.status === 404) notFound();
+    if (detail.error?.status === 404 || changelog.error?.status === 404) notFound();
     if (!detail.data || !changelog.data)
       throw new Error("We couldn't load the changelog. Try again in a moment.");
     api = detail.data;

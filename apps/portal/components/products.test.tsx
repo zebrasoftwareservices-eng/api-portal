@@ -37,6 +37,8 @@ vi.mock('./team-context', () => ({
   useTeams: () => ({ current: { id: 'team', name: 'Payments', role: m.role } }),
 }));
 const product: Product = {
+  visibility: 'open',
+  selfService: true,
   id: 'product',
   name: 'Orders',
   slug: 'orders',
@@ -76,6 +78,7 @@ product.plans = [
     rateLimitUnit: 'second',
     monthlyQuota: 10000,
     quotaPeriod: 'calendar-month-utc',
+    requiresApproval: false,
     apis: [product.apis[0]!],
     createdAt: '',
   },
@@ -88,11 +91,16 @@ product.plans = [
     rateLimitUnit: 'minute',
     monthlyQuota: 20000,
     quotaPeriod: 'calendar-month-utc',
+    requiresApproval: false,
     apis: product.apis,
     createdAt: '',
   },
 ];
 const app: App = {
+  status: 'active',
+  origin: 'self',
+  keyIssued: true,
+  pendingRequest: null,
   id: 'app',
   teamId: 'team',
   role: 'member',
@@ -167,7 +175,11 @@ it('hides subscription controls for read-only members', async () => {
       <ProductActions product={product} />
     </>,
   );
-  expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  expect(
+    screen
+      .getAllByRole('button')
+      .every((button) => button.hasAttribute('disabled')),
+  ).toBe(true);
   expect(
     screen.queryByRole('link', { name: /Subscribe to/ }),
   ).not.toBeInTheDocument();
@@ -222,6 +234,7 @@ it('places all server pointers beside their fields and submits numeric limits th
         rateLimit: 5,
         rateLimitUnit: 'second',
         monthlyQuota: 10000,
+        requiresApproval: false,
         apiIds: ['orders', 'returns'],
       },
     }),

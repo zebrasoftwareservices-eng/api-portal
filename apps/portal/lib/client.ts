@@ -32,7 +32,8 @@ api.use({
       if (
         !problem.type?.endsWith('/email-not-verified') &&
         !problem.type?.endsWith('/invalid-password') &&
-        !problem.type?.endsWith('/team-role-forbidden')
+        !problem.type?.endsWith('/team-role-forbidden') &&
+        !problem.type?.endsWith('/admin-assigned-only')
       )
         window.location.assign('/not-found');
     }

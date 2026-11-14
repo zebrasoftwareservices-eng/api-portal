@@ -357,10 +357,10 @@ desired-state loop skips non-active apps, so a revoked key can never come back.
 - [ ] [backend] Product access + plan `requiresApproval`: confirmation-required flow, named teams, `closeInvisibleRequests`, `GET /v1/admin/teams`, `POST /v1/admin/subscriptions` (AC 10–12)
 - [ ] [backend] Revocation: `revokeApps`, `access-revoke` pg-boss queue with backoff, reconcile skips/deletes non-active apps, once-only revoke email (AC 12–13)
 - [ ] [backend] Mail templates and id-based payloads: access-approved (with note), access-rejected (with note), subscription-assigned, subscription-revoked; regenerate `packages/sdk`
-- [ ] [frontend] Product page: Request access dialog (name, reason counter, 400/409 messages), no subscribe for `selfService: false`, `notFound()` on 404 for product and API pages (AC 1, 2, 9–11)
-- [ ] [frontend] Team views: Requests list with status and note, app status badges, Pending plan-change banner, plan-change dialog reason + 202 result, Reveal key while `keyIssued` is false (AC 3, 4, 7, 8, 11)
-- [ ] [frontend] Admin request queue with approve note ("Note to the requester (included in the email)") and required reject note; gateway-unavailable error (AC 3, 4, 6)
-- [ ] [frontend] Admin product Access panel, plan "Requires approval" toggle, Keep/Revoke confirmation, revoke-pending notice, Assign to a team; demo fixtures stay Open (AC 10–13)
+- [x] [frontend] Product page: Request access dialog (name, reason counter, 400/409 messages), no subscribe for `selfService: false`, `notFound()` on 404 for product and API pages (AC 1, 2, 9–11)
+- [x] [frontend] Team views: Requests list with status and note, app status badges, Pending plan-change banner, plan-change dialog reason + 202 result, Reveal key while `keyIssued` is false (AC 3, 4, 7, 8, 11)
+- [x] [frontend] Admin request queue with approve note ("Note to the requester (included in the email)") and required reject note; gateway-unavailable error (AC 3, 4, 6)
+- [x] [frontend] Admin product Access panel, plan "Requires approval" toggle, Keep/Revoke confirmation, revoke-pending notice, Assign to a team; demo fixtures stay Open (AC 10–13)
 - [ ] [qa] Integration: visibility matrix over every product/API/plan endpoint (anonymous, outsider, insider, admin), 403 matrix for admin endpoints and read-only (AC 5, 9–11)
 - [ ] [qa] Integration with real Kong: approve → key works within plan limits; reject; Kong down on approve; plan-change keep key and limits; concurrent approve (AC 1–4, 6–8)
 - [ ] [qa] Integration with real Kong: Manual assignment, keep vs revoke (401 after revoke), partial failure + retry idempotence + one email per team, reconcile doesn't resurrect (AC 11–13)
@@ -374,6 +374,8 @@ Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access
 - An invisible product is the standard 404 page, never a locked card. Admins alone see Hidden/Internal/Manual badges in the catalog. New components: `StatusBadge`, `CountedTextarea`, `VisibilityBadge`, `TeamCombobox`. Exact copy, email text, every state, the keyboard path and the 375/1280px layouts are in the design file.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend: implemented approval requests, team request history, subscription reveal/revocation states, the admin request queue, and product visibility/assignment with Keep/Revoke confirmation. Existing product/API 404 handling is retained and changelog 404 handling is completed; the API-only demo remains unchanged. Portal lint/typecheck and all 329 package tests pass; generated SDK lint/typecheck/test pass (no SDK test files). The socket-based ingress tests require an escalated run because sandbox listening sockets fail with EPERM.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`

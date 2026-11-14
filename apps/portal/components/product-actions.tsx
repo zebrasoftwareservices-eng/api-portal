@@ -11,6 +11,7 @@ import { useResource } from './use-resource';
 import { PlanRadios, PlanTable, type Product } from './plans';
 import { Field } from './field';
 import { ProblemAlert } from './problem-alert';
+import { RequestAccess } from './access-requests';
 import { ResendVerification } from './account-shared';
 export function ChangeProblem({
   problem,
@@ -55,6 +56,12 @@ export function ChangeProblem({
           </>
         ) : problem.type.endsWith('/team-role-forbidden') ? (
           'Your role in this team may have changed. Nothing changed.'
+        ) : code === 'request-pending' ? (
+          'This subscription already has a plan change waiting.'
+        ) : code === 'app-revoked' ? (
+          "This subscription was revoked, so its plan can't change."
+        ) : code === 'admin-assigned-only' ? (
+          'Plans for this product are set by your portal admin.'
         ) : problem.status === 503 ? (
           `We couldn't reach the API gateway, so ${unchanged}. Try again in a moment.`
         ) : problem.status === 502 ? (
@@ -69,10 +76,19 @@ export function ChangeProblem({
 }
 export function ProductActions({ product }: { product: Product }) {
   const { user } = usePortal();
-  const { current } = useTeams();
+  const { current, teams = [] } = useTeams();
   const apps = useResource(() =>
     user
       ? api.GET('/v1/apps', { params: { query: { teamId: current?.id } } })
+      : Promise.resolve({ data: { items: [] } }),
+  );
+  const [requestPlan, setRequestPlan] = useState<Product['plans'][number]>();
+  const [sentPlans, setSentPlans] = useState<string[]>([]);
+  const requests = useResource(() =>
+    user && current
+      ? api.GET('/v1/access-requests', {
+          params: { query: { teamId: current.id } },
+        })
       : Promise.resolve({ data: { items: [] } }),
   );
   const scope = useRef(current?.id);
@@ -80,6 +96,8 @@ export function ProductActions({ product }: { product: Product }) {
     if (scope.current !== current?.id) {
       scope.current = current?.id;
       void apps.reload();
+      setSentPlans([]);
+      void requests.reload();
     }
   }, [current?.id, apps.reload]);
   const existing =
@@ -88,8 +106,57 @@ export function ProductActions({ product }: { product: Product }) {
     <>
       <PlanTable
         product={product}
-        action={(p) =>
-          current?.role === 'read-only' ? null : (
+        action={(p) => {
+          if (product.selfService === false) return null;
+          if (
+            current?.role === 'read-only' &&
+            !teams.some((t) => t.role !== 'read-only')
+          )
+            return (
+              <Button disabled>
+                {p.requiresApproval ? 'Request access' : 'Subscribe'}
+              </Button>
+            );
+          if (p.requiresApproval) {
+            const isPending =
+              sentPlans.includes(p.id) ||
+              requests.data?.items.some(
+                (r) => r.plan.id === p.id && r.status === 'pending',
+              );
+            return (
+              <div className="stack">
+                {user ? (
+                  isPending &&
+                  teams.filter((t) => t.role !== 'read-only').length <= 1 ? (
+                    <p>Request pending</p>
+                  ) : (
+                    <Button
+                      variant="secondary"
+                      onClick={() => setRequestPlan(p)}
+                    >
+                      Request access
+                    </Button>
+                  )
+                ) : (
+                  <a
+                    className="button secondary"
+                    href={`/sign-in?next=${encodeURIComponent(`/products/${product.slug}`)}`}
+                  >
+                    Request access
+                  </a>
+                )}
+                {isPending && (
+                  <p>
+                    Your team has a pending request ·{' '}
+                    <a id={`pending-${p.id}`} href="/dashboard#requests">
+                      View requests
+                    </a>
+                  </p>
+                )}
+              </div>
+            );
+          }
+          return (
             <a
               className="button"
               href={
@@ -100,13 +167,33 @@ export function ProductActions({ product }: { product: Product }) {
             >
               {user ? `Subscribe to ${p.name}` : 'Sign in to subscribe'}
             </a>
-          )
-        }
+          );
+        }}
       />
+      {product.selfService === false && (
+        <p className="muted">
+          Access to this product is set up by your portal admin.
+        </p>
+      )}
+      {requestPlan && (
+        <RequestAccess
+          plan={requestPlan}
+          productName={product.name}
+          open
+          onClose={() => setRequestPlan(undefined)}
+          onSent={() => {
+            const id = requestPlan.id;
+            setSentPlans((p) => [...p, id]);
+            requestAnimationFrame(() =>
+              document.getElementById(`pending-${id}`)?.focus(),
+            );
+          }}
+        />
+      )}
       {current?.role === 'read-only' && (
         <p>
           You have Read-only access to {current.name}. Ask a team Admin or
-          Member to subscribe.
+          Member to request access.
         </p>
       )}
       {user && apps.error && (
@@ -218,6 +305,21 @@ export function Subscribe({
         You have Read-only access to {current.name}, so you can&apos;t subscribe
         here. Switch to another team or ask a team Admin.
       </p>
+    );
+  if (product.selfService === false)
+    return <p>Access to this product is set up by your portal admin.</p>;
+  if (product.plans.find((p) => p.id === planId)?.requiresApproval)
+    return (
+      <>
+        <p>This plan requires approval.</p>
+        <RequestAccess
+          plan={product.plans.find((p) => p.id === planId)!}
+          productName={product.name}
+          open
+          onClose={() => router.push(`/products/${product.slug}`)}
+          onSent={() => router.push('/dashboard#requests')}
+        />
+      </>
     );
   if (!product.plans.length)
     return (

@@ -1,0 +1,70 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+.access-status {
+  gap: 0.25rem;
+}
+.access-approved,
+.access-active {
+  background: var(--portal-success-subtle);
+  color: var(--portal-success);
+}
+.access-rejected,
+.access-revoked {
+  background: var(--portal-destructive-subtle);
+  color: var(--destructive);
+}
+.access-revoke-pending {
+  background: var(--portal-warning-subtle);
+  color: var(--portal-warning);
+}
+.access-pending {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.access-note {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.access-dialog {
+  max-width: 560px;
+}
+.team-search-results {
+  display: flex;
+  flex-direction: column;
+  max-height: 12rem;
+  overflow: auto;
+}
+.access-card {
+  overflow-wrap: anywhere;
+}
+.access-ready {
+  background: var(--portal-success-subtle);
+}
+@media (max-width: 600px) {
+  .access-dialog {
+    inset: 0;
+    transform: none;
+    width: 100%;
+    max-width: none;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .access-dialog .actions {
+    flex-direction: column-reverse;
+    position: sticky;
+    bottom: 0;
+    background: var(--background);
+  }
+  .access-dialog .actions button,
+  .access-card .actions button {
+    min-height: 44px;
+    width: 100%;
+  }
+}
+
+.team-search-results[hidden] {
+  display: none;
+}
+.team-search-results [role='listbox'] {
+  display: flex;
+  flex-direction: column;
+}

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Card, EmptyState, PageHeader } from '@portal/ui';
+import { VisibilityBadge } from './access-shared';
 import type { ProductSummary } from './plans';
 import type { Api, User } from '../lib/types';
 export function CatalogView({
@@ -48,6 +49,9 @@ export function CatalogView({
             {products.map((p) => (
               <a className="card stack" key={p.id} href={`/products/${p.slug}`}>
                 <h3>{p.name}</h3>
+                {user?.role === 'admin' && (
+                  <VisibilityBadge visibility={p.visibility} />
+                )}
                 <p className="clamp muted">
                   {p.description
                     .replace(/[#*_`~]/g, '')
