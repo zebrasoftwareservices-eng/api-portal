@@ -483,7 +483,7 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
     .getByRole('button', { name: 'Assign to a team', exact: true })
     .click();
   const assignment = adminPage.getByRole('dialog');
-  await assignment.getByRole('combobox').fill(email);
+  await assignment.getByRole('combobox', { name: 'Search teams…' }).fill(email);
   await assignment
     .getByRole('option', {
       name: new RegExp(email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
