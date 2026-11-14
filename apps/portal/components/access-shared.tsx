@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
-import { useId, useState, useEffect, type ReactNode } from 'react';
+import {
+  useId,
+  useState,
+  useEffect,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { AlertDialog, Button, Dialog, Textarea } from '@portal/ui';
 import type { components } from '@portal/sdk';
 import { api } from '../lib/client';
@@ -103,6 +109,7 @@ export function AccessDialog({
   onClose,
   children,
   pending = false,
+  returnFocusRef,
 }: {
   title: string;
   description: string;
@@ -110,6 +117,7 @@ export function AccessDialog({
   onClose: () => void;
   children: ReactNode;
   pending?: boolean;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }) {
   return (
     <Dialog.Root
@@ -122,6 +130,12 @@ export function AccessDialog({
         <Dialog.Overlay className="overlay" />
         <Dialog.Content
           className="dialog stack access-dialog"
+          onCloseAutoFocus={(e) => {
+            if (returnFocusRef?.current?.isConnected) {
+              e.preventDefault();
+              returnFocusRef.current.focus();
+            }
+          }}
           onEscapeKeyDown={(e) => {
             if (pending) e.preventDefault();
           }}

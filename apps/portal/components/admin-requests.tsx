@@ -54,6 +54,7 @@ export function AdminRequests() {
   const [validation, setValidation] = useState('');
   const [pending, setPending] = useState(false);
   const lock = useRef(false);
+  const decisionTrigger = useRef<HTMLButtonElement>(null);
   const alert = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (problem || validation) alert.current?.focus();
@@ -90,6 +91,7 @@ export function AdminRequests() {
             ? `Approved. ${selected.request.team.name} can now reveal their key.`
             : `Rejected. We emailed ${selected.request.requester?.email || 'the requester'}.`,
         );
+        decisionTrigger.current = null;
         setSelected(undefined);
         await r.reload();
         window.dispatchEvent(new Event('access-requests-changed'));
@@ -179,7 +181,8 @@ export function AdminRequests() {
                     <Button
                       variant={approve ? 'default' : 'secondary'}
                       key={String(approve)}
-                      onClick={() => {
+                      onClick={(e) => {
+                        decisionTrigger.current = e.currentTarget;
                         setSelected({ request: item, approve });
                         setNote('');
                         setProblem(undefined);
@@ -217,6 +220,7 @@ export function AdminRequests() {
           }
           open
           pending={pending}
+          returnFocusRef={decisionTrigger}
           onClose={() => setSelected(undefined)}
         >
           <form
@@ -262,6 +266,7 @@ export function AdminRequests() {
                 <Button
                   type="button"
                   onClick={() => {
+                    decisionTrigger.current = null;
                     setSelected(undefined);
                     void r.reload();
                   }}

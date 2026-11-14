@@ -38,6 +38,13 @@
   }
   .plan-cards {
     display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .plan-cards > * {
+    min-width: 0;
+    width: 100%;
   }
   .plan-cards .button {
     width: 100%;

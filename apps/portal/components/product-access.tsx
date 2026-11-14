@@ -316,9 +316,12 @@ function AssignSubscription({
             message={
               problem.type.endsWith('/app-name-taken')
                 ? `${teams[0]?.name} already has a subscription called ${name}. Choose another name.`
-                : problem.status === 502 || problem.status === 503
-                  ? "The gateway is unavailable, so the subscription wasn't created. Try again once it's back."
-                  : "We couldn't create the subscription. Try again."
+                : problem.status === 409 &&
+                    problem.type.endsWith('/team-not-named')
+                  ? 'Add the team to this product first'
+                  : problem.status === 502 || problem.status === 503
+                    ? "The gateway is unavailable, so the subscription wasn't created. Try again once it's back."
+                    : "We couldn't create the subscription. Try again."
             }
           />
         )}

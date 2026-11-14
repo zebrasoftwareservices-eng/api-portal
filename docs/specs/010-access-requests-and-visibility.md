@@ -375,11 +375,11 @@ desired-state loop skips non-active apps, so a revoked key can never come back.
 - [ ] [backend] Fix: Plan PUT that omits `requiresApproval` keeps the current value instead of turning approval off (`products.ts:60`)
 - [ ] [backend] Fix: Treat Manual→Internal as restricting so Keep/Revoke appears for unnamed teams holding assignments (`product-access.ts:183`)
 - [ ] [backend] Fix: `POST /v1/admin/subscriptions` on an Internal product for a team that isn't named returns 409 `/problems/team-not-named` (`product-access.ts:281`)
-- [ ] [frontend] Fix: Assign dialog shows the 409 `team-not-named` message "Add the team to this product first"
+- [x] [frontend] Fix: Assign dialog shows the 409 `team-not-named` message "Add the team to this product first"
 - [ ] [backend] Fix: `GET /v1/products` loads the viewer once per request (`products.ts:156`, `:159`)
 - [ ] [backend] Fix: One-line Build note on why `testcontainers` was added to `apps/server` dev dependencies
-- [ ] [frontend] Fix: Mobile plan cards overflow at 390px
-- [ ] [frontend] Fix: Escape from the approval dialog returns focus to the Approve button
+- [x] [frontend] Fix: Mobile plan cards overflow at 390px
+- [x] [frontend] Fix: Escape from the approval dialog returns focus to the Approve button
 ## UX  _(ui-designer)_
 Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access-requests-and-visibility.md). No new tokens.
 
@@ -388,6 +388,9 @@ Design: [docs/design/010-access-requests-and-visibility.md](../design/010-access
 - An invisible product is the standard 404 page, never a locked card. Admins alone see Hidden/Internal/Manual badges in the catalog. New components: `StatusBadge`, `CountedTextarea`, `VisibilityBadge`, `TeamCombobox`. Exact copy, email text, every state, the keyboard path and the 375/1280px layouts are in the design file.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+### Frontend review fixes — 2026-11-14
+Assignment now keeps the dialog and fields on 409 `/problems/team-not-named` and shows “Add the team to this product first”. Mobile plan cards and their caption stack at full width with wrapping; cancelling or escaping an approval dialog restores its originating button, while successful decisions retain the queue-heading focus path. Added assignment-error, second-card Escape/Cancel focus, and 375/390px CSS-cascade regressions; portal lint, typecheck and all **338/338** tests pass. CSS tests verify responsive rules without a layout engine; browser verification remains with QA. The guard flags earlier committed branch files and the parallel backend developer's files; the standing authorization permits a commit of only this round's explicit portal/spec/log paths.
 
 ### Backend revocation fix — 2026-11-14
 Removed the admin-origin exclusion from visibility and requires-approval confirmation/revocation, matching AC 12 across self, request and admin subscriptions. Regression tests failed before the fix; isolated Postgres/Kong tests now cover Open→Hidden and Manual→Open→Hidden assignment counts, working keys before restriction, 401 after Revoke, revoked rows/credentials, retry/reconcile persistence and a single revocation email job per assigned subscription/team; the approval test also verifies Keep preserves access. Server lint, typecheck and all **284/284** tests pass with Docker-enabled Testcontainers; no browser, workspace suite, quickstart or default `portal` Docker project was used. Elango authorized committing only the nine explicit backend/spec paths despite the guard flagging earlier branch files; the two minor UAT findings remain open.
@@ -433,8 +436,8 @@ Ownership guard limitation: `node scripts/factory.mjs guard qa-tester` flags pri
   - Verified on rebuilt `043b2a8`: anonymous Hidden, Internal and Manual product/API/changelog pages and unknown slugs return HTTP 404; signed-in Hidden pages return HTTP 200. Confirmed with `linear bug 010 done`; no Linear issue exists or was created, per Elango.
 - [x] Revoke-on-restrict leaves admin-assigned subscription keys working (major)
   - Browser retest verified visibility and approval confirmations include admin assignments; Keep retains 200, Revoke/retry returns 401, assigned subscriptions show Revoked and notifications arrive once per observed subscription. Confirmed with `linear bug 010 done`; no Linear issue, per Elango.
-- [ ] Mobile plan cards and caption remain in narrow side-by-side columns at 390px with 20px horizontal overflow (minor); request/reveal journey still works. Evidence: `docs/uat/010/mobile-plan-layout-fail.png`.
-- [ ] Escape from the approval dialog returns focus to BODY instead of the originating Approve button (minor); Tab restarts at Skip to content, but approval remains possible.
+- [x] Mobile plan cards and caption remain in narrow side-by-side columns at 390px with 20px horizontal overflow (minor); request/reveal journey still works. Evidence: `docs/uat/010/mobile-plan-layout-fail.png`.
+- [x] Escape from the approval dialog returns focus to BODY instead of the originating Approve button (minor); Tab restarts at Skip to content, but approval remains possible.
 
 ## User testing  _(user-tester)_
 

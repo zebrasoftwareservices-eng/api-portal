@@ -12,6 +12,8 @@ import { ProductActions } from './product-actions';
 import type { Product } from './plans';
 import type { AccessRequest } from './access-shared';
 import type { App } from '../lib/types';
+import { readFileSync } from 'node:fs';
+import { PlanTable } from './plans';
 const m = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),
@@ -296,6 +298,79 @@ it('requires an admin rejection note before calling the server', async () => {
   );
   expect(m.post).not.toHaveBeenCalled();
 });
+it('returns focus to the originating Approve button after Escape and Cancel', async () => {
+  const actor = userEvent.setup();
+  m.get.mockResolvedValue({
+    data: { items: [request, { ...request, id: 'second', name: 'second' }] },
+  });
+  render(<AdminRequests />);
+  const triggers = await screen.findAllByRole('button', { name: 'Approve…' });
+  const trigger = triggers[1]!;
+  await actor.click(trigger);
+  const note = screen.getByLabelText(
+    'Note to the requester (included in the email)',
+  );
+  await waitFor(() => expect(note).toHaveFocus());
+  await actor.keyboard('{Escape}');
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+  );
+  await waitFor(() => expect(trigger).toHaveFocus());
+  await actor.keyboard('{Enter}');
+  await actor.click(screen.getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(trigger).toHaveFocus());
+  expect(m.post).not.toHaveBeenCalled();
+});
+it.each([375, 390])(
+  'stacks full-width plan cards and caption at %ipx',
+  (width) => {
+    // jsdom has no layout engine: apply the matching media rules explicitly and
+    // check their computed cascade, including the global stack display rule.
+    const source = document.createElement('style');
+    source.textContent = readFileSync(
+      'app/products/[slug]/products.css',
+      'utf8',
+    );
+    document.head.append(source);
+    const mobile = document.createElement('style');
+    mobile.textContent =
+      '.stack { display: grid; gap: 16px; }\n' +
+      Array.from(source.sheet!.cssRules)
+        .flatMap((rule) => {
+          if (!('conditionText' in rule)) return [];
+          const media = rule as CSSMediaRule;
+          const maxWidth = /max-width:\s*(\d+)px/.exec(media.conditionText);
+          return maxWidth && width <= Number(maxWidth[1])
+            ? Array.from(media.cssRules).map((child) => child.cssText)
+            : [];
+        })
+        .join('\n');
+    document.head.append(mobile);
+    try {
+      const { container } = render(
+        <PlanTable
+          product={product}
+          action={() => <button>Subscribe</button>}
+        />,
+      );
+      const cards = container.querySelector<HTMLElement>('.plan-cards')!;
+      expect(getComputedStyle(cards).display).toBe('flex');
+      expect(getComputedStyle(cards).flexDirection).toBe('column');
+      expect(getComputedStyle(cards).overflowWrap).toBe('anywhere');
+      expect(
+        getComputedStyle(container.querySelector('.plan-comparison')!).display,
+      ).toBe('none');
+      expect(cards.children).toHaveLength(3);
+      for (const child of cards.children) {
+        expect(getComputedStyle(child).width).toBe('100%');
+        expect(getComputedStyle(child).minWidth).toBe('0');
+      }
+    } finally {
+      source.remove();
+      mobile.remove();
+    }
+  },
+);
 it('defaults confirmation to keep keys and submits the selected revoke choice only on confirmation', async () => {
   const actor = userEvent.setup();
   m.put
@@ -464,6 +539,45 @@ it('assigns a Manual product with keyboard team selection and leaves key reveal 
       body: { teamId: 'team', planId: 'basic', name: 'acme-payments' },
     }),
   );
+  expect(m.reveal).not.toHaveBeenCalled();
+});
+it('keeps assignment fields and explains when the team must first be named on the product', async () => {
+  const actor = userEvent.setup();
+  const defaultGet = m.get.getMockImplementation()!;
+  m.get.mockImplementation((path: string) =>
+    path.endsWith('/access')
+      ? Promise.resolve({ data: { ...access, visibility: 'manual' } })
+      : defaultGet(path),
+  );
+  m.post.mockResolvedValue({
+    error: {
+      type: '/problems/team-not-named',
+      status: 409,
+      title: 'Conflict',
+    },
+  });
+  render(
+    <ProductAccess
+      product={{ ...product, visibility: 'manual', selfService: false }}
+    />,
+  );
+  await actor.click(
+    await screen.findByRole('button', { name: 'Assign to a team' }),
+  );
+  await actor.click(screen.getByRole('combobox', { name: 'Search teams…' }));
+  await screen.findByRole('option', { name: 'Acme' });
+  await actor.keyboard('{ArrowDown}{Enter}');
+  await actor.click(
+    screen.getByRole('button', { name: 'Create subscription' }),
+  );
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Add the team to this product first',
+  );
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(screen.getByLabelText('Subscription name')).toHaveValue(
+    'acme-payments',
+  );
+  expect(screen.getByLabelText('Plan')).toHaveValue('basic');
   expect(m.reveal).not.toHaveBeenCalled();
 });
 it('does not reveal an approved key to a read-only member', async () => {
