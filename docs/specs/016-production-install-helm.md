@@ -1,7 +1,7 @@
 ---
 id: 016
 title: Production install — hardened Compose, Helm chart, backups and upgrades
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-13
 linear: JSO-244
@@ -422,7 +422,10 @@ Kong objects; reconcile keeps running every 5 minutes as now and is idempotent.
 - [ ] [qa] Production Compose on a Linux host with a real Kong: HTTPS via the Caddy profile, `NODE_ENV=production`, no host ports for Postgres/server, no Kong container, no sample API, claim and connect Kong (AC 1).
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/NNN-*.md`
+No UI change: no new or changed screens, flows, states, copy or tokens (Out of scope). The
+`[frontend]` tasks are the portal container only: runtime `SERVER_URL` proxying, `GET /healthz`,
+`PORTAL_TRUSTED_PROXIES` and the hardened image. Design note:
+[`docs/design/016-production-install-helm.md`](../design/016-production-install-helm.md).
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
