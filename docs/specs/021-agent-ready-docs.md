@@ -1,7 +1,7 @@
 ---
 id: 021
 title: Agent-ready docs — Markdown pages, llms.txt, spec downloads and code samples
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
@@ -299,38 +299,14 @@ Local command logs: `/tmp/spec021-{lint,typecheck,test,e2e,agent-browser}.log`.
 
 ## User testing  _(user-tester)_
 
-2026-11-15: Orca browser UAT on QA's running http://localhost:3020 stack; desktop 1280×900, mobile 390×844, plus keyboard journey. Current evidence: [UAT report](../uat/021/report.md).
+2026-11-15: Focused retest on commit `d0a92bee1f3049fccb0617811df28b34d03d512b` using Orca's embedded browser at http://localhost:3020, desktop 1280×900 and mobile 390×844. Previously passing journeys were not repeated; current evidence: [UAT report](../uat/021/report.md).
 
-| User story | Result | Evidence |
+| User story / failed check | Result | Evidence |
 | --- | --- | --- |
-| Discover public plain-text docs | PASS (anonymous) | “# Developer Portal”; all 15 public catalog APIs and all 30 document links returned 200. |
-| Read operations as Markdown | PASS | “# Orders QA 2.0.0”; GET/POST operations, `id | path | yes | string`, and “Responses: 200”. |
-| Download viewed API versions | PASS | Distinct 1.0.0/2.0.0 JSON, latest 2.0.0; “Download spec” started the expected file on mobile and keyboard. Original-byte/YAML checks remain QA-covered. |
-| Choose language samples | PASS | JavaScript Fetch, Python Requests and curl show the Kong URL, method/path, placeholder key and POST body. |
-| Use document controls on mobile and keyboard | PASS | Mobile full-width Download spec, no horizontal overflow; Tab/Enter/Escape reached document links and menus. `success-mobile.png` is local evidence. |
-| Handle missing/private resources | PASS for missing resources; privacy QA-covered | Named 404 problem+json for missing API/version; unpublished/hidden fixtures and authenticated-index equality remain covered by QA's Test report. |
-| Retest existing minor findings | STILL OPEN (minor only) | Node.js choice resets to “Shell Curl”; unknown reference/changelog returns HTTP 200; title/version alignment remains (`version-alignment-fail.png`, local). |
+| Retain sample language choice | STILL OPEN (minor) | “Node.js Fetch” changes to “Shell Curl” after reload. |
+| Missing reference/changelog status | PASS | Browser requests for unknown reference and changelog both returned HTTP 404. |
+| Version row alignment and mobile fit | PASS | Desktop version and Changelog centres both 206px; mobile links share a line and Download spec spans 358px with no overflow. Resolved failure image removed. |
+| Keyboard use of sample controls | PASS | Tab reached More; Enter opened the picker; Escape dismissed it. |
+| Catalog smoke-test heading ambiguity | STILL OPEN (minor test maintenance) | Catalog has both H1 “APIs” and H2 “APIs”; automated assertion remains QA-covered. |
 
-No blocker or major found; status is review. Console checks contained no error-level entries; no error line exists to quote. Stack stopped after testing.
-
-## Review  _(tech-lead)_
-
-Reviewed `git diff main...HEAD` at `ad1ab8a` against the QA report for `bd273fa` (later commits are docs only, so the suite was not re-run). The server work matches the design and ADR 0013: routes, content types, cache headers, source-preserving downloads, named 404 problem+json, the anonymous-only `/llms.txt`, and the catalog visibility check. Every criterion 1–7 has a server or e2e test. The contract and SDK are updated. The quickstart passed. Two branch-caused e2e regressions block the merge because CI must be green.
-
-**Blocking**
-- **B1 — Unknown and invisible API pages now return HTTP 200** (`apps/portal/app/apis/[slug]/loading.tsx:1`, `apps/portal/app/apis/[slug]/versions/[version]/loading.tsx:1`). `main` has no route-level `loading.tsx` for these pages. Adding one wraps `page.tsx`, and the changelog layout under it, in a Suspense boundary. The response streams before `notFound()` runs, so `/apis/nope` gets a 200 with the not-found UI. This reopens fixed bugs JSO-223/JSO-228 and fails three existing e2e assertions. QA logged it as a minor, but this branch caused it. The design's loading row assumed an existing `loading.tsx`, and there wasn't one.
-- **B2 — The JSO-173 alignment test contradicts the new header layout** (`apps/portal/app/globals.css:452-457` `.agent-docs-row { flex-basis: 100% }`; `apps/portal/e2e/backlog-regressions.test.ts:50`). Design §3.1 puts the version row on its own line under the title, so the badge can no longer centre on the H1. The layout is correct. The test needs to follow the design.
-
-**Suggestions** (no Fix task)
-- `apps/server/src/catalog.ts:93-100` builds `markdownUrl`/`downloadUrl` with a regex replace on `versionDocumentUrl(...)`. A small `versionPath(slug, version, leaf)` helper would be clearer, and `agent-docs.ts:25-27` could share it.
-- `apps/server/src/agent-docs.ts:228-235` puts the raw `slug` in the `Content-Disposition` filename. Slugs are already constrained, so this is safe today. Running the slug through the same sanitiser as the version would keep the header safe if the slug rules ever loosen.
-- The minor Scalar saved-client reset on reload stays in Bugs as QA logged it. It is not a review finding.
-
-## Definition of Done
-- [ ] Every acceptance criterion has a passing automated test
-- [ ] Every user story passes in the browser (User testing section)
-- [ ] lint, typecheck, unit, integration and e2e all green in CI
-- [ ] Quickstart (`docker compose up`) still works end to end
-- [ ] API contract, README and docs updated
-- [ ] Tech-lead review has no blocking findings
-- [ ] Elango merged the PR
+No blocker or major is open; status is review. Console contained info entries only (`addDocument: 40 ms`), with no error line to quote. Stack stopped after testing.
