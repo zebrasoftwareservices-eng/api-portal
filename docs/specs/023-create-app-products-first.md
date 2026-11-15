@@ -61,7 +61,7 @@ API.
    Kong with it to the Sample HTTP API returns the upstream's response.
 6. **Given** an API that belongs to a product **When** a client calls the create-app endpoint
    directly with that API's ID (alone or with a loose API), or with any plan field **Then** the
-   server returns `400` problem+json naming the API or field, no app, key or Kong credential is
+   server returns `409` problem+json naming the API (or `400` problem+json naming the plan field), no app, key or Kong credential is
    created, and the response points to subscribing to the product.
 7. **Given** a public product with no plans **When** a developer opens Create an app **Then** the
    product is listed as not available yet, with no working Subscribe link; **and When** a portal
@@ -88,14 +88,22 @@ API.
 - **New gateway behaviour.** No Kong changes beyond refusing the request before any gateway call.
 
 ## Open questions
-- [ ] Should a developer see a product with no plans at all, or should it be hidden from them and
-      shown only to admins? Criterion 7 assumes it is listed as not available yet. — Elango
-- [ ] When an install has no loose APIs (every API is in a product), should the APIs section and
-      the Create button disappear, leaving only the product list? — ui-designer, then Elango
-- [ ] For a plan behind approval (spec 010), should the Subscribe link read **Request access**
-      instead? — ui-designer
-- [ ] Is `400` the right status for a product API on the create-app endpoint, or `409`/`422`? —
-      tech-lead
+- [x] Should a developer see a product with no plans at all? — Elango
+      **Decided:** yes. It stays listed as "Not available yet" with no working Subscribe link, as
+      criterion 7 says, so developers know it exists and admins see the prompt to add a plan.
+- [x] When no API is outside a product, should the APIs section and the Create button disappear?
+      — ui-designer, then Elango
+      **Decided:** yes. Hide the APIs checkboxes and the Create button, and show one line under the
+      products: every API here is offered as a product, so subscribe to one above. The page stays
+      reachable from My apps.
+- [x] For a plan behind approval (spec 010), should the Subscribe link read **Request access**?
+      — ui-designer
+      **Decided:** the link reads **Request access** when every plan of the product needs approval,
+      and **Subscribe** otherwise. It goes to the same product page either way.
+- [x] Is `400` the right status for a product API on the create-app endpoint? — tech-lead
+      **Decided:** `409` problem+json when a named API belongs to a product, because the request is
+      valid but conflicts with the API's current product membership (the contract already uses 409
+      for state conflicts). A plan field stays a `400` validation error. Criterion 6 is updated.
 
 ---
 <!-- Sections below are filled by later stages. -->
