@@ -8,7 +8,7 @@
 //   node scripts/factory.mjs prompt <role> <id>           one role's task prompt, to paste into any agent
 //   node scripts/factory.mjs prompt researcher --idea "<text>" | --linear <KEY> | --board
 //                                                         Grok, beside the loop: a brief, or a board review
-//   node scripts/factory.mjs guard <role> [spec-id]       fail if a pending or branch file is outside that role
+//   node scripts/factory.mjs guard <role> [spec-id]       fail if a staged file is outside that role
 //   node scripts/factory.mjs set-status <id> <status>     move a spec, then mirror it to Linear
 //   node scripts/factory.mjs start <id> | --idea "<text>" | <KEY-123> [--dry-run]
 //                                                         new Orca worktree + coordinator agent
@@ -37,7 +37,7 @@ import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { join, dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { chooseSpecStatuses, claudeConflicts, outsideOwnership, parsePorcelainZ, specIdFromBranch } from './factory-guard.mjs';
+import { chooseSpecStatuses, claudeConflicts, outsideOwnership, specIdFromBranch } from './factory-guard.mjs';
 import {
   canCreate,
   durableTarget,
@@ -594,7 +594,7 @@ function workerSpec(role, spec, job, stageKey) {
     `Read: ${readScope(role, spec, stageKey)}`,
     `Target: ${spec ? spec.rel : 'docs/specs/'}${job.target ? ` — ${job.target}` : ''}.`,
     `Change: ${job.change}`,
-    `Constraints: work only in this worktree; never create or switch branches, force-push, push to main, or merge. You may push this feature branch. Never pass Elango's approval gates. The interpreter is python3; there is no python. Typecheck the package you changed before its tests. When a task adds a database migration, generate it with \`pnpm --filter @portal/db exec drizzle-kit generate\` from the repo root so packages/db/drizzle.config.ts supplies the schema and dialect. Run \`node scripts/factory.mjs guard ${role}\` before you commit. If it fails, restore those files and do not commit them. Quote globs ('*.ts'). This zsh rejects an unquoted *. If a command fails because the sandbox denied it, rerun that same command escalated once.${job.constraints ? ` ${job.constraints}` : ''}`,
+    `Constraints: work only in this worktree; never create or switch branches, force-push, push to main, or merge. You may push this feature branch. Never pass Elango's approval gates. The interpreter is python3; there is no python. Typecheck the package you changed before its tests. When a task adds a database migration, generate it with \`pnpm --filter @portal/db exec drizzle-kit generate\` from the repo root so packages/db/drizzle.config.ts supplies the schema and dialect. Stage only your own files by name (never \`git add -A\` or \`git add .\`: other roles share this worktree), then run \`node scripts/factory.mjs guard ${role}\` before you commit. It checks the staged files. If it fails, unstage those files with \`git restore --staged <file>\` and do not commit them; never discard another role's changes. Quote globs ('*.ts'). This zsh rejects an unquoted *. If a command fails because the sandbox denied it, rerun that same command escalated once.${job.constraints ? ` ${job.constraints}` : ''}`,
     `Ownership: you may edit ${OWNERSHIP[role]}`,
     `Observable acceptance: ${job.acceptance}`,
   ];
@@ -988,21 +988,16 @@ function guard(args) {
   if (!role || !OWNERSHIP[role]) die(`usage: guard <role> [spec-id]\nRoles: ${Object.keys(OWNERSHIP).join(', ')}`);
   const branch = gitText(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
   const specId = positional[1] || specIdFromBranch(branch);
-  const pending = parsePorcelainZ(gitText(['status', '--porcelain', '-z', '-uall']));
-  const base = gitText(['rev-parse', '--verify', '--quiet', 'origin/main']).trim()
-    ? 'origin/main'
-    : gitText(['rev-parse', '--verify', '--quiet', 'main']).trim()
-      ? 'main'
-      : '';
-  const committed = base ? gitText(['diff', '--name-only', '-z', `${base}...HEAD`]).split('\0').filter(Boolean) : [];
-  const paths = [...pending, ...committed];
+  // Check only what this role is about to commit. Workers share one worktree, so other roles'
+  // pending edits and files earlier stages already committed on the branch are not this role's.
+  const paths = gitText(['diff', '--cached', '--name-only', '-z']).split('\0').filter(Boolean);
   if (!paths.length) {
-    console.log(`guard: ${role} has nothing to commit.`);
+    console.log(`guard: ${role} has nothing staged. Stage your own files by name, then run guard again.`);
     return;
   }
   const bad = outsideOwnership(role, paths, specId);
   if (!bad.length) {
-    console.log(`guard: ${role} may commit ${new Set(paths).size} file(s)${specId ? ` for spec ${specId}` : ''}.`);
+    console.log(`guard: ${role} may commit ${new Set(paths).size} staged file(s)${specId ? ` for spec ${specId}` : ''}.`);
     return;
   }
   console.error(`guard: ${role} may not commit${specId ? ` (spec ${specId})` : ''}:`);
