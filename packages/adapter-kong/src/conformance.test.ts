@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 import { beforeAll, afterAll, it, expect } from 'vitest';
 import {
+  TestContainers,
   GenericContainer,
   Network,
   Wait,
   type StartedTestContainer,
   type StartedNetwork,
 } from 'testcontainers';
+import { createServer, type Server } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { conformance } from '@portal/adapter-sdk/conformance';
 import { KongAdapter } from './index.js';
+let receiver: Server;
+const usageBodies: unknown[] = [];
 let network: StartedNetwork;
 let postgres: StartedTestContainer;
 let kong: StartedTestContainer;
@@ -18,6 +22,17 @@ let upstream: StartedTestContainer;
 let proxy: string;
 const instanceId = randomUUID();
 beforeAll(async () => {
+  receiver = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    usageBodies.push(JSON.parse(Buffer.concat(chunks).toString()));
+    response.writeHead(204).end();
+  });
+  await new Promise<void>((resolve) => receiver.listen(0, '0.0.0.0', resolve));
+  const address = receiver.address();
+  if (!address || typeof address === 'string')
+    throw new Error('Missing receiver port');
+  await TestContainers.exposeHostPorts(address.port);
   network = await new Network().start();
   postgres = await new GenericContainer('postgres:17-alpine')
     .withNetwork(network)
@@ -71,13 +86,26 @@ beforeAll(async () => {
   });
 }, 180000);
 afterAll(async () => {
+  await new Promise<void>((resolve) => receiver?.close(() => resolve()));
   await kong?.stop();
   await upstream?.stop();
   await postgres?.stop();
   await network?.stop();
 });
 conformance(
-  () => adapter,
+  () => {
+    const address = receiver.address();
+    if (!address || typeof address === 'string')
+      throw new Error('Receiver missing');
+    return new KongAdapter({
+      adminUrl: `http://${kong.getHost()}:${kong.getMappedPort(8001)}`,
+      instanceId,
+      usage: {
+        endpoint: `http://host.testcontainers.internal:${address.port}/usage`,
+        token: 'test-usage-token',
+      },
+    });
+  },
   instanceId,
   () => ({
     refused: () =>
@@ -100,6 +128,33 @@ conformance(
     unavailable: () =>
       new KongAdapter({ adminUrl: 'http://127.0.0.1:1', instanceId }),
   }),
+  async () => {
+    const id = randomUUID();
+    await adapter.request(`/services/${id}`, 'PUT', {
+      url: 'http://echo:8080',
+    });
+    await adapter.request(`/routes/${id}`, 'PUT', {
+      service: { id },
+      paths: [`/usage-${id}`],
+    });
+    await adapter.request(`/services/${id}/plugins`, 'POST', {
+      name: 'key-auth',
+      config: { hide_credentials: true },
+    });
+    return {
+      call: async (key?: string) => {
+        const response = await fetch(`${proxy}/usage-${id}/get`, {
+          headers: {
+            ...(key ? { apikey: key } : {}),
+            'x-private-usage-test': 'secret-header',
+          },
+        });
+        await response.body?.cancel();
+        return response.status;
+      },
+      drain: async () => usageBodies.splice(0),
+    };
+  },
 );
 
 it('protects real services, converts deny to allow without replacing its ID, and converges', async () => {

@@ -358,25 +358,25 @@ subscription).
   Record the cost in `deploy/README.md`. Ingest stays inside the 2 MB body limit.
 
 ### Tasks
-- [ ] [backend] adapter-sdk: `Capabilities.usage: boolean`, `UsageEvent`, `parseUsageEvents`,
+- [x] [backend] adapter-sdk: `Capabilities.usage: boolean`, `UsageEvent`, `parseUsageEvents`,
       `ensureUsageCollection`, and the conformance `usage` test, including the
       no-key/unknown-key/revoked-key cases and the raw-body redaction assertion.
-- [ ] [backend] adapter-kong: consumer-scoped `http-log` in `ensureConsumer`, the heartbeat
+- [x] [backend] adapter-kong: consumer-scoped `http-log` in `ensureConsumer`, the heartbeat
       service, route and plugins in `ensureUsageCollection`, usage-plugin repair in
       `applyAccessPolicy`, and `parseUsageEvents`. The `custom_fields_by_lua` refusal becomes a
       `usage-unavailable` finding.
-- [ ] [backend] db: `usage_daily`, `developer_first_calls`, `usage_collection`,
+- [x] [backend] db: `usage_daily`, `developer_first_calls`, `usage_collection`,
       `usage_ingest_batches` and `credentials.created_by`. Generate one migration with drizzle-kit
       and hand-add the `created_by` backfill. Add a migration test.
-- [ ] [backend] server: the ingest route (token check, digest dedupe, aggregation upsert,
+- [x] [backend] server: the ingest route (token check, digest dedupe, aggregation upsert,
       first-call upsert, `last_received_at`), exempt from the session check and the per-IP limiter.
-- [ ] [backend] server: `GET /api/v1/apps/{appId}/usage` and `GET /api/v1/admin/insights`
+- [x] [backend] server: `GET /api/v1/apps/{appId}/usage` and `GET /api/v1/admin/insights`
       following the contract, including the `collection.status` rules, and set
       `credentials.created_by` on create and regenerate.
-- [ ] [backend] server: ingest token generation, `PORTAL_USAGE_INGEST_URL` and
+- [x] [backend] server: ingest token generation, `PORTAL_USAGE_INGEST_URL` and
       `PORTAL_USAGE_RETENTION_DAYS` config, the `usage-heartbeat` and `usage-housekeeping` jobs,
       and `ensureUsageCollection` at startup and in reconcile.
-- [ ] [backend] regenerate `packages/sdk`. Add `PORTAL_USAGE_INGEST_URL` to
+- [x] [backend] regenerate `packages/sdk`. Add `PORTAL_USAGE_INGEST_URL` to
       `deploy/docker-compose.yml`, `deploy/hosted/compose.yaml`, `deploy/production/compose.yaml`
       and the Helm values. Document both variables and the load note in `deploy/README.md`.
 - [x] [frontend] app page usage card:
@@ -424,6 +424,9 @@ Design: [docs/design/011-usage-and-insights.md](../design/011-usage-and-insights
   **Go to My apps**). At 375px the stats stack and the table becomes one card per developer.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Backend: implemented redacted consumer-scoped Kong http-log collection, internal heartbeat setup and usage-plugin reconciliation, with `usage-unavailable` findings when Kong refuses the redacted plugin. Added the four usage tables and credential creator attribution in generated migration `0008_stale_the_anarchist.sql`, including the existing-credential backfill; ingest authenticates bearer tokens, deduplicates raw batches transactionally, aggregates by request UTC day and preserves earliest successful calls per credential creator. Both GETs follow the existing OpenAPI contract, including membership/admin checks, unavailable/null and behind/stored-count states; token encryption, minute heartbeats, hourly retention, deployment settings and regenerated SDK are complete.
+- Backend validation: lint, typecheck and package tests passed for `@portal/adapter-sdk`, `@portal/adapter-kong`, `@portal/db`, `@portal/server` and `@portal/sdk` (Kong: 64 tests; database: 10; server: 304; SDK packages have no standalone tests). Real Kong conformance verifies raw-body redaction, invalid/revoked keys and reconciliation convergence; database tests verify creator backfill and cascade rules. Docker-dependent tests required elevated sandbox access; no workspace suite, browser or quickstart was run. The coordinator authorized explicitly staged backend/spec/log files after the mandatory whole-branch guard flagged prior-stage and concurrent frontend changes; those files were not restored or staged by backend.
 
 - Frontend: implemented the app usage card with capped quota meter, UTC reset, status counts, unavailable/behind states and visible-tab minute/focus refresh; failures keep stored counts and show an alert after three consecutive background failures. Added responsive admin Insights with adoption/target metrics, top APIs, developer table/cards, admin-only navigation and a focused 403 screen; middleware permits the Insights permission screen while the generated client retains sign-in redirects. The portal runtime ingress rejects the internal namespace (including encoded segments), and the Vercel rewrite excludes it.
 - Frontend validation: `pnpm --filter @portal/portal lint`, `typecheck`, and `test` pass (42 files, 363 tests); no browser, workspace suite or quickstart run. Existing key/plan tests isolate the independently tested usage card. The coordinator authorized committing explicitly staged frontend/spec/log paths after verifying ownership, because the whole-branch guard also flags other roles' shared changes and prior design commits; no out-of-scope files were edited or restored by frontend.

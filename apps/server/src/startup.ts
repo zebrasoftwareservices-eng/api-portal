@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+import {
+  usageToken,
+  ensureUsage,
+  usageHeartbeat,
+  usageHousekeeping,
+} from './usage.js';
 import { connect, migrate, instanceSettings, gateways } from '@portal/db';
 import { eq, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
@@ -119,6 +125,27 @@ export async function start(config: Config) {
       instance.instanceId,
       app.log,
     );
+    if ((await db.select().from(gateways).limit(1)).length)
+      await usageToken(db, config);
+    await ensureUsage(db, connection, app.log);
+    await boss.createQueue('usage-heartbeat', {
+      name: 'usage-heartbeat',
+      policy: 'singleton',
+    });
+    await boss.work('usage-heartbeat', () =>
+      usageHeartbeat(db, connection, app.log),
+    );
+    await boss.schedule(
+      'usage-heartbeat',
+      '* * * * *',
+      {},
+      { singletonKey: 'usage-heartbeat', retryLimit: 0 },
+    );
+    await boss.createQueue('usage-housekeeping');
+    await boss.work('usage-housekeeping', () =>
+      usageHousekeeping(db, config.PORTAL_USAGE_RETENTION_DAYS),
+    );
+    await boss.schedule('usage-housekeeping', '0 * * * *', {});
     async function seedIfEnabled() {
       await db.transaction(async (tx) => {
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);

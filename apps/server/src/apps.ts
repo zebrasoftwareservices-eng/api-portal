@@ -275,6 +275,7 @@ export function registerApps(
             id,
             appId,
             gatewayId,
+            createdBy: user.id,
             keyHint: key.slice(-4),
             status: 'active',
           })
@@ -367,6 +368,7 @@ export function registerApps(
             id,
             appId,
             gatewayId,
+            createdBy: user.id,
             keyHint: key.slice(-4),
             status: 'active',
           })
@@ -599,6 +601,7 @@ export function registerApps(
               id,
               appId,
               gatewayId: gateway.row.id,
+              createdBy: user.id,
               keyHint: key.slice(-4),
               status: 'active',
             })

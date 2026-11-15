@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { registerUsage } from './usage.js';
 import { registerAccount } from './account.js';
 import { registerAdminSettings } from './admin-settings.js';
 import { limitedAuth } from './auth-limits.js';
@@ -215,6 +216,7 @@ export async function createApp(options: AppOptions) {
   registerImport(app, db, auth, connection, linter);
   registerVersions(app, db, auth, linter);
   registerTeams(app, db, auth, config, enqueue);
+  registerUsage(app, db, auth, connection);
   registerApps(app, db, auth, connection, enqueue);
   registerAccessRequests(app, db, auth, connection, enqueue);
   registerProductAccess(

@@ -3,6 +3,8 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
 import {
+  UsageUnavailableError,
+  type UsageEvent,
   GatewayServiceConflictError,
   type ServiceRef,
   type PlanLimits,
@@ -39,6 +41,7 @@ export interface KongConfig {
   adminUrl: string;
   instanceId: string;
   adminToken?: string;
+  usage?: { endpoint: string; token: string };
   rateLimitPolicy?: 'cluster' | 'local';
   fetch?: typeof fetch;
 }
@@ -54,7 +57,7 @@ export class KongAdapter implements GatewayAdapter {
       accessControl: true,
       oauthClients: false,
       plans: true,
-      usage: false,
+      usage: true,
     } as const;
   }
   async request<T>(
@@ -259,8 +262,149 @@ export class KongAdapter implements GatewayAdapter {
       },
     );
     if (!consumer) throw new GatewayUnavailableError();
+    await this.putUsagePlugin(app, consumer.id);
     await this.putMembership(app, 'portal-consumer');
     return { id: consumer.id, username };
+  }
+  private usageMatches(actual: unknown, expected: unknown): boolean {
+    if (expected && typeof expected === 'object' && !Array.isArray(expected)) {
+      if (!actual || typeof actual !== 'object' || Array.isArray(actual))
+        return false;
+      return Object.entries(expected).every(([key, value]) =>
+        this.usageMatches((actual as Record<string, unknown>)[key], value),
+      );
+    }
+    return isDeepStrictEqual(actual, expected);
+  }
+  private usageConfig() {
+    if (!this.config.usage) throw new UsageUnavailableError();
+    return {
+      http_endpoint: this.config.usage.endpoint,
+      headers: { Authorization: `Bearer ${this.config.usage.token}` },
+      content_type: 'application/json',
+      timeout: 10000,
+      keepalive: 60000,
+      queue: {
+        max_batch_size: 200,
+        max_coalescing_delay: 1,
+        max_retry_time: 300,
+      },
+      custom_fields_by_lua: {
+        request: 'return {}',
+        response: 'return { status = kong.response.get_status() }',
+      },
+    };
+  }
+  private async writeUsagePlugin(
+    id: string,
+    scope: Record<string, unknown>,
+    tags: string[],
+  ) {
+    try {
+      await this.request(`/plugins/${id}`, 'PUT', {
+        name: 'http-log',
+        ...scope,
+        enabled: true,
+        tags,
+        config: this.usageConfig(),
+      });
+    } catch (error) {
+      if (error instanceof GatewayRejectedError)
+        throw new UsageUnavailableError();
+      throw error;
+    }
+  }
+  private async putUsagePlugin(app: AppRef, consumerId: string) {
+    if (!this.config.usage) return;
+    await this.writeUsagePlugin(
+      this.stableId('http-log', app.id),
+      { consumer: { id: consumerId } },
+      portalTags(this.config.instanceId, app),
+    );
+  }
+  async ensureUsageCollection() {
+    const scope = this.config.instanceId;
+    const serviceId = this.stableId('usage-service', scope);
+    const routeId = this.stableId('usage-route', scope);
+    const heartbeatPath = `/__portal/usage-heartbeat/${scope}`;
+    const tags = [...portalTags(scope), 'portal-internal'];
+    await this.request(`/services/${serviceId}`, 'PUT', {
+      name: 'portal-usage-heartbeat',
+      url: 'http://127.0.0.1:65535',
+      tags,
+    });
+    await this.request(`/routes/${routeId}`, 'PUT', {
+      service: { id: serviceId },
+      paths: [heartbeatPath],
+      tags,
+    });
+    await this.request(
+      `/plugins/${this.stableId('usage-termination', scope)}`,
+      'PUT',
+      {
+        name: 'request-termination',
+        route: { id: routeId },
+        config: { status_code: 204 },
+        tags,
+      },
+    );
+    await this.writeUsagePlugin(
+      this.stableId('usage-log', scope),
+      { route: { id: routeId } },
+      tags,
+    );
+    return { heartbeatPath };
+  }
+  parseUsageEvents(body: unknown): UsageEvent[] {
+    const record = (v: unknown): Record<string, unknown> =>
+      v !== null && typeof v === 'object' && !Array.isArray(v)
+        ? (v as Record<string, unknown>)
+        : {};
+    const uuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const events: UsageEvent[] = [];
+    for (const entry of Array.isArray(body) ? body : [body]) {
+      const row = record(entry),
+        timestamp = row.started_at;
+      if (typeof timestamp !== 'number' || !Number.isSafeInteger(timestamp))
+        continue;
+      const startedAt = new Date(timestamp);
+      if (!Number.isFinite(startedAt.getTime())) continue;
+      if (
+        record(row.route).id ===
+        this.stableId('usage-route', this.config.instanceId)
+      ) {
+        events.push({ heartbeat: true, startedAt });
+        continue;
+      }
+      const username = record(row.consumer).username;
+      const appId =
+        typeof username === 'string' && username.startsWith('portal-app-')
+          ? username.slice(11)
+          : '';
+      const credentialId = record(row.authenticated_entity).id;
+      const status = record(row.response).status;
+      if (
+        !uuid.test(appId) ||
+        typeof credentialId !== 'string' ||
+        !uuid.test(credentialId) ||
+        typeof status !== 'number' ||
+        !Number.isInteger(status) ||
+        status < 100 ||
+        status > 599
+      )
+        continue;
+      const serviceId = record(row.service).id;
+      events.push({
+        heartbeat: false,
+        appId,
+        credentialId,
+        serviceId: typeof serviceId === 'string' ? serviceId : '',
+        status,
+        startedAt,
+      });
+    }
+    return events;
   }
   private async putMembership(app: AppRef, group: string) {
     await this.request(
@@ -693,6 +837,59 @@ export class KongAdapter implements GatewayAdapter {
           message: !service
             ? 'A published service is missing from the gateway.'
             : 'Multiple published APIs share this service and its access group.',
+        });
+      }
+    }
+    if (this.config.usage) {
+      const usagePlugins = plugins.filter(
+        (p) => p.name === 'http-log' && this.owns(p) && p.consumer,
+      );
+      for (const desired of policy.apps) {
+        const consumer = consumers.find((c) => c.appId === desired.app.id);
+        if (!consumer) continue;
+        const plugin = usagePlugins.find(
+          (p) => p.id === this.stableId('http-log', desired.app.id),
+        );
+        const config = this.usageConfig();
+        if (
+          !plugin ||
+          plugin.enabled === false ||
+          plugin.consumer?.id !== consumer.id ||
+          plugin.route ||
+          plugin.service ||
+          !this.usageMatches(plugin.config, config)
+        ) {
+          try {
+            await this.putUsagePlugin(desired.app, consumer.id);
+            report.repairs.push({
+              object: 'plugin',
+              action: plugin ? 'updated' : 'added',
+              appId: desired.app.id,
+              detail: 'Usage collection repaired',
+            });
+          } catch (error) {
+            if (!(error instanceof UsageUnavailableError)) throw error;
+            report.findings.push({
+              code: 'usage-unavailable',
+              serviceId: '',
+              serviceName: '',
+              message: error.message,
+            });
+          }
+        }
+      }
+      for (const plugin of usagePlugins) {
+        if (
+          policy.apps.some(
+            (a) => plugin.id === this.stableId('http-log', a.app.id),
+          )
+        )
+          continue;
+        await this.request(`/plugins/${plugin.id}`, 'DELETE', undefined, true);
+        report.repairs.push({
+          object: 'plugin',
+          action: 'removed',
+          detail: 'Stale usage collection removed',
         });
       }
     }

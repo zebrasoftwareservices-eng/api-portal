@@ -18,6 +18,34 @@ it('serializes migrations and enforces singleton, roles and credential status', 
       const columns =
         await client`select column_name from information_schema.columns where table_name='credentials'`;
       expect(columns.map((x) => x.column_name)).not.toContain('key');
+      expect(columns.map((x) => x.column_name)).toContain('created_by');
+      for (const [table, expected] of [
+        [
+          'usage_daily',
+          [
+            'app_id',
+            'day',
+            'service_id',
+            'count_2xx',
+            'count_4xx',
+            'count_5xx',
+            'count_other',
+          ],
+        ],
+        [
+          'developer_first_calls',
+          ['user_id', 'first_call_at', 'app_id', 'credential_id'],
+        ],
+      ] as const) {
+        const actual =
+          await client`select column_name from information_schema.columns where table_name=${table}`;
+        expect(actual.map((x) => x.column_name).sort()).toEqual(
+          [...expected].sort(),
+        );
+      }
+      await expect(
+        client`insert into usage_collection (id, token_ciphertext) values (2,'encrypted')`,
+      ).rejects.toThrow();
     } finally {
       await client.end();
     }
@@ -33,9 +61,11 @@ it('refuses a database with a synthetic future migration without changing it', a
   try {
     await migrate(url);
     await client`insert into drizzle.__drizzle_migrations (hash, created_at) values ('future-image-hash', 9999999999999)`;
-    const before = await client`select schemaname,tablename from pg_tables where schemaname in ('public','drizzle') order by 1,2`;
+    const before =
+      await client`select schemaname,tablename from pg_tables where schemaname in ('public','drizzle') order by 1,2`;
     await expect(migrate(url)).rejects.toBeInstanceOf(SchemaAheadError);
-    const after = await client`select schemaname,tablename from pg_tables where schemaname in ('public','drizzle') order by 1,2`;
+    const after =
+      await client`select schemaname,tablename from pg_tables where schemaname in ('public','drizzle') order by 1,2`;
     expect(after).toEqual(before);
   } finally {
     await client.end();

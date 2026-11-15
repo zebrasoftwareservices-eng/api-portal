@@ -88,6 +88,12 @@ vi.mock('./gateway-connection.js', async (original) => ({
   ...(await original<typeof import('./gateway-connection.js')>()),
   gatewayConnection: () => ({ load: async () => mocks.loaded }),
 }));
+vi.mock('./usage.js', () => ({
+  usageToken: vi.fn(async () => 'usage-token'),
+  ensureUsage: vi.fn(),
+  usageHeartbeat: vi.fn(),
+  usageHousekeeping: vi.fn(),
+}));
 vi.mock('./seed.js', () => ({ seedSample: mocks.seed }));
 vi.mock('./reconcile.js', () => ({ reconcile: mocks.reconcile }));
 import { start } from './startup.js';
@@ -229,5 +235,20 @@ it('bootstraps an environment admin through the shared atomic creator', async ()
     mocks.db,
     expect.anything(),
     { email: 'env@example.com', password: 'environment-password' },
+  );
+});
+
+it('schedules singleton minute usage heartbeats and hourly pruning', async () => {
+  await start(loadConfig({}));
+  expect(mocks.boss.schedule).toHaveBeenCalledWith(
+    'usage-heartbeat',
+    '* * * * *',
+    {},
+    { singletonKey: 'usage-heartbeat', retryLimit: 0 },
+  );
+  expect(mocks.boss.schedule).toHaveBeenCalledWith(
+    'usage-housekeeping',
+    '0 * * * *',
+    {},
   );
 });

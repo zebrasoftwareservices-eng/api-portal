@@ -116,3 +116,10 @@ it('defaults plan counters to cluster and accepts only supported policies', () =
   ).toBe('local');
   expect(() => loadConfig({ PORTAL_RATE_LIMIT_POLICY: 'redis' })).toThrow();
 });
+
+it('validates usage retention and ingest configuration', () => {
+  expect(loadConfig({}).PORTAL_USAGE_RETENTION_DAYS).toBe(400);
+  expect(loadConfig({ PORTAL_USAGE_RETENTION_DAYS: '62' }).PORTAL_USAGE_RETENTION_DAYS).toBe(62);
+  expect(() => loadConfig({ PORTAL_USAGE_RETENTION_DAYS: '61' })).toThrow();
+  expect(() => loadConfig({ PORTAL_USAGE_INGEST_URL: 'invalid' })).toThrow();
+});
