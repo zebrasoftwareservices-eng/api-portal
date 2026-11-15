@@ -158,9 +158,10 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
       (await (await page.request.get('/api/v1/apis')).json()).items,
     ).toEqual([]);
     await page.getByRole('button', { name: 'Publish the sample API' }).click();
+    // Publishing waits for Kong's six-second protection propagation allowance.
     await expect(
       page.getByRole('link', { name: 'View Sample HTTP API' }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15000 });
     const catalog = await (await page.request.get('/api/v1/apis')).json();
     const sample = catalog.items.find(
       (a: { slug: string }) => a.slug === 'sample',
