@@ -216,6 +216,34 @@ it('authenticates ingest, validates envelopes and limits bodies without session 
     expect((await ingest({ invalid: i })).statusCode).toBe(204);
   expect(await connection.db.select().from(usageDaily)).toEqual([]);
 });
+it('AC 3: rejected authentication and malformed entries cannot pollute or suppress a valid batch', async () => {
+  for (const authorization of ['', 'Basic test-token', 'Bearer wrong']) {
+    const rejected = await ingest(entry(), authorization);
+    expect(rejected.statusCode).toBe(401);
+    expect(rejected.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+  }
+  expect(await connection.db.select().from(usageDaily)).toEqual([]);
+  const valid = entry();
+  const batch = [
+    null,
+    'invalid',
+    { ...entry(), response: { status: '200' } },
+    { ...entry(), authenticated_entity: { id: uuidv7() } },
+    { ...entry(), consumer: { username: 'operator-consumer' } },
+    valid,
+  ];
+  expect((await ingest(batch)).statusCode).toBe(204);
+  expect((await ingest(batch)).statusCode).toBe(204);
+  expect((await usage()).json()).toMatchObject({
+    total: 1,
+    byStatus: { '2xx': 1, '4xx': 0, '5xx': 0, other: 0 },
+  });
+  expect(await connection.db.select().from(developerFirstCalls)).toHaveLength(
+    1,
+  );
+});
 it('enforces app membership and admin access, returns behind counts and null unsupported values', async () => {
   await ingest(entry());
   viewer = teammateId;

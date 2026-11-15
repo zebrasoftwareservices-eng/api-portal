@@ -28,8 +28,15 @@ test('011: live usage, first successful try-it call, private insights and intern
   });
   expect(created.status(), await created.text()).toBe(201);
   const { app, credential } = await created.json();
+  // The first success uses try-it, so first-call attribution cannot be
+  // satisfied by a preceding direct Kong call. The remaining calls are direct.
   for (let i = 0; i < 20; i++) {
-    const response = await context.request.get(`${proxy}/sample/get`, {
+    const url =
+      i === 0
+        ? '/api/v1/try-it?scalar_url=' +
+          encodeURIComponent(`${proxy}/sample/get`)
+        : `${proxy}/sample/get`;
+    const response = await context.request.get(url, {
       headers: { apikey: credential.key },
     });
     expect(response.status()).toBe(200);
@@ -49,6 +56,7 @@ test('011: live usage, first successful try-it call, private insights and intern
   await expect(
     page.getByText('No monthly limit', { exact: true }),
   ).toBeVisible();
+  await expect(page.getByText('20 calls', { exact: true })).toBeVisible();
   await expect(
     page.getByRole('link', { name: 'Insights', exact: true }),
   ).toHaveCount(0);
