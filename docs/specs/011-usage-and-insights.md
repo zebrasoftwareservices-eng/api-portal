@@ -1,7 +1,7 @@
 ---
 id: 011
 title: Usage meter per app and admin insights
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-239
@@ -517,6 +517,25 @@ No blocker or major product finding was observed. The existing deployment-smoke 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/011.md`.
+
+Reviewed `1dd9e17` against `main`. The application code hasn't changed since the commit QA tested (`4f935de`), so the suite wasn't re-run. Every AC is implemented and has a test. The code matches the contract, the data model and ADR 0011. Errors are problem+json, the ingest token is compared in constant time and never returned, and stored rows hold only counts. **Nothing is blocking.**
+
+- `suggestion` — `packages/adapter-kong/src/index.ts:701`: `protectService` waits a fixed 6 s instead of confirming that Kong applied the ACL. This is acceptable for this spec, for three reasons:
+  - It follows the precedent already on `main` (`:800`, from ADR 0009).
+  - It exceeds Kong's default 5 s `db_update_frequency` for traditional mode.
+  - The wait only delays the portal's publish. Kong's own propagation window exists either way, and QA saw 20/20 first requests denied.
+
+  The wait is not proof for hybrid mode or a raised `db_update_frequency`. A later hardening step should replace both waits with a bounded readiness probe: through `proxyInternalUrl`, retry a known unsubscribed key until Kong answers 403, then time out with a finding.
+- `suggestion` — `packages/adapter-kong/src/index.ts:265` and `:313`: if Kong refuses the redacted plugin (`untrusted_lua = off`), `ensureConsumer` throws, so subscribing and issuing keys fail on that gateway. This matches the design's subscribe-rollback rule. Still, it would be gentler to skip the usage plugin and report `usage-unavailable`, so that keys keep working without counts.
+- `suggestion` — `packages/adapter-kong/src/index.ts:292`: `custom_fields_by_lua` replaces `request` and `response`, but the top-level `upstream_uri` still carries a query-string key (`?apikey=`) when `hide_credentials` is false. Nothing stores it, because the parser reads only the listed fields, so AC 3 holds. To keep the key off the wire as well, also set `upstream_uri` to `return nil`.
+- `suggestion` — `deploy/quickstart-smoke.mjs`: the design asked for a usage ≥1 assertion here. The scoped `tests/spec011-quickstart.test.ts` isn't run in CI. The CI `compose-smoke` job does run `pnpm test:e2e` against compose, and that includes live usage collection, so the gap is minor. The open QA task and the minor bug stay as they are.
+- `suggestion` — `deploy/hosted/reset-demo.sh:22`: `DELETE FROM apps` also removes apps owned by the seeded admin. That's fine today, since the seed creates no apps, but the comment should say so.
+
+UAT left four cases to automation: the hosted-demo reset, the unsupported gateway, the previous month and empty Insights. The automated coverage is enough:
+- The reset test runs the script's real SQL against Postgres, including a shared-team app.
+- The unsupported gateway is covered by a stub adapter on both GETs and in both components.
+- The previous month is covered by a seeded bucket with real Kong collection.
+- Empty Insights is covered by server and component tests.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
