@@ -1,7 +1,7 @@
 ---
 id: 021
 title: Agent-ready docs — Markdown pages, llms.txt, spec downloads and code samples
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
@@ -310,3 +310,47 @@ Local command logs: `/tmp/spec021-{lint,typecheck,test,e2e,agent-browser}.log`.
 | Catalog smoke-test heading ambiguity | STILL OPEN (minor test maintenance) | Catalog has both H1 “APIs” and H2 “APIs”; automated assertion remains QA-covered. |
 
 No blocker or major is open; status is review. Console contained info entries only (`addDocument: 40 ms`), with no error line to quote. Stack stopped after testing.
+
+### Follow-ups
+- Scope the quickstart smoke heading locator to the H1 so leftover open products don't make it ambiguous
+  deploy/e2e/quickstart.spec.ts:11 matches any heading named APIs; once an open product exists the catalog also renders H2 APIs (apps/portal/components/catalog-view.tsx:81) and strict mode fails. Scope to level 1. Pre-existing on main; not caused by spec 021.
+
+## Review  _(tech-lead)_
+
+Reviewed `git diff main...HEAD` at `b227e8c` (2026-11-15). QA tested `042dcf1`; the two later
+commits change only docs, so I did not re-run the suite. All seven acceptance criteria are built
+as designed and have tests. Visibility goes through `publishedApis` with the caller's viewer, and
+`/llms.txt` always uses the anonymous viewer. Invisible and unknown APIs share one 404 detail.
+Downloads send `source_content` byte for byte. No secrets, no migration, no new dependency and
+no change to `deploy/`.
+
+**Verdict: no blocking findings.** B1 and B2 from the last round are fixed and verified.
+
+**E2E failures in QA's full run (10).** None of them blocks this branch.
+- `deploy/e2e/quickstart.spec.ts:11` fails because the stack had old test data. It is not a
+  regression from this branch. The H2 "APIs" in `apps/portal/components/catalog-view.tsx:81`
+  already exists on `main`. This branch doesn't change that file. The H2 appears only when the
+  anonymous catalog shows a product, and the anonymous catalog shows only `open` products.
+  QA's long-lived stack had open products left from earlier runs. On a fresh CI stack, the
+  journeys that run before the quickstart test end with their products `manual`, so the H2
+  doesn't appear. It's recorded under Follow-ups and is a one-line fix (`level: 1`).
+- The nine setup, account and outage failures come from the test environment. Each one fails in
+  a raw `docker compose -f deploy/docker-compose.yml …` call against the default `portal`
+  project, before any app assertion runs (see `/tmp/spec021-e2e.log`). They are in
+  `setup-gateways.test.ts`, `account-security.test.ts` and `gateway.ts`, and this branch changes
+  none of them. I don't require a local re-run before approval.
+- **Merge gate note for Elango:** GitHub Actions hasn't run on this branch or on `main` (runs
+  43753332535 and 43747702291). The job was not started because account payments failed or the
+  spending limit was reached. So the "CI is the second run" check hasn't happened. Restore Actions
+  billing and get a green CI before you merge.
+
+**Suggestions** (no Fix task):
+- S1 `apps/server/src/agent-docs.ts:46`: the `/llms.txt` link text uses the API title as it is.
+  A title with `[` or `]` breaks the Markdown link. Escape brackets in the title.
+- S2 `apps/portal/lib/reference-options.ts:23`: `hiddenClients` is a denylist, so any client a
+  later Scalar release adds will appear in the picker. Pin the six clients with an allowlist
+  test when Scalar is upgraded.
+- S3 `apps/server/src/catalog.ts:103`: the latest `markdownUrl` and `downloadUrl` don't URL-encode
+  the slug, but the per-version URLs and `agent-docs.ts` do. Current slugs are URL-safe, so
+  nothing breaks today. Encode it for consistency.
+- The open minor bug (Scalar resets the saved Node.js client to curl on reload) stays in Bugs.
