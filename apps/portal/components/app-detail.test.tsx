@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppDetail } from './app-detail';
+vi.mock('./app-usage', () => ({ AppUsageCard: () => null }));
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),

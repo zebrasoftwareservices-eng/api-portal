@@ -7,6 +7,7 @@ import { RequestAccess, TeamRequests } from './access-requests';
 import { AdminRequests } from './admin-requests';
 import { ProductAccess } from './product-access';
 import { AppDetail } from './app-detail';
+vi.mock('./app-usage', () => ({ AppUsageCard: () => null }));
 import { AppPlanActions } from './app-plan-actions';
 import { ProductActions } from './product-actions';
 import type { Product } from './plans';

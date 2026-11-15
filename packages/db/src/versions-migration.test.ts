@@ -113,7 +113,7 @@ it('upgrades the recorded main migration journal without replaying 0001', async 
     await migrate(url);
     const migrated =
       await client`select hash,created_at from drizzle.__drizzle_migrations order by id`;
-    expect(migrated).toHaveLength(8);
+    expect(migrated).toHaveLength(9);
     expect(migrated.slice(0, 2)).toEqual(originalJournal);
     expect(
       await client`select v.title,v.version from apis a join api_versions v on v.id=a.latest_version_id`,

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   pgTable,
+  bigint,
+  date,
   primaryKey,
   boolean,
   text,
@@ -368,6 +370,9 @@ export const credentials = pgTable(
   'credentials',
   {
     id: uuid('id').primaryKey(),
+    createdBy: uuid('created_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
     appId: uuid('app_id')
       .notNull()
       .references(() => apps.id, { onDelete: 'cascade' }),
@@ -525,4 +530,50 @@ export const accessRequests = pgTable(
     index('request_queue_idx').on(t.status, t.submittedAt),
     index('request_team_idx').on(t.teamId, t.submittedAt.desc()),
   ],
+);
+
+export const usageDaily = pgTable(
+  'usage_daily',
+  {
+    appId: uuid('app_id')
+      .notNull()
+      .references(() => apps.id, { onDelete: 'cascade' }),
+    day: date('day').notNull(),
+    serviceId: text('service_id').notNull().default(''),
+    count2xx: bigint('count_2xx', { mode: 'number' }).notNull().default(0),
+    count4xx: bigint('count_4xx', { mode: 'number' }).notNull().default(0),
+    count5xx: bigint('count_5xx', { mode: 'number' }).notNull().default(0),
+    countOther: bigint('count_other', { mode: 'number' }).notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.appId, t.day, t.serviceId] }),
+    index('usage_daily_day_idx').on(t.day),
+  ],
+);
+export const developerFirstCalls = pgTable('developer_first_calls', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  firstCallAt: time('first_call_at').notNull(),
+  appId: uuid('app_id').references(() => apps.id, { onDelete: 'set null' }),
+  credentialId: uuid('credential_id'),
+});
+export const usageCollection = pgTable(
+  'usage_collection',
+  {
+    id: smallint('id').primaryKey().default(1),
+    tokenCiphertext: text('token_ciphertext').notNull(),
+    configuredAt: time('configured_at'),
+    lastReceivedAt: time('last_received_at'),
+    lastHeartbeatAt: time('last_heartbeat_at'),
+  },
+  (t) => [check('usage_collection_singleton', sql`${t.id} = 1`)],
+);
+export const usageIngestBatches = pgTable(
+  'usage_ingest_batches',
+  {
+    digest: text('digest').primaryKey(),
+    receivedAt: time('received_at').notNull().defaultNow(),
+  },
+  (t) => [index('usage_ingest_received_idx').on(t.receivedAt)],
 );

@@ -14,12 +14,107 @@ interface AccessFixture {
   refused?(): GatewayAdapter;
 }
 
+export interface UsageFixture {
+  call(key?: string): Promise<number>;
+  drain(): Promise<unknown[]>;
+}
 export function conformance(
   factory: () => GatewayAdapter,
   instanceId: string,
   access?: () => AccessFixture,
+  usage?: () => Promise<UsageFixture>,
 ) {
   describe('GatewayAdapter conformance', () => {
+    it('usage: collects authenticated calls without keys or request headers', async () => {
+      const adapter = factory();
+      if (!adapter.capabilities().usage) {
+        expect(adapter.capabilities().usage).toBe(false);
+        return;
+      }
+      if (!usage)
+        throw new Error('A usage fixture is required for supported adapters');
+      const fixture = await usage(),
+        app = { id: randomUUID() },
+        credential = { id: randomUUID(), key: `usage_${randomUUID()}` };
+      try {
+        const heartbeat = await adapter.ensureUsageCollection();
+        expect(await adapter.ensureUsageCollection()).toEqual(heartbeat);
+        await adapter.ensureConsumer(app);
+        await adapter.issueCredential(app, credential);
+        await fixture.drain();
+        expect(await fixture.call(credential.key)).toBe(200);
+        const bodies: unknown[] = [];
+        await expect
+          .poll(
+            async () => {
+              bodies.push(...(await fixture.drain()));
+              return bodies
+                .flatMap((b) => adapter.parseUsageEvents(b))
+                .filter((e) => !e.heartbeat && e.appId === app.id).length;
+            },
+            { timeout: 15000, interval: 100 },
+          )
+          .toBe(1);
+        const raw = JSON.stringify(bodies);
+        for (const secret of [credential.key, 'apikey', 'x-private-usage-test'])
+          expect(raw).not.toContain(secret);
+        expect(
+          bodies.flatMap((b) => adapter.parseUsageEvents(b)),
+        ).toContainEqual(
+          expect.objectContaining({
+            appId: app.id,
+            credentialId: credential.id,
+            status: 200,
+          }),
+        );
+        expect(await fixture.call()).toBe(401);
+        expect(await fixture.call('unknown-key')).toBe(401);
+        await adapter.revokeCredential(app, credential.id);
+        await expect
+          .poll(() => fixture.call(credential.key), { timeout: 15000 })
+          .toBe(401);
+        // A subsequent valid call acts as an ordered queue flush for negative traffic.
+        await fixture.drain();
+        const second = { id: randomUUID(), key: `usage_${randomUUID()}` };
+        await adapter.issueCredential(app, second);
+        await expect
+          .poll(() => fixture.call(second.key), { timeout: 15000 })
+          .toBe(200);
+        const after: unknown[] = [];
+        await expect
+          .poll(
+            async () => {
+              after.push(...(await fixture.drain()));
+              return after
+                .flatMap((b) => adapter.parseUsageEvents(b))
+                .filter((e) => !e.heartbeat && e.credentialId === second.id)
+                .length;
+            },
+            { timeout: 15000, interval: 100 },
+          )
+          .toBeGreaterThan(0);
+        expect(
+          after
+            .flatMap((b) => adapter.parseUsageEvents(b))
+            .filter((e) => !e.heartbeat)
+            .every((e) => !e.heartbeat && e.credentialId === second.id),
+        ).toBe(true);
+        const policy = {
+          services: [],
+          apps: [{ app, services: [], limits: null }],
+        };
+        await adapter.applyAccessPolicy(policy);
+        const converged = await adapter.applyAccessPolicy(policy);
+        expect(
+          converged.repairs.filter((r) => r.detail.includes('Usage')),
+        ).toEqual([]);
+        expect(
+          converged.findings.filter((r) => r.code === 'usage-unavailable'),
+        ).toEqual([]);
+      } finally {
+        await adapter.deleteConsumer(app);
+      }
+    });
     it('checks healthy and refused gateway connections', async () => {
       expect((await factory().checkConnection()).outcome).toBe('ok');
       const refused = access?.().refused?.();

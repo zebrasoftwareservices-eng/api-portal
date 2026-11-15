@@ -6,11 +6,15 @@ import type { GatewayAdapter } from '@portal/adapter-sdk';
 import { KongAdapter } from '@portal/adapter-kong';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Config } from './config.js';
+import { usageToken } from './usage.js';
 import { decrypt } from './crypto.js';
 import { Problem } from './problem.js';
 export type GatewayRow = typeof gateways.$inferSelect;
 export type AdapterFor = (
-  row: GatewayRow & { adminToken?: string },
+  row: GatewayRow & {
+    adminToken?: string;
+    usage?: { endpoint: string; token: string };
+  },
 ) => GatewayAdapter;
 export type DbConnection =
   Database | Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -22,6 +26,7 @@ export interface GatewayConnection {
   load(db?: DbConnection): Promise<LoadedGateway | null>;
   adapterFor: AdapterFor;
   config: Config;
+  usageHeartbeatPath?: string;
 }
 export function gatewayConnection(
   db: Database,
@@ -31,6 +36,7 @@ export function gatewayConnection(
   adapterFor: AdapterFor = (row) =>
     new KongAdapter({
       adminUrl: row.adminUrl,
+      usage: row.usage,
       adminToken: row.adminToken,
       instanceId,
       rateLimitPolicy: config.PORTAL_RATE_LIMIT_POLICY,
@@ -42,11 +48,23 @@ export function gatewayConnection(
     async load(connection = db) {
       const [row] = await connection.select().from(gateways).limit(1);
       if (!row) return null;
+      const token = config.PORTAL_USAGE_INGEST_URL
+        ? await usageToken(connection, config)
+        : undefined;
       try {
         const adminToken = row.adminTokenCiphertext
           ? decrypt(row.adminTokenCiphertext, config.PORTAL_ENCRYPTION_KEY)
           : undefined;
-        return { row, adapter: adapterFor({ ...row, adminToken }) };
+        return {
+          row,
+          adapter: adapterFor({
+            ...row,
+            adminToken,
+            usage: config.PORTAL_USAGE_INGEST_URL
+              ? { endpoint: config.PORTAL_USAGE_INGEST_URL, token: token! }
+              : undefined,
+          }),
+        };
       } catch {
         log.error(
           { gatewayId: row.id },

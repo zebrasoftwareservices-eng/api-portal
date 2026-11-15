@@ -28,6 +28,9 @@ spec:
           resources: {{ toYaml .Values.server.resources | nindent 12 }}
           ports: [{ name: http, containerPort: 4000 }]
           env:
+            - name: PORTAL_USAGE_INGEST_URL
+              value: {{ .Values.server.usageIngestUrl | default (printf "http://%s-server:4000/api/v1/internal/usage/kong" (include "api-portal.fullname" .)) | quote }}
+            - { name: PORTAL_USAGE_RETENTION_DAYS, value: {{ .Values.server.usageRetentionDays | quote }} }
             - { name: NODE_ENV, value: production }
             - { name: SEED_SAMPLE, value: "false" }
             - { name: PORTAL_VERSION, value: {{ include "api-portal.tag" . | quote }} }

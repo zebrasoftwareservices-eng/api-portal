@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { ensureUsage } from './usage.js';
 import { apps, credentials, apis, plans, type Database } from '@portal/db';
 import {
   requireGateway,
@@ -15,6 +16,7 @@ export async function reconcile(
   log: Pick<FastifyBaseLogger, 'warn'>,
   enqueueMail: EnqueueMail = async () => {},
 ) {
+  await ensureUsage(db, connection, log);
   const pending = await db
     .select({ id: apps.id })
     .from(apps)

@@ -4,6 +4,8 @@ image:
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 server:
+  usageIngestUrl: "" # Defaults to the server in-cluster URL; override for external Kong.
+  usageRetentionDays: 400
   replicas: 1
   resources: {}
 portal:

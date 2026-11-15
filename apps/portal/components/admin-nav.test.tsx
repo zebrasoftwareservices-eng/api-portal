@@ -5,10 +5,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { AdminNav } from './admin-nav';
 const mocks = vi.hoisted(() => ({
   path: '/admin/apis',
+  role: 'admin',
   push: vi.fn(),
   get: vi.fn().mockResolvedValue({ data: { items: [] } }),
 }));
 vi.mock('../lib/client', () => ({ api: { GET: mocks.get } }));
+vi.mock('./providers', () => ({
+  usePortal: () => ({ user: { role: mocks.role } }),
+}));
 vi.mock('next/navigation', () => ({
   usePathname: () => mocks.path,
   useRouter: () => ({ push: mocks.push }),
@@ -17,13 +21,14 @@ const items = [
   ['/admin/apis', 'APIs'],
   ['/admin/products', 'Products'],
   ['/admin/requests', 'Requests'],
+  ['/admin/insights', 'Insights'],
   ['/admin/gateways', 'Gateways'],
   ['/admin/settings/mail', 'Mail'],
   ['/admin/settings/accounts', 'Accounts'],
 ] as const;
 describe('shared admin navigation', () => {
   it.each([...items, ['/admin/apis/api-id/versions', 'APIs'] as const])(
-    'marks the current section on %s and offers all six destinations',
+    'marks the current section on %s and offers all seven destinations',
     (path, label) => {
       mocks.path = path;
       render(<AdminNav />);
@@ -39,7 +44,7 @@ describe('shared admin navigation', () => {
       ).toHaveValue(items.find(([, name]) => name === label)?.[0]);
     },
   );
-  it('navigates between all six sections with the mobile select', async () => {
+  it('navigates between all seven sections with the mobile select', async () => {
     mocks.path = '/admin/gateways';
     const actor = userEvent.setup();
     render(<AdminNav />);
@@ -61,4 +66,14 @@ it('includes the pending request count in the navigation accessible name', async
   expect(
     await screen.findByRole('link', { name: 'Requests, 2 pending' }),
   ).toHaveAttribute('href', '/admin/requests');
+});
+
+it('hides admin navigation and does not fetch pending requests for non-admin Insights visitors', () => {
+  mocks.path = '/admin/insights';
+  mocks.role = 'developer';
+  mocks.get.mockClear();
+  render(<AdminNav />);
+  expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+  expect(mocks.get).not.toHaveBeenCalled();
+  mocks.role = 'admin';
 });

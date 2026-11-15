@@ -67,13 +67,14 @@ const adapter = {
 } as unknown as GatewayAdapter;
 let role = 'admin';
 let signedIn = true;
+let viewerId = adminId;
 const auth = {
   api: {
     getSession: async () =>
       signedIn
         ? {
             user: {
-              id: adminId,
+              id: viewerId,
               name: 'Admin',
               email: 'admin@example.com',
               role,
@@ -192,6 +193,7 @@ beforeEach(async () => {
   vi.clearAllMocks();
   role = 'admin';
   signedIn = true;
+  viewerId = adminId;
   await connection.db
     .update(teamMembers)
     .set({ role: 'admin' })
@@ -936,4 +938,39 @@ it('AC10: non-admins cannot create or edit products or plans and expired session
     'revokeCredential',
   ] as const)
     expect(adapter[method]).not.toHaveBeenCalled();
+});
+
+it('011 AC 8: initial and regenerated credentials record their own creator, including a teammate', async () => {
+  const created = await subscribe();
+  expect(await active(created.app.id)).toEqual([
+    expect.objectContaining({ id: created.credential.id, createdBy: adminId }),
+  ]);
+  const teammate = uuidv7();
+  await connection.db
+    .insert(user)
+    .values({
+      id: teammate,
+      name: 'Regenerator',
+      email: `${teammate}@example.com`,
+      role: 'developer',
+      emailVerified: true,
+    });
+  await connection.db
+    .insert(teamMembers)
+    .values({ teamId, userId: teammate, role: 'member' });
+  viewerId = teammate;
+  role = 'developer';
+  const regenerated = await server.inject({
+    method: 'POST',
+    url: `/api/v1/apps/${created.app.id}/credentials/${created.credential.id}/regenerate`,
+  });
+  expect(regenerated.statusCode, regenerated.body).toBe(201);
+  expect(await active(created.app.id)).toEqual([
+    expect.objectContaining({ id: regenerated.json().id, createdBy: teammate }),
+  ]);
+  const [old] = await connection.db
+    .select()
+    .from(credentials)
+    .where(eq(credentials.id, created.credential.id));
+  expect(old).toMatchObject({ status: 'revoked', createdBy: adminId });
 });

@@ -4,12 +4,14 @@ import { NextRequest } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 let middleware: typeof import('../middleware').middleware;
 
-const { createAuthClient, createSdkClient, getSession, getSetup } = vi.hoisted(() => ({
-  createAuthClient: vi.fn(),
-  createSdkClient: vi.fn(),
-  getSession: vi.fn(),
-  getSetup: vi.fn(),
-}));
+const { createAuthClient, createSdkClient, getSession, getSetup } = vi.hoisted(
+  () => ({
+    createAuthClient: vi.fn(),
+    createSdkClient: vi.fn(),
+    getSession: vi.fn(),
+    getSetup: vi.fn(),
+  }),
+);
 vi.mock('@portal/sdk', () => ({ createClient: createSdkClient }));
 vi.mock('better-auth/client', () => ({
   createAuthClient,
@@ -120,6 +122,14 @@ describe('protected portal routes', () => {
       );
     },
   );
+
+  it('allows a non-admin to reach the Insights permission screen', async () => {
+    getSession.mockResolvedValue({ data: { user: { role: 'developer' } } });
+    const response = await middleware(
+      new NextRequest('https://portal.example/admin/insights'),
+    );
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+  });
 
   it('allows an admin to open the import page', async () => {
     getSession.mockResolvedValue({ data: { user: { role: 'admin' } } });

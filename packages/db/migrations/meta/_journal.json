@@ -57,6 +57,13 @@
       "when": 1794662247263,
       "tag": "0007_parallel_ravenous",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794718334359,
+      "tag": "0008_stale_the_anarchist",
+      "breakpoints": true
     }
   ]
 }

@@ -158,9 +158,10 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
       (await (await page.request.get('/api/v1/apis')).json()).items,
     ).toEqual([]);
     await page.getByRole('button', { name: 'Publish the sample API' }).click();
+    // Publishing waits for Kong's six-second protection propagation allowance.
     await expect(
       page.getByRole('link', { name: 'View Sample HTTP API' }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15000 });
     const catalog = await (await page.request.get('/api/v1/apis')).json();
     const sample = catalog.items.find(
       (a: { slug: string }) => a.slug === 'sample',
@@ -266,6 +267,24 @@ test('AC 1–7: fresh wizard, skip, real Test failures, bundled sample opt-in, f
         );
       return values;
     };
+    // Usage setup runs asynchronously after the gateway is connected. Observe
+    // all four heartbeat objects before comparing gateway-removal snapshots.
+    await expect
+      .poll(
+        async () => {
+          const state = await snapshot();
+          return Object.fromEntries(
+            Object.entries(state).map(([kind, rows]) => [
+              kind,
+              (rows as { tags?: string[] }[]).filter((row) =>
+                row.tags?.includes('portal-internal'),
+              ).length,
+            ]),
+          );
+        },
+        { timeout: 15000 },
+      )
+      .toEqual({ services: 1, routes: 1, plugins: 2, consumers: 0 });
     const beforeRemoval = await snapshot();
     const trafficBeforeRemoval = (
       await request.get(`${proxyUrl}/sample/get`)

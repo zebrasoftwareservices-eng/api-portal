@@ -42,7 +42,7 @@ export default async function config(): Promise<NextConfig> {
       return process.env.VERCEL === '1'
         ? [
             {
-              source: '/api/:path*',
+              source: '/api/:path((?!v1/internal(?:/|$)).*)',
               destination: `${process.env.SERVER_URL || 'http://localhost:4000'}/api/:path*`,
             },
           ]

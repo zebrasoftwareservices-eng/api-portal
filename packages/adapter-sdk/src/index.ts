@@ -11,7 +11,7 @@ export interface Capabilities {
   accessControl: true;
   oauthClients: false;
   plans: boolean;
-  usage: false;
+  usage: boolean;
 }
 export interface HealthReport {
   reachable: boolean;
@@ -80,6 +80,8 @@ export type ConnectionCheck =
 export interface GatewayAdapter {
   readonly kind: 'kong';
   capabilities(): Capabilities;
+  parseUsageEvents(body: unknown): UsageEvent[];
+  ensureUsageCollection(): Promise<{ heartbeatPath: string }>;
   health(): Promise<HealthReport>;
   checkConnection(): Promise<ConnectionCheck>;
   checkProxy(url: string): Promise<boolean>;
@@ -128,4 +130,23 @@ export function portalTags(
     ...(app ? [`portal-app-${app.id}`] : []),
     ...(credentialId ? [`portal-cred-${credentialId}`] : []),
   ];
+}
+
+export type UsageEvent =
+  | { heartbeat: true; startedAt: Date }
+  | {
+      heartbeat: false;
+      appId: string;
+      credentialId: string;
+      serviceId: string;
+      status: number;
+      startedAt: Date;
+    };
+export class UsageUnavailableError extends GatewayRejectedError {
+  readonly code = 'usage-unavailable';
+  constructor() {
+    super(400);
+    this.message = 'The gateway refused redacted usage collection.';
+    this.name = 'UsageUnavailableError';
+  }
 }

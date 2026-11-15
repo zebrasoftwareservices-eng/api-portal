@@ -13,11 +13,13 @@ flock -n 9 || exit 0
 PORTAL_DEPLOY_ROOT="$ROOT" PORTAL_ENV_FILE="$ENV_FILE" \
   "$ROOT/deploy/hosted/backup.sh" >/dev/null
 
-# Cascades remove sessions, apps, subscriptions and credential metadata while
-# retaining the seeded catalog, gateway settings and the bootstrap admin.
+# Apps can belong to shared teams and created_by becomes NULL on user deletion.
+# Delete demo apps explicitly so their subscriptions, credentials and daily usage
+# cascade away, retaining the seeded catalog, gateway settings and bootstrap admin.
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T postgres \
   psql -v ON_ERROR_STOP=1 -U portal -d portal <<'SQL'
 BEGIN;
+DELETE FROM apps;
 DELETE FROM "user" WHERE role = 'developer';
 DELETE FROM verification;
 COMMIT;
