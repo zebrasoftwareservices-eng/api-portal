@@ -411,3 +411,42 @@ it('preserves download source bytes and latest pointer, with JSON fallback and c
     );
   }
 });
+
+it('keeps concurrent repeated reads stable and treats expired sessions as anonymous', async () => {
+  const index = await server.inject('/api/v1/llms.txt');
+  const links = [...index.body.matchAll(/http:\/\/localhost:3000([^\s)]+)/g)];
+  expect(links).toHaveLength(2);
+  for (const [, url] of links) {
+    const responses = await Promise.all(
+      Array.from({ length: 3 }, () =>
+        server.inject({
+          url: url!,
+          headers: {
+            cookie: 'better-auth.session_token=expired',
+            apikey: 'invalid',
+          },
+        }),
+      ),
+    );
+    for (const response of responses) {
+      expect(response.statusCode).toBe(200);
+      expect(response.body).toBe(responses[0]!.body);
+    }
+  }
+  for (const slug of ['internal', 'manual', seeded.get('open')!.apiId]) {
+    const response = await server.inject({
+      url: `/api/v1/apis/${slug}/spec`,
+      headers: {
+        cookie: 'better-auth.session_token=expired',
+        apikey: 'invalid',
+      },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(response.json().detail).toBe(
+      `No published API with slug '${slug}'.`,
+    );
+  }
+});

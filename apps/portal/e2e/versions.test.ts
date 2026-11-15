@@ -601,3 +601,6 @@ test('012 failure path: version upload cannot discard input before hydration', a
     await page.unrouteAll({ behavior: 'wait' });
   }
 });
+
+// Spec 021 coverage also runs in the Compose-backed browser suite.
+import './agent-docs.test';
