@@ -51,6 +51,7 @@ node scripts/factory.mjs next
 | 3      | 008  | teams-and-roles                      | JSO-236 | 007                                    | Teams own apps and keys: invites and roles                                       |
 | 4      | 009  | api-products-and-plans               | JSO-237 | 004, 008                               | API products and free plans with rate limits                                     |
 | 4      | 010  | access-requests-and-visibility       | JSO-238 | 009                                    | Access requests with admin approval, and catalog visibility levels               |
+| 4      | 023  | create-app-products-first            | pending | 009, 010                               | Create an app shows products first; no plan-free key for a product API           |
 | 5      | 011  | usage-and-insights                   | JSO-239 | 009                                    | Usage meter per app and admin insights                                           |
 | 5      | 012  | docs-versions-search-agents          | JSO-240 | —                                      | API versions and changelog, and spec linting                                     |
 | 5      | 020  | api-search                           | pending | —                                      | Search across APIs and endpoints                                                 |
