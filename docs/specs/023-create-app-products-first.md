@@ -1,7 +1,7 @@
 ---
 id: 023
 title: Create an app shows products first
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 023`
@@ -224,7 +224,16 @@ success path (AC 5) is the existing spec 004 provisioning, idempotent and tagged
 - [ ] [qa] Update existing quickstart and demo e2e flows that relied on the pre-checked Sample HTTP API
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/023-*.md`
+Design: [`docs/design/023-create-app-products-first.md`](../design/023-create-app-products-first.md).
+The form opens with a **Products** card: one row per visible product with its name, description,
+the APIs it includes (from `GET /v1/apis` `products[]`) and one link styled as a secondary button:
+**Subscribe**, **Request access** (all plans need approval), **View product** (manual), or, with no
+plans, a "Not available yet" badge for developers and "Needs a plan" + **Add a plan** for admins.
+Below, "Or create an app for APIs that aren't in a product" keeps today's name/description fields
+and lists only loose APIs, all unchecked; an empty submit shows "Choose at least one API, or
+subscribe to a product above." When every API is in a product the app form is replaced by a one-line
+note; with no products the page is today's form. A stale-page 409 shows the server detail with
+"Subscribe to {name}" links and refetches both lists. No new tokens.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
