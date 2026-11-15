@@ -1,7 +1,7 @@
 ---
 id: 021
 title: Agent-ready docs — Markdown pages, llms.txt, spec downloads and code samples
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
@@ -271,8 +271,20 @@ The three unexpected browser failures are `backlog-regressions.test.ts`'s JSO-17
 - [ ] Minor: The existing version/copy alignment regression fails because the reference version badge center sits outside the title's vertical bounds (`apps/portal/e2e/backlog-regressions.test.ts`, version alignment test); compact badge checks at 1280px and 375px pass.
 
 ## User testing  _(user-tester)_
-| User story | Result | Screenshot |
+
+2026-11-15: Orca browser UAT on QA's running http://localhost:3020 stack; desktop 1280×900, mobile 390×844, plus keyboard journey. Current evidence: [UAT report](../uat/021/report.md).
+
+| User story | Result | Evidence |
 | --- | --- | --- |
+| Discover public plain-text docs | PASS (anonymous) | “# Developer Portal”; all 15 public catalog APIs and all 30 document links returned 200. |
+| Read operations as Markdown | PASS | “# Orders QA 2.0.0”; GET/POST operations, `id | path | yes | string`, and “Responses: 200”. |
+| Download viewed API versions | PASS | Distinct 1.0.0/2.0.0 JSON, latest 2.0.0; “Download spec” started the expected file on mobile and keyboard. Original-byte/YAML checks remain QA-covered. |
+| Choose language samples | PASS | JavaScript Fetch, Python Requests and curl show the Kong URL, method/path, placeholder key and POST body. |
+| Use document controls on mobile and keyboard | PASS | Mobile full-width Download spec, no horizontal overflow; Tab/Enter/Escape reached document links and menus. `success-mobile.png` is local evidence. |
+| Handle missing/private resources | PASS for missing resources; privacy QA-covered | Named 404 problem+json for missing API/version; unpublished/hidden fixtures and authenticated-index equality remain covered by QA's Test report. |
+| Retest existing minor findings | STILL OPEN (minor only) | Node.js choice resets to “Shell Curl”; unknown reference/changelog returns HTTP 200; title/version alignment remains (`version-alignment-fail.png`, local). |
+
+No blocker or major found; status is review. Console checks contained no error-level entries; no error line exists to quote. Stack stopped after testing.
 
 ## Review  _(tech-lead)_
 
