@@ -150,9 +150,7 @@ it('keeps one exhausted budget when XFF rotates and preserves separate real clie
 });
 
 it('proxies API requests to the runtime SERVER_URL instead of the Next child', async () => {
-  const next = await listen(
-    createServer((_req, res) => res.end('next child')),
-  );
+  const next = await listen(createServer((_req, res) => res.end('next child')));
   const api = await listen(
     createServer((req, res) => res.end(`api server ${req.url}`)),
   );
@@ -221,14 +219,14 @@ it('answers healthz only when the loopback Next child answers', async () => {
   const upstreamServer = createServer((_req, res) => res.end('ready'));
   const upstream = await listen(upstreamServer);
   const port = await listen(createIngress(upstream));
-  expect((await call(port, {}, '127.0.0.1', '', '/healthz', 'GET')).status).toBe(
-    200,
-  );
+  expect(
+    (await call(port, {}, '127.0.0.1', '', '/healthz', 'GET')).status,
+  ).toBe(200);
 
   await new Promise<void>((resolve) => upstreamServer.close(() => resolve()));
-  expect((await call(port, {}, '127.0.0.1', '', '/healthz', 'GET')).status).toBe(
-    503,
-  );
+  expect(
+    (await call(port, {}, '127.0.0.1', '', '/healthz', 'GET')).status,
+  ).toBe(503);
 });
 
 it('returns a recoverable response when Next is unavailable', async () => {
@@ -239,4 +237,30 @@ it('returns a recoverable response when Next is unavailable', async () => {
   const response = await call(port, {}, '127.0.0.1', '', '/sign-in');
   expect(response.status).toBe(502);
   expect(response.body).toContain('Try again');
+});
+
+it('does not forward the internal usage namespace to either listener', async () => {
+  let requests = 0;
+  const upstream = await listen(
+    createServer((_req, res) => {
+      requests++;
+      res.end('private');
+    }),
+  );
+  const port = await listen(
+    createIngress(upstream, { serverUrl: `http://127.0.0.1:${upstream}` }),
+  );
+  for (const path of [
+    '/api/v1/internal',
+    '/api/v1/internal/usage/kong',
+    '/api/v1/internal/usage/kong?token=bad',
+    '/api/v1/%69nternal/usage/kong',
+  ]) {
+    expect((await call(port, {}, '127.0.0.1', '{}', path)).status).toBe(404);
+  }
+  expect(requests).toBe(0);
+  expect((await call(port, {}, '127.0.0.1', '', '/api/v1/apps')).status).toBe(
+    200,
+  );
+  expect(requests).toBe(1);
 });

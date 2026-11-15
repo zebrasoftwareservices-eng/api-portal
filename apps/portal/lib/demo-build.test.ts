@@ -59,7 +59,7 @@ describe('build-time demo switch', () => {
     const built = await config();
     expect(await built.rewrites!()).toEqual([
       {
-        source: '/api/:path*',
+        source: '/api/:path((?!v1/internal(?:/|$)).*)',
         destination: 'https://server.example/api/:path*',
       },
     ]);

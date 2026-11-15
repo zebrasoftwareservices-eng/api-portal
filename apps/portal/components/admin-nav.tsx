@@ -2,21 +2,31 @@
 'use client';
 import { useEffect } from 'react';
 import { api } from '../lib/client';
+import { usePortal } from './providers';
 import { useResource } from './use-resource';
 import { usePathname, useRouter } from 'next/navigation';
 const items = [
   ['/admin/apis', 'APIs'],
   ['/admin/products', 'Products'],
   ['/admin/requests', 'Requests'],
+  ['/admin/insights', 'Insights'],
   ['/admin/gateways', 'Gateways'],
   ['/admin/settings/mail', 'Mail'],
   ['/admin/settings/accounts', 'Accounts'],
 ] as const;
 export function AdminNav() {
+  const { user } = usePortal();
+  const path = usePathname();
+  const hide = path === '/admin/insights' && user?.role !== 'admin';
+  const visibleItems = items.filter(
+    ([href]) => href !== '/admin/insights' || user?.role === 'admin',
+  );
   const pending = useResource(() =>
-    api.GET('/v1/admin/access-requests', {
-      params: { query: { status: 'pending' } },
-    }),
+    hide
+      ? Promise.resolve({ data: { items: [] } })
+      : api.GET('/v1/admin/access-requests', {
+          params: { query: { status: 'pending' } },
+        }),
   );
   useEffect(() => {
     const refresh = () => void pending.reload();
@@ -24,15 +34,15 @@ export function AdminNav() {
     return () => window.removeEventListener('access-requests-changed', refresh);
   }, [pending.reload]);
   const count = pending.data?.items.length || 0;
-  const path = usePathname();
   const router = useRouter();
   const current =
     items.find(([href]) => path === href || path.startsWith(`${href}/`))?.[0] ||
     '';
+  if (hide) return null;
   return (
     <>
       <nav className="admin-tabs" aria-label="Admin section">
-        {items.map(([href, label]) => (
+        {visibleItems.map(([href, label]) => (
           <a
             key={href}
             href={href}
@@ -56,7 +66,7 @@ export function AdminNav() {
           value={current}
           onChange={(event) => router.push(event.target.value)}
         >
-          {items.map(([href, label]) => (
+          {visibleItems.map(([href, label]) => (
             <option key={href} value={href}>
               {label}
               {label === 'Requests' && count > 0 && (

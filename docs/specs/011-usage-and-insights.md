@@ -379,21 +379,21 @@ subscription).
 - [ ] [backend] regenerate `packages/sdk`. Add `PORTAL_USAGE_INGEST_URL` to
       `deploy/docker-compose.yml`, `deploy/hosted/compose.yaml`, `deploy/production/compose.yaml`
       and the Helm values. Document both variables and the load note in `deploy/README.md`.
-- [ ] [frontend] app page usage card:
+- [x] [frontend] app page usage card:
       - bar "20 of 1,000 calls", filled up to 100%, or the count with "No monthly limit";
       - 2xx/4xx/5xx counts, plus "Other" only when it isn't 0;
       - "Resets 1 Dec 2026, 00:00 UTC";
       - last-updated time, and a behind notice for `behind`;
       - "not available for this gateway" for `unsupported` or `not-configured`;
       - shown to every team role.
-- [ ] [frontend] admin Insights page:
+- [x] [frontend] admin Insights page:
       - sign-ups, active apps and top APIs, or "No calls yet";
       - median time to first call next to the 10-minute target and "N of M developers", or
         "No calls yet";
       - the developer list with "No call yet";
       - the unsupported state, and a 403 state with no data;
       - the navigation link shown to admins only.
-- [ ] [frontend] exclude `/api/v1/internal/*` from the portal's `/api/*` rewrite.
+- [x] [frontend] exclude `/api/v1/internal/*` from the portal's `/api/*` rewrite.
 - [ ] [qa] AC 1, 4, 6: integration against Testcontainers Kong. 20 calls show 20 of 1,000
       within 60 s. Month bucketing with a seeded previous month. Behind state with stored counts.
 - [ ] [qa] AC 2, 3: status-class split adds up to the total. No-key, unknown-key and revoked-key
@@ -424,6 +424,9 @@ Design: [docs/design/011-usage-and-insights.md](../design/011-usage-and-insights
   **Go to My apps**). At 375px the stats stack and the table becomes one card per developer.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend: implemented the app usage card with capped quota meter, UTC reset, status counts, unavailable/behind states and visible-tab minute/focus refresh; failures keep stored counts and show an alert after three consecutive background failures. Added responsive admin Insights with adoption/target metrics, top APIs, developer table/cards, admin-only navigation and a focused 403 screen; middleware permits the Insights permission screen while the generated client retains sign-in redirects. The portal runtime ingress rejects the internal namespace (including encoded segments), and the Vercel rewrite excludes it.
+- Frontend validation: `pnpm --filter @portal/portal lint`, `typecheck`, and `test` pass (42 files, 363 tests); no browser, workspace suite or quickstart run. Existing key/plan tests isolate the independently tested usage card. The coordinator authorized committing explicitly staged frontend/spec/log paths after verifying ownership, because the whole-branch guard also flags other roles' shared changes and prior design commits; no out-of-scope files were edited or restored by frontend.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`

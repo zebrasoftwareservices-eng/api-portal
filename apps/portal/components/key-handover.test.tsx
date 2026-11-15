@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { expect, it, vi } from 'vitest';
 import { Providers, usePortal } from './providers';
 import { AppDetail } from './app-detail';
+vi.mock('./app-usage', () => ({ AppUsageCard: () => null }));
 import type { App, IssuedCredential } from '../lib/types';
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('next/navigation', () => ({

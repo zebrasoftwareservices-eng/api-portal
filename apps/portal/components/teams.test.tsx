@@ -8,6 +8,7 @@ import { Invitation } from './invitation';
 import { Dashboard } from './dashboard';
 import { CreateApp } from './create-app';
 import { AppDetail } from './app-detail';
+vi.mock('./app-usage', () => ({ AppUsageCard: () => null }));
 const m = vi.hoisted(() => ({
   get: vi.fn(),
   post: vi.fn(),

@@ -23,7 +23,8 @@ api.use({
     if (
       response.status === 403 &&
       schemaPath !== '/v1/setup/admin' &&
-      !schemaPath.startsWith('/v1/admin/products')
+      !schemaPath.startsWith('/v1/admin/products') &&
+      schemaPath !== '/v1/admin/insights'
     ) {
       const problem = (await response
         .clone()
@@ -41,7 +42,12 @@ api.use({
       toast.error('Too many requests. Wait a moment and try again.');
     return response;
   },
-  onError() {
+  onError({ schemaPath }) {
+    if (
+      schemaPath === '/v1/apps/{appId}/usage' ||
+      schemaPath === '/v1/admin/insights'
+    )
+      return;
     toast.error(
       "Can't reach the portal server. Check your connection and try again.",
     );

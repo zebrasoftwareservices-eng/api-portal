@@ -13,6 +13,7 @@ import {
 import { useTeams } from './team-context';
 import { api, networkProblem, retrySeconds } from '../lib/client';
 import type { Credential, Problem } from '../lib/types';
+import { AppUsageCard } from './app-usage';
 import { useResource } from './use-resource';
 import { usePortal } from './providers';
 import { ResendVerification } from './account-shared';
@@ -304,6 +305,7 @@ export function AppDetail({ appId }: { appId: string }) {
           )}
         </Card>
       )}
+      <AppUsageCard key={appId} appId={appId} />
       <section id="subscriptions">
         <h2>APIs</h2>
         <ul className="subscription-list">

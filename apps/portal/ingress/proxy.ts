@@ -23,13 +23,18 @@ function normalizedAddress(address: string | undefined) {
 
 function trustedProxyList(value: string) {
   const list = new BlockList();
-  for (const entry of value.split(',').map((part) => part.trim()).filter(Boolean)) {
+  for (const entry of value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)) {
     const separator = entry.lastIndexOf('/');
     const address = separator === -1 ? entry : entry.slice(0, separator);
     const family = isIP(address);
-    if (!family) throw new Error(`Invalid PORTAL_TRUSTED_PROXIES entry: ${entry}`);
+    if (!family)
+      throw new Error(`Invalid PORTAL_TRUSTED_PROXIES entry: ${entry}`);
     const maximum = family === 4 ? 32 : 128;
-    const prefix = separator === -1 ? maximum : Number(entry.slice(separator + 1));
+    const prefix =
+      separator === -1 ? maximum : Number(entry.slice(separator + 1));
     if (!Number.isInteger(prefix) || prefix < 0 || prefix > maximum)
       throw new Error(`Invalid PORTAL_TRUSTED_PROXIES entry: ${entry}`);
     list.addSubnet(address, prefix, family === 4 ? 'ipv4' : 'ipv6');
@@ -54,7 +59,10 @@ function rightmostValue(value: string | string[] | undefined) {
     .at(-1);
 }
 
-function headersFor(req: IncomingMessage, trustedProxies: BlockList): IncomingHttpHeaders {
+function headersFor(
+  req: IncomingMessage,
+  trustedProxies: BlockList,
+): IncomingHttpHeaders {
   const headers = { ...req.headers };
   const peer = normalizedAddress(req.socket.remoteAddress) || 'unknown';
   const family = isIP(peer);
@@ -139,6 +147,25 @@ export function createIngress(port: number, options: IngressOptions = {}) {
       return;
     }
     const path = req.url || '/';
+    // Normalize encoded path segments before checking the private namespace.
+    let pathname: string;
+    try {
+      pathname = decodeURIComponent(
+        new URL(path, 'http://portal.invalid').pathname,
+      );
+    } catch {
+      res.writeHead(400);
+      res.end();
+      return;
+    }
+    if (
+      pathname === '/api/v1/internal' ||
+      pathname.startsWith('/api/v1/internal/')
+    ) {
+      res.writeHead(404);
+      res.end();
+      return;
+    }
     const isApi = path === '/api' || path.startsWith('/api/');
     const target = isApi ? serverUrl : new URL(`http://127.0.0.1:${port}`);
     const upstream = proxyRequest(
