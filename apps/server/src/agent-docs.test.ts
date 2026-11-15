@@ -450,3 +450,38 @@ it('keeps concurrent repeated reads stable and treats expired sessions as anonym
     );
   }
 });
+
+it('does not grant restricted docs to a signed-in outsider or accept forged expired admin cookies', async () => {
+  for (const headers of [
+    { 'x-viewer': 'outsider' },
+    { cookie: 'better-auth.session_token=expired-admin', apikey: 'invalid' },
+  ]) {
+    for (const slug of ['internal', 'manual', 'unpublished']) {
+      for (const suffix of [
+        'reference.md',
+        'spec',
+        'versions/1.0.0/reference.md',
+        'versions/1.0.0/spec',
+      ]) {
+        const response = await server.inject({
+          url: `/api/v1/apis/${slug}/${suffix}`,
+          headers,
+        });
+        expect(response.statusCode).toBe(404);
+        expect(response.headers['content-type']).toContain(
+          'application/problem+json',
+        );
+        expect(response.json()).toMatchObject({
+          type: '/problems/not-found',
+          detail: `No published API with slug '${slug}'.`,
+        });
+      }
+    }
+    // Reading docs requires no connection to the configured unreachable Kong admin URL.
+    for (const suffix of ['reference.md', 'spec'])
+      expect(
+        (await server.inject({ url: `/api/v1/apis/open/${suffix}`, headers }))
+          .statusCode,
+      ).toBe(200);
+  }
+});
