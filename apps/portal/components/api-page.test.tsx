@@ -30,6 +30,8 @@ it('explains the auth selector and Value field without assuming an apikey field 
       version: '1.0.0',
       gatewayBaseUrl: 'http://localhost:8000/orders',
       documentUrl: '/api/v1/apis/orders/openapi.json',
+      markdownUrl: '/api/v1/apis/orders/reference.md',
+      downloadUrl: '/api/v1/apis/orders/spec',
     },
   });
   try {
@@ -43,6 +45,15 @@ it('explains the auth selector and Value field without assuming an apikey field 
       'href',
       '/sign-up?next=%2Fdashboard%2Fapps%2Fnew%3Fapi%3Dorders',
     );
+    expect(
+      screen.getByRole('link', { name: 'View as Markdown (version 1.0.0)' }),
+    ).toHaveAttribute('href', '/api/v1/apis/orders/reference.md');
+    expect(
+      screen.getByRole('link', { name: 'Download spec (version 1.0.0)' }),
+    ).toHaveAttribute('href', '/api/v1/apis/orders/spec');
+    expect(
+      screen.getByRole('link', { name: 'Download spec (version 1.0.0)' }),
+    ).toHaveAttribute('download');
     expect(get).toHaveBeenCalledWith('/v1/apis/{slug}', {
       params: { path: { slug: 'orders' } },
     });
@@ -61,6 +72,8 @@ it('uses the canonical slug, renders reference before access resolves, and prese
       version: '1',
       gatewayBaseUrl: 'https://gateway.example/orders',
       documentUrl: '/api/v1/apis/orders/openapi.json',
+      markdownUrl: '/api/v1/apis/orders/reference.md',
+      downloadUrl: '/api/v1/apis/orders/spec',
     },
   });
   let resolve!: (value: unknown) => void;

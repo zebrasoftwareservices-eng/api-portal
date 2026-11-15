@@ -28,6 +28,8 @@ const detail: ApiDetail = {
   gatewayBaseUrl: 'https://example.com/orders',
   publishedAt: '2026-11-08T00:00:00Z',
   documentUrl: '/api/v1/apis/orders/openapi.json',
+  markdownUrl: '/api/v1/apis/orders/reference.md',
+  downloadUrl: '/api/v1/apis/orders/spec',
   gatewayService: { id: 'svc', name: 'orders' },
   versions: [
     {
@@ -35,12 +37,16 @@ const detail: ApiDetail = {
       isLatest: true,
       publishedAt: '2026-11-08T00:00:00Z',
       documentUrl: '',
+      markdownUrl: '/api/v1/apis/orders/versions/2.0.0/reference.md',
+      downloadUrl: '/api/v1/apis/orders/versions/2.0.0/spec',
     },
     {
       version: '1.0.0+build.1',
       isLatest: false,
       publishedAt: '2026-11-07T00:00:00Z',
       documentUrl: '',
+      markdownUrl: '/api/v1/apis/orders/versions/1.0.0%2Bbuild.1/reference.md',
+      downloadUrl: '/api/v1/apis/orders/versions/1.0.0%2Bbuild.1/spec',
     },
   ],
 };

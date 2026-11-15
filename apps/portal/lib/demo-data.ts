@@ -12,8 +12,12 @@ export function demoData() {
   const api: Pick<
     Api,
     'slug' | 'title' | 'version' | 'description' | 'gatewayBaseUrl'
-  > &
-    Pick<ApiDetail, 'versions'> = {
+  > & {
+    versions: Omit<
+      ApiDetail['versions'][number],
+      'markdownUrl' | 'downloadUrl'
+    >[];
+  } = {
     slug: 'sample',
     versions: [
       {

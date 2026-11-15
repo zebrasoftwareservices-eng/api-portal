@@ -166,3 +166,32 @@ it('only serves quickstart guidance in demo builds', () => {
     '/',
   );
 });
+
+it('hides agent document links on the demo API and version pages', async () => {
+  vi.stubEnv('PORTAL_DEMO_ACTIVE', 'true');
+  vi.stubEnv(
+    'PORTAL_DEMO_SAMPLE_API',
+    JSON.stringify({
+      info: { title: 'Sample API', version: '1.0.0' },
+      servers: [{ url: 'http://localhost:8000/sample' }],
+    }),
+  );
+  const { default: VersionPage } =
+    await import('../app/apis/[slug]/versions/[version]/page');
+  for (const page of [
+    await ApiPage({ params: Promise.resolve({ slug: 'sample' }) }),
+    await VersionPage({
+      params: Promise.resolve({ slug: 'sample', version: '1.0.0' }),
+    }),
+  ]) {
+    const view = render(page);
+    expect(
+      screen.queryByRole('link', { name: /View as Markdown/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: /Download spec/ }),
+    ).not.toBeInTheDocument();
+    view.unmount();
+  }
+  expect(serverClient).not.toHaveBeenCalled();
+});

@@ -212,9 +212,9 @@ Try it is unaffected; the sample must show Scalar's placeholder, never a real ke
 - [ ] [backend] Add `renderMarkdown` and the latest + per-version `reference.md` routes (caller's viewer, 404 details as designed).
 - [ ] [backend] Add the latest + per-version `spec` download routes (source bytes, content type, `Content-Disposition`, JSON fallback for null source).
 - [ ] [backend] Unit tests for `renderLlmsTxt` and `renderMarkdown` fixtures; route tests in `agent-docs.test.ts` for visibility, 404 details and download bytes.
-- [ ] [frontend] Add `app/llms.txt/route.ts` forwarding to the server without cookies; 503 when the server is down; 404 in demo builds.
-- [ ] [frontend] On the API page and the version page, add a "Markdown" link (`markdownUrl`) and a "Download spec" button (`downloadUrl`) for the version being viewed; hide both in demo builds.
-- [ ] [frontend] Set Scalar `hiddenClients` and `defaultHttpClient` in `referenceOptions` to the six clients above; unit test the options.
+- [x] [frontend] Add `app/llms.txt/route.ts` forwarding to the server without cookies; 503 when the server is down; 404 in demo builds.
+- [x] [frontend] On the API page and the version page, add a "Markdown" link (`markdownUrl`) and a "Download spec" button (`downloadUrl`) for the version being viewed; hide both in demo builds.
+- [x] [frontend] Set Scalar `hiddenClients` and `defaultHttpClient` in `referenceOptions` to the six clients above; unit test the options.
 - [ ] [qa] Integration: criteria 1, 2, 5 against the Compose stack (all `/llms.txt` links return 200; same content with cookie and `apikey`; 404 problem+json with a detail naming the slug or version).
 - [ ] [qa] Integration: criteria 3 and 4 (Markdown lists every operation with parameters and response codes; YAML and JSON downloads byte-identical with matching content type; latest is `2.0.0`).
 - [ ] [qa] e2e (Playwright): criteria 6 and 7 (curl, JavaScript and Python samples with method, gateway URL, path, key placeholder and body; Markdown link and Download spec on the latest and a version page).
@@ -231,6 +231,8 @@ Design: [docs/design/021-agent-ready-docs.md](../design/021-agent-ready-docs.md)
   reference (Authentication wording, `yes`/`no`, no-operations line) is in §4 of the design.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+**Frontend:** Added the anonymous SDK-backed `/llms.txt` route, version-specific View as Markdown and Download spec controls, responsive loading states, and the six Scalar clients with curl selected by default. Demo pages hide both controls and `/llms.txt` returns the default 404; Scalar retains its built-in `YOUR_SECRET_TOKEN` placeholder with empty Try-it credentials. `@portal/portal` lint, typecheck, and all 382 tests (45 files) pass; QA should verify the responsive layout, actual Scalar samples, and downloads against the live server. The download glyph is the equivalent inline 16px SVG because this repo does not depend on lucide-react, and the shared Button has no size prop.
 
 ## Test report  _(qa-tester)_
 | Criterion | Test file | Result |

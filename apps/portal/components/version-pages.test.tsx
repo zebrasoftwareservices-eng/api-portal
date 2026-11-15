@@ -39,12 +39,16 @@ const api = {
       isLatest: true,
       publishedAt: '2026-11-08T00:00:00Z',
       documentUrl: '',
+      markdownUrl: '/api/v1/apis/orders/versions/2/reference.md',
+      downloadUrl: '/api/v1/apis/orders/versions/2/spec',
     },
     {
       version: '1',
       isLatest: false,
       publishedAt: '2026-11-07T00:00:00Z',
       documentUrl: '',
+      markdownUrl: '/api/v1/apis/orders/versions/1/reference.md',
+      downloadUrl: '/api/v1/apis/orders/versions/1/spec',
     },
   ],
 };
@@ -64,6 +68,15 @@ it('shows the older version notice and the requested reference', async () => {
     screen.getByRole('link', { name: 'View latest version' }),
   ).toHaveAttribute('href', '/apis/orders');
   expect(screen.getByText('Reference 1')).toBeVisible();
+  expect(
+    screen.getByRole('link', { name: 'View as Markdown (version 1)' }),
+  ).toHaveAttribute('href', api.versions[1]!.markdownUrl);
+  expect(
+    screen.getByRole('link', { name: 'Download spec (version 1)' }),
+  ).toHaveAttribute('href', api.versions[1]!.downloadUrl);
+  expect(
+    screen.getByRole('link', { name: 'Download spec (version 1)' }),
+  ).toHaveAttribute('download');
 });
 it.each(['missing', '%invalid'])(
   'returns not-found for unknown or malformed version %s',
@@ -169,4 +182,21 @@ it('links the changelog plus-version entry to its encoded stable route', async (
   expect(
     screen.getByRole('link', { name: `View ${version} reference` }),
   ).toHaveAttribute('href', '/apis/orders/versions/1.0.0%2Bbuild.1');
+});
+
+it('keeps the named latest version URLs on its version page', async () => {
+  get.mockImplementation((path: string) =>
+    Promise.resolve({ data: path === '/v1/apis/{slug}' ? api : {} }),
+  );
+  render(
+    await VersionPage({
+      params: Promise.resolve({ slug: 'orders', version: '2' }),
+    }),
+  );
+  expect(
+    screen.getByRole('link', { name: 'View as Markdown (version 2)' }),
+  ).toHaveAttribute('href', api.versions[0]!.markdownUrl);
+  expect(
+    screen.getByRole('link', { name: 'Download spec (version 2)' }),
+  ).toHaveAttribute('href', api.versions[0]!.downloadUrl);
 });

@@ -103,7 +103,14 @@ export default async function Page({ params }: Props) {
       <div className="stack">
         <PageHeader
           title={data.title}
-          titleSuffix={<VersionRow api={data} current={version} />}
+          titleSuffix={
+            <VersionRow
+              api={data}
+              current={version}
+              markdownUrl={selected.markdownUrl}
+              downloadUrl={selected.downloadUrl}
+            />
+          }
           breadcrumb={[
             { label: 'APIs', href: '/' },
             { label: data.title, href: `/apis/${slug}` },
