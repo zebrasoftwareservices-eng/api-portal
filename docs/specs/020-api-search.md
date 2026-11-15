@@ -1,7 +1,7 @@
 ---
 id: 020
 title: Search across APIs and endpoints
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
@@ -87,8 +87,9 @@ apply to search automatically. An unpublished API never appears.
   it ships; an unpublished API never appears (criteria 3 and 4).
 - [x] ~~Search engine?~~ Answered (tech-lead): query-time matching over the visible catalog, no
   index or container (ADR 0012, Technical design).
-- [ ] Is search a box in the site header with a results page, a command palette (⌘K), or both?
-  Do results appear as you type? — ui-designer
+- [x] ~~Header box, command palette (⌘K), or both? Results as you type?~~ Answered (ui-designer):
+  a header search box and a `/search?q=` results page; no palette or search-as-you-type in this
+  slice (UX section).
 - [x] ~~Maximum term length, result count, rate limit?~~ Answered (tech-lead): 100 characters,
   20 results by default and 50 at most, 60/min per IP anonymous and 120/min per user.
 
@@ -192,10 +193,25 @@ because the reference page opens the latest version by default.
 - [ ] [frontend] Shared `operationAnchor()` helper wired into `referenceOptions` (Scalar operation slug) and into operation result links, so `/apis/{slug}#<anchor>` scrolls to the operation; unit-test the helper.
 - [ ] [frontend] Demo mode: search the sample API in the browser with `searchCatalog` from `@portal/sdk` (no server call), same results UI.
 - [ ] [qa] Playwright e2e on the Compose stack with real Kong: search `orders/{id}` → result opens the reference with the `GET /orders/{id}` operation in view (AC 1); `orders api` and `cancel order` (AC 2); empty state (AC 6); a hidden-product API absent anonymously and present for its team member (AC 4).
-- [ ] [qa] Run the full suite and the `docker compose up` quickstart; confirm no new container and no migration; record results in the Test report.
+- [ ] [qa] After the new tests pass, run the full suite and the browser suite once, then the quickstart; confirm no new container and no migration. Commit those tests even if the guard names another role's files. Record results in the Test report.
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/020-*.md`
+Design: [docs/design/020-api-search.md](../design/020-api-search.md).
+
+- **Entry point:** a search box in the site header (280px, from 1024px), or a search icon button
+  below 1024px that opens `/search`. It is a plain GET form, so it works without JavaScript and in
+  demo mode. No ⌘K palette and no search-as-you-type in this slice. Both are follow-ups.
+- **Results page `/search?q=`:** h1 **Search**, its own box, a polite status summary
+  ("{n} results for "{term}""), and one ranked list in server order. Operation rows show
+  `MethodBadge`, the path in mono, then summary (or operationId) · API title, and link to
+  `/apis/{slug}#operationAnchor(...)`. API rows show **API**, the title and "Version {version}",
+  and link to `/apis/{slug}`.
+- **States:** start (hint, no request), loading skeletons, success, truncated ("Showing the top
+  {n}…"), empty **Nothing matched "{term}"** with **Browse all APIs**, 400 as an inline field
+  error with the problem `detail`, 429 `ProblemAlert` with a countdown, and network error with
+  **Try again**. No no-permission state: hidden APIs simply aren't listed.
+- **New components:** `MethodBadge` (`packages/ui`, one outline variant, no per-method colours),
+  `SearchResultRow` and `HeaderSearch` (`apps/portal`). No new tokens.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
