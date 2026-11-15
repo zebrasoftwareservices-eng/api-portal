@@ -29,6 +29,8 @@ quota within a minute, and the admin can read each new developer's time to first
 ## Users
 - **API consumer (developer):** any member of the team that owns the app, including Read-only.
 - **Portal admin:** reads the insights page.
+- **Hosted demo visitor (spec 006):** a developer on the public live demo; sees the same usage
+  meter as in any install.
 - **Platform engineer:** runs the quickstart; collection must work against the bundled Kong with
   no extra setup.
 
@@ -39,8 +41,11 @@ quota within a minute, and the admin can read each new developer's time to first
   can tell whether a problem is in my code or in the API.
 - As a portal admin, I want to see sign-ups, active apps and the most-called APIs, so that I know
   whether the portal is being adopted and which APIs matter.
-- As a portal admin, I want each new developer's time to first API call, so that I can tell
-  whether onboarding meets the under-10-minutes target and spot developers who got stuck.
+- As a portal admin, I want each new developer's time from sign-up to first successful API
+  call, so that I can tell whether onboarding (including waiting on email verification) meets
+  the under-10-minutes target and spot developers who got stuck.
+- As a visitor to the hosted live demo, I want my app's usage meter to work as it would in a
+  real install, so that I can judge the product by trying it.
 - As a platform engineer, I want usage collected from the Kong I already connected, with nothing
   extra to install, so that the quickstart still works in under five minutes.
 
@@ -78,11 +83,13 @@ quota within a minute, and the admin can read each new developer's time to first
    apps (apps with at least one call), and the five APIs with the most calls, each with its
    call count.
 8. **Given** developers who signed up in the last 30 days, some of whom have made a successful
-   (2xx) call through Kong with a portal-issued key and some of whom have not
+   (2xx) call through Kong with a key from any portal app on their account and some of whom
+   have not
    **When** a portal admin opens the insights page
-   **Then** it lists each of them with sign-up time, first successful call time and the time
-   between them, shows "No call yet" for those without one, and shows the median time to first
-   call against the 10-minute target.
+   **Then** it lists each of them with sign-up time (account creation, not email verification),
+   first successful call time and the time between them, shows "No call yet" for those without
+   one, and shows the median time to first call against the 10-minute target.
+   A 2xx try-it call from the portal counts as the first call; a 4xx or 5xx call does not.
 9. **Given** a signed-in developer who is not a portal admin
    **When** they request the insights page or its server API
    **Then** the server answers 403 with RFC 9457 problem+json, the page shows no insight data,
@@ -92,19 +99,29 @@ quota within a minute, and the admin can read each new developer's time to first
     **Then** its usage test passes. **And given** a connected adapter that reports usage as
     unsupported, the app page and insights page say usage is not available for this gateway
     instead of showing zero.
+11. **Given** the hosted live demo (spec 006) with a visitor who has made calls through Kong
+    with their app's key
+    **When** the visitor opens their app page, then requests the insights page
+    **Then** the app page shows that app's usage exactly as in criterion 1, the insights page
+    answers 403 as in criterion 9 (only the seeded demo admin sees it, and there is no public
+    insights view), **and after** the daily demo reset the visitor's usage records are gone
+    along with the rest of the visitor data, so the insights page no longer counts them.
 
 ## Out of scope
-- **Error spikes per team** (in JSO-239's scope list). Cut to keep this to one pull request:
-  a "spike" needs a baseline and a threshold that no one has defined yet, and alerting on it
-  overlaps with notifications. The app page's status-class counts (criterion 2) cover the
-  developer side. Follow-up spec.
+- **Error spikes per team** (in JSO-239's scope list). Cut to keep this to one pull request
+  (Elango, 2026-11-14): alerting on it overlaps with notifications. The app page's status-class
+  counts (criterion 2) cover the developer side. Tracked as a follow-up below; the starting
+  threshold to evaluate then is a team's 5xx rate over 5% across 15 minutes with at least 50
+  requests.
 - **Charts over time, daily breakdowns, date-range pickers and CSV export.** One monthly number
   per plan and fixed 30-day admin totals prove the value.
 - **Per-operation or per-route usage, latency and response-size metrics.**
 - **Usage alerts and emails** (for example at 80% of quota). Later spec on top of spec 007's mail.
 - **Usage on AWS API Gateway.** Spec 017 implements the adapter's usage call with usage plans.
 - **Usage in the static Vercel demo (spec 002).** It has no backend, so these screens don't
-  appear there.
+  appear there. The hosted live demo (spec 006) is in scope (criterion 11).
+- **A public insights view on the hosted live demo.** The demo behaves like any install: insights
+  stay admin-only.
 - **Billing or overage of any kind.** Plans are free access tiers (AGENTS.md).
 - **Changing how Kong enforces quotas.** The portal displays usage; Kong still decides rejections.
 - **Insights per team or per developer beyond time to first call, and staff roles that limit who
@@ -119,12 +136,18 @@ quota within a minute, and the admin can read each new developer's time to first
       which one does the usage bar show? — tech-lead
 - [ ] Can a spec 009 plan have no monthly quota? If so, the bar shows the count with "No monthly
       limit". — tech-lead, from spec 009's data model
-- [ ] Does "time to first API call" start at sign-up or at email verification (when spec 007
-      requires a verified address), and does a try-it call from the portal count? This spec
-      assumes sign-up, and any 2xx call with a portal key, including try-it. — Elango
-- [ ] Do we want error spikes per team in a follow-up spec, and with what threshold? — Elango
-- [ ] Should the hosted live demo (spec 006) show the insights page publicly, or stay admin-only
-      like every install? — Elango
+- [x] Does "time to first API call" start at sign-up or at email verification, and does a try-it
+      call count? — Elango: **starts at sign-up** (account creation), because waiting on
+      verification is onboarding friction admins want to see. **Ends at the first 2xx call**
+      through Kong with any key from a portal app on that account; **try-it calls count**, since
+      they are real calls through Kong. (Criterion 8.)
+- [x] Do we want error spikes per team, and with what threshold? — Elango: **not in this spec.**
+      Follow-up below; evaluate starting at a team's 5xx rate over 5% across 15 minutes with at
+      least 50 requests.
+- [x] Should the hosted live demo (spec 006) show the insights page publicly? — Elango: **no.**
+      The demo behaves like a real product: visitors see their own app usage, insights stay
+      admin-only (the seeded admin), and the daily reset clears visitor usage with the rest of
+      the visitor data. (Criterion 11.)
 
 ---
 <!-- Sections below are filled by later stages. -->
@@ -175,3 +198,6 @@ return the spec to building. Earlier rounds go in `docs/specs/log/011.md`.
 - [ ] API contract, README and docs updated
 - [ ] Tech-lead review has no blocking findings
 - [ ] Elango merged the PR
+
+### Follow-ups
+- Error spikes per team — evaluate alerting when a team's 5xx rate is over 5% across 15 minutes with at least 50 requests.
