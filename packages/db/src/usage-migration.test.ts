@@ -34,6 +34,34 @@ it('backfills credential creators and cascades aggregate and first-call rows', a
         'utf8',
       ),
     );
+    // AC 3: usage storage must contain aggregate/attribution fields only.
+    for (const [table, expected] of [
+      [
+        'usage_daily',
+        [
+          'app_id',
+          'day',
+          'service_id',
+          'count_2xx',
+          'count_4xx',
+          'count_5xx',
+          'count_other',
+        ],
+      ],
+      [
+        'developer_first_calls',
+        ['user_id', 'first_call_at', 'app_id', 'credential_id'],
+      ],
+    ] as const) {
+      const columns = await client`
+        select column_name from information_schema.columns
+        where table_schema = 'public' and table_name = ${table}
+        order by column_name
+      `;
+      expect(columns.map((row) => row.column_name)).toEqual(
+        [...expected].sort(),
+      );
+    }
     expect(await client`select created_by from credentials`).toEqual([
       { created_by: id },
     ]);
