@@ -1,7 +1,7 @@
 ---
 id: 020
 title: Search across APIs and endpoints
-status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
+status: done   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
