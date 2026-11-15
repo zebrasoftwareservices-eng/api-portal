@@ -1,7 +1,7 @@
 ---
 id: 023
 title: Create an app shows products first
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 023`
@@ -270,12 +270,17 @@ All nine criteria run in `apps/portal/e2e/create-app-products.test.ts`, test **0
 - [x] QA browser selectors assumed a pristine catalog (minor, test-only): the quickstart heading became ambiguous with public products, duplicate Sample HTTP API titles confused checkbox selection, and focus assertions assumed the sample was first; corrected and verified by the 3/3 targeted populated-stack retest.
 
 ## User testing  _(user-tester)_
+
+2026-11-15 — **Pass**, no open blocker or major. Current evidence: [`docs/uat/023/report.md`](../uat/023/report.md), tested commit `a70fc7e36ed6d1e903f8be0193cdaf980c385251`, http://localhost:3007.
+
 | User story | Result | Evidence |
 | --- | --- | --- |
+| Find products and subscribe (AC1, AC2, AC9) | Pass | “Products” appears first; Payments Subscribe reaches Plans and creates a separate Free-plan app with one active key beside the loose app in My apps. Product APIs appear under products, not as loose checkboxes. |
+| Choose loose APIs explicitly (AC3–5) | Pass | Seeded Sample HTTP API starts unchecked. Empty selection shows “Choose at least one API, or subscribe to a product above.” Explicit selection creates a one-time key; real Kong GET /sample/get returns HTTP 200. |
+| Product availability and visibility (AC7–8) | Pass | Developer: “Not available yet”, no Subscribe. QA test admin: “Needs a plan” and Add a plan reaches the matching admin screen. Internal/unassigned Manual products and APIs are omitted for developer; Hidden is omitted after sign-out. |
+| Mobile and keyboard main journey | Pass | 390 × 844 mobile creation completes; Tab/Enter product subscription completes with required name prepared as test data; Escape closes navigation. Local success-desktop.png and success-mobile.png. |
 
-One row per user-visible criterion. Evidence is a short quote of what was on the screen.
-Name an image only for an open failure. On a retest, change only the failed rows.
-Earlier rounds go in `docs/specs/log/023.md`. The full report is `docs/uat/023/report.md`.
+AC6 is API-only; the current QA Test report supplies its refusal/rollback coverage. Console checks returned `"entries": []`; no error was available to quote and no logs were saved. No open bugs at intake or new findings; status is review.
 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
