@@ -1,7 +1,7 @@
 ---
 id: 011
 title: Usage meter per app and admin insights
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-239
@@ -394,20 +394,21 @@ subscription).
       - the unsupported state, and a 403 state with no data;
       - the navigation link shown to admins only.
 - [x] [frontend] exclude `/api/v1/internal/*` from the portal's `/api/*` rewrite.
-- [ ] [qa] AC 1, 4, 6: integration against Testcontainers Kong. 20 calls show 20 of 1,000
+- [x] [qa] AC 1, 4, 6: integration against Testcontainers Kong. 20 calls show 20 of 1,000
       within 60 s. Month bucketing with a seeded previous month. Behind state with stored counts.
-- [ ] [qa] AC 2, 3: status-class split adds up to the total. No-key, unknown-key and revoked-key
+- [x] [qa] AC 2, 3: status-class split adds up to the total. No-key, unknown-key and revoked-key
       calls change nothing. Stored rows hold no key, header or body.
-- [ ] [qa] AC 5, 9: 401, 404 and 403 problem+json on both GETs. A read-only member sees usage.
+- [x] [qa] AC 5, 9: 401, 404 and 403 problem+json on both GETs. A read-only member sees usage.
       The non-admin has no Insights link.
-- [ ] [qa] AC 7, 8: insights totals, top-5 ordering and the empty state. First-call attribution
+- [x] [qa] AC 7, 8: insights totals, top-5 ordering and the empty state. First-call attribution
       (own key and a regenerated key count; a teammate's key, 4xx and 5xx don't; a 2xx try-it
       call does). The median and "N of M".
-- [ ] [qa] AC 10: the Kong conformance usage test passes, and a stub unsupported adapter shows
+- [x] [qa] AC 10: the Kong conformance usage test passes, and a stub unsupported adapter shows
       "not available" on both pages.
 - [ ] [qa] AC 11 and the quickstart: the hosted-demo flow (visitor usage, insights 403, usage
       gone after `reset-demo.sh`), and `quickstart-smoke.mjs` asserts usage ≥1 within 60 s.
-
+- [ ] [backend] Fix: Demo reset retains shared-team visitor usage and insights counts
+- [ ] [backend] Fix: Warm Kong service intermittently accepts unsubscribed key after protection
 ## UX  _(ui-designer)_
 Design: [docs/design/011-usage-and-insights.md](../design/011-usage-and-insights.md). No new tokens.
 - **App page:** a "Usage this month" card above the APIs card, for every team role. It shows
@@ -432,18 +433,36 @@ Design: [docs/design/011-usage-and-insights.md](../design/011-usage-and-insights
 - Frontend validation: `pnpm --filter @portal/portal lint`, `typecheck`, and `test` pass (42 files, 363 tests); no browser, workspace suite or quickstart run. Existing key/plan tests isolate the independently tested usage card. The coordinator authorized committing explicitly staged frontend/spec/log paths after verifying ownership, because the whole-branch guard also flags other roles' shared changes and prior design commits; no out-of-scope files were edited or restored by frontend.
 
 ## Test report  _(qa-tester)_
-Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
 
-| Criterion | Test file | Result |
+Commit tested: `f5f4cea303fa7dbdd96a571ff721f977a9391826` plus the uncommitted QA tests in this worktree. Portal: **http://localhost:3006** (`node scripts/worktree-compose.mjs env`); Compose project `portal-011-usage-and-insights-1491`.
+
+| Criterion | Automated test | Result |
 | --- | --- | --- |
+| 1 — automatic 20 calls / quota / freshness | `apps/server/src/usage.test.ts` real Kong/Postgres AC 1/3; `apps/portal/components/app-usage.test.tsx`; `apps/portal/e2e/usage.test.ts` | PASS (API, component and browser) |
+| 2 — exact 12/5/3 status classes | `apps/server/src/usage.test.ts` AC 2; `apps/portal/components/app-usage.test.tsx` | PASS |
+| 3 — rejected keys / private storage | `apps/server/src/usage.test.ts` real Kong AC 1/3; `packages/adapter-kong/src/conformance.test.ts` usage conformance/redaction | PASS |
+| 4 — UTC month exclusion and reset | `apps/server/src/usage.test.ts` month bucketing and real Kong seeded previous month; `apps/portal/components/app-usage.test.tsx` | PASS |
+| 5 — membership, read-only, expired/signed-out sessions | `apps/server/src/usage.test.ts` permissions and problem+json; `apps/portal/e2e/usage.test.ts` | PASS (API and browser) |
+| 6 — behind keeps stored counts and update time | `apps/server/src/usage.test.ts` real Kong counts then stale collection; `apps/portal/components/app-usage.test.tsx` | PASS |
+| 7 — rolling insights, top five, empty state | `apps/server/src/usage.test.ts` AC 7/8; `apps/portal/components/admin-insights.test.tsx` | PASS |
+| 8 — creator attribution, successful calls, median and coverage | `apps/server/src/usage.test.ts` earliest 2xx, teammate/owner isolation and AC 7/8; `apps/server/src/products.test.ts` regeneration; `apps/portal/components/admin-insights.test.tsx`; `apps/portal/e2e/usage.test.ts` try-it | PASS (API, component and browser) |
+| 9 — admin-only insights and navigation | `apps/server/src/usage.test.ts` AC 5/9; `apps/portal/components/admin-insights.test.tsx`; `apps/portal/e2e/usage.test.ts` | PASS (API, component and browser) |
+| 10 — real Kong conformance / unsupported UI | `packages/adapter-kong/src/conformance.test.ts` usage conformance; `apps/server/src/usage.test.ts`; `apps/portal/components/app-usage.test.tsx`; `apps/portal/components/admin-insights.test.tsx` | PASS |
+| 11 — visitor usage, private insights and hosted reset | `apps/portal/e2e/usage.test.ts`; `apps/server/src/usage.test.ts` exact SQL extracted from `reset-demo.sh` | FAIL: shared-team app usage survives reset |
 
-Long notes go in `docs/specs/log/011.md`, not here.
+- `pnpm lint` and `pnpm typecheck`: PASS. Changed-package typechecks ran before tests.
+- One full `pnpm test`: FAIL (10/12 Turbo tasks completed successfully). Portal 363/363 and database 10/10 passed; Kong 63/64 passed including usage conformance, but its exact first-request ACL test received 200 instead of 403. The isolated ACL rerun passed, so the authorization finding remains intermittent; the server's reset acceptance regression failed and Turbo terminated the remaining server run.
+- One full `pnpm test:e2e`: 94 passed, 5 failed, 2 skipped (7.4 minutes), including a PASS for the new live usage/try-it/private-insights journey. The five failures were the two pre-seed navigation checks, gateway snapshot racing asynchronous heartbeat creation, and two admin-navigation assertions missing Insights; after fixing only those test expectations, the targeted five-check rerun passed 5/5 (39.3 seconds). Existing expected failures remain expected; no second full browser pass ran.
+- Quickstart: `node scripts/worktree-compose.mjs up -d --build --wait` completed after recovering a Docker Desktop daemon exit; stack remains running for the next stage, and the Compose-backed quickstart smoke passed. The initial fresh stack redirected to setup, so the first two browser assertions requiring seeded navigation ran before setup; these are environment preconditions, to be checked individually after seeding.
+- Focused completion checks: `products.test.ts` passed both the existing regeneration lifecycle and the new initial/regenerated creator-attribution test (2/2). The complete hosted shell reset/backup/restart was not invoked against this local quickstart; its exact database SQL was tested against real Postgres and failed AC 11.
+- No open bugs existed at intake. Both new major findings are retained under Bugs/Deferred Linear because Linear rejected issue creation at its Free-plan capacity. Application fixes are outside QA ownership.
+- `node scripts/factory.mjs guard qa-tester` rejects prior-stage application/design changes already committed on this feature branch; QA has preserved them and has not committed its changes.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
-
+- [ ] Demo reset retains shared-team visitor usage and insights counts (major)
+- [ ] Warm Kong service intermittently accepts unsubscribed key after protection (major)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
@@ -467,3 +486,15 @@ return the spec to building. Earlier rounds go in `docs/specs/log/011.md`.
 
 ### Follow-ups
 - Error spikes per team — evaluate alerting when a team's 5xx rate is over 5% across 15 minutes with at least 50 requests.
+
+### Deferred Linear
+- **Bug** — Bug: Demo reset retains shared-team visitor usage and insights counts (major)
+  - parent: JSO-239
+  - priority: high
+  - create when the Linear limit allows
+  - body: Acceptance criterion 11 fails for visitor apps in a shared team. Reproduce with `pnpm --filter @portal/server exec vitest run src/usage.test.ts -t 'AC 11'`: the test ingests a successful call, then executes the exact SQL extracted from deploy/hosted/reset-demo.sh against real PostgreSQL.  The reset deletes developer users, but apps.created_by and teams.created_by use ON DELETE SET NULL. Shared teams and their apps survive, so usage_daily still contains the visitor's count and admin insights still counts the active app. Expected: visitor usage records and their contribution to insights disappear after daily reset.  Fix the hosted reset cleanup for team-owned visitor apps without changing normal user deletion semantics; add coverage for personal and shared-team apps. QA owns tests only and has left the failing acceptance regression in apps/server/src/usage.test.ts.
+- **Bug** — Bug: Warm Kong service intermittently accepts unsubscribed key after protection (major)
+  - parent: JSO-239
+  - priority: high
+  - create when the Linear limit allows
+  - body: The required full `pnpm test` pass failed in packages/adapter-kong/src/conformance.test.ts:311, test `refuses the first request with an unsubscribed key after protecting a warm service`: the first real Kong request returned 200 instead of 403 after protectService completed. The suite uses real Kong 3.9, PostgreSQL, strict worker consistency, two workers, and warmed proxy connections; this is an authorization bypass for an unsubscribed portal key during ACL propagation.  A targeted isolated rerun (`pnpm --filter @portal/adapter-kong exec vitest run src/conformance.test.ts -t 'refuses the first request'`) passed, so the failure is intermittent and exposed under the full suite's load. Keep the existing exact-first-request assertion and investigate convergence before protectService returns; do not weaken it to poll for eventual refusal. Full-pass log: /tmp/011-test.log; isolated reproduction result: /tmp/011-warm-acl.log.

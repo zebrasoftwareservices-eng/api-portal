@@ -5,6 +5,9 @@ import {
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import { uuidv7 } from 'uuidv7';
+import { GenericContainer, TestContainers, Wait } from 'testcontainers';
+import { eq } from 'drizzle-orm';
+import { readFile } from 'node:fs/promises';
 import {
   connect,
   migrate,
@@ -19,6 +22,10 @@ import {
   usageDaily,
   developerFirstCalls,
   usageIngestBatches,
+  apis,
+  apiVersions,
+  products,
+  plans,
 } from '@portal/db';
 import { KongAdapter } from '@portal/adapter-kong';
 import type { Auth } from './auth.js';
@@ -298,12 +305,10 @@ it('creates one encrypted stable token during concurrent gateway loads', async (
     expect(stored!.tokenCiphertext).not.toContain(tokens[0]!);
   } finally {
     await connection.db.delete(usageCollection);
-    await connection.db
-      .insert(usageCollection)
-      .values({
-        tokenCiphertext: encrypt(token, config.PORTAL_ENCRYPTION_KEY),
-        configuredAt: new Date(),
-      });
+    await connection.db.insert(usageCollection).values({
+      tokenCiphertext: encrypt(token, config.PORTAL_ENCRYPTION_KEY),
+      configuredAt: new Date(),
+    });
   }
 });
 it('uses the configured heartbeat path and warns once on a failed request', async () => {
@@ -329,4 +334,314 @@ it('uses the configured heartbeat path and warns once on a failed request', asyn
     { code: 'usage-heartbeat-failed' },
     'Usage heartbeat failed',
   );
+});
+
+it('AC 2: returns exactly 12 successes, five client errors including 429, and three server errors', async () => {
+  const statuses = [
+    ...Array(12).fill(200),
+    400,
+    401,
+    403,
+    404,
+    429,
+    500,
+    502,
+    503,
+  ];
+  await ingest(
+    statuses.map((status, index) => entry(status, keyId, Date.now() - index)),
+  );
+  expect((await usage()).json()).toMatchObject({
+    total: 20,
+    byStatus: { '2xx': 12, '4xx': 5, '5xx': 3, other: 0 },
+  });
+});
+
+it('AC 5/9: permission failures are problem+json without counts, including an expired session', async () => {
+  await ingest(entry());
+  for (const [identity, url, status] of [
+    [outsiderId, `/api/v1/apps/${appId}/usage`, 404],
+    [ownerId, '/api/v1/admin/insights', 403],
+    [null, `/api/v1/apps/${appId}/usage`, 401],
+    [null, '/api/v1/admin/insights', 401],
+  ] as const) {
+    viewer = identity;
+    const response = await server.inject({
+      url,
+      headers: { cookie: 'better-auth.session_token=expired' },
+    });
+    expect(response.statusCode).toBe(status);
+    expect(response.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(response.json()).toMatchObject({
+      status,
+      type: expect.any(String),
+      title: expect.any(String),
+    });
+    expect(response.json()).not.toHaveProperty('total');
+    expect(response.json()).not.toHaveProperty('activeApps');
+  }
+});
+
+it('AC 7/8: ranks only five APIs, excludes old calls, orders developers and computes attribution median', async () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const ids: string[] = [];
+  try {
+    for (let index = 0; index < 6; index++) {
+      const id = uuidv7(),
+        versionId = uuidv7();
+      ids.push(id);
+      await connection.db.insert(apis).values({
+        id,
+        slug: `usage-${index}`,
+        gatewayId,
+        gatewayServiceId: id,
+        gatewayServiceName: id,
+        routePath: `/${id}`,
+      });
+      await connection.db.insert(apiVersions).values({
+        id: versionId,
+        apiId: id,
+        version: '1.0.0',
+        title: `API ${index}`,
+        document: {},
+      });
+      await connection.db
+        .update(apis)
+        .set({ latestVersionId: versionId })
+        .where(eq(apis.id, id));
+      await connection.db
+        .insert(usageDaily)
+        .values({ appId, serviceId: id, day: today, count2xx: index + 1 });
+    }
+    await connection.db.insert(usageDaily).values({
+      appId,
+      serviceId: ids[0]!,
+      day: '2020-01-01',
+      count2xx: 10000,
+    });
+    const signup = new Date(Date.now() - 600000);
+    await connection.db
+      .update(user)
+      .set({ createdAt: signup })
+      .where(eq(user.id, ownerId));
+    await connection.db
+      .update(user)
+      .set({ createdAt: new Date(signup.getTime() + 1000) })
+      .where(eq(user.id, teammateId));
+    await ingest(entry(500, secondKeyId));
+    await ingest(entry(400, keyId));
+    expect(await connection.db.select().from(developerFirstCalls)).toHaveLength(
+      0,
+    );
+    await ingest(entry(200, keyId, signup.getTime() + 122000));
+    const rows = await connection.db.select().from(developerFirstCalls);
+    expect(rows.map((r) => r.userId)).toEqual([teammateId]);
+    await ingest(entry(204, secondKeyId, signup.getTime() + 60000));
+    role = 'admin';
+    const result = (await server.inject('/api/v1/admin/insights')).json();
+    expect(result).toMatchObject({
+      signups: 3,
+      activeApps: 1,
+      timeToFirstCall: {
+        covered: 2,
+        total: 3,
+        medianSeconds: 90,
+        targetSeconds: 600,
+      },
+    });
+    expect(result.topApis.map((a: { calls: number }) => a.calls)).toEqual([
+      6, 5, 4, 3, 2,
+    ]);
+    expect(
+      result.timeToFirstCall.developers.map(
+        (d: { signedUpAt: string }) => d.signedUpAt,
+      ),
+    ).toEqual(
+      result.timeToFirstCall.developers
+        .map((d: { signedUpAt: string }) => d.signedUpAt)
+        .sort()
+        .reverse(),
+    );
+    expect(
+      result.timeToFirstCall.developers.find(
+        (d: { userId: string }) => d.userId === outsiderId,
+      ),
+    ).toMatchObject({ firstCallAt: null, secondsToFirstCall: null });
+    await connection.db.delete(usageDaily);
+    await connection.db.delete(developerFirstCalls);
+    expect(
+      (await server.inject('/api/v1/admin/insights')).json(),
+    ).toMatchObject({
+      activeApps: 0,
+      topApis: [],
+      timeToFirstCall: { covered: 0, medianSeconds: null },
+    });
+  } finally {
+    for (const id of ids)
+      await connection.db.delete(apis).where(eq(apis.id, id));
+  }
+});
+
+it('AC 1/3: twenty real Kong calls arrive automatically within 60 seconds; rejected keys add nothing', async () => {
+  const productId = uuidv7(),
+    planId = uuidv7();
+  await connection.db
+    .insert(products)
+    .values({ id: productId, slug: productId, name: 'Usage', description: '' });
+  await connection.db.insert(plans).values({
+    id: planId,
+    productId,
+    name: '1000 calls',
+    rateLimit: 100,
+    rateLimitUnit: 'second',
+    monthlyQuota: 1000,
+  });
+  await connection.db.update(apps).set({ planId }).where(eq(apps.id, appId));
+  await connection.client.unsafe('CREATE DATABASE kong_usage');
+  const address = await server.listen({ port: 0, host: '0.0.0.0' });
+  const port = Number(new URL(address).port);
+  await TestContainers.exposeHostPorts(port, container.getPort());
+  const environment = {
+    KONG_DATABASE: 'postgres',
+    KONG_PG_HOST: 'host.testcontainers.internal',
+    KONG_PG_PORT: String(container.getPort()),
+    KONG_PG_USER: container.getUsername(),
+    KONG_PG_PASSWORD: container.getPassword(),
+    KONG_PG_DATABASE: 'kong_usage',
+  };
+  const migration = await new GenericContainer('kong:3.9')
+    .withEnvironment(environment)
+    .withCommand(['kong', 'migrations', 'bootstrap'])
+    .withWaitStrategy(Wait.forOneShotStartup())
+    .start();
+  await migration.stop();
+  const kong = await new GenericContainer('kong:3.9')
+    .withEnvironment({
+      ...environment,
+      KONG_ADMIN_LISTEN: '0.0.0.0:8001',
+      KONG_WORKER_CONSISTENCY: 'strict',
+      KONG_NGINX_WORKER_PROCESSES: '1',
+    })
+    .withExposedPorts(8000, 8001)
+    .withWaitStrategy(Wait.forHttp('/status', 8001))
+    .start();
+  try {
+    const real = new KongAdapter({
+      adminUrl: `http://${kong.getHost()}:${kong.getMappedPort(8001)}`,
+      instanceId,
+      usage: {
+        endpoint: `http://host.testcontainers.internal:${port}/api/v1/internal/usage/kong`,
+        token,
+      },
+    });
+    const serviceId = uuidv7();
+    await real.request(`/services/${serviceId}`, 'PUT', {
+      url: 'http://127.0.0.1:65535',
+    });
+    await real.request(`/routes/${serviceId}`, 'PUT', {
+      service: { id: serviceId },
+      paths: ['/usage-qa'],
+    });
+    await real.request(`/services/${serviceId}/plugins`, 'POST', {
+      name: 'key-auth',
+    });
+    await real.request(`/services/${serviceId}/plugins`, 'POST', {
+      name: 'request-termination',
+      config: { status_code: 200 },
+    });
+    await real.ensureConsumer({ id: appId });
+    const key = `qa-${uuidv7()}`;
+    await real.issueCredential({ id: appId }, { id: keyId, key });
+    const url = `http://${kong.getHost()}:${kong.getMappedPort(8000)}/usage-qa`;
+    for (let index = 0; index < 20; index++) {
+      const response = await fetch(url, {
+        headers: { apikey: key, 'x-private-test': 'private-header-value' },
+      });
+      expect(response.status).toBe(200);
+      await response.body?.cancel();
+    }
+    await expect
+      .poll(async () => (await usage()).json().total, {
+        timeout: 60000,
+        interval: 100,
+      })
+      .toBe(20);
+    expect((await usage()).json()).toMatchObject({ total: 20, quota: 1000 });
+    await real.revokeCredential({ id: appId }, keyId);
+    for (const rejected of [undefined, 'unknown-key', key]) {
+      const response = await fetch(url, {
+        headers: rejected ? { apikey: rejected } : {},
+      });
+      expect(response.status).toBe(401);
+      await response.body?.cancel();
+    }
+    // A separately logged consumer event is an ingestion barrier after the rejected requests.
+    const replacement = `qa-${uuidv7()}`;
+    await real.issueCredential(
+      { id: appId },
+      { id: secondKeyId, key: replacement },
+    );
+    const response = await fetch(url, { headers: { apikey: replacement } });
+    expect(response.status).toBe(200);
+    await response.body?.cancel();
+    await expect
+      .poll(async () => (await usage()).json().total, {
+        timeout: 60000,
+        interval: 100,
+      })
+      .toBe(21);
+    const stored = JSON.stringify(
+      await connection.db.select().from(usageDaily),
+    );
+    for (const secret of [key, replacement, 'apikey', 'private-header-value'])
+      expect(stored).not.toContain(secret);
+    const period = monthPeriod(new Date());
+    await connection.db.insert(usageDaily).values({
+      appId,
+      day: new Date(period.start.getTime() - 1).toISOString().slice(0, 10),
+      count2xx: 99,
+    });
+    const lastUpdate = new Date(Date.now() - 360000);
+    await connection.db.update(usageCollection).set({
+      configuredAt: new Date(Date.now() - 600000),
+      lastReceivedAt: lastUpdate,
+    });
+    expect((await usage()).json()).toMatchObject({
+      total: 21,
+      quota: 1000,
+      period: { resetsAt: period.resetsAt.toISOString() },
+      collection: { status: 'behind', lastUpdatedAt: lastUpdate.toISOString() },
+    });
+  } finally {
+    await kong.stop();
+  }
+}, 180000);
+
+it('AC 11: the hosted reset SQL removes visitor aggregates and first-call attribution from insights', async () => {
+  await ingest(entry());
+  role = 'admin';
+  expect(
+    (await server.inject('/api/v1/admin/insights')).json().activeApps,
+  ).toBe(1);
+  const script = await readFile(
+    new URL('../../../deploy/hosted/reset-demo.sh', import.meta.url),
+    'utf8',
+  );
+  const sql = script.match(/<<'SQL'\n([\s\S]*?)\nSQL/);
+  expect(sql).not.toBeNull();
+  const reserved = await connection.client.reserve();
+  try {
+    await reserved.unsafe(sql![1]!);
+  } finally {
+    reserved.release();
+  }
+  expect(await connection.db.select().from(usageDaily)).toEqual([]);
+  expect(await connection.db.select().from(developerFirstCalls)).toEqual([]);
+  expect((await server.inject('/api/v1/admin/insights')).json()).toMatchObject({
+    signups: 0,
+    activeApps: 0,
+    topApis: [],
+  });
 });
