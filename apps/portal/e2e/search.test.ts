@@ -99,8 +99,9 @@ test('020 AC1–7: live search, operation navigation, visibility and failure pat
     expect(href).toContain(`/apis/${slug}#`);
     await operation.click();
     await expect(publicPage).toHaveURL(new RegExp(`/apis/${slug}#`));
-    const anchor = href!.split('#')[1]!;
-    await expect(publicPage.locator(`[id="${anchor}"]`)).toBeInViewport();
+    await expect(
+      publicPage.getByRole('heading', { name: 'Get an order', exact: true }),
+    ).toBeInViewport();
     for (const [term, kind] of [
       ['ORDERS API', 'api'],
       ['CANCEL ORDER', 'operation'],
