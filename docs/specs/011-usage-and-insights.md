@@ -1,7 +1,7 @@
 ---
 id: 011
 title: Usage meter per app and admin insights
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-239
@@ -409,7 +409,19 @@ subscription).
       gone after `reset-demo.sh`), and `quickstart-smoke.mjs` asserts usage ≥1 within 60 s.
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/011-*.md`
+Design: [docs/design/011-usage-and-insights.md](../design/011-usage-and-insights.md). No new tokens.
+- **App page:** a "Usage this month" card above the APIs card, for every team role. It shows
+  "20 of 1,000 calls" with a meter capped at 100% (warning at 80%, quota reached at 100%, always
+  with icon and words), 2xx/4xx/5xx tiles (plus "Other" only when non-zero), "Resets 1 Dec 2026,
+  00:00 UTC" and the last-updated time. `quota: null` shows "No monthly limit" with no bar.
+  `behind` keeps the stored counts under a "Usage may be behind" alert, and if nothing was ever
+  received it shows no number instead of 0. `unsupported` and `not-configured` say "Usage isn't
+  available for this gateway." The card refetches every 60 s while visible.
+- **Admin Insights** (`/admin/insights`, new tab after Requests): new sign-ups, active apps and
+  the median time to first call with a Within/Over target badge and "N of M developers"; the top
+  five APIs or "No calls yet"; and a newest-first developer table with "No call yet", over-target
+  markers and a cap footnote. It covers the behind, unavailable, error and 403 states (no data,
+  **Go to My apps**). At 375px the stats stack and the table becomes one card per developer.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
