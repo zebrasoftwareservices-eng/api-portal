@@ -1,7 +1,7 @@
 ---
 id: 021
 title: Agent-ready docs — Markdown pages, llms.txt, spec downloads and code samples
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
@@ -220,7 +220,15 @@ Try it is unaffected; the sample must show Scalar's placeholder, never a real ke
 - [ ] [qa] e2e (Playwright): criteria 6 and 7 (curl, JavaScript and Python samples with method, gateway URL, path, key placeholder and body; Markdown link and Download spec on the latest and a version page).
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/021-*.md`
+Design: [docs/design/021-agent-ready-docs.md](../design/021-agent-ready-docs.md). No new tokens, components or pages.
+- The version row on `/apis/[slug]` and `/apis/[slug]/versions/[version]` gains a **View as Markdown**
+  text link and a **Download spec** secondary button after **Changelog**, both plain `<a>`s using
+  that version's `markdownUrl` / `downloadUrl`; the access action stays the only primary button.
+  At 375px the links share a line and the button is full width. Both are hidden in demo builds.
+- Code samples: Scalar's picker with curl (default), JavaScript, Node.js, Python, Go and Java; the
+  key header always shows a placeholder.
+- Exact copy for `/llms.txt` (summary line, empty state, 503) and the fixed lines of the Markdown
+  reference (Authentication wording, `yes`/`no`, no-operations line) is in §4 of the design.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
