@@ -211,13 +211,13 @@ success path (AC 5) is the existing spec 004 provisioning, idempotent and tagged
 - [ ] [backend] `GET /api/v1/products`: add `allPlansRequireApproval` and `selfService` to each item
 - [ ] [backend] Regenerate `packages/sdk/src/schema.d.ts` from `openapi.yaml`
 - [ ] [backend] Unit/integration tests in `apps/server`: 409 for a product API alone and mixed with a loose API (no app, key or Kong consumer created); 404 for an API whose only product is hidden; 400 naming `/planId`; `allPlansRequireApproval` true/false/no-plans; update the existing 400 test
-- [ ] [frontend] Create an app: Products section first (`GET /v1/products`), one row per product with no checkbox and no plan picker, link to `/products/{slug}` labelled per the table above
-- [ ] [frontend] Products with `planCount == 0`: "Not available yet" with no link for developers; "Needs a plan" with a link to `/admin/products/{slug}` for portal admins
-- [ ] [frontend] APIs section lists only APIs with empty `products`, all unchecked; drop the single-row pre-check; keep `?api=<slug>` pre-check only for a loose API
-- [ ] [frontend] Submitting with no API checked creates nothing and shows the message beside the APIs section ("Choose at least one API, or subscribe to a product above"), focus moves to it
-- [ ] [frontend] No loose APIs: hide the checkboxes and the Create button, show the one-line note under the products
-- [ ] [frontend] Handle a 409 `api-in-product` (stale page) by showing the detail with links to the returned `products`, and refetching the lists
-- [ ] [frontend] Component tests in `apps/portal` for the row states, empty-selection message and no-loose-APIs state
+- [x] [frontend] Create an app: Products section first (`GET /v1/products`), one row per product with no checkbox and no plan picker, link to `/products/{slug}` labelled per the table above
+- [x] [frontend] Products with `planCount == 0`: "Not available yet" with no link for developers; "Needs a plan" with a link to `/admin/products/{slug}` for portal admins
+- [x] [frontend] APIs section lists only APIs with empty `products`, all unchecked; drop the single-row pre-check; keep `?api=<slug>` pre-check only for a loose API
+- [x] [frontend] Submitting with no API checked creates nothing and shows the message beside the APIs section ("Choose at least one API, or subscribe to a product above"), focus moves to it
+- [x] [frontend] No loose APIs: hide the checkboxes and the Create button, show the one-line note under the products
+- [x] [frontend] Handle a 409 `api-in-product` (stale page) by showing the detail with links to the returned `products`, and refetching the lists
+- [x] [frontend] Component tests in `apps/portal` for the row states, empty-selection message and no-loose-APIs state
 - [ ] [qa] Integration: AC 6, a direct `POST /v1/apps` with a product API (alone, mixed) → 409 naming the API, with a plan field → 400 naming it; assert Kong has no new consumer
 - [ ] [qa] e2e on the quickstart stack: AC 1–5, Products before APIs, Subscribe link reaches the plan table, Sample HTTP API unchecked, empty submit message, create + key + call through Kong returns upstream response
 - [ ] [qa] e2e: AC 7 (no-plan product as developer and as admin), AC 8 (Internal/Manual-unassigned product and its API absent), AC 9 (subscribe via the link creates a new one-plan app listed in My apps); approval-only product shows **Request access**
@@ -236,6 +236,8 @@ note; with no products the page is today's form. A stale-page 409 shows the serv
 "Subscribe to {name}" links and refetches both lists. No new tokens.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend: Products appear before the loose-API form with Subscribe, Request access, View product and role-aware no-plan states; loose APIs start unchecked except a matching `?api=`. Empty selection focuses the invalid checkbox, and stale `api-in-product` refusals keep their product links visible while both lists refresh and refused selections disappear. Portal lint, typecheck and all 393 tests (45 files, including 19 create-app tests) pass; SDK build was required locally before typechecking. QA should explicitly check Sample HTTP API in quickstart/demo journeys; browser and quickstart validation are left to QA.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`

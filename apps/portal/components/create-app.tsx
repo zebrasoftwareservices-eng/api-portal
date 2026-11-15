@@ -11,25 +11,23 @@ import { usePortal } from './providers';
 import { Field, focusInvalid } from './field';
 import { ResendVerification } from './account-shared';
 import { ProblemAlert } from './problem-alert';
+import { ProductList } from './create-app-products';
 export function CreateApp({ slug }: { slug?: string }) {
   const router = useRouter();
   const { current, unavailable } = useTeams();
   const { setReveal, user, setUser } = usePortal();
   const verificationBlocked =
     !!user?.verificationRequired && !user.emailVerified;
-  const resource = useResource(async () => {
-    const result = await api.GET('/v1/apis');
-    return {
-      ...result,
-      data: result.data
-        ? {
-            ...result.data,
-            items: result.data.items.filter((a) => !a.products?.length),
-          }
-        : undefined,
-    };
-  });
-  const { data, loading, error, reload } = resource;
+  const {
+    data: allApis,
+    loading,
+    error,
+    reload,
+  } = useResource(() => api.GET('/v1/apis'));
+  const products = useResource(() => api.GET('/v1/products'));
+  const looseApis = allApis?.items.filter((a) => !a.products?.length);
+  const hasProducts = !!products.data?.items.length;
+  const sourceApi = allApis?.items.find((a) => a.slug === slug);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
@@ -47,23 +45,27 @@ export function CreateApp({ slug }: { slug?: string }) {
   }, [slug]);
   const restoreFocus = useRef(false);
   useLayoutEffect(() => {
-    if (restoreFocus.current && !loading && data?.items.length === 0) {
+    if (
+      restoreFocus.current &&
+      !loading &&
+      allApis &&
+      !allApis.items.some((a) => !a.products?.length)
+    ) {
       page.current?.querySelector('h1')?.focus();
       restoreFocus.current = false;
     }
-  }, [data, loading]);
+  }, [allApis, loading]);
   useEffect(() => {
-    if (!data) return;
+    if (!allApis) return;
+    const items = allApis.items.filter((a) => !a.products?.length);
     const wasInitialized = initialized.current;
     setSelected((current) =>
       wasInitialized
-        ? current.filter((id) => data.items.some((a) => a.id === id))
-        : data.items
-            .filter((a) => (slug ? a.slug === slug : data.items.length === 1))
-            .map((a) => a.id),
+        ? current.filter((id) => items.some((a) => a.id === id))
+        : items.filter((a) => !!slug && a.slug === slug).map((a) => a.id),
     );
     initialized.current = true;
-  }, [data, slug]);
+  }, [allApis, slug]);
   async function submit() {
     if (unavailable || current?.role === 'read-only') return;
     if (verificationBlocked) {
@@ -77,7 +79,9 @@ export function CreateApp({ slug }: { slug?: string }) {
       invalid.name = 'Use 80 characters or fewer.';
     if (description.length > 500)
       invalid.description = 'Use 500 characters or fewer.';
-    if (!selected.length) invalid.apiIds = 'Choose at least one API.';
+    if (!selected.length)
+      invalid.apiIds =
+        'Choose at least one API, or subscribe to a product above.';
     setErrors(invalid);
     if (Object.keys(invalid).length) {
       focusInvalid(form.current!);
@@ -111,6 +115,12 @@ export function CreateApp({ slug }: { slug?: string }) {
             name: `An app in ${current?.name || 'this team'} already has this name. Choose another name.`,
           });
           focusInvalid(form.current!);
+        } else if (
+          error.status === 409 &&
+          error.type.endsWith('/api-in-product')
+        ) {
+          setProblem(error);
+          await Promise.all([reload(), products.reload()]);
         } else if (error.status === 404) {
           setProblem({
             ...error,
@@ -149,13 +159,89 @@ export function CreateApp({ slug }: { slug?: string }) {
     <div className="stack form" ref={page}>
       <PageHeader
         title="Create an app"
-        description="You'll get an API key as soon as it's created."
+        description={
+          hasProducts
+            ? "Subscribe to a product to get a key on a plan, or create an app for an API that isn't in a product."
+            : "You'll get an API key as soon as it's created."
+        }
         breadcrumb={[
           { label: 'My apps', href: '/dashboard' },
           { label: 'New app' },
         ]}
       />
       {current && <p>This app will belong to {current.name}.</p>}
+      {problem && (
+        <ProblemAlert
+          problem={problem}
+          focusHeading={problem.type.endsWith('/api-in-product')}
+          title={
+            problem.type.endsWith('/api-in-product')
+              ? 'That API is now in a product'
+              : problem.type.endsWith('/team-role-forbidden')
+                ? `You can't create apps in ${current?.name || 'this team'}`
+                : problem.type.endsWith('/gateway-disabled')
+                  ? 'New apps and keys are paused'
+                  : problem.status === 503
+                    ? 'Gateway unavailable'
+                    : problem.status === 502
+                      ? 'The gateway rejected the request'
+                      : undefined
+          }
+          message={
+            problem.type.endsWith('/api-in-product') ? (
+              <>
+                <p>{problem.detail}</p>
+                {problem.products?.map((p) => (
+                  <p key={p.id}>
+                    <a href={`/products/${p.slug}`}>Subscribe to {p.name}</a>
+                  </p>
+                ))}
+                <p>Nothing was created. We've refreshed the lists.</p>
+              </>
+            ) : problem.type.endsWith('/team-role-forbidden') ? (
+              <>
+                <p>
+                  Your role in this team may have changed. Nothing was created.
+                </p>
+                <a href="/dashboard">Back to My apps</a>
+              </>
+            ) : problem.type.endsWith('/email-not-verified') ? (
+              <>
+                <p>{problem.detail}</p>
+                <ResendVerification email={user?.email || ''} />
+              </>
+            ) : problem.type.endsWith('/gateway-disabled') ? (
+              'The portal admin has turned off new apps and keys for now. Keys you already have keep working. Nothing was created.'
+            ) : problem.status === 502 ? (
+              <>
+                <p>
+                  Nothing was created. Try again, and if it keeps happening,
+                  tell the portal admin.
+                </p>
+                {problem.detail}
+              </>
+            ) : undefined
+          }
+          onRetry={problem.status === 503 ? submit : undefined}
+          retryAfterSeconds={retry}
+        />
+      )}
+      {sourceApi?.products?.length ? (
+        <p className="muted">
+          {sourceApi.title} is offered in a product. Subscribe to{' '}
+          {sourceApi.products.map((p) => p.name).join(', ')} below.
+        </p>
+      ) : slug && allApis && !sourceApi ? (
+        <p className="muted">
+          The API you came from isn't available any more. Choose from the list
+          below.
+        </p>
+      ) : null}
+      <ProductList
+        resource={products}
+        apis={error ? [] : allApis?.items || []}
+        isAdmin={user?.role === 'admin'}
+      />
       {current?.role === 'read-only' ? (
         <div className="stack">
           <p>
@@ -166,7 +252,21 @@ export function CreateApp({ slug }: { slug?: string }) {
             Back to My apps
           </a>
         </div>
-      ) : !loading && data?.items.length === 0 ? (
+      ) : !loading &&
+        !products.loading &&
+        hasProducts &&
+        looseApis?.length === 0 ? (
+        <div className="stack">
+          <p>
+            Every API here is offered as a product. Subscribe to one above to
+            get a key.
+          </p>
+          <a href="/dashboard">Cancel</a>
+        </div>
+      ) : !loading &&
+        !products.loading &&
+        !products.error &&
+        looseApis?.length === 0 ? (
         <EmptyState
           title="No APIs to use yet"
           description="An app needs at least one API, and none have been published. Check back soon."
@@ -174,49 +274,8 @@ export function CreateApp({ slug }: { slug?: string }) {
         />
       ) : (
         <>
-          {problem && (
-            <ProblemAlert
-              problem={problem}
-              title={
-                problem.type.endsWith('/team-role-forbidden')
-                  ? `You can't create apps in ${current?.name || 'this team'}`
-                  : problem.type.endsWith('/gateway-disabled')
-                    ? 'New apps and keys are paused'
-                    : problem.status === 503
-                      ? 'Gateway unavailable'
-                      : problem.status === 502
-                        ? 'The gateway rejected the request'
-                        : undefined
-              }
-              message={
-                problem.type.endsWith('/team-role-forbidden') ? (
-                  <>
-                    <p>
-                      Your role in this team may have changed. Nothing was
-                      created.
-                    </p>
-                    <a href="/dashboard">Back to My apps</a>
-                  </>
-                ) : problem.type.endsWith('/email-not-verified') ? (
-                  <>
-                    <p>{problem.detail}</p>
-                    <ResendVerification email={user?.email || ''} />
-                  </>
-                ) : problem.type.endsWith('/gateway-disabled') ? (
-                  'The portal admin has turned off new apps and keys for now. Keys you already have keep working. Nothing was created.'
-                ) : problem.status === 502 ? (
-                  <>
-                    <p>
-                      Nothing was created. Try again, and if it keeps happening,
-                      tell the portal admin.
-                    </p>
-                    {problem.detail}
-                  </>
-                ) : undefined
-              }
-              onRetry={problem.status === 503 ? submit : undefined}
-              retryAfterSeconds={retry}
-            />
+          {hasProducts && (
+            <h2>Or create an app for APIs that aren't in a product</h2>
           )}
           <form
             ref={form}
@@ -271,17 +330,12 @@ export function CreateApp({ slug }: { slug?: string }) {
                   errors.apiIds ? 'api-hint api-error' : 'api-hint'
                 }
               >
-                <legend>APIs this app uses</legend>
+                <legend>
+                  {hasProducts ? 'APIs not in a product' : 'APIs this app uses'}
+                </legend>
                 <p className="hint" id="api-hint">
-                  This app&apos;s keys work only on the APIs you choose here. To
-                  use another API later, create another app.
+                  This app&apos;s keys work only on the APIs you choose here.
                 </p>
-                {slug && data && !data.items.some((a) => a.slug === slug) && (
-                  <p className="muted">
-                    The API you came from isn&apos;t available any more. Choose
-                    from the list below.
-                  </p>
-                )}
                 {loading ? (
                   <p role="status">Loading APIs…</p>
                 ) : error ? (
@@ -292,7 +346,7 @@ export function CreateApp({ slug }: { slug?: string }) {
                   />
                 ) : (
                   <div className="stack">
-                    {data?.items.map((a) => (
+                    {looseApis?.map((a) => (
                       <label key={a.id}>
                         <span className="row">
                           <input
@@ -302,13 +356,21 @@ export function CreateApp({ slug }: { slug?: string }) {
                               !selected.includes(a.id) && selected.length >= 10
                             }
                             aria-invalid={!!errors.apiIds}
-                            onChange={(e) =>
+                            aria-describedby={
+                              errors.apiIds ? 'api-hint api-error' : 'api-hint'
+                            }
+                            onChange={(e) => {
+                              if (e.target.checked)
+                                setErrors((current) => ({
+                                  ...current,
+                                  apiIds: '',
+                                }));
                               setSelected((ids) =>
                                 e.target.checked
                                   ? [...ids, a.id]
                                   : ids.filter((id) => id !== a.id),
-                              )
-                            }
+                              );
+                            }}
                           />
                           {a.title}
                           <span className="badge">v{a.version}</span>
@@ -335,8 +397,9 @@ export function CreateApp({ slug }: { slug?: string }) {
                   unavailable ||
                   pending ||
                   loading ||
+                  products.loading ||
                   !!error ||
-                  !data?.items.length
+                  !looseApis?.length
                 }
                 aria-busy={pending}
                 aria-disabled={verificationBlocked}

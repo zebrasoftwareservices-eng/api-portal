@@ -11,6 +11,7 @@ export function ProblemAlert({
   onRetry,
   retryAfterSeconds = 0,
   autoFocus = true,
+  focusHeading = false,
   titles = {},
 }: {
   problem: Problem;
@@ -20,14 +21,18 @@ export function ProblemAlert({
   onRetry?: () => void;
   retryAfterSeconds?: number;
   autoFocus?: boolean;
+  focusHeading?: boolean;
   titles?: Record<string, string>;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [remaining, setRemaining] = useState(retryAfterSeconds);
   useEffect(() => {
     setRemaining(retryAfterSeconds);
-    if (autoFocus) ref.current?.focus();
-  }, [problem, retryAfterSeconds, autoFocus]);
+    if (autoFocus) {
+      if (focusHeading) ref.current?.querySelector<HTMLElement>('h2')?.focus();
+      else ref.current?.focus();
+    }
+  }, [problem, retryAfterSeconds, autoFocus, focusHeading]);
   useEffect(() => {
     if (remaining <= 0) return;
     const timer = setTimeout(() => setRemaining((n) => n - 1), 1000);
@@ -59,7 +64,11 @@ export function ProblemAlert({
     defaultTitle;
   return (
     <div className="alert error stack" role="alert" tabIndex={-1} ref={ref}>
-      <strong>⚠ {heading}</strong>
+      {focusHeading ? (
+        <h2 tabIndex={-1}>⚠ {heading}</h2>
+      ) : (
+        <strong>⚠ {heading}</strong>
+      )}
       <div>
         {(typeof message === 'function' ? message(remaining) : message) ||
           problem.detail ||

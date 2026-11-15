@@ -67,6 +67,7 @@ const product: Product = {
   description: 'Payments APIs',
   visibility: 'open',
   selfService: true,
+  allPlansRequireApproval: false,
   apiCount: 0,
   planCount: 2,
   createdAt: '',
