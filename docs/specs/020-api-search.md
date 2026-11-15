@@ -1,7 +1,7 @@
 ---
 id: 020
 title: Search across APIs and endpoints
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
@@ -192,8 +192,8 @@ because the reference page opens the latest version by default.
 - [x] [frontend] Search entry point and `/search?q=` results page per the UX design: each result shows method badge, path, summary and API name (API results show title and version); empty state "Nothing matched" with a link to browse the catalog; 400 shows the problem `detail` inline; 429 shows a try-again message.
 - [x] [frontend] Shared `operationAnchor()` helper wired into `referenceOptions` (Scalar operation slug) and into operation result links, so `/apis/{slug}#<anchor>` scrolls to the operation; unit-test the helper.
 - [x] [frontend] Demo mode: search the sample API in the browser with `searchCatalog` from `@portal/sdk` (no server call), same results UI.
-- [ ] [qa] Playwright e2e on the Compose stack with real Kong: search `orders/{id}` → result opens the reference with the `GET /orders/{id}` operation in view (AC 1); `orders api` and `cancel order` (AC 2); empty state (AC 6); a hidden-product API absent anonymously and present for its team member (AC 4).
-- [ ] [qa] After the new tests pass, run the full suite and the browser suite once, then the quickstart; confirm no new container and no migration. Commit those tests even if the guard names another role's files. Record results in the Test report.
+- [x] [qa] Playwright e2e on the Compose stack with real Kong: search `orders/{id}` → result opens the reference with the `GET /orders/{id}` operation in view (AC 1); `orders api` and `cancel order` (AC 2); empty state (AC 6); a hidden-product API absent anonymously and present for its team member (AC 4).
+- [x] [qa] After the new tests pass, run the full suite and the browser suite once, then the quickstart; confirm no new container and no migration. Commit those tests even if the guard names another role's files. Record results in the Test report.
 - [x] [frontend] Fix: Quickstart portal build cannot resolve SDK search.js export
 ## UX  _(ui-designer)_
 Design: [docs/design/020-api-search.md](../design/020-api-search.md).
@@ -224,33 +224,43 @@ Design: [docs/design/020-api-search.md](../design/020-api-search.md).
 
 ## Test report  _(qa-tester)_
 
-Tested application commit: `623aa27e5e2ddbb0a91a635a9c05ea310aea63d6` (2026-11-15).
-Worktree portal URL from `node scripts/worktree-compose.mjs env`: **http://localhost:3006**.
-The portal is **not running**: `node scripts/worktree-compose.mjs up -d --build --wait`
-failed while building the portal image. Next/Turbopack cannot resolve `./search.js` from
-`packages/sdk/src/index.ts:10`; build log: `/tmp/020-compose.log`.
+QA passed on 2026-11-15 against commit `9e5913f2c28634e49a78fbe77776def97cd7406a`
+(includes the SDK quickstart fix and the operation-heading browser assertion).
+The following commit changes only this report, task/status metadata and the stage log.
+Portal: **http://localhost:3006**, from `node scripts/worktree-compose.mjs env`;
+Compose project: `portal-020-api-search-b455`. The stack is left running for UAT.
 
-| Criterion | Automated coverage | Result |
+| Criterion | Automated test file and coverage | Result |
 | --- | --- | --- |
-| AC1: endpoint metadata and reference operation in view | `apps/portal/e2e/search.test.ts` — header search, GET result method/path/API name, click and operation anchor in viewport; existing `apps/server/src/search.test.ts` | Browser test written, not run: Compose build blocked |
-| AC2: API title and operation summary, case-insensitive | `apps/portal/e2e/search.test.ts` — uppercase title/summary searches and reference links; existing `apps/server/src/search.test.ts` | Browser test written, not run: Compose build blocked |
-| AC3: unpublished APIs excluded | `apps/portal/e2e/search.test.ts` — clear latest version and assert absence through API and UI; existing `apps/server/src/search.test.ts` — refused import/null latest version | Browser test written, not run: Compose build blocked |
-| AC4: search follows catalog visibility for each viewer | `apps/portal/e2e/search.test.ts` — hidden absent anonymously, internal present for member, expired session excluded, search slugs contained in catalog; existing `apps/server/src/search.test.ts` — anonymous/member/non-member/admin matrix | Browser test written, not run: Compose build blocked |
-| AC5: latest-version removal and unpublish reflected immediately | `apps/portal/e2e/search.test.ts` — publish version without orders, then clear latest version; existing `apps/server/src/search.test.ts` | Browser test written, not run: Compose build blocked |
-| AC6: empty result with catalog link | `apps/portal/e2e/search.test.ts` — Nothing matched heading and Browse all APIs link; existing `apps/server/src/search.test.ts` | Browser test written, not run: Compose build blocked |
-| AC7: validation and literal special characters | `apps/portal/e2e/search.test.ts` — blank/whitespace/101-character problem+json, 1/100-character and special-character success; existing `apps/server/src/search.test.ts` | Browser test written, not run: Compose build blocked |
+| AC 1 | `apps/portal/e2e/search.test.ts`: real Kong import, search `orders/{id}`, method/path/API name, click latest reference, operation heading in viewport; `apps/server/src/search.test.ts`: endpoint result shape | Pass |
+| AC 2 | `apps/portal/e2e/search.test.ts`: uppercase API-title and summary queries, API/reference links; `packages/sdk/src/search.test.ts`: case/whitespace normalization and AND matching | Pass |
+| AC 3 | `apps/server/src/search.test.ts`: anonymous/member/non-member/admin exclude null latest version and rejected imports; browser test clears latest version and checks search and empty UI | Pass |
+| AC 4 | `apps/server/src/search.test.ts`: open/hidden/internal/manual catalog parity for anonymous/member/non-member/admin; browser test checks anonymous hidden exclusion, signed-in access, internal team membership and search subset of catalog | Pass |
+| AC 5 | `apps/server/src/search.test.ts`: latest version and visibility changes immediately affect results; browser test uploads version 2 removing operations, then unpublishes and checks results without a wait | Pass |
+| AC 6 | `apps/server/src/search.test.ts`: 200 with empty items; browser test checks “Nothing matched” and browse-catalog link | Pass |
+| AC 7 | `apps/server/src/search.test.ts`: missing/empty/whitespace/101-character terms, invalid limits, 1/100-character boundaries, literals and Unicode; browser test checks 400 problem+json detail and special characters returning 200 | Pass |
 
-Added failure-path coverage in the same browser test for repeated identical requests,
-search while Kong is stopped (with restart in `finally`), developer mutation refusal (403),
-and server-side session expiry with the stale cookie retained (401 mutation and public search visibility).
-`deploy/e2e/search.test.ts` registers this coverage in the root browser suite.
-Portal package typecheck passed after adding the test; no application code, migration, or
-Compose service was added. The existing integration coverage above is mapped, not claimed
-as re-run in this stage. The required full pass (`pnpm lint`, `pnpm typecheck`, `pnpm test`,
-`pnpm test:e2e`) was not started because the new browser test could not first pass locally.
-The coordinator requested QA wrap-up after the build blocker; it owns the status transition
-back to building and arranging the fix. Re-tested the sole new bug with `linear bug 020 open`;
-its Linear issue is deferred because this spec has no feature key and the workspace is at its issue limit.
+Failure paths also passed: search while Kong is stopped, repeat-request equality,
+403 for developer admin writes, 401 after a real session is expired in Postgres,
+visibility reduction with that stale cookie, refused import, and search 429 budgets
+(60/IP and 120/user with Retry-After). Existing search-state and operation-anchor unit
+tests also passed. Scalar's public fragment is a router key rather than the operation
+heading's DOM ID; the browser assertion checks the actual heading is in viewport.
+
+Validation (one full pass after the focused search journey passed):
+
+- `pnpm lint`: pass, 7 tasks.
+- `pnpm typecheck`: pass, 12 tasks; portal package typecheck also passed before the changed test.
+- `pnpm test`: pass, 783 tests (SDK 16, adapter 65, database 10, portal 375, server 317), including real Postgres/Kong integration tests.
+- `pnpm test:e2e`: exit 0, 100 passed and 2 skipped in 8.9 minutes. Four marked expected failures remain: JSO-399, JSO-405, JSO-406, and the existing catalog retry document-reload minor; skipped tests are JSO-225 and JSO-226. No unexpected failure or new durable bug.
+- `ADMIN_EMAIL=admin@example.com ADMIN_PASSWORD=change-me-now SEED_SAMPLE=true KONG_ADMIN_URL=http://kong:8001 node scripts/worktree-compose.mjs up -d --build --wait`: pass; portal and server images build and services become healthy. The browser quickstart catalog/same-origin API smoke also passed.
+
+Browser commands used worktree ports 3006/4006/18006/19006 and project/image variables
+so fixture restarts stayed in this worktree. Sandbox-only Docker/Chromium denials were
+retried once with escalation; the authorized runs above are the reported results.
+The quickstart SDK-export blocker is verified closed with `linear bug 020 done`.
+No database migration or Compose service was added. No blocker or major remains;
+status is `uat` for the user-tester.
 
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
