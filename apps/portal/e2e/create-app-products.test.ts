@@ -172,8 +172,9 @@ test('023 AC1–9: products first, visibility, refusal atomicity, loose API key 
       await products.evaluate(
         (element) =>
           !!(
-            element.compareDocumentPosition(document.querySelector('input[type=checkbox]')!) &
-            Node.DOCUMENT_POSITION_FOLLOWING
+            element.compareDocumentPosition(
+              document.querySelector('input[type=checkbox]')!,
+            ) & Node.DOCUMENT_POSITION_FOLLOWING
           ),
       ),
     ).toBe(true);
@@ -194,7 +195,10 @@ test('023 AC1–9: products first, visibility, refusal atomicity, loose API key 
         name: `Request access to ${approval.product.name}`,
       }),
     ).toHaveAttribute('href', `/products/${approval.product.slug}`);
-    const checkbox = page.getByRole('checkbox', { name: /Sample HTTP API/ });
+    const checkbox = page.getByRole('checkbox', {
+      name: `${sample.title} v${sample.version} ${sample.gatewayBaseUrl}`,
+      exact: true,
+    });
     await expect(checkbox).not.toBeChecked();
     await expect(page.locator('input:checked')).toHaveCount(0);
     const before = await json(await context.request.get('/api/v1/apps'));
@@ -203,7 +207,7 @@ test('023 AC1–9: products first, visibility, refusal atomicity, loose API key 
     await expect(page.locator('#api-error')).toContainText(
       'Choose at least one API, or subscribe to a product above.',
     );
-    await expect(checkbox).toBeFocused();
+    await expect(page.getByRole('checkbox').first()).toBeFocused();
     expect(await json(await context.request.get('/api/v1/apps'))).toEqual(
       before,
     );

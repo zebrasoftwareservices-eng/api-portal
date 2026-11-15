@@ -26,9 +26,11 @@ test('developer signs up, copies a one-time key, calls Kong and revokes it', asy
   await expect(page.getByRole('heading', { name: /not found/i })).toBeVisible();
   await page.goto('/dashboard/apps/new');
   await expect(
-    page.getByRole('checkbox', { name: /Sample HTTP API/ }),
+    page.getByRole('checkbox', { name: /Sample HTTP API.*\/sample$/ }),
   ).not.toBeChecked();
-  await page.getByRole('checkbox', { name: /Sample HTTP API/ }).check();
+  await page
+    .getByRole('checkbox', { name: /Sample HTTP API.*\/sample$/ })
+    .check();
   await page.getByLabel('App name').fill(`QA ${crypto.randomUUID()}`);
   await expect(page.locator('input[type="checkbox"]:checked')).toHaveCount(1);
   await expect(
