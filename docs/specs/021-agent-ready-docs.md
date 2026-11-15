@@ -1,7 +1,7 @@
 ---
 id: 021
 title: Agent-ready docs — Markdown pages, llms.txt, spec downloads and code samples
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
@@ -215,9 +215,9 @@ Try it is unaffected; the sample must show Scalar's placeholder, never a real ke
 - [x] [frontend] Add `app/llms.txt/route.ts` forwarding to the server without cookies; 503 when the server is down; 404 in demo builds.
 - [x] [frontend] On the API page and the version page, add a "Markdown" link (`markdownUrl`) and a "Download spec" button (`downloadUrl`) for the version being viewed; hide both in demo builds.
 - [x] [frontend] Set Scalar `hiddenClients` and `defaultHttpClient` in `referenceOptions` to the six clients above; unit test the options.
-- [ ] [qa] Integration: criteria 1, 2, 5 against the Compose stack (all `/llms.txt` links return 200; same content with cookie and `apikey`; 404 problem+json with a detail naming the slug or version).
-- [ ] [qa] Integration: criteria 3 and 4 (Markdown lists every operation with parameters and response codes; YAML and JSON downloads byte-identical with matching content type; latest is `2.0.0`).
-- [ ] [qa] e2e (Playwright): criteria 6 and 7 (curl, JavaScript and Python samples with method, gateway URL, path, key placeholder and body; Markdown link and Download spec on the latest and a version page).
+- [x] [qa] Integration: criteria 1, 2, 5 against the Compose stack (all `/llms.txt` links return 200; same content with cookie and `apikey`; 404 problem+json with a detail naming the slug or version).
+- [x] [qa] Integration: criteria 3 and 4 (Markdown lists every operation with parameters and response codes; YAML and JSON downloads byte-identical with matching content type; latest is `2.0.0`).
+- [x] [qa] e2e (Playwright): criteria 6 and 7 (curl, JavaScript and Python samples with method, gateway URL, path, key placeholder and body; Markdown link and Download spec on the latest and a version page).
 
 ## UX  _(ui-designer)_
 Design: [docs/design/021-agent-ready-docs.md](../design/021-agent-ready-docs.md). No new tokens, components or pages.
@@ -237,12 +237,38 @@ Design: [docs/design/021-agent-ready-docs.md](../design/021-agent-ready-docs.md)
 **Frontend:** Added the anonymous SDK-backed `/llms.txt` route, version-specific View as Markdown and Download spec controls, responsive loading states, and the six Scalar clients with curl selected by default. Demo pages hide both controls and `/llms.txt` returns the default 404; Scalar retains its built-in `YOUR_SECRET_TOKEN` placeholder with empty Try-it credentials. `@portal/portal` lint, typecheck, and all 382 tests (45 files) pass; QA should verify the responsive layout, actual Scalar samples, and downloads against the live server. The download glyph is the equivalent inline 16px SVG because this repo does not depend on lucide-react, and the shared Button has no size prop.
 
 ## Test report  _(qa-tester)_
-| Criterion | Test file | Result |
+
+Tested commit: `bd273fa9a18ec16f1342ac5109f251c5930e1636` (application and QA tests). Portal URL from `node scripts/worktree-compose.mjs env`: **http://localhost:3020**; isolated Compose project `portal-021-agent-ready-docs-b3eb`, real Kong at `http://localhost:18020`.
+
+| Criterion | Automated tests | Result |
 | --- | --- | --- |
+| 1 — public index, anonymous/authenticated equality, working links | `apps/portal/e2e/agent-docs.test.ts`; `apps/server/src/agent-docs.test.ts` | PASS: catalog equality, every emitted link fetched, signed-in developer/admin, API key and expired-cookie requests |
+| 2 — unpublished and non-public APIs remain invisible | `apps/server/src/agent-docs.test.ts`; `apps/portal/e2e/agent-docs.test.ts` | PASS: unpublished fixture plus hidden/internal/manual products; latest and version Markdown/downloads return private 404 problem+json |
+| 3 — latest Markdown contains operations and parameter/response details | `apps/portal/e2e/agent-docs.test.ts`; `apps/server/src/agent-docs.test.ts` | PASS: GET/POST, summaries, parameter table, response codes; local references, overrides, body and empty-path fixtures |
+| 4 — source-preserving JSON/YAML version downloads and latest pointer | `apps/portal/e2e/agent-docs.test.ts`; `apps/server/src/agent-docs.test.ts` | PASS: byte-identical imported YAML 1.0.0 and JSON 2.0.0, latest 2.0.0, matching types; legacy JSON fallback |
+| 5 — missing API/version returns named 404 problem+json | `apps/portal/e2e/agent-docs.test.ts`; `apps/server/src/agent-docs.test.ts` | PASS: unknown slug, UUID and version, both formats |
+| 6 — curl, JavaScript and Python samples | `apps/portal/e2e/agent-docs.test.ts`; `apps/portal/lib/reference-options.test.ts` | PASS: actual Scalar clients show POST, gateway URL/path, custom x-agent-key placeholder and example body |
+| 7 — latest and viewed-version Markdown/download links | `apps/portal/e2e/agent-docs.test.ts`; `apps/portal/components/api-page.test.tsx`; `apps/portal/components/version-pages.test.tsx` | PASS: latest and 1.0.0 page links target the viewed version |
+
+Failure-path coverage also includes duplicate version rejection without source replacement, concurrent repeated reads, expired sessions and invalid keys on private formats, and the portal's unreachable-upstream 503, upstream errors and demo 404 (`apps/portal/lib/llms-route.test.ts`). The focused server run passed 6 tests, focused portal run passed 17 tests, and the new live acceptance test passed against Compose; the saved-client reload regression is an explicit expected failure for the minor below.
+
+One full validation pass on the tested commit:
+
+| Command | Result |
+| --- | --- |
+| `pnpm lint` | PASS (7 packages) |
+| `pnpm typecheck` | PASS (12 Turbo tasks) |
+| `pnpm test` | PASS: 796 tests in 83 files across database, Kong adapter, SDK, portal and server; Turbo reused unchanged package results |
+| `pnpm test:e2e` | FAIL: 98 passed, 2 skipped, 3 unexpected failures in 9.6 minutes. Spec 021's complete live test passed (test 95). |
+| `node scripts/worktree-compose.mjs up -d --build --wait` | PASS: build and all service health checks in 145 seconds; stack left running for UAT |
+
+The three unexpected browser failures are `backlog-regressions.test.ts`'s JSO-173 version/title alignment assertion (badge center 203px versus title bottom 169px), its JSO-223/JSO-228 unknown API HTTP-status assertion, and `access-requests.test.ts`'s invisible/unknown reference and changelog HTTP-status assertions. The latter two share the same rendered not-found HTTP 200 behavior; the agent-readable endpoints pass their visibility and 404 checks. Four expected failures remain explicitly marked by the tests: existing setup findings JSO-399/405/406 and the saved sample-client reload issue below; no blocker or major was found. Logs: `/tmp/spec021-qa/{lint,typecheck,test,e2e,quickstart}.log`; the full pass was not repeated.
 
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
+- [ ] Minor: Scalar resets a saved Node.js Fetch sample selection to curl on reload; select More → Node.js Fetch on `/apis/sample`, reload, and observe Shell Curl despite `scalar-reference-selected-client-v2=node/fetch`. Tracked as an expected failure in `apps/portal/e2e/reference-snippets.test.ts`; all three required sample languages work before reload.
+- [ ] Minor: Browser reference/changelog pages for unknown or invisible APIs render the not-found UI with HTTP 200. The existing unknown-page and access-request browser tests fail their HTTP 404 assertions; the JSON catalog, Markdown and spec endpoints still enforce visibility and return 404 correctly.
+- [ ] Minor: The existing version/copy alignment regression fails because the reference version badge center sits outside the title's vertical bounds (`apps/portal/e2e/backlog-regressions.test.ts`, version alignment test); compact badge checks at 1280px and 375px pass.
 
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |
