@@ -223,6 +223,47 @@ paths:
                     type: array
                     items: { $ref: '#/components/schemas/ApiSummary' }
 
+  /v1/search:
+    get:
+      tags: [catalog]
+      operationId: searchCatalog
+      summary: Search published APIs and their operations
+      description: |
+        Spec 020, ADR 0012. Matches the term against the latest version of every API the public
+        catalog shows the caller (`GET /v1/apis` uses the same visibility check, so search results
+        are always a subset of the catalog). Searched fields: API title and description; each
+        operation's method, path, summary and operationId. Schemas, older versions and docs pages
+        are not searched.
+
+        Matching ignores case. The term is trimmed, runs of whitespace collapse to one, and it is
+        split on spaces into tokens; a result matches when every token occurs as a plain substring
+        (no wildcards, so `{}/*%_` match literally). Results are ordered by score (exact path,
+        then path, then title, then summary), then API title, then path.
+
+        An empty term (after trimming) or one over 100 characters is refused with
+        `/problems/validation`. Anonymous callers are limited to 60 searches a minute per client
+        IP; signed-in callers to 120 a minute per user.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search term, 1–100 characters after trimming.
+          schema: { type: string, minLength: 1, maxLength: 100, examples: ['orders/{id}'] }
+        - name: limit
+          in: query
+          required: false
+          description: Maximum results to return.
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Matching APIs and operations, best first. Empty `items` when nothing matched.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResults' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /v1/apis/{slug}:
     get:
       tags: [catalog]
@@ -2956,6 +2997,37 @@ components:
               type: boolean
               description: SMTP settings are saved or set in the environment. `requireVerifiedEmail` can't be turned on without them.
 
+    SearchResults:
+      type: object
+      required: [items, truncated]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SearchResult' }
+        truncated:
+          type: boolean
+          description: True when more results matched than `limit`.
+    SearchResult:
+      type: object
+      required: [kind, api]
+      description: |
+        `kind: api` is an API whose title or description matched; link to `/apis/{api.slug}`.
+        `kind: operation` is one operation of the API's latest version; `method`, `path` and
+        `summary` are set and the portal links to that operation in the reference.
+      properties:
+        kind: { type: string, enum: [api, operation] }
+        api:
+          type: object
+          required: [slug, title, version]
+          properties:
+            slug: { $ref: '#/components/schemas/Slug' }
+            title: { type: string }
+            version: { type: string, description: The latest version, the one searched }
+        method: { type: string, enum: [GET, PUT, POST, DELETE, OPTIONS, HEAD, PATCH, TRACE], description: 'Operations only, upper case' }
+        path: { type: string, description: 'Operations only, as written in the document', examples: ['/orders/{id}'] }
+        summary: { type: [string, 'null'], description: 'Operations only' }
+        operationId: { type: [string, 'null'], description: 'Operations only' }
+        tags: { type: array, items: { type: string }, description: 'Operations only; the operation tags, for building the reference link' }
     ApiSummary:
       type: object
       required: [id, slug, title, version, gatewayBaseUrl, publishedAt, products]

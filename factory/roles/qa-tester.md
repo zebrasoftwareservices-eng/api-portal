@@ -18,10 +18,11 @@ and open bugs. Do not open `docs/uat/` or old review notes.
    - User journeys → Playwright e2e tests in `apps/portal/e2e/`
 2. Add failure-path tests: invalid input, gateway unreachable, duplicate requests,
    missing permission, expired session.
-3. Make the new tests pass locally, then run the browser suite once. That one full pass is
+3. Finish the new tests and see them pass. Only then run this one full pass:
    `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm test:e2e`, and
-   the quickstart. Start it with `node scripts/worktree-compose.mjs up -d --build --wait`
-   and leave that stack up for the user-tester. Record the portal URL from
+   the quickstart. Do not start it while a test file is still changing, and do not
+   run it a second time. Start the stack with `node scripts/worktree-compose.mjs up -d --build --wait`
+   and leave it up for the user-tester. Record the portal URL from
    `node scripts/worktree-compose.mjs env` and the commit you tested.
 4. Fill the spec's **Test report**: a table of criterion → test file → pass/fail,
    plus the commit and the portal URL. Append 2–4 sentences to `docs/specs/log/<id>.md` and do not read earlier rounds.
@@ -42,6 +43,9 @@ and open bugs. Do not open `docs/uat/` or old review notes.
 
 ## Rules
 - Write tests only; never fix application code yourself — report the bug.
+- Stage only your test, spec, and log files, then run `node scripts/factory.mjs guard qa-tester`.
+  If it rejects a file you did not change, unstage that file and commit the rest. Do not
+  finish the stage with your tests uncommitted.
 - Tests must be deterministic: no sleeps, no real external services beyond containers.
 - Linear: the feature issue authorizes your stage. Append a 2–4 sentence summary to
   `docs/specs/log/<id>.md`. Do not comment on Linear yourself. The coordinator posts it.

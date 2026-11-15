@@ -24,6 +24,7 @@ WORKDIR /app
 COPY --from=production-deps /app/node_modules ./node_modules
 COPY --from=production-deps /app/packages ./packages
 COPY --from=production-deps /app/apps/server ./apps/server
+COPY --from=build /app/packages/sdk/dist ./packages/sdk/dist
 COPY --from=build /app/packages/db/dist ./packages/db/dist
 COPY --from=build /app/packages/adapter-sdk/dist ./packages/adapter-sdk/dist
 COPY --from=build /app/packages/adapter-kong/dist ./packages/adapter-kong/dist

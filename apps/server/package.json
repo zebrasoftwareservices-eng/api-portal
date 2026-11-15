@@ -16,6 +16,7 @@
     "@portal/adapter-kong": "workspace:*",
     "@portal/adapter-sdk": "workspace:*",
     "@portal/db": "workspace:*",
+    "@portal/sdk": "workspace:*",
     "@scalar/openapi-parser": "^0.16.0",
     "@stoplight/json-ref-resolver": "3.1.6",
     "@stoplight/spectral-core": "1.20.0",

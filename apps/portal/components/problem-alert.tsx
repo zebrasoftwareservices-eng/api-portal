@@ -16,7 +16,7 @@ export function ProblemAlert({
   problem: Problem;
   title?: string;
   defaultTitle?: string;
-  message?: ReactNode;
+  message?: ReactNode | ((remaining: number) => ReactNode);
   onRetry?: () => void;
   retryAfterSeconds?: number;
   autoFocus?: boolean;
@@ -61,7 +61,7 @@ export function ProblemAlert({
     <div className="alert error stack" role="alert" tabIndex={-1} ref={ref}>
       <strong>⚠ {heading}</strong>
       <div>
-        {message ||
+        {(typeof message === 'function' ? message(remaining) : message) ||
           problem.detail ||
           'Try again, and if the problem continues, tell the portal admin.'}
       </div>
