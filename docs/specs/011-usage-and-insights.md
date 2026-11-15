@@ -1,7 +1,7 @@
 ---
 id: 011
 title: Usage meter per app and admin insights
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-239
@@ -497,12 +497,22 @@ whole branch to main; the coordinator explicitly authorized committing named QA 
 - [ ] Deployment smoke does not invoke the scoped usage freshness smoke (`tests/spec011-quickstart.test.ts`); `deploy/quickstart-smoke.mjs` still checks catalog seeding only (minor).
 
 ## User testing  _(user-tester)_
+
+15 Nov 2026; revision `3aa4f9d`; http://localhost:3006; Orca browser at 1440 × 1000 and 390 × 844. [Current UAT report](../uat/011/report.md).
+
 | User story | Result | Evidence |
 | --- | --- | --- |
+| Developer quota and status split | Pass | “20 of 1,000 calls”; 2xx 12 + 4xx 5 + 5xx 3; collected automatically within approximately 20 seconds. |
+| Rejected credentials and privacy | Pass, scoped | No-key/unknown/revoked calls returned 401; signed-out usage 401 and non-member 404 problem+json without counts. Stored-data redaction remains QA coverage. |
+| UTC reset and delayed collection | Pass, scoped | “Resets 1 Dec 2026, 00:00 UTC”; after over five minutes without Kong, “Usage may be behind” retained 20 calls and last-update time. Prior-month exclusion remains QA coverage. |
+| Read-only member | Pass | “You're a Read-only member” with “20 of 1,000 calls” and no key mutation controls. |
+| Admin adoption and onboarding | Pass, scoped | Two signups, two active apps, Sample HTTP API 41 calls; “12 min 36 s”, “Over target”, “1 of 2 developers”; newer reader “No call yet” after teammate traffic. Empty and five-API variants remain QA coverage. |
+| Developer Insights privacy | Pass | “You don't have access to Insights”; 403 problem+json; no admin navigation link. |
+| Kong / unsupported / hosted demo | Partial | Real Kong collection passed; unsupported state and hosted demo daily reset were not manually exercised in the local quickstart. |
+| Mobile and keyboard | Pass, scoped | Mobile count/meter/reset and stacked tiles fit 390px; Insights uses cards. Tab/Enter opened app and reference; Escape dismissed the switcher. Keyboard-only request submission was not repeated. |
 
-One row per user-visible criterion. Evidence is a short quote of what was on the screen.
-Name an image only for an open failure. On a retest, change only the failed rows.
-Earlier rounds go in `docs/specs/log/011.md`. The full report is `docs/uat/011/report.md`.
+No blocker or major product finding was observed. The existing deployment-smoke finding remains minor and open; status is review. Conditional UAT coverage is incomplete as detailed in the report; this table does not claim a manual pass for QA-only cases. Console had no error entries, so no error line could be quoted. Two success PNGs remain local, and the stack was stopped.
+
 
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
