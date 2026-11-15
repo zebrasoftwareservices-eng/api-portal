@@ -1,7 +1,7 @@
 ---
 id: 023
 title: Create an app shows products first
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 023`
@@ -285,6 +285,32 @@ AC6 is API-only; the current QA Test report supplies its refusal/rollback covera
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/023.md`.
+
+2026-11-15 — **Approved**, no blocking findings. Reviewed `git diff main...HEAD` at `6c7684e`.
+The suite was not re-run. The Test report's full pass is at `5499954`, and every later commit
+changes only e2e selectors and docs. The targeted retest passed 3/3. CI is the second run.
+
+- AC 1–9 are implemented and each has a test (the Test report's table). The contract matches the
+  design: 409 `api-in-product` with indexed `errors` and a `products` field filtered to what the
+  caller can see; `/planId` and unknown keys get 400 with RFC 6901-escaped pointers;
+  `ProductSummary` gains `allPlansRequireApproval` and `selfService`; the SDK was regenerated.
+- Every refusal comes before `provisionApp`, inside the transaction, so no Kong call and no
+  rollback. `canSeeApi` runs before the membership check, so an Internal-only product's API is
+  still 404 (`apps/server/src/products.test.ts`). No secrets reach the problem body.
+- Quickstart: the seeded Sample HTTP API starts unchecked. The quickstart journey checks it, and
+  `docker compose up` passed in 157.9 s.
+
+Suggestions (no Fix task):
+- `suggestion` `apps/server/src/apps.ts:297`: if `visible` is ever empty, the detail ends in
+  "Subscribe to  instead." `canSeeApi` makes that unreachable today. A fallback ("Subscribe to
+  its product instead.") would keep the message correct if visibility rules change.
+- `suggestion` `apps/portal/components/create-app-products.tsx:16-37`: the label and the
+  accessible-label ternaries repeat the same four-way branch, and the regex markdown stripping is
+  ad hoc. One `{ label, aria }` lookup, plus a shared plain-text excerpt helper if another screen
+  needs one, would be easier to keep in step.
+- `suggestion` `apps/server/src/apps.ts:155-198`: `target` now parses `apiIds` only to decide
+  when `createSchema` runs. Parsing `createSchema` once, before the plan lookup, would be
+  simpler, but only if plan requests can keep their visibility check ahead of validation.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
