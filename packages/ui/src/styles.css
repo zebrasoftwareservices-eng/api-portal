@@ -980,3 +980,13 @@ dd {
     width: 100%;
   }
 }
+
+.method-badge {
+  font-family: var(--portal-font-mono);
+  font-size: var(--portal-text-xs);
+  color: var(--foreground);
+  border-color: var(--input);
+  background: var(--muted);
+  min-width: 56px;
+  text-align: center;
+}

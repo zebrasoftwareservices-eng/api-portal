@@ -4,6 +4,7 @@ import { useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Button, Dialog, DropdownMenu, toast } from '@portal/ui';
 import { isDemo, QUICKSTART_URL } from '../lib/demo';
+import { HeaderSearch } from './header-search';
 import { usePortal } from './providers';
 export function Header() {
   const { user, sessionState } = usePortal();
@@ -47,9 +48,12 @@ export function Header() {
         APIs
       </a>
       {isDemo() ? (
-        <a href={QUICKSTART_URL} className="button">
-          Run the quickstart
-        </a>
+        <>
+          {!mobile && <HeaderSearch variant="inline" />}
+          <a href={QUICKSTART_URL} className="button">
+            Run the quickstart
+          </a>
+        </>
       ) : user ? (
         <>
           <a
@@ -68,6 +72,7 @@ export function Header() {
               Admin
             </a>
           )}
+          {!mobile && <HeaderSearch variant="inline" />}
           {mobile ? (
             <div className="stack">
               <span className="muted">{user.email}</span>
@@ -105,6 +110,7 @@ export function Header() {
         </>
       ) : sessionState === 'unknown' ? null : (
         <>
+          {!mobile && <HeaderSearch variant="inline" />}
           <a href="/sign-in">Sign in</a>
           <a href="/sign-up" className="button">
             Sign up
@@ -122,6 +128,7 @@ export function Header() {
         <nav className="desktop-nav" aria-label="Main navigation">
           {links()}
         </nav>
+        <HeaderSearch variant="icon" />
         <div className="mobile-nav">
           <Dialog.Root>
             <Dialog.Trigger asChild>

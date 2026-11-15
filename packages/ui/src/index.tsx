@@ -88,10 +88,12 @@ export function PageHeader({
   );
 }
 export function EmptyState({
+  icon,
   title,
   description,
   action,
 }: {
+  icon?: ReactNode;
   title: string;
   titleSuffix?: ReactNode;
   description: string;
@@ -99,6 +101,7 @@ export function EmptyState({
 }) {
   return (
     <Card className="empty">
+      {icon}
       <h2>{title}</h2>
       <p className="muted">{description}</p>
       {action}
@@ -234,3 +237,7 @@ export function Switch(props: ComponentProps<typeof SwitchPrimitive.Root>) {
 }
 export { VersionSwitcher } from './version-switcher';
 export * as DropdownMenu from '@radix-ui/react-dropdown-menu';
+
+export function MethodBadge({ method }: { method: string }) {
+  return <Badge className="method-badge">{method.toUpperCase()}</Badge>;
+}
