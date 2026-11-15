@@ -30,8 +30,8 @@ export class Problem extends Error {
     super(detail);
   }
 }
-export const notFound = () =>
-  new Problem(404, 'not-found', 'The requested resource was not found.');
+export const notFound = (detail = 'The requested resource was not found.') =>
+  new Problem(404, 'not-found', detail);
 export function problemHandler(app: FastifyInstance) {
   app.setNotFoundHandler((_req, reply) =>
     reply

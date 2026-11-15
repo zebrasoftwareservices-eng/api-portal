@@ -206,12 +206,12 @@ Try it is unaffected; the sample must show Scalar's placeholder, never a real ke
 - **Quickstart.** No new service or env var; `PORTAL_PUBLIC_URL` already exists.
 
 ### Tasks
-- [ ] [backend] Add `notFound(detail?)` in `problem.ts`; existing callers unchanged.
-- [ ] [backend] Add `markdownUrl` and `downloadUrl` to `apiDetail` and `versions[]` in `catalog.ts`; regenerate `packages/sdk`.
-- [ ] [backend] Add `src/agent-docs.ts` with `renderLlmsTxt` and `GET /api/v1/llms.txt` (anonymous viewer, absolute links from `PORTAL_PUBLIC_URL`, cache header); register it in `app.ts`.
-- [ ] [backend] Add `renderMarkdown` and the latest + per-version `reference.md` routes (caller's viewer, 404 details as designed).
-- [ ] [backend] Add the latest + per-version `spec` download routes (source bytes, content type, `Content-Disposition`, JSON fallback for null source).
-- [ ] [backend] Unit tests for `renderLlmsTxt` and `renderMarkdown` fixtures; route tests in `agent-docs.test.ts` for visibility, 404 details and download bytes.
+- [x] [backend] Add `notFound(detail?)` in `problem.ts`; existing callers unchanged.
+- [x] [backend] Add `markdownUrl` and `downloadUrl` to `apiDetail` and `versions[]` in `catalog.ts`; regenerate `packages/sdk`.
+- [x] [backend] Add `src/agent-docs.ts` with `renderLlmsTxt` and `GET /api/v1/llms.txt` (anonymous viewer, absolute links from `PORTAL_PUBLIC_URL`, cache header); register it in `app.ts`.
+- [x] [backend] Add `renderMarkdown` and the latest + per-version `reference.md` routes (caller's viewer, 404 details as designed).
+- [x] [backend] Add the latest + per-version `spec` download routes (source bytes, content type, `Content-Disposition`, JSON fallback for null source).
+- [x] [backend] Unit tests for `renderLlmsTxt` and `renderMarkdown` fixtures; route tests in `agent-docs.test.ts` for visibility, 404 details and download bytes.
 - [x] [frontend] Add `app/llms.txt/route.ts` forwarding to the server without cookies; 503 when the server is down; 404 in demo builds.
 - [x] [frontend] On the API page and the version page, add a "Markdown" link (`markdownUrl`) and a "Download spec" button (`downloadUrl`) for the version being viewed; hide both in demo builds.
 - [x] [frontend] Set Scalar `hiddenClients` and `defaultHttpClient` in `referenceOptions` to the six clients above; unit test the options.
@@ -231,6 +231,8 @@ Design: [docs/design/021-agent-ready-docs.md](../design/021-agent-ready-docs.md)
   reference (Authentication wording, `yes`/`no`, no-operations line) is in §4 of the design.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+**Backend:** Added the anonymous `/api/v1/llms.txt` index, viewer-aware Markdown references and source downloads for latest and named versions, precise 404 details, catalog links, and regenerated SDK types. Markdown uses the public document transform and resolves local parameter/body references; downloads preserve source text and fall back to pretty JSON for legacy rows. `@portal/server` lint, typecheck, and all 322 tests (25 files), plus `@portal/sdk` lint, typecheck, and all 16 tests pass; Docker-backed tests required sandbox escalation. QA should verify absolute links against the configured public URL and byte-identical imported files in the live stack.
 
 **Frontend:** Added the anonymous SDK-backed `/llms.txt` route, version-specific View as Markdown and Download spec controls, responsive loading states, and the six Scalar clients with curl selected by default. Demo pages hide both controls and `/llms.txt` returns the default 404; Scalar retains its built-in `YOUR_SECRET_TOKEN` placeholder with empty Try-it credentials. `@portal/portal` lint, typecheck, and all 382 tests (45 files) pass; QA should verify the responsive layout, actual Scalar samples, and downloads against the live server. The download glyph is the equivalent inline 16px SVG because this repo does not depend on lucide-react, and the shared Button has no size prop.
 

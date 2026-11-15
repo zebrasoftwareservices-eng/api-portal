@@ -20,6 +20,7 @@ import { loadLinter } from './lint/index.js';
 import { registerVersions } from './versions.js';
 import { registerSearch } from './search.js';
 import { registerCatalog } from './catalog.js';
+import { registerAgentDocs } from './agent-docs.js';
 import { registerImport } from './import.js';
 import { registerTeams } from './teams.js';
 import { registerProducts } from './products.js';
@@ -214,6 +215,7 @@ export async function createApp(options: AppOptions) {
     options.enqueueReconcile ?? (async () => {}),
   );
   registerCatalog(app, db, auth);
+  registerAgentDocs(app, db, auth, config.PORTAL_PUBLIC_URL);
   await registerSearch(app, db, auth);
   registerImport(app, db, auth, connection, linter);
   registerVersions(app, db, auth, linter);
