@@ -184,11 +184,11 @@ because the reference page opens the latest version by default.
   Integration tests cover `q` at 0, 1, 100 and 101 characters, plus whitespace only.
 
 ### Tasks
-- [ ] [backend] Add `packages/sdk/src/search.ts` (`searchCatalog`, types) and export it from the package index; unit tests for normalisation, AND-token matching, verb filtering, scoring order, ties, `limit`/`truncated`, special characters, malformed `paths`, and a 300×30 benchmark under 50 ms.
-- [ ] [backend] Regenerate `packages/sdk/src/schema.d.ts` from the updated `openapi.yaml` (`pnpm --filter @portal/sdk generate`).
-- [ ] [backend] Add `apps/server/src/search.ts`: `GET /api/v1/search` with zod validation (`q` trimmed 1–100, `limit` 1–50 default 20, problem `detail` copy as in the design), `loadViewer` + `publishedApis` + `searchCatalog`; register it in `app.ts`; add the `@portal/sdk` workspace dependency to `apps/server`.
-- [ ] [backend] Scoped `@fastify/rate-limit` on the search route: 60/min keyed by `request.ip` anonymous, 120/min keyed by user ID signed in; 429 `/problems/rate-limited`.
-- [ ] [backend] Integration tests (`apps/server/src/search.test.ts`, Testcontainers Postgres): AC 1, 2, 3 (refused import, null latest version), 4 (open/hidden/internal/manual products × anonymous/member/non-member/admin; results ⊆ `GET /v1/apis`), 5 (new version removes `GET /orders`; product made internal hides it), 6, 7 (blank, 101 chars, `{}/*%`), 429.
+- [x] [backend] Add `packages/sdk/src/search.ts` (`searchCatalog`, types) and export it from the package index; unit tests for normalisation, AND-token matching, verb filtering, scoring order, ties, `limit`/`truncated`, special characters, malformed `paths`, and a 300×30 benchmark under 50 ms.
+- [x] [backend] Regenerate `packages/sdk/src/schema.d.ts` from the updated `openapi.yaml` (`pnpm --filter @portal/sdk generate`).
+- [x] [backend] Add `apps/server/src/search.ts`: `GET /api/v1/search` with zod validation (`q` trimmed 1–100, `limit` 1–50 default 20, problem `detail` copy as in the design), `loadViewer` + `publishedApis` + `searchCatalog`; register it in `app.ts`; add the `@portal/sdk` workspace dependency to `apps/server`.
+- [x] [backend] Scoped `@fastify/rate-limit` on the search route: 60/min keyed by `request.ip` anonymous, 120/min keyed by user ID signed in; 429 `/problems/rate-limited`.
+- [x] [backend] Integration tests (`apps/server/src/search.test.ts`, Testcontainers Postgres): AC 1, 2, 3 (refused import, null latest version), 4 (open/hidden/internal/manual products × anonymous/member/non-member/admin; results ⊆ `GET /v1/apis`), 5 (new version removes `GET /orders`; product made internal hides it), 6, 7 (blank, 101 chars, `{}/*%`), 429.
 - [ ] [frontend] Search entry point and `/search?q=` results page per the UX design: each result shows method badge, path, summary and API name (API results show title and version); empty state "Nothing matched" with a link to browse the catalog; 400 shows the problem `detail` inline; 429 shows a try-again message.
 - [ ] [frontend] Shared `operationAnchor()` helper wired into `referenceOptions` (Scalar operation slug) and into operation result links, so `/apis/{slug}#<anchor>` scrolls to the operation; unit-test the helper.
 - [ ] [frontend] Demo mode: search the sample API in the browser with `searchCatalog` from `@portal/sdk` (no server call), same results UI.
@@ -214,6 +214,9 @@ Design: [docs/design/020-api-search.md](../design/020-api-search.md).
   `SearchResultRow` and `HeaderSearch` (`apps/portal`). No new tokens.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Backend: implemented the shared literal matcher and generated search types, plus the catalog-backed search route with exact validation copy and separate anonymous/user rate limits. Updated the server dependency and runtime image to include the SDK; no migration or new service is needed. SDK lint/typecheck and all 16 tests pass (including the 300×30 under-50-ms benchmark); server lint/typecheck and all 317 tests pass, including six Postgres search integration tests covering visibility, latest-version switching, refused imports, validation, and rate limiting. QA still owns browser deep-link checks, the full workspace suite, and quickstart verification.
+
 
 ## Test report  _(qa-tester)_
 | Criterion | Test file | Result |

@@ -18,6 +18,7 @@ import { createAuth, headersFor, type Auth } from './auth.js';
 import { problemHandler } from './problem.js';
 import { loadLinter } from './lint/index.js';
 import { registerVersions } from './versions.js';
+import { registerSearch } from './search.js';
 import { registerCatalog } from './catalog.js';
 import { registerImport } from './import.js';
 import { registerTeams } from './teams.js';
@@ -213,6 +214,7 @@ export async function createApp(options: AppOptions) {
     options.enqueueReconcile ?? (async () => {}),
   );
   registerCatalog(app, db, auth);
+  await registerSearch(app, db, auth);
   registerImport(app, db, auth, connection, linter);
   registerVersions(app, db, auth, linter);
   registerTeams(app, db, auth, config, enqueue);

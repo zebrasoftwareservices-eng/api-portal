@@ -7,3 +7,5 @@ export function createClient(
 ) {
   return openapiFetch<paths>({ credentials: 'include', ...options });
 }
+export { searchCatalog } from './search.js';
+export type { SearchApi, SearchResult, SearchResults } from './search.js';

@@ -129,6 +129,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search published APIs and their operations
+         * @description Spec 020, ADR 0012. Matches the term against the latest version of every API the public
+         *     catalog shows the caller (`GET /v1/apis` uses the same visibility check, so search results
+         *     are always a subset of the catalog). Searched fields: API title and description; each
+         *     operation's method, path, summary and operationId. Schemas, older versions and docs pages
+         *     are not searched.
+         *
+         *     Matching ignores case. The term is trimmed, runs of whitespace collapse to one, and it is
+         *     split on spaces into tokens; a result matches when every token occurs as a plain substring
+         *     (no wildcards, so `{}/*%_` match literally). Results are ordered by score (exact path,
+         *     then path, then title, then summary), then API title, then path.
+         *
+         *     An empty term (after trimming) or one over 100 characters is refused with
+         *     `/problems/validation`. Anonymous callers are limited to 60 searches a minute per client
+         *     IP; signed-in callers to 120 a minute per user.
+         */
+        get: operations["searchCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apis/{slug}": {
         parameters: {
             query?: never;
@@ -1841,6 +1874,42 @@ export interface components {
             /** @description SMTP settings are saved or set in the environment. `requireVerifiedEmail` can't be turned on without them. */
             mailConfigured: boolean;
         };
+        SearchResults: {
+            items: components["schemas"]["SearchResult"][];
+            /** @description True when more results matched than `limit`. */
+            truncated: boolean;
+        };
+        /**
+         * @description `kind: api` is an API whose title or description matched; link to `/apis/{api.slug}`.
+         *     `kind: operation` is one operation of the API's latest version; `method`, `path` and
+         *     `summary` are set and the portal links to that operation in the reference.
+         */
+        SearchResult: {
+            /** @enum {string} */
+            kind: "api" | "operation";
+            api: {
+                slug: components["schemas"]["Slug"];
+                title: string;
+                /** @description The latest version */
+                version: string;
+            };
+            /**
+             * @description Operations only, upper case
+             * @enum {string}
+             */
+            method?: "GET" | "PUT" | "POST" | "DELETE" | "OPTIONS" | "HEAD" | "PATCH" | "TRACE";
+            /**
+             * @description Operations only, as written in the document
+             * @example /orders/{id}
+             */
+            path?: string;
+            /** @description Operations only */
+            summary?: string | null;
+            /** @description Operations only */
+            operationId?: string | null;
+            /** @description Operations only; the operation tags, for building the reference link */
+            tags?: string[];
+        };
         ApiSummary: {
             /** Format: uuid */
             id: string;
@@ -2837,6 +2906,33 @@ export interface operations {
                     };
                 };
             };
+        };
+    };
+    searchCatalog: {
+        parameters: {
+            query: {
+                /** @description Search term, 1–100 characters after trimming. */
+                q: string;
+                /** @description Maximum results to return. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching APIs and operations, best first. Empty `items` when nothing matched. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResults"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            429: components["responses"]["RateLimited"];
         };
     };
     getApi: {
