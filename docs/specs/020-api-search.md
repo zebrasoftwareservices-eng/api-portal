@@ -1,7 +1,7 @@
 ---
 id: 020
 title: Search across APIs and endpoints
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
@@ -284,6 +284,42 @@ status is `uat` for the user-tester.
 | Search input layout | Fail (minor) | Local `search-input-fail.png`; first query letters overlap the icon. |
 
 ## Review  _(tech-lead)_
+
+2026-11-15, reviewed `git diff main...HEAD` at `8a42d6b`. QA's full pass named `9e5913f`; the
+two later commits change only the spec, the stage log and the UAT report, so the suite was not
+re-run. CI on the pushed branch is the second run. **No blocking findings: status approved.**
+
+Checked: the contract matches `openapi.yaml` (`GET /v1/search`, 200/400/429, `security: []`).
+The route reuses `publishedApis(db, viewer)`, so visibility comes from the catalog (ADR 0012).
+Errors are problem+json. `q` and `limit` are validated with zod, and matching is plain
+`includes`, so no input reaches SQL. There is no new container and no migration. The server
+Dockerfile copies `packages/sdk/dist`, and QA verified the quickstart. Demo mode uses the same
+`searchCatalog` in the browser. Every AC has an automated test.
+
+**AC 3 and the unpublish clause of AC 5: coverage is sufficient, not blocking.** The portal has
+no unpublish action yet. "Not published" can only be an `apis` row with a null
+`latest_version_id`, or an import that was refused and stored nothing. Both states are tested
+at two levels:
+- Integration test (real Postgres, four viewers: anonymous, member, outsider, admin): a seeded
+  null-latest row and a lint-refused import (`apps/server/src/search.test.ts:151`, `:204`, `:228`).
+  Search results match `GET /v1/apis` for each viewer.
+- Browser test on the Compose stack with real Kong: it nulls `latest_version_id` and checks that
+  both the API response and the "Nothing matched" page exclude the API, with no wait
+  (`apps/portal/e2e/search.test.ts:263`). It also removes `GET /orders` through a new version.
+
+A manual UAT check would only repeat that SQL step, because the UI has nothing to click. When a
+spec adds unpublish, its own ACs should check search through that action.
+
+Suggestions (no Fix task, not blocking):
+- suggestion: the open minor bug, where the search icon overlaps the first characters typed
+  (`apps/portal/app/globals.css:257-270`, `.search-input input { padding-left: 40px }`),
+  stays in Bugs. Fix it in a follow-up or before merge if convenient.
+- suggestion: `apps/server/src/search.ts:59-65` maps zod issues back to detail strings already
+  declared in the schema at `:15-17`. Using `issue.message` (and giving `limit` its own message)
+  would keep one copy of the text.
+- suggestion: this branch also changes `factory/roles/backend-developer.md` and
+  `factory/roles/qa-tester.md`, which are factory process edits unrelated to search. Name them
+  in the PR description, or split them out, so the change history stays clear.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
