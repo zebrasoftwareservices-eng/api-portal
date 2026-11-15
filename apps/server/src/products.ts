@@ -128,6 +128,8 @@ async function detail(
     description: product.description,
     apiCount: links.length,
     planCount: rows.length,
+    allPlansRequireApproval:
+      rows.length > 0 && rows.every((p) => p.requiresApproval),
     createdAt: product.createdAt.toISOString(),
     apis: included.map(apiSummary),
     plans: await Promise.all(rows.map((p) => planView(db, p))),
@@ -167,6 +169,8 @@ export function registerProducts(
             description: result.description,
             apiCount: result.apiCount,
             planCount: result.planCount,
+            allPlansRequireApproval: result.allPlansRequireApproval,
+            selfService: result.selfService,
             createdAt: result.createdAt,
           };
         }),

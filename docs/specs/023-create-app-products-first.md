@@ -205,12 +205,12 @@ success path (AC 5) is the existing spec 004 provisioning, idempotent and tagged
   `docker compose up` to confirm AC 5 end to end.
 
 ### Tasks
-- [ ] [backend] `POST /api/v1/apps`: replace the 400 product-API refusal with 409 `api-in-product`, `errors[]` per refused API (`/apiIds/<i>`, message naming the API title and product), and the `products` extension filtered to the team's visible products; keep the check after `canSeeApi` and before `provisionApp`
-- [ ] [backend] `problem.ts`: add `products` to `Problem.fields` and serialise it
-- [ ] [backend] Make `apiIds` + `planId`, and any unknown property, return 400 `/problems/validation` whose `errors[].pointer` names that property (`/planId`)
-- [ ] [backend] `GET /api/v1/products`: add `allPlansRequireApproval` and `selfService` to each item
-- [ ] [backend] Regenerate `packages/sdk/src/schema.d.ts` from `openapi.yaml`
-- [ ] [backend] Unit/integration tests in `apps/server`: 409 for a product API alone and mixed with a loose API (no app, key or Kong consumer created); 404 for an API whose only product is hidden; 400 naming `/planId`; `allPlansRequireApproval` true/false/no-plans; update the existing 400 test
+- [x] [backend] `POST /api/v1/apps`: replace the 400 product-API refusal with 409 `api-in-product`, `errors[]` per refused API (`/apiIds/<i>`, message naming the API title and product), and the `products` extension filtered to the team's visible products; keep the check after `canSeeApi` and before `provisionApp`
+- [x] [backend] `problem.ts`: add `products` to `Problem.fields` and serialise it
+- [x] [backend] Make `apiIds` + `planId`, and any unknown property, return 400 `/problems/validation` whose `errors[].pointer` names that property (`/planId`)
+- [x] [backend] `GET /api/v1/products`: add `allPlansRequireApproval` and `selfService` to each item
+- [x] [backend] Regenerate `packages/sdk/src/schema.d.ts` from `openapi.yaml`
+- [x] [backend] Unit/integration tests in `apps/server`: 409 for a product API alone and mixed with a loose API (no app, key or Kong consumer created); 404 for an API whose only product is hidden; 400 naming `/planId`; `allPlansRequireApproval` true/false/no-plans; update the existing 400 test
 - [x] [frontend] Create an app: Products section first (`GET /v1/products`), one row per product with no checkbox and no plan picker, link to `/products/{slug}` labelled per the table above
 - [x] [frontend] Products with `planCount == 0`: "Not available yet" with no link for developers; "Needs a plan" with a link to `/admin/products/{slug}` for portal admins
 - [x] [frontend] APIs section lists only APIs with empty `products`, all unchecked; drop the single-row pre-check; keep `?api=<slug>` pre-check only for a loose API
@@ -236,6 +236,8 @@ note; with no products the page is today's form. A stale-page 409 shows the serv
 "Subscribe to {name}" links and refetches both lists. No new tokens.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Backend: Direct product-API creation now returns 409 `api-in-product` with indexed API/title errors and distinct visible product links; invisible-only APIs still return 404 before provisioning. Mixed `apiIds`/`planId` and unknown fields return property-specific validation pointers, while plan-only visibility checks retain their precedence. Product summaries include `allPlansRequireApproval` (false with no plans) and `selfService`; the SDK is regenerated. Server lint/typecheck and 328 tests (25 files), plus SDK lint/typecheck and 16 tests, pass after building workspace dependencies; QA retains real-Kong refusal and browser/quickstart checks.
 
 - Frontend: Products appear before the loose-API form with Subscribe, Request access, View product and role-aware no-plan states; loose APIs start unchecked except a matching `?api=`. Empty selection focuses the invalid checkbox, and stale `api-in-product` refusals keep their product links visible while both lists refresh and refused selections disappear. Portal lint, typecheck and all 393 tests (45 files, including 19 create-app tests) pass; SDK build was required locally before typechecking. QA should explicitly check Sample HTTP API in quickstart/demo journeys; browser and quickstart validation are left to QA.
 

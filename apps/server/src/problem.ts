@@ -18,6 +18,7 @@ export class Problem extends Error {
       column?: number;
     }[],
     readonly fields?: {
+      products?: { id: string; slug: string; name: string }[];
       affectedTeams?: number;
       affectedSubscriptions?: number;
       teams?: { id: string; name: string }[];
@@ -59,10 +60,22 @@ export function problemHandler(app: FastifyInstance) {
         400,
         'validation',
         'Request validation failed.',
-        err.issues.map((i) => ({
-          message: i.message,
-          pointer: '/' + i.path.join('/'),
-        })),
+        err.issues.flatMap((i) => {
+          const paths =
+            i.code === 'unrecognized_keys'
+              ? i.keys.map((key) => [...i.path, key])
+              : [i.path];
+          return paths.map((path) => ({
+            message: i.message,
+            pointer:
+              '/' +
+              path
+                .map((part) =>
+                  String(part).replaceAll('~', '~0').replaceAll('/', '~1'),
+                )
+                .join('/'),
+          }));
+        }),
       );
     else if (
       err instanceof Error &&
@@ -98,6 +111,7 @@ export function problemHandler(app: FastifyInstance) {
                   copy[0],
                 ]),
               ),
+              'api-in-product': 'API offered in a product',
               'slug-required': 'Slug required',
               'gateway-unreachable': "The portal couldn't reach that address",
               'gateway-token-refused': 'Kong refused the token',
