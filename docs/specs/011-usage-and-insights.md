@@ -1,7 +1,7 @@
 ---
 id: 011
 title: Usage meter per app and admin insights
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-239
@@ -436,35 +436,66 @@ Design: [docs/design/011-usage-and-insights.md](../design/011-usage-and-insights
 
 ## Test report  _(qa-tester)_
 
-Commit tested: `f5f4cea303fa7dbdd96a571ff721f977a9391826` plus the uncommitted QA tests in this worktree. Portal: **http://localhost:3006** (`node scripts/worktree-compose.mjs env`); Compose project `portal-011-usage-and-insights-1491`.
+Tested application commit: `4f935de0cdf800db4900fe1359871276d5447921`.
+QA test revision: `d3c01cdc399a0b110ed14c511ef33142b6854bfc`; the workspace pass
+ran on the `c615cf8` test tree, and subsequent test-only privacy/timeout assertions
+were typechecked and verified with their focused tests. Application code is unchanged.
+Portal: **http://localhost:3006**, from `node scripts/worktree-compose.mjs env`;
+Compose project `portal-011-usage-and-insights-1491`. The stack is left running for UAT.
 
-| Criterion | Automated test | Result |
+| AC | Automated coverage | Result |
 | --- | --- | --- |
-| 1 — automatic 20 calls / quota / freshness | `apps/server/src/usage.test.ts` real Kong/Postgres AC 1/3; `apps/portal/components/app-usage.test.tsx`; `apps/portal/e2e/usage.test.ts` | PASS (API, component and browser) |
-| 2 — exact 12/5/3 status classes | `apps/server/src/usage.test.ts` AC 2; `apps/portal/components/app-usage.test.tsx` | PASS |
-| 3 — rejected keys / private storage | `apps/server/src/usage.test.ts` real Kong AC 1/3; `packages/adapter-kong/src/conformance.test.ts` usage conformance/redaction | PASS |
-| 4 — UTC month exclusion and reset | `apps/server/src/usage.test.ts` month bucketing and real Kong seeded previous month; `apps/portal/components/app-usage.test.tsx` | PASS |
-| 5 — membership, read-only, expired/signed-out sessions | `apps/server/src/usage.test.ts` permissions and problem+json; `apps/portal/e2e/usage.test.ts` | PASS (API and browser) |
-| 6 — behind keeps stored counts and update time | `apps/server/src/usage.test.ts` real Kong counts then stale collection; `apps/portal/components/app-usage.test.tsx` | PASS |
-| 7 — rolling insights, top five, empty state | `apps/server/src/usage.test.ts` AC 7/8; `apps/portal/components/admin-insights.test.tsx` | PASS |
-| 8 — creator attribution, successful calls, median and coverage | `apps/server/src/usage.test.ts` earliest 2xx, teammate/owner isolation and AC 7/8; `apps/server/src/products.test.ts` regeneration; `apps/portal/components/admin-insights.test.tsx`; `apps/portal/e2e/usage.test.ts` try-it | PASS (API, component and browser) |
-| 9 — admin-only insights and navigation | `apps/server/src/usage.test.ts` AC 5/9; `apps/portal/components/admin-insights.test.tsx`; `apps/portal/e2e/usage.test.ts` | PASS (API, component and browser) |
-| 10 — real Kong conformance / unsupported UI | `packages/adapter-kong/src/conformance.test.ts` usage conformance; `apps/server/src/usage.test.ts`; `apps/portal/components/app-usage.test.tsx`; `apps/portal/components/admin-insights.test.tsx` | PASS |
-| 11 — visitor usage, private insights and hosted reset | `apps/portal/e2e/usage.test.ts`; `apps/server/src/usage.test.ts` exact SQL extracted from `reset-demo.sh` | FAIL: shared-team app usage survives reset |
+| 1 | `apps/server/src/usage.test.ts`: 20 real Kong calls automatically become total 20 / quota 1,000 within 60 seconds; `apps/portal/e2e/usage.test.ts`: reloaded app shows 20 calls; `apps/portal/components/app-usage.test.tsx`: quota meter, unlimited and cap rendering. | Pass |
+| 2 | `apps/server/src/usage.test.ts`: exactly 12 2xx, five 4xx including 429, and three 5xx sum to 20; `apps/portal/components/app-usage.test.tsx`: labelled status classes and optional Other. | Pass |
+| 3 | `apps/server/src/usage.test.ts`: real no-key/unknown/revoked requests add nothing; malformed entries, unknown credentials and rejected authentication cannot pollute counts; duplicate mixed batches count once. `packages/adapter-kong/src/conformance.test.ts` through SDK conformance inspects raw logs for keys/headers; `packages/db/src/usage-migration.test.ts` checks stored schema. | Pass |
+| 4 | `apps/server/src/usage.test.ts`: UTC month bounds and previous-month bucket excluded with real Kong collection; `apps/portal/components/app-usage.test.tsx`: first-of-next-month UTC reset label. | Pass |
+| 5 | `apps/server/src/usage.test.ts`: read-only team member can read usage; non-member 404 and signed-out/expired-session 401 are problem+json without counts; `apps/portal/e2e/usage.test.ts`: anonymous usage denied. | Pass |
+| 6 | `apps/server/src/usage.test.ts`: six-minute-old collection returns stored counts and last update; failed heartbeat warns without discarding data. `apps/portal/components/app-usage.test.tsx`: behind/never-received states, retained counts after background errors, refresh and lost-access behavior. | Pass |
+| 7 | `apps/server/src/usage.test.ts`: rolling UTC window, signups, active apps, descending top-five APIs, fewer/zero APIs and empty state; `apps/portal/components/admin-insights.test.tsx`: cards, links and empty UI. | Pass |
+| 8 | `apps/server/src/usage.test.ts`: own/regenerated credential attribution, teammate isolation, 4xx/5xx exclusion, earliest out-of-order success, newest-first signup ordering, median and coverage. `apps/portal/e2e/usage.test.ts`: the first success is try-it and admin insights attributes it; `apps/portal/components/admin-insights.test.tsx`: target, median/coverage and No call yet. | Pass |
+| 9 | `apps/server/src/usage.test.ts`: developer insights 403 problem+json without data; `apps/portal/e2e/usage.test.ts`: no developer Insights link and focused permission page; `apps/portal/components/admin-insights.test.tsx`: permission screen retains no insight data. | Pass |
+| 10 | `packages/adapter-kong/src/conformance.test.ts`: real Kong SDK usage conformance, redaction and collection; `apps/server/src/usage.test.ts`: stub capability false returns null/unsupported on both GETs; `apps/portal/components/app-usage.test.tsx` and `admin-insights.test.tsx`: unavailable state instead of zero. | Pass |
+| 11 | `apps/portal/e2e/usage.test.ts`: live visitor collection and private admin insights; `apps/server/src/usage.test.ts`: executes the hosted reset script's SQL against real Postgres, including a shared-team app, and confirms no usage, first-call rows or insight counts remain. `tests/spec011-quickstart.test.ts`: keyed quickstart call automatically collected within 60 seconds. | Pass |
 
-- `pnpm lint` and `pnpm typecheck`: PASS. Changed-package typechecks ran before tests.
-- One full `pnpm test`: FAIL (10/12 Turbo tasks completed successfully). Portal 363/363 and database 10/10 passed; Kong 63/64 passed including usage conformance, but its exact first-request ACL test received 200 instead of 403. The isolated ACL rerun passed, so the authorization finding remains intermittent; the server's reset acceptance regression failed and Turbo terminated the remaining server run.
-- One full `pnpm test:e2e`: 94 passed, 5 failed, 2 skipped (7.4 minutes), including a PASS for the new live usage/try-it/private-insights journey. The five failures were the two pre-seed navigation checks, gateway snapshot racing asynchronous heartbeat creation, and two admin-navigation assertions missing Insights; after fixing only those test expectations, the targeted five-check rerun passed 5/5 (39.3 seconds). Existing expected failures remain expected; no second full browser pass ran.
-- Quickstart: `node scripts/worktree-compose.mjs up -d --build --wait` completed after recovering a Docker Desktop daemon exit; stack remains running for the next stage, and the Compose-backed quickstart smoke passed. The initial fresh stack redirected to setup, so the first two browser assertions requiring seeded navigation ran before setup; these are environment preconditions, to be checked individually after seeding.
-- Focused completion checks: `products.test.ts` passed both the existing regeneration lifecycle and the new initial/regenerated creator-attribution test (2/2). The complete hosted shell reset/backup/restart was not invoked against this local quickstart; its exact database SQL was tested against real Postgres and failed AC 11.
-- No open bugs existed at intake. Both new major findings are retained under Bugs/Deferred Linear because Linear rejected issue creation at its Free-plan capacity. Application fixes are outside QA ownership.
-- `node scripts/factory.mjs guard qa-tester` rejects prior-stage application/design changes already committed on this feature branch; QA has preserved them and has not committed its changes.
+Validation: `pnpm lint` (7 tasks), `pnpm typecheck` (12 tasks), and `pnpm test`
+(749 tests, 77 files; 12 successful workspace tasks) pass. Package typechecks preceded
+changed-test runs, and the standalone smoke test was typechecked separately.
+`pnpm test:e2e` completed one full run: **98 passed, 2 skipped, 1 failed** in
+8.6 minutes. The failure was the setup journey expecting sample publication within
+five seconds, below the new six-second Kong protection allowance. Its assertion now
+polls for up to 15 seconds; the focused rerun passed (**1/1**, 48.5 seconds). Existing expected-failure regressions
+retain their annotations; the two explicit skips are JSO-225 and JSO-226.
+`node --experimental-strip-types --test tests/spec003-quickstart.test.ts` ran
+`node scripts/worktree-compose.mjs up -d --build --wait` against a fresh worktree volume:
+seeded catalog ready in **83.0 seconds**. The new standalone usage smoke passed in **1.2 seconds**.
+The deployment-level `deploy/quickstart-smoke.mjs` remains unchanged; the scoped test adds
+usage verification without taking over its destructive default-port setup path.
+
+Both open bugs were retested with `linear bug 011 done`: hosted reset cleanup passes,
+and the warm-service first-request test passed five checks in each of three independent
+runs, plus five more checks during the full suite (**20/20** first requests denied).
+The fixed six-second allowance was reliable across those local runs; this is not proof
+for every production load or worker configuration. No new blocker or major product finding was observed. A minor test-infrastructure
+follow-up remains: the deployment smoke does not invoke the scoped usage smoke.
+The corresponding QA task remains open for its explicit deployment-script clause;
+AC 11 and quickstart usage behavior are independently automated and passing. Hosted reset coverage executes the real script SQL and the live
+visitor journey separately; it does not run a hosted production deployment or its cron.
+
+The initial workspace/build attempt was interrupted by host ENOSPC and Docker's read-only
+filesystem; after disk recovery, workspace checks passed and the full browser run completed
+with the test-timeout correction described above.
+An earlier browser launch was stopped after Docker CLI/PATH setup failures; the
+complete run used the corrected Docker PATH and isolated worktree Compose settings.
+The ownership guard flags earlier stages' application/design commits when comparing the
+whole branch to main; the coordinator explicitly authorized committing named QA paths only.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] Demo reset retains shared-team visitor usage and insights counts (major)
-- [ ] Warm Kong service intermittently accepts unsubscribed key after protection (major)
+- [x] Demo reset retains shared-team visitor usage and insights counts (major)
+- [x] Warm Kong service intermittently accepts unsubscribed key after protection (major)
+- [ ] Deployment smoke does not invoke the scoped usage freshness smoke (`tests/spec011-quickstart.test.ts`); `deploy/quickstart-smoke.mjs` still checks catalog seeding only (minor).
+
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
