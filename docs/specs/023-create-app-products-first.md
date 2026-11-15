@@ -1,7 +1,7 @@
 ---
 id: 023
 title: Create an app shows products first
-status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 023`
@@ -109,12 +109,119 @@ API.
 <!-- Sections below are filled by later stages. -->
 
 ## Technical design  _(tech-lead)_
-Components · API contract · Data model · Adapter calls · Risks
+
+**Shape.** No new endpoint, table or gateway call. The form reads two lists it can already
+fetch, `GET /v1/products` (the products the caller can see) and `GET /v1/apis` (published APIs
+with their visible `products`). It shows the products first and only the APIs whose `products`
+list is empty as checkboxes. The server enforces the same rule on `POST /v1/apps`, so a direct
+client gets nothing the form wouldn't give it. No ADR: this applies spec 009's "an API in a
+product is reached only through a plan" and spec 010's visibility rule (ADR 0010). It makes no
+new lasting choice.
+
+### Components
+- `apps/server/src/apps.ts` (`POST /api/v1/apps`): the existing product-membership check moves
+  from `400 /problems/validation` to `409 /problems/api-in-product` and gains the `products`
+  extension. It stays before `provisionApp`, so no Kong call happens on refusal. Request
+  validation names `/planId` when `apiIds` and `planId` arrive together.
+- `apps/server/src/products.ts` (`GET /api/v1/products`): the list adds `allPlansRequireApproval`
+  and `selfService` to each item. `detail()` already loads the plans and `canSelfSubscribe`.
+- `apps/server/src/problem.ts`: `Problem.fields` gains `products?: { id; slug; name }[]`, and the
+  handler serialises it like the other extension fields.
+- `packages/sdk`: regenerate `src/schema.d.ts` (`pnpm --filter @portal/sdk generate`).
+- `apps/portal/components/create-app.tsx` and `app/dashboard/apps/new/page.tsx`: a Products
+  section above the APIs section. No pre-checked row unless `?api=<slug>` names a loose API.
+  The empty-selection message and the "every API is offered as a product" state are new.
+- No change in `packages/db`, `packages/adapter-*` or `deploy/`.
+
+### API contract (`apps/server/openapi.yaml`, updated)
+- `GET /v1/products`: `ProductSummary` adds two required fields.
+  - `allPlansRequireApproval: boolean`. True when `planCount > 0` and every product plan has
+    `requiresApproval`. False when there are no plans.
+  - `selfService: boolean`. Moved up from `ProductDetail`, so `ProductDetail` still has it
+    through `allOf` and the change is additive.
+  - Visibility is unchanged. A developer gets `open`, plus `hidden` when signed in, plus
+    `internal` and `manual` products that the team can see. A portal admin gets every product.
+- The form derives each product row from those fields. ui-designer owns the copy:
+
+  | Condition | Developer sees | Portal admin sees |
+  | --- | --- | --- |
+  | `planCount == 0` | "Not available yet", no link (AC 7) | "Needs a plan" + link to `/admin/products/{slug}` |
+  | `selfService == false` (manual, assigned) | link to `/products/{slug}`, label from UX | same |
+  | `allPlansRequireApproval` | **Request access** → `/products/{slug}` | same |
+  | otherwise | **Subscribe** → `/products/{slug}` | same |
+
+  "Portal admin" is `GET /v1/me` `user.role === 'admin'`, which the form already loads.
+- `GET /v1/apis`: unchanged. `products` already lists only the products the caller can see, and
+  an API whose every product is hidden from the caller is not returned at all
+  (`canSeeApi`). So `products.length === 0` is exactly "loose API". That covers AC 2 and AC 8 with
+  no extra call.
+- `POST /v1/apps` (`createApp`):
+  - `apiIds` containing any API that is in a product, alone or mixed with loose APIs, returns
+    **409** `application/problem+json`. Shape:
+    ```json
+    { "type": "/problems/api-in-product", "title": "API offered in a product", "status": 409,
+      "detail": "Payments API is offered in a product. Subscribe to Payments instead.",
+      "errors": [{ "pointer": "/apiIds/0", "message": "Payments API is in Payments." }],
+      "products": [{ "id": "…", "slug": "payments", "name": "Payments" }] }
+    ```
+    `errors` has one entry per refused API, with its index in `apiIds`. `products` is the
+    distinct products, visible to the caller's team, that include those APIs, by name.
+  - Check order inside the transaction: name taken → APIs exist (404) → `canSeeApi` (404, so a
+    hidden product's API is never named) → product membership (409) → `provisionApp`. The
+    membership query is `product_apis` by `api_id`, with no visibility filter, so any product
+    blocks the per-API flow. Only the names returned in `products` are filtered.
+  - `apiIds` plus `planId`, or any unknown property, returns **400** `/problems/validation` with
+    `errors[].pointer` naming the property (`/planId`, `/plan`, …). The schema already has
+    `additionalProperties: false` and `oneOf`. The backend makes sure the mapped Ajv error points
+    at the offending property, not at `/` or a generic oneOf message.
+  - `planId` alone is spec 009's subscribe flow, unchanged. AC 9 relies on it.
+
+### Data model
+No changes. `product_apis` (membership), `plans.requires_approval` and `products.visibility`
+already hold everything. No migration.
+
+### Gateway adapter calls
+None added. Every refusal (409, 400, 404) happens before `provisionApp`, so `upsertConsumer`,
+ACL grants and `issueCredential` never run and there is nothing to roll back. The loose-API
+success path (AC 5) is the existing spec 004 provisioning, idempotent and tagged as before.
+
+### Risks and how to test them
+- **Form and server disagree on what is loose.** Both derive it from `product_apis`. The
+  integration test sends the form's exact request for every row the form renders, and expects
+  201 for the loose rows and 409 for each product API.
+- **Leaking hidden products through the 409.** The visibility check runs before membership, and
+  `products` is filtered. Test an API in one visible product and one Internal product: the 409
+  names only the visible one. Test an API only in an Internal product: 404.
+- **Race with an admin adding the API to a product mid-request.** The check and the inserts share
+  one transaction, but the membership row can still commit between them. The window is
+  milliseconds and the outcome equals an existing app created a moment earlier, which is out of
+  scope. Accepted, not tested.
+- **Contract break for callers expecting 400.** Only the portal calls this today. The SDK is
+  regenerated in this spec, and the old 400 test in `apps.test.ts` is updated, not deleted.
+- **N+1 on `GET /v1/products`.** `detail()` per product already loads plans. The form makes one
+  call. Fine at portal scale. No change.
+- **Quickstart.** The seeded Sample HTTP API is in no product. Its checkbox now starts unchecked,
+  so the quickstart e2e and the demo e2e must check it before submitting. QA runs
+  `docker compose up` to confirm AC 5 end to end.
 
 ### Tasks
-- [ ] [backend] …
-- [ ] [frontend] …
-- [ ] [qa] …
+- [ ] [backend] `POST /api/v1/apps`: replace the 400 product-API refusal with 409 `api-in-product`, `errors[]` per refused API (`/apiIds/<i>`, message naming the API title and product), and the `products` extension filtered to the team's visible products; keep the check after `canSeeApi` and before `provisionApp`
+- [ ] [backend] `problem.ts`: add `products` to `Problem.fields` and serialise it
+- [ ] [backend] Make `apiIds` + `planId`, and any unknown property, return 400 `/problems/validation` whose `errors[].pointer` names that property (`/planId`)
+- [ ] [backend] `GET /api/v1/products`: add `allPlansRequireApproval` and `selfService` to each item
+- [ ] [backend] Regenerate `packages/sdk/src/schema.d.ts` from `openapi.yaml`
+- [ ] [backend] Unit/integration tests in `apps/server`: 409 for a product API alone and mixed with a loose API (no app, key or Kong consumer created); 404 for an API whose only product is hidden; 400 naming `/planId`; `allPlansRequireApproval` true/false/no-plans; update the existing 400 test
+- [ ] [frontend] Create an app: Products section first (`GET /v1/products`), one row per product with no checkbox and no plan picker, link to `/products/{slug}` labelled per the table above
+- [ ] [frontend] Products with `planCount == 0`: "Not available yet" with no link for developers; "Needs a plan" with a link to `/admin/products/{slug}` for portal admins
+- [ ] [frontend] APIs section lists only APIs with empty `products`, all unchecked; drop the single-row pre-check; keep `?api=<slug>` pre-check only for a loose API
+- [ ] [frontend] Submitting with no API checked creates nothing and shows the message beside the APIs section ("Choose at least one API, or subscribe to a product above"), focus moves to it
+- [ ] [frontend] No loose APIs: hide the checkboxes and the Create button, show the one-line note under the products
+- [ ] [frontend] Handle a 409 `api-in-product` (stale page) by showing the detail with links to the returned `products`, and refetching the lists
+- [ ] [frontend] Component tests in `apps/portal` for the row states, empty-selection message and no-loose-APIs state
+- [ ] [qa] Integration: AC 6, a direct `POST /v1/apps` with a product API (alone, mixed) → 409 naming the API, with a plan field → 400 naming it; assert Kong has no new consumer
+- [ ] [qa] e2e on the quickstart stack: AC 1–5, Products before APIs, Subscribe link reaches the plan table, Sample HTTP API unchecked, empty submit message, create + key + call through Kong returns upstream response
+- [ ] [qa] e2e: AC 7 (no-plan product as developer and as admin), AC 8 (Internal/Manual-unassigned product and its API absent), AC 9 (subscribe via the link creates a new one-plan app listed in My apps); approval-only product shows **Request access**
+- [ ] [qa] Update existing quickstart and demo e2e flows that relied on the pre-checked Sample HTTP API
 
 ## UX  _(ui-designer)_
 Summary + link to `docs/design/023-*.md`
