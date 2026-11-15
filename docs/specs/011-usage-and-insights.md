@@ -1,7 +1,7 @@
 ---
 id: 011
 title: Usage meter per app and admin insights
-status: draft   # draft → ready → designed → building → testing → uat → review → approved → done
+status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-14
 linear: JSO-239
