@@ -1,7 +1,7 @@
 ---
 id: 023
 title: Create an app shows products first
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 023`
@@ -218,10 +218,10 @@ success path (AC 5) is the existing spec 004 provisioning, idempotent and tagged
 - [x] [frontend] No loose APIs: hide the checkboxes and the Create button, show the one-line note under the products
 - [x] [frontend] Handle a 409 `api-in-product` (stale page) by showing the detail with links to the returned `products`, and refetching the lists
 - [x] [frontend] Component tests in `apps/portal` for the row states, empty-selection message and no-loose-APIs state
-- [ ] [qa] Integration: AC 6, a direct `POST /v1/apps` with a product API (alone, mixed) → 409 naming the API, with a plan field → 400 naming it; assert Kong has no new consumer
-- [ ] [qa] e2e on the quickstart stack: AC 1–5, Products before APIs, Subscribe link reaches the plan table, Sample HTTP API unchecked, empty submit message, create + key + call through Kong returns upstream response
-- [ ] [qa] e2e: AC 7 (no-plan product as developer and as admin), AC 8 (Internal/Manual-unassigned product and its API absent), AC 9 (subscribe via the link creates a new one-plan app listed in My apps); approval-only product shows **Request access**
-- [ ] [qa] Update existing quickstart and demo e2e flows that relied on the pre-checked Sample HTTP API
+- [x] [qa] Integration: AC 6, a direct `POST /v1/apps` with a product API (alone, mixed) → 409 naming the API, with a plan field → 400 naming it; assert Kong has no new consumer
+- [x] [qa] e2e on the quickstart stack: AC 1–5, Products before APIs, Subscribe link reaches the plan table, Sample HTTP API unchecked, empty submit message, create + key + call through Kong returns upstream response
+- [x] [qa] e2e: AC 7 (no-plan product as developer and as admin), AC 8 (Internal/Manual-unassigned product and its API absent), AC 9 (subscribe via the link creates a new one-plan app listed in My apps); approval-only product shows **Request access**
+- [x] [qa] Update existing quickstart and demo e2e flows that relied on the pre-checked Sample HTTP API
 
 ## UX  _(ui-designer)_
 Design: [`docs/design/023-create-app-products-first.md`](../design/023-create-app-products-first.md).
@@ -242,17 +242,32 @@ note; with no products the page is today's form. A stale-page 409 shows the serv
 - Frontend: Products appear before the loose-API form with Subscribe, Request access, View product and role-aware no-plan states; loose APIs start unchecked except a matching `?api=`. Empty selection focuses the invalid checkbox, and stale `api-in-product` refusals keep their product links visible while both lists refresh and refused selections disappear. Portal lint, typecheck and all 393 tests (45 files, including 19 create-app tests) pass; SDK build was required locally before typechecking. QA should explicitly check Sample HTTP API in quickstart/demo journeys; browser and quickstart validation are left to QA.
 
 ## Test report  _(qa-tester)_
-Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
+Commit tested (full pass): `549995481ae2a66159a627e00f30ef312eceaa2d`.
+Final targeted retest tree: `0a8ad7d55bf05a7f8615af3fe860336ea720d77b` (only test selectors changed after the full pass).
+Portal: **http://localhost:3007**, from `node scripts/worktree-compose.mjs env`; the isolated stack is still up, all services are healthy, and the server reports Kong reachable.
+
+All nine criteria run in `apps/portal/e2e/create-app-products.test.ts`, test **023 AC1–9**. Existing server integration and component tests supply additional refusal and rendering coverage.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
+| AC 1 — products precede APIs; Subscribe destination; no product checkbox or plan picker | `apps/portal/e2e/create-app-products.test.ts` | Pass |
+| AC 2 — product APIs appear under their product, never as checkboxes | `apps/portal/e2e/create-app-products.test.ts` | Pass |
+| AC 3 — seeded Sample HTTP API starts unchecked; checking it permits creation | `apps/portal/e2e/create-app-products.test.ts`; `apps/portal/e2e/journeys.ts` | Pass |
+| AC 4 — empty submission shows the API-section message, focuses its first invalid checkbox and creates nothing | `apps/portal/e2e/create-app-products.test.ts`; `apps/portal/components/create-app.test.tsx` | Pass |
+| AC 5 — loose-API creation, one-time key reveal, real Kong upstream response | `apps/portal/e2e/create-app-products.test.ts`; `apps/portal/e2e/journeys.ts` | Pass |
+| AC 6 — product API alone/mixed returns indexed 409; plan fields return indexed 400; app, Kong consumer and key snapshots stay unchanged | `apps/portal/e2e/create-app-products.test.ts`; `apps/server/src/products.test.ts` | Pass |
+| AC 7 — no-plan product unavailable to developer; admin sees Needs a plan and admin link | `apps/portal/e2e/create-app-products.test.ts`; `apps/portal/components/create-app.test.tsx` | Pass |
+| AC 8 — Internal and unassigned Manual products/APIs absent; Hidden product/API absent when signed out | `apps/portal/e2e/create-app-products.test.ts`; `apps/server/src/products.test.ts` | Pass |
+| AC 9 — Subscribe reaches plan table and creates a separate app with one credential and one plan, listed beside the loose-API app | `apps/portal/e2e/create-app-products.test.ts` | Pass |
 
-Long notes go in `docs/specs/log/023.md`, not here.
+- Failure paths: new e2e assertions cover invalid plan fields, product membership, invisible APIs, missing admin permission, invalid/expired session token and duplicate app names. Existing `apps/server/src/app.test.ts`, `products.test.ts`, and `apps/portal/e2e/gateway.ts` also pass real session-expiry, gateway-outage, rollback and duplicate-request cases; the new journey checks approval-only products show Request access.
+- One full pass: `pnpm lint` and `pnpm typecheck` passed; `pnpm test` passed **812 tests across 83 files**. `pnpm test:e2e` ran once: **101 passed, 2 skipped, 1 failed** in 9.7 minutes (existing expected-failure annotations count as passes); the failure was the quickstart smoke test matching both the APIs H1 and section H2 after public products were added.
+- Corrected only QA selectors: smoke now targets the H1; creation tests identify the seeded `/sample` API independently of duplicate titles and focus the first invalid API independently of catalog order. The affected test was typechecked directly, portal typecheck passed again, and a targeted run of the spec 023 journey, original key journey and quickstart smoke passed **3/3**; the full suite was not repeated.
+- Quickstart: `node scripts/worktree-compose.mjs up -d --build --wait` passed in **157.9 seconds**, with evaluation admin and sample seeding enabled. Final portal HTTP status is 200, Kong is reachable; portal/server/Postgres/Kong/Mailpit remain healthy.
+- The live quickstart journey now explicitly checks the initially unchecked seeded API. Demo e2e has no app-creation form or preselection dependency, so no demo change or separate demo-suite run was needed. There were no actionable open bugs at intake and no blocker or major remains.
 
 ### Bugs
-<!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
-<!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
+- [x] QA browser selectors assumed a pristine catalog (minor, test-only): the quickstart heading became ambiguous with public products, duplicate Sample HTTP API titles confused checkbox selection, and focus assertions assumed the sample was first; corrected and verified by the 3/3 targeted populated-stack retest.
 
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
