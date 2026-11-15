@@ -194,7 +194,7 @@ because the reference page opens the latest version by default.
 - [x] [frontend] Demo mode: search the sample API in the browser with `searchCatalog` from `@portal/sdk` (no server call), same results UI.
 - [ ] [qa] Playwright e2e on the Compose stack with real Kong: search `orders/{id}` → result opens the reference with the `GET /orders/{id}` operation in view (AC 1); `orders api` and `cancel order` (AC 2); empty state (AC 6); a hidden-product API absent anonymously and present for its team member (AC 4).
 - [ ] [qa] After the new tests pass, run the full suite and the browser suite once, then the quickstart; confirm no new container and no migration. Commit those tests even if the guard names another role's files. Record results in the Test report.
-
+- [ ] [frontend] Fix: Quickstart portal build cannot resolve SDK search.js export
 ## UX  _(ui-designer)_
 Design: [docs/design/020-api-search.md](../design/020-api-search.md).
 
@@ -221,13 +221,38 @@ Design: [docs/design/020-api-search.md](../design/020-api-search.md).
 
 
 ## Test report  _(qa-tester)_
-| Criterion | Test file | Result |
+
+Tested application commit: `623aa27e5e2ddbb0a91a635a9c05ea310aea63d6` (2026-11-15).
+Worktree portal URL from `node scripts/worktree-compose.mjs env`: **http://localhost:3006**.
+The portal is **not running**: `node scripts/worktree-compose.mjs up -d --build --wait`
+failed while building the portal image. Next/Turbopack cannot resolve `./search.js` from
+`packages/sdk/src/index.ts:10`; build log: `/tmp/020-compose.log`.
+
+| Criterion | Automated coverage | Result |
 | --- | --- | --- |
+| AC1: endpoint metadata and reference operation in view | `apps/portal/e2e/search.test.ts` — header search, GET result method/path/API name, click and operation anchor in viewport; existing `apps/server/src/search.test.ts` | Browser test written, not run: Compose build blocked |
+| AC2: API title and operation summary, case-insensitive | `apps/portal/e2e/search.test.ts` — uppercase title/summary searches and reference links; existing `apps/server/src/search.test.ts` | Browser test written, not run: Compose build blocked |
+| AC3: unpublished APIs excluded | `apps/portal/e2e/search.test.ts` — clear latest version and assert absence through API and UI; existing `apps/server/src/search.test.ts` — refused import/null latest version | Browser test written, not run: Compose build blocked |
+| AC4: search follows catalog visibility for each viewer | `apps/portal/e2e/search.test.ts` — hidden absent anonymously, internal present for member, expired session excluded, search slugs contained in catalog; existing `apps/server/src/search.test.ts` — anonymous/member/non-member/admin matrix | Browser test written, not run: Compose build blocked |
+| AC5: latest-version removal and unpublish reflected immediately | `apps/portal/e2e/search.test.ts` — publish version without orders, then clear latest version; existing `apps/server/src/search.test.ts` | Browser test written, not run: Compose build blocked |
+| AC6: empty result with catalog link | `apps/portal/e2e/search.test.ts` — Nothing matched heading and Browse all APIs link; existing `apps/server/src/search.test.ts` | Browser test written, not run: Compose build blocked |
+| AC7: validation and literal special characters | `apps/portal/e2e/search.test.ts` — blank/whitespace/101-character problem+json, 1/100-character and special-character success; existing `apps/server/src/search.test.ts` | Browser test written, not run: Compose build blocked |
+
+Added failure-path coverage in the same browser test for repeated identical requests,
+search while Kong is stopped (with restart in `finally`), developer mutation refusal (403),
+and server-side session expiry with the stale cookie retained (401 mutation and public search visibility).
+`deploy/e2e/search.test.ts` registers this coverage in the root browser suite.
+Portal package typecheck passed after adding the test; no application code, migration, or
+Compose service was added. The existing integration coverage above is mapped, not claimed
+as re-run in this stage. The required full pass (`pnpm lint`, `pnpm typecheck`, `pnpm test`,
+`pnpm test:e2e`) was not started because the new browser test could not first pass locally.
+The coordinator requested QA wrap-up after the build blocker; it owns the status transition
+back to building and arranging the fix. Re-tested the sole new bug with `linear bug 020 open`;
+its Linear issue is deferred because this spec has no feature key and the workspace is at its issue limit.
 
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
-
+- [ ] Quickstart portal build cannot resolve SDK search.js export (blocker)
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |
 | --- | --- | --- |
@@ -242,3 +267,10 @@ Design: [docs/design/020-api-search.md](../design/020-api-search.md).
 - [ ] API contract, README and docs updated
 - [ ] Tech-lead review has no blocking findings
 - [ ] Elango merged the PR
+
+### Deferred Linear
+- **Bug** — Bug: Quickstart portal build cannot resolve SDK search.js export (blocker)
+  - parent: none
+  - priority: urgent
+  - create when the Linear limit allows
+  - body: Repro: run node scripts/worktree-compose.mjs up -d --build --wait at commit 623aa27e5e2ddbb0a91a635a9c05ea310aea63d6. Portal image fails in Next/Turbopack: packages/sdk/src/index.ts:10 exports searchCatalog from './search.js', which cannot be resolved from TypeScript source. Expected: quickstart builds and serves the portal with search. Actual: Docker build exits 1, so no browser acceptance criteria can run. Full log: /tmp/020-compose.log. Fix needs frontend/SDK ownership; QA cannot edit application code.
