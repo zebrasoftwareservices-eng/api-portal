@@ -194,7 +194,7 @@ because the reference page opens the latest version by default.
 - [x] [frontend] Demo mode: search the sample API in the browser with `searchCatalog` from `@portal/sdk` (no server call), same results UI.
 - [ ] [qa] Playwright e2e on the Compose stack with real Kong: search `orders/{id}` → result opens the reference with the `GET /orders/{id}` operation in view (AC 1); `orders api` and `cancel order` (AC 2); empty state (AC 6); a hidden-product API absent anonymously and present for its team member (AC 4).
 - [ ] [qa] After the new tests pass, run the full suite and the browser suite once, then the quickstart; confirm no new container and no migration. Commit those tests even if the guard names another role's files. Record results in the Test report.
-- [ ] [frontend] Fix: Quickstart portal build cannot resolve SDK search.js export
+- [x] [frontend] Fix: Quickstart portal build cannot resolve SDK search.js export
 ## UX  _(ui-designer)_
 Design: [docs/design/020-api-search.md](../design/020-api-search.md).
 
@@ -214,6 +214,8 @@ Design: [docs/design/020-api-search.md](../design/020-api-search.md).
   `SearchResultRow` and `HeaderSearch` (`apps/portal`). No new tokens.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend build fix: removed the portal TypeScript source alias for `@portal/sdk`, allowing Next/Turbopack to consume its declared compiled package exports after the workspace dependency build. Portal lint, typecheck, tests, and `pnpm --filter @portal/portal build` pass; `docker compose -f deploy/docker-compose.yml build portal` succeeds. No SDK source or deploy changes were needed; the quickstart build blocker and matching frontend task are complete.
 
 - Frontend: added responsive header search and the server-rendered `/search?q=` page with ranked operation/API rows, start/loading/empty/validation/error states, and a Retry-After countdown. Demo mode runs the SDK matcher over the sample document in the browser without an API request; shared operation anchors account for Scalar’s tag prefixes and single-document URL routing, with a contract test against the installed Scalar navigator/router. Portal lint/typecheck and all 375 tests pass, including seven search-state tests and five anchor tests; UI lint/typecheck/test pass (no standalone UI test files), with the badge covered by portal tests. All three frontend task checkboxes were ticked using the factory command; QA still owns browser scrolling, the full workspace suite, and the quickstart.
 
@@ -252,7 +254,7 @@ its Linear issue is deferred because this spec has no feature key and the worksp
 
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] Quickstart portal build cannot resolve SDK search.js export (blocker)
+- [x] Quickstart portal build cannot resolve SDK search.js export (blocker)
 ## User testing  _(user-tester)_
 | User story | Result | Screenshot |
 | --- | --- | --- |
