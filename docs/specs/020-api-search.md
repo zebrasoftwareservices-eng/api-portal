@@ -1,7 +1,7 @@
 ---
 id: 020
 title: Search across APIs and endpoints
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
@@ -265,9 +265,23 @@ status is `uat` for the user-tester.
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [x] Quickstart portal build cannot resolve SDK search.js export (blocker)
+- [ ] Search input icon overlaps the first query characters at desktop and mobile sizes; submission still works (minor; local `docs/uat/020/search-input-fail.png`).
 ## User testing  _(user-tester)_
-| User story | Result | Screenshot |
+
+2026-11-15: [UAT report](../uat/020/report.md). No blocker or major observed; status is review. AC 3 and the unpublish clause of AC 5 need a prepared fixture before manual coverage is complete; QA automation remains their available evidence.
+
+| User story | Result | Evidence |
 | --- | --- | --- |
+| Find endpoint by path | Pass | “GET /orders/{id} Orders QA” opens latest reference. |
+| Find API by title and operation by summary | Pass | “API Orders API Version 3.0.0”; “DELETE /orders/{id} Cancel an order · Orders API”. |
+| Exclude unpublished API | Not verified | Retained fixture not identifiable by actual API title/path in available UI; see report. |
+| Match catalog visibility | Pass (Hidden) | Signed-in developer sees API result; anonymous sees “Nothing matched”. |
+| Remove stale operation | Pass | New version removed “GET /orders List UAT orders · Orders API” immediately. |
+| Remove unpublished API | Not verified | No unpublish control in available UI; see report. |
+| Empty results and validation | Pass | “Nothing matched”; “Browse all APIs”; 400 problem details and special-character 200. |
+| Mobile main journey | Pass with minor | “Cancel an order” arrives in viewport; input icon overlaps text. |
+| Keyboard main journey | Pass | Tab/Enter reaches result and opens latest operation; Escape does not trap focus. |
+| Search input layout | Fail (minor) | Local `search-input-fail.png`; first query letters overlap the icon. |
 
 ## Review  _(tech-lead)_
 
