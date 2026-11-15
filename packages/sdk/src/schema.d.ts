@@ -250,6 +250,136 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/llms.txt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plain-text index of the public catalog for AI agents (llms.txt format)
+         * @description Spec 021, ADR 0013. The portal also serves this at `/llms.txt` on its own origin; that
+         *     route forwards here without the caller's cookies or headers.
+         *
+         *     Always the anonymous view: it lists exactly the APIs `GET /v1/apis` shows an anonymous
+         *     caller (same visibility check), whatever cookie or API key the request carries. Format
+         *     (https://llmstxt.org): an H1 with the portal name, a one-line blockquote, then an
+         *     `## APIs` section with one list item per API, in catalog order:
+         *
+         *     `- [<title>](<PORTAL_PUBLIC_URL>/api/v1/apis/<slug>/reference.md): <one-line description> OpenAPI: <PORTAL_PUBLIC_URL>/api/v1/apis/<slug>/spec`
+         *
+         *     The description is the first non-empty line of the latest version's `info.description`,
+         *     at most 200 characters, omitted when empty. Links are absolute, built from
+         *     `PORTAL_PUBLIC_URL`. With no visible APIs the section reads `No APIs are published yet.`
+         */
+        get: operations["getLlmsTxt"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apis/{slug}/reference.md": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Markdown reference of the latest version
+         * @description Spec 021, ADR 0013. Same visibility check as `getApi` (an anonymous caller sees what the
+         *     public catalog shows; a signed-in caller what the catalog shows them). Rendered on
+         *     request from the version's stored document after the `getApiDocument` transformation,
+         *     so the base URL and key header match the browser reference.
+         *
+         *     Layout: `# <title> <version>`, the description, then `Base URL`, `Authentication`
+         *     (the API-key header name and where it goes, never a key), `OpenAPI document` (the
+         *     download link for this version) and `Reference` (the portal page). Then `## Operations`
+         *     with one `### <METHOD> <path>` per operation in document order, each with its summary,
+         *     a `Parameters` table (Name | In | Required | Type; path-level and operation-level
+         *     parameters merged, operation-level wins on the same name and location, local `$ref`s
+         *     resolved), a `Request body` line (media types, required or optional) when there is one,
+         *     and a `Responses` line listing the status codes as written. Operations marked
+         *     `deprecated` say so. Table cells escape `|` and fold newlines into spaces.
+         */
+        get: operations["getApiMarkdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apis/{slug}/versions/{version}/reference.md": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Markdown reference of one version
+         * @description Same as `getApiMarkdown`, for the named version. 404 names the missing API or version.
+         */
+        get: operations["getApiVersionMarkdown"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apis/{slug}/spec": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the latest version's OpenAPI document exactly as imported
+         * @description Spec 021, ADR 0013. The bytes the admin imported (`api_versions.source_content`), in
+         *     their original format: `application/json` for JSON, `application/yaml` for YAML. Not
+         *     transformed: `servers` and security schemes are as written (use `getApiDocument` for
+         *     the gateway-ready document). `Content-Disposition: attachment; filename="<slug>-<version>.<json|yaml>"`.
+         *     A version imported before the source was kept (no `source_content`) is served as its
+         *     stored document serialized to JSON. Same visibility check as `getApi`.
+         */
+        get: operations["downloadApiSpec"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/apis/{slug}/versions/{version}/spec": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download one version's OpenAPI document exactly as imported
+         * @description Same as `downloadApiSpec`, for the named version. 404 names the missing API or version.
+         */
+        get: operations["downloadApiVersionSpec"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/products": {
         parameters: {
             query?: never;
@@ -1943,6 +2073,16 @@ export interface components {
              */
             documentUrl: string;
             /**
+             * @description The latest version's Markdown reference (spec 021)
+             * @example /api/v1/apis/sample/reference.md
+             */
+            markdownUrl: string;
+            /**
+             * @description The latest version's document as imported (spec 021)
+             * @example /api/v1/apis/sample/spec
+             */
+            downloadUrl: string;
+            /**
              * @description Every version, in version order: highest first by semantic-version precedence when
              *     every version name is a valid SemVer 2.0 string, otherwise newest import first.
              *     Exactly one has `isLatest` true.
@@ -1977,6 +2117,10 @@ export interface components {
             publishedAt: string;
             /** @example /api/v1/apis/orders/versions/1.0.0/openapi.json */
             documentUrl: string;
+            /** @example /api/v1/apis/orders/versions/1.0.0/reference.md */
+            markdownUrl: string;
+            /** @example /api/v1/apis/orders/versions/1.0.0/spec */
+            downloadUrl: string;
         };
         ImportedApiVersion: {
             api: components["schemas"]["ApiDetail"];
@@ -3030,6 +3174,128 @@ export interface operations {
                     "application/json": {
                         items: components["schemas"]["ChangelogEntry"][];
                     };
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getLlmsTxt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The index. `Cache-Control: public, max-age=60`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+        };
+    };
+    getApiMarkdown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The reference. `Cache-Control: private, no-cache`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/markdown": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getApiVersionMarkdown: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+                /** @description A version's `info.version`, URL-encoded (`+` becomes `%2B`) */
+                version: components["parameters"]["Version"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The reference. `Cache-Control: private, no-cache`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/markdown": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    downloadApiSpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The imported document. `Cache-Control: private, no-cache`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                    "application/yaml": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    downloadApiVersionSpec: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: components["parameters"]["Slug"];
+                /** @description A version's `info.version`, URL-encoded (`+` becomes `%2B`) */
+                version: components["parameters"]["Version"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The imported document. `Cache-Control: private, no-cache`. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                    "application/yaml": string;
                 };
             };
             404: components["responses"]["NotFound"];

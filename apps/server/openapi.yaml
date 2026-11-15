@@ -356,6 +356,137 @@ paths:
                     items: { $ref: '#/components/schemas/ChangelogEntry' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  /v1/llms.txt:
+    get:
+      tags: [catalog]
+      operationId: getLlmsTxt
+      summary: Plain-text index of the public catalog for AI agents (llms.txt format)
+      description: |
+        Spec 021, ADR 0013. The portal also serves this at `/llms.txt` on its own origin; that
+        route forwards here without the caller's cookies or headers.
+
+        Always the anonymous view: it lists exactly the APIs `GET /v1/apis` shows an anonymous
+        caller (same visibility check), whatever cookie or API key the request carries. Format
+        (https://llmstxt.org): an H1 with the portal name, a one-line blockquote, then an
+        `## APIs` section with one list item per API, in catalog order:
+
+        `- [<title>](<PORTAL_PUBLIC_URL>/api/v1/apis/<slug>/reference.md): <one-line description> OpenAPI: <PORTAL_PUBLIC_URL>/api/v1/apis/<slug>/spec`
+
+        The description is the first non-empty line of the latest version's `info.description`,
+        at most 200 characters, omitted when empty. Links are absolute, built from
+        `PORTAL_PUBLIC_URL`. With no visible APIs the section reads `No APIs are published yet.`
+      security: []
+      responses:
+        '200':
+          description: 'The index. `Cache-Control: public, max-age=60`.'
+          content:
+            text/plain:
+              schema:
+                type: string
+                examples:
+                  - |
+                    # Developer Portal
+
+                    > APIs published on this portal. Each links to a Markdown reference and its OpenAPI document.
+
+                    ## APIs
+
+                    - [Orders API](http://localhost:3000/api/v1/apis/orders/reference.md): Create and track orders. OpenAPI: http://localhost:3000/api/v1/apis/orders/spec
+
+  /v1/apis/{slug}/reference.md:
+    get:
+      tags: [catalog]
+      operationId: getApiMarkdown
+      summary: Markdown reference of the latest version
+      description: |
+        Spec 021, ADR 0013. Same visibility check as `getApi` (an anonymous caller sees what the
+        public catalog shows; a signed-in caller what the catalog shows them). Rendered on
+        request from the version's stored document after the `getApiDocument` transformation,
+        so the base URL and key header match the browser reference.
+
+        Layout: `# <title> <version>`, the description, then `Base URL`, `Authentication`
+        (the API-key header name and where it goes, never a key), `OpenAPI document` (the
+        download link for this version) and `Reference` (the portal page). Then `## Operations`
+        with one `### <METHOD> <path>` per operation in document order, each with its summary,
+        a `Parameters` table (Name | In | Required | Type; path-level and operation-level
+        parameters merged, operation-level wins on the same name and location, local `$ref`s
+        resolved), a `Request body` line (media types, required or optional) when there is one,
+        and a `Responses` line listing the status codes as written. Operations marked
+        `deprecated` say so. Table cells escape `|` and fold newlines into spaces.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: 'The reference. `Cache-Control: private, no-cache`.'
+          content:
+            text/markdown:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/apis/{slug}/versions/{version}/reference.md:
+    get:
+      tags: [catalog]
+      operationId: getApiVersionMarkdown
+      summary: Markdown reference of one version
+      description: Same as `getApiMarkdown`, for the named version. 404 names the missing API or version.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/Version'
+      responses:
+        '200':
+          description: 'The reference. `Cache-Control: private, no-cache`.'
+          content:
+            text/markdown:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/apis/{slug}/spec:
+    get:
+      tags: [catalog]
+      operationId: downloadApiSpec
+      summary: Download the latest version's OpenAPI document exactly as imported
+      description: |
+        Spec 021, ADR 0013. The bytes the admin imported (`api_versions.source_content`), in
+        their original format: `application/json` for JSON, `application/yaml` for YAML. Not
+        transformed: `servers` and security schemes are as written (use `getApiDocument` for
+        the gateway-ready document). `Content-Disposition: attachment; filename="<slug>-<version>.<json|yaml>"`.
+        A version imported before the source was kept (no `source_content`) is served as its
+        stored document serialized to JSON. Same visibility check as `getApi`.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+      responses:
+        '200':
+          description: 'The imported document. `Cache-Control: private, no-cache`.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+            application/yaml:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/apis/{slug}/versions/{version}/spec:
+    get:
+      tags: [catalog]
+      operationId: downloadApiVersionSpec
+      summary: Download one version's OpenAPI document exactly as imported
+      description: Same as `downloadApiSpec`, for the named version. 404 names the missing API or version.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/Slug'
+        - $ref: '#/components/parameters/Version'
+      responses:
+        '200':
+          description: 'The imported document. `Cache-Control: private, no-cache`.'
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+            application/yaml:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v1/products:
     get:
       tags: [products]
@@ -3050,9 +3181,11 @@ components:
       allOf:
         - $ref: '#/components/schemas/ApiSummary'
         - type: object
-          required: [documentUrl, gatewayService, versions]
+          required: [documentUrl, markdownUrl, downloadUrl, gatewayService, versions]
           properties:
             documentUrl: { type: string, description: The latest version's document, examples: ['/api/v1/apis/sample/openapi.json'] }
+            markdownUrl: { type: string, description: The latest version's Markdown reference (spec 021), examples: ['/api/v1/apis/sample/reference.md'] }
+            downloadUrl: { type: string, description: The latest version's document as imported (spec 021), examples: ['/api/v1/apis/sample/spec'] }
             versions:
               type: array
               description: |
@@ -3092,12 +3225,14 @@ components:
 
     ApiVersionSummary:
       type: object
-      required: [version, isLatest, publishedAt, documentUrl]
+      required: [version, isLatest, publishedAt, documentUrl, markdownUrl, downloadUrl]
       properties:
         version: { $ref: '#/components/schemas/ApiVersionName' }
         isLatest: { type: boolean }
         publishedAt: { type: string, format: date-time, description: When this version was imported }
         documentUrl: { type: string, examples: ['/api/v1/apis/orders/versions/1.0.0/openapi.json'] }
+        markdownUrl: { type: string, examples: ['/api/v1/apis/orders/versions/1.0.0/reference.md'] }
+        downloadUrl: { type: string, examples: ['/api/v1/apis/orders/versions/1.0.0/spec'] }
 
     ImportedApiVersion:
       type: object

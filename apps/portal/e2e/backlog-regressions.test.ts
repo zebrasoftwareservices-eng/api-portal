@@ -51,15 +51,16 @@ test('JSO-173 version and Copy centres align with their text', async ({
   page,
 }) => {
   await referenceReady(page);
-  const title = await page
-    .getByRole('heading', { level: 1 })
-    .first()
+  const changelog = await page
+    .getByRole('link', { name: 'Changelog', exact: true })
     .boundingBox();
   const badge = await page.locator('main .badge').first().boundingBox();
-  expect.soft(badge!.y + badge!.height / 2).toBeGreaterThanOrEqual(title!.y);
   expect
     .soft(badge!.y + badge!.height / 2)
-    .toBeLessThanOrEqual(title!.y + title!.height);
+    .toBeGreaterThanOrEqual(changelog!.y);
+  expect
+    .soft(badge!.y + badge!.height / 2)
+    .toBeLessThanOrEqual(changelog!.y + changelog!.height);
   const copy = page.getByRole('button', { name: 'Copy base url', exact: true });
   if (await copy.count()) {
     const button = await copy.boundingBox();

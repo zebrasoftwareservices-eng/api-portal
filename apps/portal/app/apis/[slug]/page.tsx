@@ -79,7 +79,13 @@ export default async function ApiPage({
       <div className="stack">
         <PageHeader
           title={data.title}
-          titleSuffix={<VersionRow api={data} />}
+          titleSuffix={
+            <VersionRow
+              api={data}
+              markdownUrl={data.markdownUrl}
+              downloadUrl={data.downloadUrl}
+            />
+          }
           breadcrumb={[{ label: 'APIs', href: '/' }, { label: data.title }]}
           actions={<ApiAccessAction />}
         />

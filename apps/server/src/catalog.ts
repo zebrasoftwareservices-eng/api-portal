@@ -90,8 +90,18 @@ export async function apiDetail(db: Database, row: PublishedApi) {
       isLatest: v.id === row.api.latestVersionId,
       publishedAt: v.publishedAt.toISOString(),
       documentUrl: versionDocumentUrl(row.api.slug, v.version),
+      markdownUrl: versionDocumentUrl(row.api.slug, v.version).replace(
+        /openapi\.json$/,
+        'reference.md',
+      ),
+      downloadUrl: versionDocumentUrl(row.api.slug, v.version).replace(
+        /openapi\.json$/,
+        'spec',
+      ),
     })),
     documentUrl: `/api/v1/apis/${row.api.slug}/openapi.json`,
+    markdownUrl: `/api/v1/apis/${row.api.slug}/reference.md`,
+    downloadUrl: `/api/v1/apis/${row.api.slug}/spec`,
     gatewayService: {
       id: row.api.gatewayServiceId,
       name: row.api.gatewayServiceName,
