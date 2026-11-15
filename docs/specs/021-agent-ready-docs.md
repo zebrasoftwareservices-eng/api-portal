@@ -1,7 +1,7 @@
 ---
 id: 021
 title: Agent-ready docs — Markdown pages, llms.txt, spec downloads and code samples
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
@@ -220,7 +220,7 @@ Try it is unaffected; the sample must show Scalar's placeholder, never a real ke
 - [x] [qa] e2e (Playwright): criteria 6 and 7 (curl, JavaScript and Python samples with method, gateway URL, path, key placeholder and body; Markdown link and Download spec on the latest and a version page).
 - [x] [frontend] Fix (review B1): remove `apps/portal/app/apis/[slug]/loading.tsx` and `apps/portal/app/apis/[slug]/versions/[version]/loading.tsx` (or move the API lookup and `notFound()` into a `layout.tsx` above them) so unknown and invisible API pages return HTTP 404 again; `backlog-regressions.test.ts` unknown-API checks and the `access-requests.test.ts` status checks pass.
   Regression references: JSO-223 / JSO-228 (existing regression coverage, not task issues).
-- [ ] [qa] Fix (review B2): update the JSO-173 assertion in `apps/portal/e2e/backlog-regressions.test.ts` to the 021 layout (the version row sits on its own line under the title, per design §3.1): check the badge centre aligns with the **Changelog** link instead of the title; keep the Copy check.
+- [x] [qa] Fix (review B2): update the JSO-173 assertion in `apps/portal/e2e/backlog-regressions.test.ts` to the 021 layout (the version row sits on its own line under the title, per design §3.1): check the badge centre aligns with the **Changelog** link instead of the title; keep the Copy check.
 
 ## UX  _(ui-designer)_
 Design: [docs/design/021-agent-ready-docs.md](../design/021-agent-ready-docs.md). No new tokens, components or pages.
@@ -243,37 +243,59 @@ Design: [docs/design/021-agent-ready-docs.md](../design/021-agent-ready-docs.md)
 
 ## Test report  _(qa-tester)_
 
-Tested commit: `bd273fa9a18ec16f1342ac5109f251c5930e1636` (application and QA tests). Portal URL from `node scripts/worktree-compose.mjs env`: **http://localhost:3020**; isolated Compose project `portal-021-agent-ready-docs-b3eb`, real Kong at `http://localhost:18020`.
+Tested commit: `042dcf1c538c0ae0b0ef91861103f618d796397e` (2026-11-15).
+Portal: **http://localhost:3020** from `node scripts/worktree-compose.mjs env`;
+Compose project `portal-021-agent-ready-docs-b3eb`, API `http://127.0.0.1:4020`,
+Kong proxy `http://localhost:18020`, Kong Admin `http://localhost:19020`.
+Started with `node scripts/worktree-compose.mjs up -d --build --wait`; all six
+long-running services remain up, with Postgres, Kong, server, portal and Mailpit healthy.
+A final HTTP check returned the catalog title `APIs · Developer Portal`.
 
-| Criterion | Automated tests | Result |
+| Acceptance criterion | Automated coverage | Result |
 | --- | --- | --- |
-| 1 — public index, anonymous/authenticated equality, working links | `apps/portal/e2e/agent-docs.test.ts`; `apps/server/src/agent-docs.test.ts` | PASS: catalog equality, every emitted link fetched, signed-in developer/admin, API key and expired-cookie requests |
-| 2 — unpublished and non-public APIs remain invisible | `apps/server/src/agent-docs.test.ts`; `apps/portal/e2e/agent-docs.test.ts` | PASS: unpublished fixture plus hidden/internal/manual products; latest and version Markdown/downloads return private 404 problem+json |
-| 3 — latest Markdown contains operations and parameter/response details | `apps/portal/e2e/agent-docs.test.ts`; `apps/server/src/agent-docs.test.ts` | PASS: GET/POST, summaries, parameter table, response codes; local references, overrides, body and empty-path fixtures |
-| 4 — source-preserving JSON/YAML version downloads and latest pointer | `apps/portal/e2e/agent-docs.test.ts`; `apps/server/src/agent-docs.test.ts` | PASS: byte-identical imported YAML 1.0.0 and JSON 2.0.0, latest 2.0.0, matching types; legacy JSON fallback |
-| 5 — missing API/version returns named 404 problem+json | `apps/portal/e2e/agent-docs.test.ts`; `apps/server/src/agent-docs.test.ts` | PASS: unknown slug, UUID and version, both formats |
-| 6 — curl, JavaScript and Python samples | `apps/portal/e2e/agent-docs.test.ts`; `apps/portal/lib/reference-options.test.ts` | PASS: actual Scalar clients show POST, gateway URL/path, custom x-agent-key placeholder and example body |
-| 7 — latest and viewed-version Markdown/download links | `apps/portal/e2e/agent-docs.test.ts`; `apps/portal/components/api-page.test.tsx`; `apps/portal/components/version-pages.test.tsx` | PASS: latest and 1.0.0 page links target the viewed version |
+| 1: anonymous index, catalog parity, descriptions, live links, identical signed-in/key responses | `apps/server/src/agent-docs.test.ts`; `apps/portal/e2e/agent-docs.test.ts`; `apps/portal/lib/llms-route.test.ts` | Pass; every emitted link fetched against Compose |
+| 2: unpublished and nonpublic APIs absent; Markdown/spec return private 404s | `apps/server/src/agent-docs.test.ts` (unpublished, hidden, internal, manual, outsider); `apps/portal/e2e/agent-docs.test.ts` (real Kong visibility changes) | Pass |
+| 3: latest Markdown operations, summaries, parameter fields and responses | `apps/server/src/agent-docs.test.ts` (refs, overrides, types, empty paths); `apps/portal/e2e/agent-docs.test.ts` | Pass |
+| 4: imported YAML/JSON bytes, named versions and latest pointer | `apps/server/src/agent-docs.test.ts`; `apps/portal/e2e/agent-docs.test.ts` | Pass; comments/newlines preserved and latest is 2.0.0 |
+| 5: unknown slug/id/version yields named 404 problem+json | `apps/server/src/agent-docs.test.ts`; `apps/portal/e2e/agent-docs.test.ts` | Pass |
+| 6: curl, JavaScript and Python method, gateway path, configured key placeholder and body | `apps/portal/lib/reference-options.test.ts`; `apps/portal/e2e/agent-docs.test.ts` | Pass; actual Scalar POST samples checked in all three clients |
+| 7: Markdown and Download spec links follow the viewed version | `apps/portal/e2e/agent-docs.test.ts` | Pass for latest 2.0.0 and named 1.0.0 |
 
-Failure-path coverage also includes duplicate version rejection without source replacement, concurrent repeated reads, expired sessions and invalid keys on private formats, and the portal's unreachable-upstream 503, upstream errors and demo 404 (`apps/portal/lib/llms-route.test.ts`). The focused server run passed 6 tests, focused portal run passed 17 tests, and the new live acceptance test passed against Compose; the saved-client reload regression is an explicit expected failure for the minor below.
+**Failure paths:** Added signed-in outsider and forged expired-session checks for latest
+and named restricted/unpublished references and downloads. The seven server agent-docs
+tests pass, including concurrent repeated reads, invalid keys, unknown identifiers and
+read availability without a reachable Kong Admin API; existing portal route tests cover
+unreachable server (503), upstream failures and demo 404s. The live acceptance test also
+verifies duplicate version publication returns 409 without changing source downloads.
+Changed packages were typechecked before their tests; the revised JSO-173 alignment
+assertion passed alone before the full pass.
 
-One full validation pass on the tested commit:
+**One full pass:** `pnpm lint` and `pnpm typecheck` pass. `pnpm test` passes all
+797 tests in 83 files (Turbo reused 10 of 12 task results; server reran 324 tests).
+`pnpm test:e2e` ran once: **91 passed, 2 skipped, 10 failed** in 7.3 minutes;
+the saved Node.js client reset reproduced as its expected failure. Nine failures are
+validation-environment failures: raw Compose calls in setup/account/outage tests target
+the default `portal` project rather than this checkout, encountering occupied Mailpit
+port 8025, missing services/schema, or leaving the intended gateway running. This QA
+invocation supplied the portal/Kong URLs but omitted the raw-Compose project environment;
+these failures do not establish application regressions, and the full suite was not repeated.
+The remaining failure is the minor ambiguous quickstart heading selector documented below.
+The separate spec acceptance run (`tests/spec021.playwright.config.ts`) passes its complete
+AC1–7 journey against the real Compose Kong (1 passed, 10.4 seconds).
 
-| Command | Result |
-| --- | --- |
-| `pnpm lint` | PASS (7 packages) |
-| `pnpm typecheck` | PASS (12 Turbo tasks) |
-| `pnpm test` | PASS: 796 tests in 83 files across database, Kong adapter, SDK, portal and server; Turbo reused unchanged package results |
-| `pnpm test:e2e` | FAIL: 98 passed, 2 skipped, 3 unexpected failures in 9.6 minutes. Spec 021's complete live test passed (test 95). |
-| `node scripts/worktree-compose.mjs up -d --build --wait` | PASS: build and all service health checks in 145 seconds; stack left running for UAT |
-
-The three unexpected browser failures are `backlog-regressions.test.ts`'s JSO-173 version/title alignment assertion (badge center 203px versus title bottom 169px), its JSO-223/JSO-228 unknown API HTTP-status assertion, and `access-requests.test.ts`'s invisible/unknown reference and changelog HTTP-status assertions. The latter two share the same rendered not-found HTTP 200 behavior; the agent-readable endpoints pass their visibility and 404 checks. Four expected failures remain explicitly marked by the tests: existing setup findings JSO-399/405/406 and the saved sample-client reload issue below; no blocker or major was found. Logs: `/tmp/spec021-qa/{lint,typecheck,test,e2e,quickstart}.log`; the full pass was not repeated.
+**Bug retests:** Ran `linear bug 021 done` for the reference/changelog HTTP statuses
+and version/copy alignment after their browser regressions passed. Ran `linear bug 021 open`
+for saved Node.js client persistence after reproducing its expected failure. No blocker or
+major application defect remains; UAT may proceed with the full-suite validation limits above.
+Local command logs: `/tmp/spec021-{lint,typecheck,test,e2e,agent-browser}.log`.
 
 ### Bugs
 <!-- One line per bug, each with its Linear issue: - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [ ] Minor: Scalar resets a saved Node.js Fetch sample selection to curl on reload; select More → Node.js Fetch on `/apis/sample`, reload, and observe Shell Curl despite `scalar-reference-selected-client-v2=node/fetch`. Tracked as an expected failure in `apps/portal/e2e/reference-snippets.test.ts`; all three required sample languages work before reload.
-- [ ] Minor: Browser reference/changelog pages for unknown or invisible APIs render the not-found UI with HTTP 200. The existing unknown-page and access-request browser tests fail their HTTP 404 assertions; the JSON catalog, Markdown and spec endpoints still enforce visibility and return 404 correctly.
-- [ ] Minor: The existing version/copy alignment regression fails because the reference version badge center sits outside the title's vertical bounds (`apps/portal/e2e/backlog-regressions.test.ts`, version alignment test); compact badge checks at 1280px and 375px pass.
+- [x] Minor resolved: Browser reference/changelog pages for unknown or invisible APIs now return HTTP 404; both `backlog-regressions.test.ts` and the real-Kong `access-requests.test.ts` pass their status assertions.
+- [x] Minor resolved: Updated `backlog-regressions.test.ts` to align the version badge with Changelog in the 021 layout while retaining the Copy assertion; targeted and full-browser checks pass, as do compact badge checks at 1280px and 375px.
+- [ ] Minor: `deploy/e2e/quickstart.spec.ts` uses an unqualified heading locator for “APIs”; the catalog now contains both an H1 and an H2 with that name, so the smoke assertion fails strict mode despite the healthy page and seeded catalog. Reproduced in the one full browser pass; scope the assertion to heading level 1 in a later test maintenance change.
+
 
 ## User testing  _(user-tester)_
 
