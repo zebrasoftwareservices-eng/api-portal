@@ -1,7 +1,7 @@
 ---
 id: 023
 title: Create an app shows products first
-status: draft   # draft → ready → designed → building → testing → uat → review → approved → done
+status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 023`
