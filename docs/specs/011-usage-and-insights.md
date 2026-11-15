@@ -87,8 +87,7 @@ quota within a minute, and the admin can read each new developer's time to first
    those. **And given** a portal with no calls in the last 30 days, the page shows 0 active apps
    and "No calls yet" in place of the top APIs, not an error.
 8. **Given** developers who signed up in the last 30 days, some of whom have made a successful
-   (2xx) call through Kong with a key from any portal app on their account and some of whom
-   have not
+   (2xx) call through Kong with a key they created themselves and some of whom have not
    **When** a portal admin opens the insights page
    **Then** it lists each of them, newest sign-up first, with sign-up time (account creation, not
    email verification), first successful call time and the time between them, and shows
@@ -96,7 +95,9 @@ quota within a minute, and the admin can read each new developer's time to first
    computed over the developers who have made one, next to the 10-minute target and the count of
    developers it covers (for example "4 of 7 developers"); with none, it shows "No calls yet"
    instead of a median. A 2xx try-it call from the portal counts as the first call; a 4xx or 5xx
-   call does not.
+   call does not. **And given** a developer who joins a team whose apps already make calls
+   **When** a teammate's key makes a 2xx call **Then** that developer still shows "No call yet"
+   until a key they created or regenerated makes a 2xx call.
 9. **Given** a signed-in developer who is not a portal admin
    **When** they request the insights page or its server API
    **Then** the server answers 403 with RFC 9457 problem+json, the page shows no insight data,
@@ -148,10 +149,14 @@ quota within a minute, and the admin can read each new developer's time to first
 - [ ] When a developer changes plan or regenerates the key mid-month (spec 009), does the app's
       count carry on, or restart to match what Kong's quota counter does? — tech-lead, with the
       collection ADR
-- [ ] Time to first call with team-owned apps (spec 008): a developer invited to a team whose apps
-      already make calls would get a near-zero or negative time. Does the first call count only
-      keys the developer created, or any call made after their sign-up by an app of a team they
-      belong to? — Elango
+- [x] Time to first call with team-owned apps (spec 008): a developer invited to a team whose apps
+      already make calls would get a near-zero or negative time. — Elango: **follow industry
+      practice.** Time to first call is measured per developer, from that person's sign-up to
+      their own first successful call
+      ([Postman](https://blog.postman.com/the-most-important-api-metric-is-time-to-first-call/),
+      [Nordic APIs](https://nordicapis.com/why-time-to-first-call-is-a-vital-api-metric/)), so only
+      calls made with a key the developer created or regenerated count; teammates' keys don't.
+      (Criterion 8.)
 - [ ] Is this one pull request? It covers collection, the app usage bar, the insights page and the
       hosted demo. If the tech lead's design says it won't fit, the cut is the insights list and
       median (criterion 8) into a follow-up spec, but the Sprint 5 demo needs both halves, so the
@@ -159,7 +164,7 @@ quota within a minute, and the admin can read each new developer's time to first
 - [x] Does "time to first API call" start at sign-up or at email verification, and does a try-it
       call count? — Elango: **starts at sign-up** (account creation), because waiting on
       verification is onboarding friction admins want to see. **Ends at the first 2xx call**
-      through Kong with any key from a portal app on that account; **try-it calls count**, since
+      through Kong with a key the developer created (narrowed for team apps, see below); **try-it calls count**, since
       they are real calls through Kong. (Criterion 8.)
 - [x] Do we want error spikes per team, and with what threshold? — Elango: **not in this spec.**
       Follow-up below; evaluate starting at a team's 5xx rate over 5% across 15 minutes with at
