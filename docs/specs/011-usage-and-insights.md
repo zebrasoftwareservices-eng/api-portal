@@ -10,7 +10,7 @@ linear: JSO-239
 # 011 — Usage meter per app and admin insights
 
 ## Summary
-Developers see how much of each plan's monthly quota their app has used, and portal admins see
+Developers see how much of its plan's monthly quota each of their apps has used, and portal admins see
 adoption (sign-ups, active apps, top APIs and each new developer's time to first API call),
 from request counts the portal collects from Kong.
 
@@ -35,7 +35,7 @@ quota within a minute, and the admin can read each new developer's time to first
   no extra setup.
 
 ## User stories
-- As a developer, I want to see my app's calls this month against each plan's quota, so that I
+- As a developer, I want to see my app's calls this month against its plan's quota, so that I
   can act before Kong starts rejecting my requests.
 - As a developer, I want my calls split into success, client errors and server errors, so that I
   can tell whether a problem is in my code or in the API.
@@ -52,8 +52,10 @@ quota within a minute, and the admin can read each new developer's time to first
 ## Acceptance criteria
 1. **Given** an app subscribed to a plan with a monthly quota of 1,000 and no calls this month
    **When** the developer makes 20 calls through Kong with that subscription's key
-   **Then** within 60 seconds the app page shows a usage bar reading 20 of 1,000 calls for that
-   plan, without a manual refresh of any server-side job.
+   **Then** when the app page is loaded or reloaded within 60 seconds of the last call, it shows a
+   usage bar reading 20 of 1,000 calls, with no one starting a collection job by hand.
+   (Since spec 009 each subscription is its own app with one plan and one key, there is one bar
+   per app.)
 2. **Given** an app whose calls this month returned 12 responses in 2xx, 5 in 4xx (including any
    429 rejections from Kong) and 3 in 5xx
    **When** a member of the owning team opens the app page
@@ -65,8 +67,8 @@ quota within a minute, and the admin can read each new developer's time to first
    header, or a request or response body.
 4. **Given** an app with calls on the last day of the previous month (UTC) and calls this month
    **When** the developer opens the app page
-   **Then** the usage bar counts only this month's calls and states when the count resets
-   (the first day of next month, UTC).
+   **Then** the usage bar counts only this month's calls and shows the reset date as the first
+   day of next month at 00:00 UTC (for example "Resets 1 Dec 2026, 00:00 UTC").
 5. **Given** a signed-in developer who is not a member of the team that owns an app, or a
    signed-out visitor
    **When** they request that app's usage from the portal or the server API
@@ -79,17 +81,22 @@ quota within a minute, and the admin can read each new developer's time to first
    may be behind. It never shows the count as 0 because data is missing.
 7. **Given** a portal with developer sign-ups, apps and calls across several APIs
    **When** a portal admin opens the insights page
-   **Then** it shows, for the last 30 days: the number of new sign-ups, the number of active
-   apps (apps with at least one call), and the five APIs with the most calls, each with its
-   call count.
+   **Then** it shows, for the last 30 days (rolling, UTC): the number of new sign-ups, the number
+   of active apps (apps with at least one call in those 30 days), and up to five APIs with the
+   most calls, each with its call count, highest first. Fewer than five APIs with calls shows only
+   those. **And given** a portal with no calls in the last 30 days, the page shows 0 active apps
+   and "No calls yet" in place of the top APIs, not an error.
 8. **Given** developers who signed up in the last 30 days, some of whom have made a successful
    (2xx) call through Kong with a key from any portal app on their account and some of whom
    have not
    **When** a portal admin opens the insights page
-   **Then** it lists each of them with sign-up time (account creation, not email verification),
-   first successful call time and the time between them, shows "No call yet" for those without
-   one, and shows the median time to first call against the 10-minute target.
-   A 2xx try-it call from the portal counts as the first call; a 4xx or 5xx call does not.
+   **Then** it lists each of them, newest sign-up first, with sign-up time (account creation, not
+   email verification), first successful call time and the time between them, and shows
+   "No call yet" for those without one. Above the list it shows the median time to first call,
+   computed over the developers who have made one, next to the 10-minute target and the count of
+   developers it covers (for example "4 of 7 developers"); with none, it shows "No calls yet"
+   instead of a median. A 2xx try-it call from the portal counts as the first call; a 4xx or 5xx
+   call does not.
 9. **Given** a signed-in developer who is not a portal admin
    **When** they request the insights page or its server API
    **Then** the server answers 403 with RFC 9457 problem+json, the page shows no insight data,
@@ -97,8 +104,9 @@ quota within a minute, and the admin can read each new developer's time to first
 10. **Given** the adapter conformance suite in `packages/adapter-sdk`
     **When** it runs against the Kong adapter and a real Kong
     **Then** its usage test passes. **And given** a connected adapter that reports usage as
-    unsupported, the app page and insights page say usage is not available for this gateway
-    instead of showing zero.
+    unsupported (a test adapter in the suite, since only Kong implements usage in this spec),
+    the app page and insights page say usage is not available for this gateway instead of
+    showing zero.
 11. **Given** the hosted live demo (spec 006) with a visitor who has made calls through Kong
     with their app's key
     **When** the visitor opens their app page, then requests the insights page
@@ -134,8 +142,20 @@ quota within a minute, and the admin can read each new developer's time to first
 - [ ] Does the portal's monthly count match Kong's quota counter exactly (Kong's quota period is
       a UTC calendar month, and whether 429-rejected requests count toward it)? If they can differ,
       which one does the usage bar show? — tech-lead
-- [ ] Can a spec 009 plan have no monthly quota? If so, the bar shows the count with "No monthly
-      limit". — tech-lead, from spec 009's data model
+- [ ] Can a spec 009 plan have no monthly quota, and what do built-in-plan apps from spec 004
+      show? If a plan has no quota, the bar shows the count with "No monthly limit". — tech-lead,
+      from spec 009's data model
+- [ ] When a developer changes plan or regenerates the key mid-month (spec 009), does the app's
+      count carry on, or restart to match what Kong's quota counter does? — tech-lead, with the
+      collection ADR
+- [ ] Time to first call with team-owned apps (spec 008): a developer invited to a team whose apps
+      already make calls would get a near-zero or negative time. Does the first call count only
+      keys the developer created, or any call made after their sign-up by an app of a team they
+      belong to? — Elango
+- [ ] Is this one pull request? It covers collection, the app usage bar, the insights page and the
+      hosted demo. If the tech lead's design says it won't fit, the cut is the insights list and
+      median (criterion 8) into a follow-up spec, but the Sprint 5 demo needs both halves, so the
+      recommendation is to keep it whole. — tech-lead, then Elango
 - [x] Does "time to first API call" start at sign-up or at email verification, and does a try-it
       call count? — Elango: **starts at sign-up** (account creation), because waiting on
       verification is onboarding friction admins want to see. **Ends at the first 2xx call**
