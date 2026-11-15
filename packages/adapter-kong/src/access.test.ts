@@ -201,6 +201,23 @@ describe('Kong access policy', () => {
     await f.adapter.protectService({ id: 'a' });
     expect(f.writes).toEqual([]);
   });
+  it('settles protection writes before returning, without delaying an unchanged service', async () => {
+    vi.useFakeTimers();
+    const f = fixture([auth()]);
+    let protectedService = false;
+    const run = f.adapter.protectService({ id: 'a' }).then(() => {
+      protectedService = true;
+    });
+    await vi.advanceTimersByTimeAsync(5999);
+    expect(f.plugins.some((p) => p.name === 'acl')).toBe(true);
+    expect(protectedService).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await run;
+    expect(protectedService).toBe(true);
+    f.writes.length = 0;
+    await f.adapter.protectService({ id: 'a' });
+    expect(f.writes).toEqual([]);
+  });
   it('uses only authenticated routes, leaving public siblings open and returning a warning', async () => {
     const f = fixture([
       { id: 'auth', name: 'key-auth', route: { id: 'r1' }, config: {} },

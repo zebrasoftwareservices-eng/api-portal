@@ -694,6 +694,11 @@ export class KongAdapter implements GatewayAdapter {
       throw new GatewayServiceConflictError(service.name ?? service.id);
     for (const write of plan.writes)
       await this.request(write.path, write.method, write.body);
+    // Admin API acknowledgement precedes cross-worker/cluster invalidation.
+    // Even strict worker consistency can use a warm iterator until that event
+    // arrives. Use the same propagation allowance as the access-policy upgrade
+    // before publishing the protected service; a no-op needs no settle wait.
+    if (plan.writes.length) await delay(6000);
     return { keyAuth: plan.auth.length > 0, findings: plan.findings };
   }
   async applyAccessPolicy(policy: AccessPolicy): Promise<AccessReport> {
