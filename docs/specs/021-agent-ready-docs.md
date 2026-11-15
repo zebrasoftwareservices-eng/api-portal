@@ -1,7 +1,7 @@
 ---
 id: 021
 title: Agent-ready docs — Markdown pages, llms.txt, spec downloads and code samples
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-08
 linear:            # pending: Linear feature issue not created yet (the Linear workspace is at its free issue limit)
@@ -218,6 +218,8 @@ Try it is unaffected; the sample must show Scalar's placeholder, never a real ke
 - [x] [qa] Integration: criteria 1, 2, 5 against the Compose stack (all `/llms.txt` links return 200; same content with cookie and `apikey`; 404 problem+json with a detail naming the slug or version).
 - [x] [qa] Integration: criteria 3 and 4 (Markdown lists every operation with parameters and response codes; YAML and JSON downloads byte-identical with matching content type; latest is `2.0.0`).
 - [x] [qa] e2e (Playwright): criteria 6 and 7 (curl, JavaScript and Python samples with method, gateway URL, path, key placeholder and body; Markdown link and Download spec on the latest and a version page).
+- [ ] [frontend] Fix (review B1): remove `apps/portal/app/apis/[slug]/loading.tsx` and `apps/portal/app/apis/[slug]/versions/[version]/loading.tsx` (or move the API lookup and `notFound()` into a `layout.tsx` above them) so unknown and invisible API pages return HTTP 404 again; `backlog-regressions.test.ts` JSO-223/JSO-228 and the `access-requests.test.ts` status checks pass.
+- [ ] [qa] Fix (review B2): update the JSO-173 assertion in `apps/portal/e2e/backlog-regressions.test.ts` to the 021 layout (the version row sits on its own line under the title, per design §3.1): check the badge centre aligns with the **Changelog** link instead of the title; keep the Copy check.
 
 ## UX  _(ui-designer)_
 Design: [docs/design/021-agent-ready-docs.md](../design/021-agent-ready-docs.md). No new tokens, components or pages.
@@ -287,6 +289,17 @@ The three unexpected browser failures are `backlog-regressions.test.ts`'s JSO-17
 No blocker or major found; status is review. Console checks contained no error-level entries; no error line exists to quote. Stack stopped after testing.
 
 ## Review  _(tech-lead)_
+
+Reviewed `git diff main...HEAD` at `ad1ab8a` against the QA report for `bd273fa` (later commits are docs only, so the suite was not re-run). The server work matches the design and ADR 0013: routes, content types, cache headers, source-preserving downloads, named 404 problem+json, the anonymous-only `/llms.txt`, and the catalog visibility check. Every criterion 1–7 has a server or e2e test. The contract and SDK are updated. The quickstart passed. Two branch-caused e2e regressions block the merge because CI must be green.
+
+**Blocking**
+- **B1 — Unknown and invisible API pages now return HTTP 200** (`apps/portal/app/apis/[slug]/loading.tsx:1`, `apps/portal/app/apis/[slug]/versions/[version]/loading.tsx:1`). `main` has no route-level `loading.tsx` for these pages. Adding one wraps `page.tsx`, and the changelog layout under it, in a Suspense boundary. The response streams before `notFound()` runs, so `/apis/nope` gets a 200 with the not-found UI. This reopens fixed bugs JSO-223/JSO-228 and fails three existing e2e assertions. QA logged it as a minor, but this branch caused it. The design's loading row assumed an existing `loading.tsx`, and there wasn't one.
+- **B2 — The JSO-173 alignment test contradicts the new header layout** (`apps/portal/app/globals.css:452-457` `.agent-docs-row { flex-basis: 100% }`; `apps/portal/e2e/backlog-regressions.test.ts:50`). Design §3.1 puts the version row on its own line under the title, so the badge can no longer centre on the H1. The layout is correct. The test needs to follow the design.
+
+**Suggestions** (no Fix task)
+- `apps/server/src/catalog.ts:93-100` builds `markdownUrl`/`downloadUrl` with a regex replace on `versionDocumentUrl(...)`. A small `versionPath(slug, version, leaf)` helper would be clearer, and `agent-docs.ts:25-27` could share it.
+- `apps/server/src/agent-docs.ts:228-235` puts the raw `slug` in the `Content-Disposition` filename. Slugs are already constrained, so this is safe today. Running the slug through the same sanitiser as the version would keep the header safe if the slug rules ever loosen.
+- The minor Scalar saved-client reset on reload stays in Bugs as QA logged it. It is not a review finding.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
