@@ -140,12 +140,11 @@ order. JSO-188 and JSO-225 both stay open until this spec merges.
       on `document`.
 - [x] Should the seed skip at slug `sample` only when the API there wasn't created by the seed, or
       always skip once any API exists at that slug? — Elango
-      **Default, pending Elango:** skip whenever an API at `sample` was not created by the seed.
-      A seed-created one is refreshed. See "Seed" below for the one line to change if Elango
-      picks "always skip".
+      **Answer (Elango confirmed 2026-11-16):** skip whenever an API at `sample` was not created by the seed.
+      A seed-created one is refreshed.
 - [x] The 20 × 1 MB numbers in criterion 7 are a test fixture, not a performance target. Does Elango
       want a response-time target for the catalog as well? — Elango
-      **Default, pending Elango:** no response-time target. Criterion 7 stays a fixture-based test
+      **Answer (Elango confirmed 2026-11-16):** no response-time target. Criterion 7 stays a fixture-based test
       that checks which columns are read. A timing assertion can be added to the same test later.
 
 ## Technical design
