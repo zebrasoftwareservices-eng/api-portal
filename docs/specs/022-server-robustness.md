@@ -1,7 +1,7 @@
 ---
 id: 022
 title: Server robustness and authored path order
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear: JSO-188
@@ -359,14 +359,14 @@ switched mid-request. All are problem+json.
 
 ## Test report
 
-Commit tested: `1c3fd9dacd169c57f40e8d5c8abd81eccf5f199d` · Portal: http://localhost:3005
+Commit tested: `05a4be00e3ce0cec145983c320a784e9c42972ab` · Portal: http://localhost:3005
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
 | 1. No open transaction while Kong is slow, on app create, key create, admin subscription, and approval | `apps/server/src/server-robustness.test.ts` | pass |
 | 2. Kong error and timeout return problem+json and leave no app, key, or tagged Kong consumer | `apps/server/src/server-robustness.test.ts` | pass |
 | 3. A failed revoke update is finished by the next reconcile, and a second reconcile reports no drift for that key | `apps/server/src/server-robustness.test.ts` | pass |
-| 4. One compensation error, with ids, and no `pk_` secret in the log | `apps/server/src/server-robustness.test.ts` | pass; `err.cause` is absent (minor, Bugs) |
+| 4. One compensation error, with `err.message`, `err.cause` (`Kong returned 500`), ids, and no `pk_` secret in the log | `apps/server/src/server-robustness.test.ts` | pass |
 | Reconcile during an in-flight create does not delete the new consumer | `apps/server/src/server-robustness.test.ts` | pass |
 | 5. An admin-published `sample` is skipped with the skip log and no Kong call; a seed-created sample is refreshed in authored order | `apps/server/src/server-robustness.test.ts` | pass |
 | 6. A partial admin is completed and can sign in; a role without a credential keeps the wizard; exactly one usable admin | `apps/server/src/server-robustness-migration.test.ts` | pass |
@@ -374,11 +374,11 @@ Commit tested: `1c3fd9dacd169c57f40e8d5c8abd81eccf5f199d` · Portal: http://loca
 | 8. Quickstart sample sidebar order is `/get`, `/post`, `/status/{code}`, `/uuid`, `/headers` | `deploy/e2e/authored-order.test.ts` | pass |
 | 9. Pre-022 rows still render; try-it works; spec download is valid JSON; re-import stores authored order | `apps/server/src/server-robustness-migration.test.ts`, `apps/server/src/server-robustness.test.ts` | pass |
 | 10. Killing the connection mid-migration leaves `jsonb` and no `gateway_operations`; the next boot migrates and serves the API | `apps/server/src/server-robustness-migration.test.ts` | pass |
-| Failure paths: invalid input, missing session, missing permission, duplicate name, unreachable gateway | `apps/server/src/server-robustness.test.ts` | pass |
-| Fresh compose volume | `node scripts/worktree-compose.mjs up -d --build --wait` | pass: healthy, `/` redirects to `/setup`, catalog empty |
+| Failure paths: invalid input, missing session, expired session, missing permission, duplicate name, unreachable gateway, gateway disabled during the Kong call | `apps/server/src/server-robustness.test.ts` | pass |
+| Fresh compose volume | `apps/portal/e2e/setup-gateways.test.ts` | pass: `/` redirects to `/setup`, catalog empty |
 | Seeded compose quickstart, left up | `deploy/e2e/quickstart.spec.ts` | pass |
 
-`pnpm lint`, `pnpm typecheck`, and `pnpm test` passed (344 tests in `@portal/server`). `pnpm test:e2e` then ran 105 tests against http://localhost:3005: 102 passed, 2 skipped, and one unexpected socket reset on the existing teams account-deletion test. That test passed when run again by itself. The crossed results for JSO-399, JSO-405, JSO-406, the Node.js snippet case, and the homepage outage case are the existing `test.fail` markers, and they failed as marked. The stack at http://localhost:3005 is still up, with the sample API seeded.
+`pnpm lint`, `pnpm typecheck`, and `pnpm test` passed (346 tests in `@portal/server`). `pnpm test:e2e` ran 105 tests against http://localhost:3005: 103 passed and 2 skipped. The crossed results for JSO-399, JSO-405, JSO-406, the Node.js snippet case, and the homepage outage case are the existing `test.fail` markers, and they failed as marked. The stack at http://localhost:3005 is still up. The sample API is seeded, and its paths are `/get`, `/post`, `/status/{code}`, `/uuid`, `/headers`.
 
 ## User testing
 
@@ -398,7 +398,7 @@ A 390×844 pass and a Tab, Enter, and Escape pass both reached that sidebar orde
 
 ### Bugs
 
-- [ ] Compensation error log has no `err.cause` (minor). One error is logged, `Gateway compensation failed; reconcile will retry`, with `err.message` "The API gateway is unavailable", `appId`, `credentialId`, `gatewayId`, and `gatewayObject`. No log line matches `pk_[A-Za-z0-9_-]{8,}`. `GatewayUnavailableError` does not keep the underlying fetch or HTTP error as `cause`.
+- [x] Compensation error log has no `err.cause` (minor). One error is logged, `Gateway compensation failed; reconcile will retry`, with `err.message` "The API gateway is unavailable", `appId`, `credentialId`, `gatewayId`, and `gatewayObject`. No log line matches `pk_[A-Za-z0-9_-]{8,}`. `GatewayUnavailableError` does not keep the underlying fetch or HTTP error as `cause`.
 
 ## Review
 
