@@ -83,6 +83,8 @@ tags:
     description: Proxy used by the try-it console (ADR 0003)
   - name: usage
     description: Per-app usage meter, admin insights and Kong usage ingest (spec 011, ADR 0011)
+  - name: theme
+    description: Portal branding, served at runtime (spec 013, ADR 0016)
 
 paths:
   /v1/health:
@@ -2249,6 +2251,199 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
+  /v1/theme:
+    get:
+      tags: [theme]
+      operationId: getPublicTheme
+      summary: What the portal needs to apply the live theme (spec 013, ADR 0016)
+      description: |
+        Public and cheap: one primary-key read. The portal's root layout calls it on every server
+        render, so a saved theme shows on the next page load with no restart or rebuild (AC 1).
+        With no saved theme this is the shipped default and `isDefault` is true (AC 10).
+        `etag` changes whenever anything in the theme changes, including assets; every URL in the
+        response carries it as `?v=` so browsers can cache those URLs forever.
+        Never includes the custom CSS text itself.
+      security: []
+      responses:
+        '200':
+          description: The live theme
+          headers:
+            Cache-Control:
+              schema: { type: string, example: no-store }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicTheme' }
+
+  /v1/theme.css:
+    get:
+      tags: [theme]
+      operationId: getThemeStylesheet
+      summary: The live theme's tokens as CSS variables (no custom CSS)
+      description: |
+        Generated from the stored values, never from free text: `:root` light tokens, dark tokens
+        under `prefers-color-scheme` / `[data-theme]`, `--radius` and `--portal-font-sans`.
+        The `v` query parameter is ignored for content; when it equals the current `etag` the
+        response is `Cache-Control: public, max-age=31536000, immutable`, otherwise `no-cache`.
+        Answers `ETag` and honours `If-None-Match` with 304.
+      security: []
+      parameters:
+        - { name: v, in: query, required: false, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: Theme tokens
+          content:
+            text/css:
+              schema: { type: string }
+        '304':
+          description: Not modified
+
+  /v1/theme/custom.css:
+    get:
+      tags: [theme]
+      operationId: getThemeCustomCss
+      summary: The saved custom CSS, verbatim (empty when none)
+      description: |
+        Served as its own `text/css` file, never inlined into HTML, so it cannot break out into
+        markup. The portal links it on public and developer pages only, never under `/admin`
+        (AC 3, AC 4). Same `v` / `ETag` caching rules as `/v1/theme.css`.
+      security: []
+      parameters:
+        - { name: v, in: query, required: false, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: Custom CSS
+          content:
+            text/css:
+              schema: { type: string }
+        '304':
+          description: Not modified
+
+  /v1/theme/assets/{kind}:
+    parameters:
+      - $ref: '#/components/parameters/ThemeAssetKind'
+    get:
+      tags: [theme]
+      operationId: getThemeAsset
+      summary: The uploaded logo or favicon
+      description: |
+        Bytes as uploaded, with the sniffed `Content-Type`, `X-Content-Type-Options: nosniff` and
+        `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, so an SVG
+        opened directly cannot run script. Same `v` / `ETag` caching rules as `/v1/theme.css`.
+        404 when no asset of that kind is saved; the portal then uses its built-in default.
+      security: []
+      parameters:
+        - { name: v, in: query, required: false, schema: { type: string, maxLength: 64 } }
+      responses:
+        '200':
+          description: Image bytes
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/svg+xml: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            image/x-icon: { schema: { type: string, format: binary } }
+        '304':
+          description: Not modified
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/theme:
+    get:
+      tags: [admin, theme]
+      operationId: getThemeSettings
+      summary: The editable theme, for Admin → Theme
+      description: Asset bytes are not included; use the asset URLs, or export for a full copy.
+      responses:
+        '200':
+          description: Theme settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ThemeSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [admin, theme]
+      operationId: saveTheme
+      summary: Save the whole theme in one atomic write
+      description: |
+        Send every value in `values`. For `logo` and `favicon`: omit to keep the stored asset,
+        send `null` to remove it, or send `{ contentType, data }` to replace it. Everything is
+        validated first; on any error nothing is saved and the live theme is unchanged (AC 7).
+        Validation errors name the field in `errors[].pointer`, for example
+        `/values/colors/light/primary`, `/logo/data` or `/values/customCss`.
+        Low contrast is not an error; the editor warns before saving (AC 8).
+        Body limit 2 MB.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveThemeRequest' }
+      responses:
+        '200':
+          description: Saved; live on the next page load
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ThemeSettings' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+    delete:
+      tags: [admin, theme]
+      operationId: resetTheme
+      summary: Reset to the shipped default theme (AC 5)
+      description: Removes the saved values, custom CSS, logo and favicon in one transaction. Idempotent.
+      responses:
+        '200':
+          description: Reset; the response is the default theme
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ThemeSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/admin/theme/export:
+    get:
+      tags: [admin, theme]
+      operationId: exportTheme
+      summary: Download the theme as one JSON file, assets included (AC 6)
+      description: |
+        `Content-Disposition: attachment; filename="portal-theme.json"`. The file is exactly the
+        body `POST /v1/admin/theme/import` accepts. Exporting the default theme works and gives
+        the default values with `logo` and `favicon` null.
+      responses:
+        '200':
+          description: Theme file
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ThemeExport' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/admin/theme/import:
+    post:
+      tags: [admin, theme]
+      operationId: importTheme
+      summary: Replace the whole theme with an exported file (AC 6, AC 7)
+      description: |
+        Replaces everything: a `null` logo or favicon in the file removes the stored one.
+        Same validation as `PUT /v1/admin/theme`, plus `format` must be `portal-theme` and
+        `version` must be `1`. A file that is not JSON answers 400 `/problems/validation` with
+        `detail` "The file is not valid JSON". On any error nothing is saved. Body limit 2 MB.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ThemeExport' }
+      responses:
+        '200':
+          description: Imported; live on the next page load
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ThemeSettings' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+
   /v1/apps/{appId}/usage:
     get:
       tags: [usage]
@@ -2534,6 +2729,12 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+
+    ThemeAssetKind:
+      name: kind
+      in: path
+      required: true
+      schema: { type: string, enum: [logo, favicon] }
 
   responses:
     ValidationError:
@@ -3143,6 +3344,153 @@ components:
             mailConfigured:
               type: boolean
               description: SMTP settings are saved or set in the environment. `requireVerifiedEmail` can't be turned on without them.
+
+    ThemeColor:
+      type: string
+      pattern: '^#[0-9a-fA-F]{6}$'
+      description: Six-digit hex colour. No names, alpha or functions, so values are safe to write into CSS.
+      example: '#1d4ed8'
+
+    ThemeColors:
+      type: object
+      additionalProperties: false
+      required: [background, foreground, muted, mutedForeground, primary, primaryForeground, accent, accentForeground, border]
+      description: |
+        One mode's palette. Maps to the `packages/ui` tokens of the same name (`--background`,
+        `--muted-foreground`, …). `card`, `popover`, `secondary` and `ring` are derived from these.
+      properties:
+        background: { $ref: '#/components/schemas/ThemeColor' }
+        foreground: { $ref: '#/components/schemas/ThemeColor' }
+        muted: { $ref: '#/components/schemas/ThemeColor' }
+        mutedForeground: { $ref: '#/components/schemas/ThemeColor' }
+        primary: { $ref: '#/components/schemas/ThemeColor' }
+        primaryForeground: { $ref: '#/components/schemas/ThemeColor' }
+        accent: { $ref: '#/components/schemas/ThemeColor' }
+        accentForeground: { $ref: '#/components/schemas/ThemeColor' }
+        border: { $ref: '#/components/schemas/ThemeColor' }
+
+    ThemeFont:
+      type: string
+      enum: [system, inter, ibm-plex-sans, source-sans-3, noto-sans, atkinson-hyperlegible]
+      description: |
+        Body font from the offered list. All are open-licensed and self-hosted in the portal image,
+        so the portal makes no third-party font request. `system` is the shipped default.
+
+    ThemeValues:
+      type: object
+      additionalProperties: false
+      required: [colors, font, radius, defaultMode, customCss]
+      properties:
+        colors:
+          type: object
+          additionalProperties: false
+          required: [light, dark]
+          properties:
+            light: { $ref: '#/components/schemas/ThemeColors' }
+            dark: { $ref: '#/components/schemas/ThemeColors' }
+        font: { $ref: '#/components/schemas/ThemeFont' }
+        radius: { type: integer, minimum: 0, maximum: 24, description: Corner radius in px (`--radius`) }
+        defaultMode:
+          type: string
+          enum: [system, light, dark]
+          description: '`system` follows the visitor''s OS setting; `light` or `dark` forces that mode.'
+        customCss:
+          type: string
+          maxLength: 65536
+          description: |
+            Applied after the tokens on public and developer pages, never under `/admin`.
+            Max 64 KB. `@import` is rejected (`/problems/validation`, pointer `/values/customCss`)
+            because an imported sheet can change outside the portal and would not be exported.
+
+    ThemeAssetUpload:
+      type: object
+      additionalProperties: false
+      required: [contentType, data]
+      description: |
+        Base64 image. The server sniffs the bytes and rejects a mismatch with `contentType`.
+        Logo: PNG, SVG or WebP up to 512 KB decoded. Favicon: PNG, SVG or ICO up to 128 KB decoded.
+        An SVG containing `<script`, `<foreignObject`, an `on*` attribute, a `javascript:` URL or
+        an external `href` is rejected.
+      properties:
+        contentType: { type: string, enum: [image/png, image/svg+xml, image/webp, image/x-icon] }
+        data: { type: string, format: byte, maxLength: 700000 }
+
+    ThemeAssetInfo:
+      type: object
+      required: [contentType, byteSize, url]
+      properties:
+        contentType: { type: string, enum: [image/png, image/svg+xml, image/webp, image/x-icon] }
+        byteSize: { type: integer }
+        url: { type: string, description: '`/v1/theme/assets/{kind}?v=<etag>`' }
+
+    SaveThemeRequest:
+      type: object
+      additionalProperties: false
+      required: [values]
+      properties:
+        values: { $ref: '#/components/schemas/ThemeValues' }
+        logo:
+          description: Omit to keep, `null` to remove, an object to replace
+          oneOf:
+            - $ref: '#/components/schemas/ThemeAssetUpload'
+            - type: 'null'
+        favicon:
+          description: Omit to keep, `null` to remove, an object to replace
+          oneOf:
+            - $ref: '#/components/schemas/ThemeAssetUpload'
+            - type: 'null'
+
+    ThemeSettings:
+      type: object
+      required: [isDefault, etag, values, defaults, logo, favicon, updatedAt]
+      properties:
+        isDefault: { type: boolean, description: Nothing is saved; the shipped default is live }
+        etag: { type: string }
+        values: { $ref: '#/components/schemas/ThemeValues' }
+        defaults:
+          allOf:
+            - $ref: '#/components/schemas/ThemeValues'
+          description: The shipped default values, for "Reset field" and the preview baseline
+        logo:
+          oneOf:
+            - $ref: '#/components/schemas/ThemeAssetInfo'
+            - type: 'null'
+        favicon:
+          oneOf:
+            - $ref: '#/components/schemas/ThemeAssetInfo'
+            - type: 'null'
+        updatedAt: { type: [string, 'null'], format: date-time }
+
+    PublicTheme:
+      type: object
+      required: [isDefault, etag, defaultMode, font, stylesheetUrl, customCssUrl, logoUrl, faviconUrl]
+      properties:
+        isDefault: { type: boolean }
+        etag: { type: string }
+        defaultMode: { type: string, enum: [system, light, dark] }
+        font: { $ref: '#/components/schemas/ThemeFont' }
+        stylesheetUrl: { type: string, description: '`/v1/theme.css?v=<etag>`' }
+        customCssUrl: { type: [string, 'null'], description: '`/v1/theme/custom.css?v=<etag>`, null when there is no custom CSS' }
+        logoUrl: { type: [string, 'null'], description: null means use the built-in logo }
+        faviconUrl: { type: [string, 'null'], description: null means use the built-in favicon }
+
+    ThemeExport:
+      type: object
+      additionalProperties: false
+      required: [format, version, values, logo, favicon]
+      properties:
+        format: { type: string, enum: [portal-theme] }
+        version: { type: integer, enum: [1] }
+        exportedAt: { type: string, format: date-time }
+        values: { $ref: '#/components/schemas/ThemeValues' }
+        logo:
+          oneOf:
+            - $ref: '#/components/schemas/ThemeAssetUpload'
+            - type: 'null'
+        favicon:
+          oneOf:
+            - $ref: '#/components/schemas/ThemeAssetUpload'
+            - type: 'null'
 
     SearchResults:
       type: object
