@@ -1,7 +1,7 @@
 ---
 id: 013
 title: Theme editor
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-16
 linear: JSO-241
@@ -288,7 +288,17 @@ None. The theme stays inside the portal. Kong and AWS are untouched.
 - [ ] [qa] AC 10: fresh `docker compose up` timed under five minutes, default theme served, `/v1/theme` `isDefault: true`; demo build still renders with no server
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/013-*.md`
+Design: [docs/design/013-theme-editor.md](../design/013-theme-editor.md).
+- `/admin/theme` (admin-only **Theme** nav entry): form cards for Logo and favicon, Colours
+  (Light/Dark tabs, nine `ColorField`s), Font and shape (font select, radius slider, default
+  mode) and Custom CSS, with a sticky live iframe preview at ≥1024px and an Edit/Preview tab
+  pair below. A sticky action bar holds the unsaved state and **Save theme**.
+- Contrast warnings sit under six named text/surface pairs (the `CONTRAST_PAIRS` list) and never
+  block saving. Reset and Import use confirm dialogs; server 400s map by pointer to the field.
+- Every state (loading, load error, default, dirty, saving, saved, 400/413/5xx, 401 mid-edit,
+  403, preview unavailable) and all copy are specified. The editor always uses built-in tokens.
+- New components: `ColorField`, `AssetField`. tokens.md now lists the dark default palette that
+  `DEFAULT_THEME.colors.dark` and `styles.css` must match.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
