@@ -4,20 +4,27 @@ import { parse } from 'yaml';
 import { uuidv7 } from 'uuidv7';
 import { apis, apiVersions } from '@portal/db';
 import { eq } from 'drizzle-orm';
+import { TransactionRollbackError } from 'drizzle-orm/errors';
 import type { DbConnection } from './gateway-connection.js';
 import { KongAdapter } from '@portal/adapter-kong';
 import { portalTags } from '@portal/adapter-sdk';
+const SKIP =
+  'Sample seed skipped: slug "sample" is taken by an admin-published API';
 export async function seedSample(
   db: DbConnection,
   adapter: KongAdapter,
   gatewayId: string,
   instanceId: string,
+  log?: { info(message: string): void },
 ) {
   const [published] = await db
-    .select({ id: apis.id })
+    .select({ id: apis.id, seeded: apis.seeded })
     .from(apis)
     .where(eq(apis.slug, 'sample'));
-  if (published) return;
+  if (published && !published.seeded) {
+    log?.info(SKIP);
+    return;
+  }
   const tags = [...portalTags(instanceId), 'portal-seed'];
   await adapter.request('/services/portal-sample', 'PUT', {
     name: 'portal-sample',
@@ -53,46 +60,57 @@ export async function seedSample(
       'utf8',
     ),
   ) as Record<string, unknown>;
-  await db.transaction(async (tx) => {
-    const [api] = await tx
-      .insert(apis)
-      .values({
-        id: uuidv7(),
-        slug: 'sample',
-        gatewayId,
-        gatewayServiceId: service.id,
-        gatewayServiceName: service.name,
-        routePath: '/sample',
-      })
-      .onConflictDoUpdate({
-        target: apis.slug,
-        set: {
+  try {
+    await db.transaction(async (tx) => {
+      const [api] = await tx
+        .insert(apis)
+        .values({
+          id: uuidv7(),
+          slug: 'sample',
+          gatewayId,
           gatewayServiceId: service.id,
           gatewayServiceName: service.name,
-          updatedAt: new Date(),
-        },
-      })
-      .returning();
-    if (!api) throw new Error('Seed API missing');
-    const [version] = await tx
-      .insert(apiVersions)
-      .values({
-        id: uuidv7(),
-        apiId: api.id,
-        version: '1.0.0',
-        title: 'Sample HTTP API',
-        description: 'A small HTTP API for trying your portal API key.',
-        document,
-      })
-      .onConflictDoUpdate({
-        target: [apiVersions.apiId, apiVersions.version],
-        set: { document },
-      })
-      .returning();
-    if (!api.latestVersionId && version)
-      await tx
-        .update(apis)
-        .set({ latestVersionId: version.id })
-        .where(eq(apis.id, api.id));
-  });
+          routePath: '/sample',
+          seeded: true,
+        })
+        .onConflictDoUpdate({
+          target: apis.slug,
+          set: {
+            gatewayServiceId: service.id,
+            gatewayServiceName: service.name,
+            updatedAt: new Date(),
+          },
+          where: eq(apis.seeded, true),
+        })
+        .returning();
+      if (!api) {
+        log?.info(SKIP);
+        tx.rollback();
+        return;
+      }
+      const [version] = await tx
+        .insert(apiVersions)
+        .values({
+          id: uuidv7(),
+          apiId: api.id,
+          version: '1.0.0',
+          title: 'Sample HTTP API',
+          description: 'A small HTTP API for trying your portal API key.',
+          document,
+        })
+        .onConflictDoUpdate({
+          target: [apiVersions.apiId, apiVersions.version],
+          set: { document },
+        })
+        .returning();
+      if (!api.latestVersionId && version)
+        await tx
+          .update(apis)
+          .set({ latestVersionId: version.id })
+          .where(eq(apis.id, api.id));
+    });
+  } catch (error) {
+    if (error instanceof TransactionRollbackError) return;
+    throw error;
+  }
 }

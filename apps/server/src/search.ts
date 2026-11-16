@@ -64,7 +64,9 @@ export async function registerSearch(
               : 'Limit must be an integer from 1 to 50.';
           throw new Problem(400, 'validation', detail);
         }
-        const rows = await publishedApis(db, viewers.get(request)!);
+        const rows = await publishedApis(db, viewers.get(request)!, {
+          documents: true,
+        });
         return searchCatalog(
           rows.map(({ api, version }) => ({
             slug: api.slug,

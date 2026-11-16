@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
+import type { Logger } from 'drizzle-orm/logger';
 import { migrate as drizzleMigrate } from 'drizzle-orm/postgres-js/migrator';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { fileURLToPath } from 'node:url';
 import * as schema from './schema.js';
 export * from './schema.js';
 export { schema };
-export function connect(url: string) {
+export function connect(url: string, options?: { logger?: boolean | Logger }) {
   const client = postgres(url, { max: 10 });
-  return { client, db: drizzle(client, { schema }) };
+  return { client, db: drizzle(client, { schema, logger: options?.logger }) };
 }
 export type Database = ReturnType<typeof connect>['db'];
 export class SchemaAheadError extends Error {

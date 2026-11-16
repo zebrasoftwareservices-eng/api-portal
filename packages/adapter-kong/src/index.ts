@@ -88,17 +88,20 @@ export class KongAdapter implements GatewayAdapter {
         signal: AbortSignal.timeout(5000),
         redirect: 'manual',
       });
-    } catch {
-      throw new GatewayUnavailableError();
+    } catch (error) {
+      throw new GatewayUnavailableError({ cause: error });
     }
     if (response.status === 404 && allow404) return null;
-    if (response.status >= 500) throw new GatewayUnavailableError();
+    if (response.status >= 500)
+      throw new GatewayUnavailableError({
+        cause: new Error(`Kong returned ${response.status}`),
+      });
     if (!response.ok) throw new GatewayRejectedError(response.status);
     if (response.status === 204) return null;
     try {
       return (await response.json()) as T;
-    } catch {
-      throw new GatewayUnavailableError();
+    } catch (error) {
+      throw new GatewayUnavailableError({ cause: error });
     }
   }
   private async pages(path: string) {

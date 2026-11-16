@@ -19,13 +19,61 @@ import {
 } from './access-policy.js';
 import type { Auth } from './auth.js';
 import { notFound } from './problem.js';
-export async function publishedApis(db: Database, viewer?: Viewer) {
-  const rows = await db
-    .select({ api: apis, version: apiVersions, gateway: gateways })
+const versionColumns = {
+  id: apiVersions.id,
+  apiId: apiVersions.apiId,
+  version: apiVersions.version,
+  title: apiVersions.title,
+  description: apiVersions.description,
+  publishedAt: apiVersions.publishedAt,
+  sourceFormat: apiVersions.sourceFormat,
+};
+export type PublishedVersion = {
+  id: string;
+  apiId: string;
+  version: string;
+  title: string;
+  description: string | null;
+  publishedAt: Date;
+  sourceFormat: string | null;
+};
+export type PublishedApi = {
+  api: typeof apis.$inferSelect;
+  version: PublishedVersion;
+  gateway: typeof gateways.$inferSelect;
+  products: { id: string; slug: string; name: string }[];
+};
+export type PublishedApiWithDocument = Omit<PublishedApi, 'version'> & {
+  version: PublishedVersion & { document: Record<string, unknown> };
+};
+export async function publishedApis(
+  db: Database,
+  viewer?: Viewer,
+  options?: { slug?: string; documents?: false },
+): Promise<PublishedApi[]>;
+export async function publishedApis(
+  db: Database,
+  viewer: Viewer | undefined,
+  options: { slug?: string; documents: true },
+): Promise<PublishedApiWithDocument[]>;
+export async function publishedApis(
+  db: Database,
+  viewer?: Viewer,
+  options?: { slug?: string; documents?: boolean },
+) {
+  const version = options?.documents
+    ? { ...versionColumns, document: apiVersions.document }
+    : versionColumns;
+  const query = db
+    .select({ api: apis, version, gateway: gateways })
     .from(apis)
     .innerJoin(apiVersions, eq(apis.latestVersionId, apiVersions.id))
     .innerJoin(gateways, eq(apis.gatewayId, gateways.id))
-    .orderBy(desc(apis.publishedAt));
+    .orderBy(desc(apis.publishedAt))
+    .$dynamic();
+  const rows = await (options?.slug
+    ? query.where(eq(apis.slug, options.slug))
+    : query);
   const links = await db
     .select({
       apiId: productApis.apiId,
@@ -59,11 +107,20 @@ export async function publishedApis(db: Database, viewer?: Viewer) {
       .filter((l) => l.apiId === row.api.id)
       .map((l) => ({ id: l.id, slug: l.slug, name: l.name }))
       .sort((a, b) => a.name.localeCompare(b.name)),
-  }));
+  })) as PublishedApi[] | PublishedApiWithDocument[];
 }
-export type PublishedApi = Awaited<ReturnType<typeof publishedApis>>[number];
-export const baseUrl = (row: PublishedApi) =>
-  row.gateway.proxyPublicUrl.replace(/\/$/, '') + row.api.routePath;
+export async function loadDocument(db: Database, versionId: string) {
+  const [row] = await db
+    .select({ document: apiVersions.document })
+    .from(apiVersions)
+    .where(eq(apiVersions.id, versionId));
+  if (!row) throw notFound();
+  return row.document;
+}
+export const baseUrl = (row: {
+  gateway: { proxyPublicUrl: string };
+  api: { routePath: string };
+}) => row.gateway.proxyPublicUrl.replace(/\/$/, '') + row.api.routePath;
 export function apiSummary(row: PublishedApi) {
   return {
     id: row.api.id,
@@ -79,7 +136,7 @@ export function apiSummary(row: PublishedApi) {
 export async function apiDetail(db: Database, row: PublishedApi) {
   const versions = orderVersions(
     await db
-      .select()
+      .select(versionColumns)
       .from(apiVersions)
       .where(eq(apiVersions.apiId, row.api.id)),
   );
@@ -108,11 +165,18 @@ export async function apiDetail(db: Database, row: PublishedApi) {
     },
   };
 }
-export function publicDocument(
-  row: PublishedApi,
-  input = row.version.document,
+export function publicDocument<T extends object>(
+  row: {
+    api: { routePath: string };
+    gateway: { proxyPublicUrl: string };
+  },
+  input: T,
 ) {
-  const document = structuredClone(input);
+  const document = structuredClone(input) as T & {
+    servers: { url: string }[];
+    components: Record<string, unknown>;
+    security?: Record<string, unknown>[];
+  };
   document.servers = [{ url: baseUrl(row) }];
   const components = (document.components ?? {}) as Record<string, unknown>;
   const schemes = (components.securitySchemes ?? {}) as Record<
@@ -138,9 +202,7 @@ export function registerCatalog(
   auth: Auth,
 ) {
   const find = async (slug: string, viewer: Viewer = anonymous) => {
-    const row = (await publishedApis(db, viewer)).find(
-      (r) => r.api.slug === slug,
-    );
+    const [row] = await publishedApis(db, viewer, { slug });
     if (!row) throw notFound();
     return row;
   };
@@ -154,9 +216,12 @@ export function registerCatalog(
   );
   app.get<{ Params: { slug: string } }>(
     '/api/v1/apis/:slug/openapi.json',
-    async (req) =>
-      publicDocument(
-        await find(req.params.slug, await loadViewer(db, auth, req)),
-      ),
+    async (req) => {
+      const row = await find(
+        req.params.slug,
+        await loadViewer(db, auth, req),
+      );
+      return publicDocument(row, await loadDocument(db, row.version.id));
+    },
   );
 }

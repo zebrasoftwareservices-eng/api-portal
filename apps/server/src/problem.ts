@@ -33,6 +33,40 @@ export class Problem extends Error {
 }
 export const notFound = (detail = 'The requested resource was not found.') =>
   new Problem(404, 'not-found', detail);
+let problemTitles: Record<string, string> | undefined;
+function titles() {
+  // securityCopy imports Problem, so this map is built on first use.
+  return (problemTitles ??= {
+    ...Object.fromEntries(
+      Object.entries(securityCopy).map(([key, copy]) => [key, copy[0]]),
+    ),
+    'api-in-product': 'API offered in a product',
+    'slug-required': 'Slug required',
+    'gateway-unreachable': "The portal couldn't reach that address",
+    'gateway-token-refused': 'Kong refused the token',
+    'gateway-not-kong': "That address isn't a Kong Admin API",
+    'gateway-read-only': "This Kong can't be written to",
+    'gateway-proxy-unreachable': "The portal can't reach Kong's proxy",
+    'gateway-token-required': 'Enter the token again',
+    'gateway-exists': 'This portal already has a gateway',
+    'gateway-env-managed': 'This gateway is set by environment variables',
+    'gateway-in-use': 'This gateway is still in use',
+    'gateway-keys-missing': "Some keys won't work on this Kong",
+    'gateway-disabled': 'Gateway disabled',
+    'gateway-changed': 'Gateway changed',
+    'gateway-not-connected': 'No gateway connected',
+    'setup-complete': 'This portal already has an admin',
+    'setup-token-invalid': 'Setup token not accepted',
+    'database-unavailable': 'Database unavailable',
+    'sample-not-available': "The sample isn't available here",
+    'gateway-service-has-acl': 'Another ACL plugin applies to this service',
+    'gateway-service-already-linked':
+      'This service already has a published API',
+  });
+}
+export function problemTitle(code: string) {
+  return titles()[code] ?? code.replaceAll('-', ' ');
+}
 export function problemHandler(app: FastifyInstance) {
   app.setNotFoundHandler((_req, reply) =>
     reply
@@ -102,41 +136,7 @@ export function problemHandler(app: FastifyInstance) {
       .type('application/problem+json')
       .send({
         type: `/problems/${p.code}`,
-        title:
-          (
-            {
-              ...Object.fromEntries(
-                Object.entries(securityCopy).map(([key, copy]) => [
-                  key,
-                  copy[0],
-                ]),
-              ),
-              'api-in-product': 'API offered in a product',
-              'slug-required': 'Slug required',
-              'gateway-unreachable': "The portal couldn't reach that address",
-              'gateway-token-refused': 'Kong refused the token',
-              'gateway-not-kong': "That address isn't a Kong Admin API",
-              'gateway-read-only': "This Kong can't be written to",
-              'gateway-proxy-unreachable':
-                "The portal can't reach Kong's proxy",
-              'gateway-token-required': 'Enter the token again',
-              'gateway-exists': 'This portal already has a gateway',
-              'gateway-env-managed':
-                'This gateway is set by environment variables',
-              'gateway-in-use': 'This gateway is still in use',
-              'gateway-keys-missing': "Some keys won't work on this Kong",
-              'gateway-disabled': 'Gateway disabled',
-              'gateway-not-connected': 'No gateway connected',
-              'setup-complete': 'This portal already has an admin',
-              'setup-token-invalid': 'Setup token not accepted',
-              'database-unavailable': 'Database unavailable',
-              'sample-not-available': "The sample isn't available here",
-              'gateway-service-has-acl':
-                'Another ACL plugin applies to this service',
-              'gateway-service-already-linked':
-                'This service already has a published API',
-            } as Record<string, string>
-          )[p.code] ?? p.code.replaceAll('-', ' '),
+        title: problemTitle(p.code),
         status: p.status,
         detail: p.message,
         instance: req.url.split('?')[0],

@@ -55,7 +55,7 @@ describe('security boundaries', () => {
     ).toBe('http://kong:8000/sample/get?q=1');
   });
   it('rewrites served documents without modifying storage and injects missing key auth', () => {
-    const served = publicDocument(row);
+    const served = publicDocument(row, document);
     expect(served.servers).toEqual([{ url: 'http://localhost:8000/sample' }]);
     expect(served.security).toEqual([{ portalApiKey: [] }]);
     expect(document).not.toHaveProperty('servers');

@@ -293,6 +293,10 @@ paths:
         If the document has an `apiKey` scheme but no top-level `security`, the first `apiKey`
         scheme is applied at the top level, so the reference shows its key field (spec 003).
         Operation-level `security`, including `security: []`, is left as written.
+        Object keys keep the order the author wrote them in, so `paths` and the operations under
+        each path are served in authored order (spec 022). Documents stored before spec 022 keep
+        the order they were stored in until they are re-imported. Integer-like keys such as
+        response codes follow JSON object rules and are served in ascending order.
       security: []
       parameters:
         - $ref: '#/components/parameters/Slug'
@@ -312,8 +316,8 @@ paths:
       operationId: getApiVersionDocument
       summary: OpenAPI document of one version, ready for the API reference
       description: |
-        Same transformation as `getApiDocument` (servers replaced, `portalApiKey` added when
-        needed). Every version shares the API's gateway base URL: the portal documents versions,
+        Same transformation and authored key order as `getApiDocument` (servers replaced,
+        `portalApiKey` added when needed). Every version shares the API's gateway base URL: the portal documents versions,
         it doesn't route them (spec 012, out of scope).
       security: []
       parameters:

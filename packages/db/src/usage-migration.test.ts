@@ -14,7 +14,10 @@ it('backfills credential creators and cascades aggregate and first-call rows', a
         'utf8',
       ),
     ) as { entries: { tag: string }[] };
-    for (const { tag } of journal.entries.slice(0, -1))
+    const usageAt = journal.entries.findIndex((entry) =>
+      entry.tag.startsWith('0008_'),
+    );
+    for (const { tag } of journal.entries.slice(0, usageAt))
       await client.unsafe(
         await readFile(
           new URL(`../migrations/${tag}.sql`, import.meta.url),
@@ -25,15 +28,13 @@ it('backfills credential creators and cascades aggregate and first-call rows', a
     await client`insert into teams (id,name,created_by) values (${id},'Team',${id})`;
     await client`insert into apps (id,team_id,name,created_by) values (${id},${id},'App',${id})`;
     await client`insert into credentials (id,app_id,key_hint,status) values (${id},${id},'1234','revoked')`;
-    await client.unsafe(
-      await readFile(
-        new URL(
-          `../migrations/${journal.entries.at(-1)!.tag}.sql`,
-          import.meta.url,
+    for (const { tag } of journal.entries.slice(usageAt))
+      await client.unsafe(
+        await readFile(
+          new URL(`../migrations/${tag}.sql`, import.meta.url),
+          'utf8',
         ),
-        'utf8',
-      ),
-    );
+      );
     // AC 3: usage storage must contain aggregate/attribution fields only.
     for (const [table, expected] of [
       [

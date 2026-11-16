@@ -3,7 +3,7 @@ import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
 import { uuidv7 } from 'uuidv7';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { user, account, setupTokens, type Database } from '@portal/db';
 import type { FastifyInstance } from 'fastify';
 import type { Auth } from './auth.js';
@@ -16,12 +16,23 @@ const firstAdmin = z.strictObject({
   name: z.string().min(1).max(80).default('Administrator'),
   setupToken: z.string().max(128).optional(),
 });
-export async function adminExists(db: Database) {
-  const [admin] = await db
+type SetupDb = Database | Parameters<Parameters<Database['transaction']>[0]>[0];
+function usableAdmin(db: SetupDb) {
+  return db
     .select({ id: user.id })
     .from(user)
-    .where(eq(user.role, 'admin'))
+    .innerJoin(account, eq(account.userId, user.id))
+    .where(
+      and(
+        eq(user.role, 'admin'),
+        eq(account.providerId, 'credential'),
+        sql`${account.password} is not null`,
+      ),
+    )
     .limit(1);
+}
+export async function adminExists(db: Database) {
+  const [admin] = await usableAdmin(db);
   return Boolean(admin);
 }
 export async function createFirstAdmin(
@@ -33,11 +44,7 @@ export async function createFirstAdmin(
   const values = firstAdmin.parse(input);
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(71833003)`);
-    const [admin] = await tx
-      .select({ id: user.id })
-      .from(user)
-      .where(eq(user.role, 'admin'))
-      .limit(1);
+    const [admin] = await usableAdmin(tx);
     if (admin)
       throw new Problem(
         409,
@@ -77,21 +84,45 @@ export async function createFirstAdmin(
       .select({ id: user.id })
       .from(user)
       .where(eq(user.email, email));
-    if (existing)
-      throw new Problem(
-        400,
-        'validation',
-        'This email already belongs to a user. Use another email.',
-        [
-          {
-            pointer: '/email',
-            message:
-              'An account with this email already exists. Use a different email.',
-          },
-        ],
-      );
-    const id = uuidv7();
     const password = await (await auth.$context).password.hash(values.password);
+    if (existing) {
+      const [credential] = await tx
+        .select({ id: account.id })
+        .from(account)
+        .where(
+          and(
+            eq(account.userId, existing.id),
+            eq(account.providerId, 'credential'),
+          ),
+        );
+      if (credential)
+        throw new Problem(
+          400,
+          'validation',
+          'This email already belongs to a user. Use another email.',
+          [
+            {
+              pointer: '/email',
+              message:
+                'An account with this email already exists. Use a different email.',
+            },
+          ],
+        );
+      await tx
+        .update(user)
+        .set({ role: 'admin', emailVerified: true, name: values.name })
+        .where(eq(user.id, existing.id));
+      await tx.insert(account).values({
+        id: uuidv7(),
+        accountId: existing.id,
+        providerId: 'credential',
+        userId: existing.id,
+        password,
+      });
+      await tx.delete(setupTokens);
+      return { id: existing.id, email, name: values.name, role: 'admin' as const };
+    }
+    const id = uuidv7();
     await tx
       .insert(user)
       .values({
@@ -121,7 +152,7 @@ export async function prepareSetupToken(
   if (!production) return undefined;
   return db.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(71833003)`);
-    const [admin] = await tx.select({ id: user.id }).from(user).where(eq(user.role, 'admin')).limit(1);
+    const [admin] = await usableAdmin(tx);
     if (admin) {
       await tx.delete(setupTokens);
       return undefined;

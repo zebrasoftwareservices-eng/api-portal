@@ -13,6 +13,7 @@ import { GatewayUnavailableError } from '@portal/adapter-sdk';
 import type { KongAdapter } from '@portal/adapter-kong';
 import { gatewayConnection, requireEnabled } from './gateway-connection.js';
 import { adminExists, createFirstAdmin, prepareSetupToken } from './setup.js';
+import { Problem, problemTitle } from './problem.js';
 import type { Config } from './config.js';
 import { encrypt } from './crypto.js';
 import { createAuth } from './auth.js';
@@ -69,30 +70,6 @@ export async function start(config: Config) {
     await boss.createQueue('send-email');
     const enqueueMail = mailQueue(config, boss);
     const auth = createAuth(db, config, enqueueMail);
-    if (
-      config.ADMIN_EMAIL &&
-      config.ADMIN_PASSWORD &&
-      !(await adminExists(db))
-    ) {
-      try {
-        await createFirstAdmin(db, auth, {
-          email: config.ADMIN_EMAIL,
-          password: config.ADMIN_PASSWORD,
-        });
-      } catch (error) {
-        if (!(
-          error instanceof Error &&
-          'code' in error &&
-          error.code === 'setup-complete'
-        ))
-          throw error;
-      }
-    }
-    const setupToken = await prepareSetupToken(
-      db,
-      config.PORTAL_ENCRYPTION_KEY,
-      config.NODE_ENV === 'production',
-    );
     const { app } = await createApp({
       db,
       config,
@@ -117,6 +94,28 @@ export async function start(config: Config) {
           { singletonKey: 'gateway-reconcile' },
         ),
     });
+    if (
+      config.ADMIN_EMAIL &&
+      config.ADMIN_PASSWORD &&
+      !(await adminExists(db))
+    ) {
+      try {
+        await createFirstAdmin(db, auth, {
+          email: config.ADMIN_EMAIL,
+          password: config.ADMIN_PASSWORD,
+        });
+      } catch (error) {
+        if (!(error instanceof Problem)) throw error;
+        app.log.warn(
+          `First admin from ADMIN_EMAIL not created: ${problemTitle(error.code)}`,
+        );
+      }
+    }
+    const setupToken = await prepareSetupToken(
+      db,
+      config.PORTAL_ENCRYPTION_KEY,
+      config.NODE_ENV === 'production',
+    );
     if (setupToken)
       app.log.info(`Setup token for the first admin: ${setupToken}`);
     const connection = gatewayConnection(
@@ -160,6 +159,7 @@ export async function start(config: Config) {
           gateway.adapter as KongAdapter,
           gateway.row.id,
           instance!.instanceId,
+          app.log,
         );
       });
     }
@@ -222,9 +222,9 @@ export async function start(config: Config) {
     });
     await boss.work(
       'gateway-reconcile',
-      backgroundJob('gateway-reconcile', app.log, () =>
-        reconcile(db, connection, app.log, enqueueMail),
-      ),
+      backgroundJob('gateway-reconcile', app.log, async () => {
+        await reconcile(db, connection, app.log, enqueueMail);
+      }),
     );
     await boss.work(
       'seed-sample',

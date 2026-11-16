@@ -405,6 +405,7 @@ export async function registerGateways(
             gateway.adapter as KongAdapter,
             gatewayId,
             instanceId,
+            app.log,
           );
         });
         await enqueueReconcile();

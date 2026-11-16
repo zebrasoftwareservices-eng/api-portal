@@ -237,6 +237,35 @@ it('bootstraps an environment admin through the shared atomic creator', async ()
     { email: 'env@example.com', password: 'environment-password' },
   );
 });
+it('continues boot when environment admin creation returns a problem', async () => {
+  mocks.adminExists.mockResolvedValueOnce(false);
+  const { Problem } = await import('./problem.js');
+  mocks.createFirstAdmin.mockRejectedValueOnce(
+    new Problem(400, 'validation', 'bad email'),
+  );
+  await start(
+    loadConfig({
+      ADMIN_EMAIL: 'env@example.com',
+      ADMIN_PASSWORD: 'environment-password',
+    }),
+  );
+  expect(mocks.log.warn).toHaveBeenCalledWith(
+    'First admin from ADMIN_EMAIL not created: validation',
+  );
+  expect(mocks.app.listen).toHaveBeenCalled();
+});
+it('stops boot when environment admin creation throws a non-problem', async () => {
+  mocks.adminExists.mockResolvedValueOnce(false);
+  mocks.createFirstAdmin.mockRejectedValueOnce(new Error('database down'));
+  await expect(
+    start(
+      loadConfig({
+        ADMIN_EMAIL: 'env@example.com',
+        ADMIN_PASSWORD: 'environment-password',
+      }),
+    ),
+  ).rejects.toThrow('database down');
+});
 
 it('schedules singleton minute usage heartbeats and hourly pruning', async () => {
   await start(loadConfig({}));

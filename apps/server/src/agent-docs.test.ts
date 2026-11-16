@@ -26,7 +26,11 @@ import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import type { Auth } from './auth.js';
 import { renderLlmsTxt, renderMarkdown } from './agent-docs.js';
-import { publicDocument, type PublishedApi } from './catalog.js';
+import {
+  publicDocument,
+  type PublishedApi,
+  type PublishedApiWithDocument,
+} from './catalog.js';
 let container: StartedPostgreSqlContainer;
 let connection: ReturnType<typeof connect>;
 let server: Awaited<ReturnType<typeof createApp>>['app'];
@@ -200,7 +204,7 @@ it('renders empty and populated llms indexes with absolute links and first-line 
         },
       },
     },
-  } as PublishedApi;
+  } as PublishedApiWithDocument;
   const result = renderLlmsTxt([row], 'https://portal.example/');
   expect(result).toContain(
     '- [Orders](https://portal.example/api/v1/apis/orders/reference.md): [Purchase](https://example.com) history OpenAPI: https://portal.example/api/v1/apis/orders/spec',

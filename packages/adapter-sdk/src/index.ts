@@ -107,8 +107,8 @@ export interface GatewayAdapter {
   listOwnedConsumers(): Promise<OwnedConsumer[]>;
 }
 export class GatewayUnavailableError extends Error {
-  constructor() {
-    super('The API gateway is unavailable');
+  constructor(options?: { cause?: unknown }) {
+    super('The API gateway is unavailable', options);
     this.name = 'GatewayUnavailableError';
   }
 }

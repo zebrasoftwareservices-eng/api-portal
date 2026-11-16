@@ -9,7 +9,12 @@ import { requireUser, type Auth } from './auth.js';
 import { loadViewer, canSeeApi } from './access-policy.js';
 import { Problem, notFound } from './problem.js';
 import { importDocument, specSchema, versionName } from './import.js';
-import { apiDetail, publishedApis, publicDocument } from './catalog.js';
+import {
+  apiDetail,
+  loadDocument,
+  publishedApis,
+  publicDocument,
+} from './catalog.js';
 import { summarise } from './changes.js';
 import type { Linter } from './lint/index.js';
 export function orderVersions<T extends { version: string; publishedAt: Date }>(
@@ -40,7 +45,7 @@ export function registerVersions(
   linter: Linter,
 ) {
   const find = async (slug: string) => {
-    const row = (await publishedApis(db)).find((r) => r.api.slug === slug);
+    const [row] = await publishedApis(db, undefined, { slug });
     if (!row) throw notFound();
     return row;
   };
@@ -68,7 +73,7 @@ export function registerVersions(
       if (!(await canSeeApi(db, await loadViewer(db, auth, req), row.api.id)))
         throw notFound();
       const [version] = await db
-        .select()
+        .select({ id: apiVersions.id })
         .from(apiVersions)
         .where(
           and(
@@ -77,7 +82,7 @@ export function registerVersions(
           ),
         );
       if (!version) throw notFound();
-      return publicDocument(row, version.document);
+      return publicDocument(row, await loadDocument(db, version.id));
     },
   );
   server.put<{ Params: { slug: string } }>(

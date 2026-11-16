@@ -16,9 +16,10 @@ import { requireUser, type Auth } from './auth.js';
 import { affectedSubscriptions } from './access-policy.js';
 import { closeInvisibleRequests } from './access-requests.js';
 import {
-  provisionApp,
-  compensate,
-  type Compensations,
+  prepareApp,
+  applyAppToGateway,
+  commitApp,
+  runGatewayPhase,
 } from './app-provisioning.js';
 import { appView } from './apps.js';
 import {
@@ -296,57 +297,66 @@ export function registerProductAccess(
         description: z.string().max(500).optional(),
       })
       .parse(request.body);
-    const rollback: Compensations = [];
-    let app;
-    try {
-      app = await db.transaction(async (tx) => {
-        await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
-        const [team] = await tx
+    const assertSubscription = async (tx: Db) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
+      const [team] = await tx
+        .select()
+        .from(teams)
+        .where(eq(teams.id, input.teamId));
+      if (!team) throw notFound();
+      const [target] = await tx
+        .select({ productId: plans.productId })
+        .from(plans)
+        .where(eq(plans.id, input.planId));
+      if (!target?.productId) throw notFound();
+      const [product] = await tx
+        .select()
+        .from(products)
+        .where(eq(products.id, target.productId))
+        .for('update');
+      if (!product) throw notFound();
+      if (product.visibility === 'internal') {
+        const [named] = await tx
           .select()
-          .from(teams)
-          .where(eq(teams.id, input.teamId));
-        if (!team) throw notFound();
-        const [target] = await tx
-          .select({ productId: plans.productId })
-          .from(plans)
-          .where(eq(plans.id, input.planId));
-        if (!target?.productId) throw notFound();
-        const [product] = await tx
-          .select()
-          .from(products)
-          .where(eq(products.id, target.productId))
-          .for('update');
-        if (!product) throw notFound();
-        if (product.visibility === 'internal') {
-          const [named] = await tx
-            .select()
-            .from(productTeams)
-            .where(
-              and(
-                eq(productTeams.productId, product.id),
-                eq(productTeams.teamId, input.teamId),
-              ),
-            );
-          if (!named)
-            throw new Problem(
-              409,
-              'team-not-named',
-              'Add the team to this product first.',
-            );
-        }
-        const app = await provisionApp(
-          tx,
-          connection,
-          { ...input, origin: 'admin', createdBy: user.id },
-          rollback,
-        );
-        await enqueue({ template: 'subscription-assigned', appId: app.id }, tx);
-        return app;
-      });
-    } catch (e) {
-      await compensate(rollback, server.log);
-      throw e;
-    }
+          .from(productTeams)
+          .where(
+            and(
+              eq(productTeams.productId, product.id),
+              eq(productTeams.teamId, input.teamId),
+            ),
+          );
+        if (!named)
+          throw new Problem(
+            409,
+            'team-not-named',
+            'Add the team to this product first.',
+          );
+      }
+    };
+    const app = await runGatewayPhase(db, server.log, {
+      prepare: () =>
+        db.transaction(async (tx) => {
+          await assertSubscription(tx);
+          return prepareApp(tx, connection, {
+            ...input,
+            origin: 'admin',
+            createdBy: user.id,
+          });
+        }),
+      gateway: async (plan, rollback) => {
+        plan.consumer = await applyAppToGateway(plan.adapter, plan, rollback);
+      },
+      commit: (plan) =>
+        db.transaction(async (tx) => {
+          await assertSubscription(tx);
+          const created = await commitApp(tx, connection, plan);
+          await enqueue(
+            { template: 'subscription-assigned', appId: created.id },
+            tx,
+          );
+          return created;
+        }),
+    });
     return reply.code(201).send(await appView(db, app, 'admin'));
   });
 }
