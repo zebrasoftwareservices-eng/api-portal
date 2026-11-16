@@ -1,7 +1,7 @@
 ---
 id: 022
 title: Server robustness and authored path order
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear: JSO-188
@@ -382,13 +382,13 @@ Commit tested: `05a4be00e3ce0cec145983c320a784e9c42972ab` · Portal: http://loca
 
 ## User testing
 
-Portal http://localhost:3005 at `6036d9b13954773bf2ac018317de27816c004833`. Notes: `docs/uat/022/report.md`.
+Portal http://localhost:3005 at `4b1d534f1a4c233bef42ca70d34bc4487a3ac808`. Notes: `docs/uat/022/report.md`.
 
 | User story | Result | Evidence |
 | --- | --- | --- |
 | App and key creation stays usable while Kong is slow | pass | Created "UAT sample reader". The app page showed "● Active". |
 | Reconcile stops reporting drift once a key is consistent | pass | Admin Gateways showed "● Connected". The word drift was not on that screen. |
-| Failed compensation is logged with its error and no key value | open minor | Not on screen. Bugs: Compensation error log has no `err.cause`. |
+| Failed compensation is logged with its error and no key value | pass | Server log: "Gateway compensation failed; reconcile will retry", cause "fetch failed". No `pk_` line. |
 | An API at slug `sample` survives a restart | pass | Admin row "sample", "1.0.0", "http://localhost:18005/sample". |
 | The portal boots and an admin can sign in | pass | Sign-in landed on "My apps". |
 | The catalog stays fast to browse | pass | Heading "APIs". Sample page heading "Sample HTTP API". |
