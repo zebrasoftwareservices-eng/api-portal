@@ -777,6 +777,7 @@ it('logs one redacted compensation error when undoing a Kong consumer fails', as
     expect(entries).toHaveLength(1);
     const entry = entries[0];
     expect(entry?.err?.message).toBe('The API gateway is unavailable');
+    expect(entry?.err?.cause).toMatchObject({ message: 'Kong returned 500' });
     expect(entry?.appId).toEqual(expect.any(String));
     expect(entry?.credentialId).toEqual(expect.any(String));
     expect(entry?.gatewayId).toBe(gatewayId);

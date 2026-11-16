@@ -159,7 +159,7 @@ order. JSO-188 and JSO-225 both stay open until this spec merges.
   they keep authored key order.
 - No portal (frontend) code changes. Scalar keeps document order by default, and
   `components/reference.tsx` sets no sorter.
-- No adapter changes. Every Kong call used here is already idempotent and tagged (ADR 0002).
+- `GatewayUnavailableError` accepts `{ cause }`. Kong keeps the fetch error, `Error('Kong returned <status>')` on HTTP 5xx, and the JSON parse error. Calls stay idempotent and tagged (ADR 0002).
 
 ### 1. Kong calls outside transactions (criteria 1, 2) — ADR 0014
 New `apps/server/src/gateway-operation.ts`:
@@ -347,13 +347,14 @@ switched mid-request. All are problem+json.
 - [x] [qa] Criteria 8, 9: quickstart sample sidebar order `/get`, `/post`, `/status/{code}`, `/uuid`, `/headers` (Playwright); pre-022 rows still render, try-it works, spec download valid, re-import stores authored order
 - [x] [qa] Criterion 10: connection killed mid-migration → restart boots, column is `json` or untouched `jsonb`, APIs serve
 - [x] [qa] `docker compose up` quickstart still works on a fresh volume and on an upgraded pre-022 volume
-- [ ] [backend] Fix (review): keep the underlying error as `cause` on `GatewayUnavailableError` (`packages/adapter-sdk/src/index.ts:109`, thrown at `packages/adapter-kong/src/index.ts:91-101`), and assert `err.cause` in the criterion 4 test (`apps/server/src/server-robustness.test.ts:779`)
+- [x] [backend] Fix (review): keep the underlying error as `cause` on `GatewayUnavailableError` (`packages/adapter-sdk/src/index.ts:109`, thrown at `packages/adapter-kong/src/index.ts:91-101`), and assert `err.cause` in the criterion 4 test (`apps/server/src/server-robustness.test.ts:779`)
 
 ## Build notes
 
 - Migration `0009_gateway_operations` adds `gateway_operations`, `apis.seeded` (backfill where slug is `sample`, service is `portal-sample`, and `created_by` is null), and changes `api_versions.document` to `json` with `USING document::json`.
 - App create, key issue, admin subscription, and an access approval that creates an app run prepare → gateway → commit. A name collision, or a gateway that is replaced or disabled during the Kong call, returns 409 and compensates. Two creates can both call Kong; the loser compensates. Key revoke uses the same split, keeps the operation when commit fails, and still completes when that same gateway is disabled. `reconcile()` returns `{ drift: { credentialIds } }`, skips ops younger than 10 minutes, and finishes a stale revoke.
 - A compensation failure logs one error, `Gateway compensation failed; reconcile will retry`, with `err` (message and cause; every `pk_` value becomes `pk_[redacted]`), `appId`, `credentialId`, `gatewayId`, and `gatewayObject`.
+- `GatewayUnavailableError` takes `{ cause }`. A fetch or JSON parse failure keeps that error, and an HTTP 5xx keeps `Error('Kong returned <status>')` with no response body. Criterion 4 asserts `err.cause.message` is `Kong returned 500` when the consumer delete fails.
 - Seed logs `Sample seed skipped: slug "sample" is taken by an admin-published API` and makes no Kong call when `seeded` is false, and refreshes a seed-created sample. A user at the admin email with no credential account is completed; a role-admin without a credential account still sees the wizard. A `Problem` from `ADMIN_EMAIL` logs `First admin from ADMIN_EMAIL not created: <title>` and boot continues. Catalog list and summary callers omit `document`; search and `llms.txt` pass `{ documents: true }`, and one document is loaded with `loadDocument`. `connect(url, { logger })` accepts a Drizzle logger. Plan change, app delete, gateway switch, seed, and `revokeApps` still call Kong inside a transaction.
 
 ## Test report

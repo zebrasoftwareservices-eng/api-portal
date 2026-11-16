@@ -13,34 +13,61 @@ describe('Kong transport', () => {
         ...config,
         fetch: vi.fn().mockResolvedValue(new Response('secret', { status })),
       });
-      await expect(
-        adapter.ensureConsumer({ id: 'app' }),
-      ).rejects.toBeInstanceOf(
+      const error = await adapter
+        .ensureConsumer({ id: 'app' })
+        .catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(
         status >= 500 ? GatewayUnavailableError : GatewayRejectedError,
       );
+      if (status >= 500) {
+        expect(error).toMatchObject({
+          message: 'The API gateway is unavailable',
+          cause: { message: `Kong returned ${status}` },
+        });
+        expect(JSON.stringify(error)).not.toContain('secret');
+      }
     }
-    await expect(
-      new KongAdapter({
-        ...config,
-        fetch: vi.fn().mockRejectedValue(new Error('secret')),
-      }).ensureConsumer({ id: 'app' }),
-    ).rejects.toBeInstanceOf(GatewayUnavailableError);
+    const transportError = new Error('secret');
+    const unavailable = await new KongAdapter({
+      ...config,
+      fetch: vi.fn().mockRejectedValue(transportError),
+    })
+      .ensureConsumer({ id: 'app' })
+      .catch((caught: unknown) => caught);
+    expect(unavailable).toBeInstanceOf(GatewayUnavailableError);
+    expect(unavailable).toMatchObject({
+      message: 'The API gateway is unavailable',
+      cause: transportError,
+    });
+    expect(JSON.stringify(unavailable)).not.toContain('secret');
+  });
+  it('keeps a JSON parse failure as the cause', async () => {
+    const error = await new KongAdapter({
+      ...config,
+      fetch: vi.fn().mockResolvedValue(new Response('not-json', { status: 200 })),
+    })
+      .request('/status')
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(GatewayUnavailableError);
+    expect((error as GatewayUnavailableError).cause).toBeInstanceOf(SyntaxError);
   });
   it.each(['connection reset', 'timeout'])(
     'maps a grant %s to a secret-free gateway-unavailable error',
     async (failure) => {
-      const transport = vi
-        .fn()
-        .mockRejectedValue(
-          failure === 'timeout'
-            ? new DOMException('sensitive-admin-token', 'TimeoutError')
-            : new Error('sensitive-admin-token'),
-        );
+      const cause =
+        failure === 'timeout'
+          ? new DOMException('sensitive-admin-token', 'TimeoutError')
+          : new Error('sensitive-admin-token');
+      const transport = vi.fn().mockRejectedValue(cause);
       const adapter = new KongAdapter({ ...config, fetch: transport });
       const error = await adapter
         .grantAccess({ id: 'app' }, { id: 'service' })
-        .catch((error) => error);
+        .catch((caught: unknown) => caught);
       expect(error).toBeInstanceOf(GatewayUnavailableError);
+      expect(error).toMatchObject({
+        message: 'The API gateway is unavailable',
+        cause,
+      });
       expect(JSON.stringify(error)).not.toContain('sensitive-admin-token');
       expect(transport.mock.calls[0]?.[1].signal).toBeInstanceOf(AbortSignal);
     },
