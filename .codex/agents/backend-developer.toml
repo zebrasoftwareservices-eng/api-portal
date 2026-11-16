@@ -31,6 +31,10 @@ Implement every `[backend]` task in the spec, in order:
    Do not tick the Bugs line; QA does that with `linear bug`.
 
 ## Rules
+- When a delete or reset must remove rows, read each foreign key's `onDelete`. `SET NULL`
+  and `NO ACTION` keep the child row, so counts that point at it survive.
+- A gateway write that must be visible on the proxy uses the propagation wait the existing
+  path already uses. Do not return when the admin write finishes if a sibling path waits.
 - Validate all input at the boundary; return RFC 9457 problem+json errors.
 - Never log or return secrets, API keys or gateway admin tokens.
 - Small commits, Conventional Commit messages, DCO sign-off (`git commit -s`).
