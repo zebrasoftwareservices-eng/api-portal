@@ -1,7 +1,7 @@
 ---
 id: 022
 title: Server robustness and authored path order
-status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear: JSO-188
@@ -115,16 +115,235 @@ order. JSO-188 and JSO-225 both stay open until this spec merges.
 - **Issues found after this spec is written.** They go to the spec where they were found or a new issue.
 
 ## Open questions
-- [ ] Since spec 005, the first admin is created in the setup wizard. Does boot still create an admin
+- [x] Since spec 005, the first admin is created in the setup wizard. Does boot still create an admin
       anywhere (for example from environment variables in the quickstart), and so which code path
       does criterion 6 cover? — tech-lead
-- [ ] Since specs 009 and 010, keys are created through subscriptions and access approvals. Do those
+      **Answer:** yes. `startup.ts` calls `createFirstAdmin` when `ADMIN_EMAIL` and `ADMIN_PASSWORD`
+      are set and no admin exists. The quickstart compose passes both through. `createFirstAdmin`
+      is already one transaction, so today's code can't leave a partial admin. Older installs or a
+      manual repair can, though. Boot crashes when `ADMIN_EMAIL` already belongs to a user that isn't
+      an admin, because only `setup-complete` is caught. And a role-`admin` row with no credential
+      counts as "admin exists", which hides the setup wizard while nobody can sign in. Criterion 6
+      covers the boot path and the shared `createFirstAdmin`, which the wizard also uses.
+- [x] Since specs 009 and 010, keys are created through subscriptions and access approvals. Do those
       paths also hold a transaction during Kong calls, and are they part of criterion 1, or only
       the original app and key creation paths? — tech-lead
-- [ ] Storage for authored order: keep the raw document text beside `jsonb` (two columns), or
+      **Answer:** yes. Admin subscription (`product-access.ts`, `POST` for a team) and approval
+      (`access-requests.ts`) both call `provisionApp` inside a transaction. They are in scope,
+      because the fix lands in `provisionApp`, which all of them share. Plan change, app delete,
+      gateway switch, the seed and `revokeApps` keep their shape. That is recorded as a follow-up.
+- [x] Storage for authored order: keep the raw document text beside `jsonb` (two columns), or
       switch to `json`/`text` only? This affects the migration size and spec 020 search, which may
       query `jsonb`. — tech-lead
-- [ ] Should the seed skip at slug `sample` only when the API there wasn't created by the seed, or
+      **Answer:** switch `api_versions.document` to Postgres `json` (ADR 0015). Search does not
+      query `jsonb`; it parses documents in the server (ADR 0012). No SQL uses `jsonb` operators
+      on `document`.
+- [x] Should the seed skip at slug `sample` only when the API there wasn't created by the seed, or
       always skip once any API exists at that slug? — Elango
-- [ ] The 20 × 1 MB numbers in criterion 7 are a test fixture, not a performance target. Does Elango
+      **Default, pending Elango:** skip whenever an API at `sample` was not created by the seed.
+      A seed-created one is refreshed. See "Seed" below for the one line to change if Elango
+      picks "always skip".
+- [x] The 20 × 1 MB numbers in criterion 7 are a test fixture, not a performance target. Does Elango
       want a response-time target for the catalog as well? — Elango
+      **Default, pending Elango:** no response-time target. Criterion 7 stays a fixture-based test
+      that checks which columns are read. A timing assertion can be added to the same test later.
+
+## Technical design
+
+### Components
+- `apps/server` — app and key creation, key revoke, compensation logging, reconcile, seed, first
+  admin, catalog queries.
+- `packages/db` — `gateway_operations` table, `apis.seeded`, `api_versions.document` as `json`,
+  one migration.
+- `apps/server/openapi.yaml` — no new paths or schema changes. The document endpoints now say
+  they keep authored key order.
+- No portal (frontend) code changes. Scalar keeps document order by default, and
+  `components/reference.tsx` sets no sorter.
+- No adapter changes. Every Kong call used here is already idempotent and tagged (ADR 0002).
+
+### 1. Kong calls outside transactions (criteria 1, 2) — ADR 0014
+New `apps/server/src/gateway-operation.ts`:
+- `beginOperation(tx, { kind, appId, credentialId?, gatewayId })` inserts a `gateway_operations` row.
+- `endOperation(db, id)` deletes it.
+
+Each path runs as prepare → gateway → commit:
+
+| Path | Prepare (short tx) | Gateway (no tx) | Commit (short tx) |
+| --- | --- | --- | --- |
+| `POST /v1/apps` | today's locks and checks, `create-app` op with `credentialId` | `ensureConsumer`, `grantAccess` × services, `applyPlanLimits` (if not builtin), `issueCredential` | same locks and checks again, insert app, subscriptions, `gateway_consumers` and credential, delete op |
+| `POST /v1/apps/{appId}/credentials` | access, app active, key limit, `issue-credential` op | `ensureConsumer`, `grantAccess`, `applyPlanLimits`, `issueCredential` | app still active, key limit again, upsert `gateway_consumers`, insert credential, `keyIssued`, delete op |
+| admin subscription (`product-access.ts`) | today's checks via `provisionApp` prepare, `create-app` op | `provisionApp` gateway calls | checks again, inserts, delete op |
+| access approval (`access-requests.ts`) | same as above, plus the request row stays `pending` | same | request → `approved`, inserts, delete op |
+| `DELETE /v1/apps/{appId}/credentials/{id}` | access, key active, `revoke-credential` op | `revokeCredential` | key → `revoked`, delete op |
+
+- Split `provisionApp` into `prepareApp(tx, …) → AppPlan` (checks only, no writes except the op),
+  `applyAppToGateway(adapter, plan, rollback)` and `commitApp(tx, plan)`. `commitApp` calls the
+  same check function as `prepareApp`.
+- In commit, re-load the gateway with `connection.load(tx)`. If its id differs from the
+  prepared `gatewayId`, or it is disabled, throw `409 gateway-changed`. The existing problem type
+  for a disabled gateway is reused if one exists. The adapter used in step 2 then compensates.
+- Name races: two creates can both pass prepare. Commit holds the team+name advisory lock and
+  re-checks, so the loser gets `409 app-name-taken` and compensates.
+- Failure in gateway or commit runs `compensate(rollback, log)` outside any transaction, then
+  `endOperation`. Exception: a revoke whose commit fails keeps its op for reconcile.
+- No transaction is open during step 2. Criterion 1 is checked in `pg_stat_activity` while Kong
+  is delayed: no portal session is `idle in transaction`, and none has an `xact_start` older than
+  one second.
+
+### 2. Reconcile and revoke (criterion 3)
+`reconcile()` loads `gateway_operations` once. Let `recent` be ops younger than
+`PENDING_OPERATION_GRACE_MS = 10 * 60_000`.
+- Owned consumer whose app is not active: skip if a `recent` op has that `appId`, else delete
+  (today's rule).
+- Kong key with no row or a revoked row: skip if a `recent` op has that `credentialId`, else
+  revoke (today's rule).
+- Active row missing from Kong: if a `revoke-credential` op exists for it (any age), set
+  `status = 'revoked'`, `revokedAt = now()`, delete the op, and do not warn. Otherwise warn
+  `drift: active credential missing from gateway` (today's rule).
+- Stale `revoke-credential` op (older than grace) whose key is still in Kong: `revokeCredential`,
+  then the update above.
+- After the rules run, delete ops older than the grace period.
+- `reconcile()` returns `{ drift: { credentialIds: string[] } }` so tests can check
+  "a second run reports no drift" without parsing logs. The `drift` "flag" in criterion 3 is this
+  report and the warning. There is no drift column, and none is added.
+
+### 3. Compensation logging (criterion 4)
+- `compensate(operations, log)` takes entries of
+  `{ appId, credentialId?, gatewayId, gatewayObject: { consumer?: string; credential?: string }, run }`.
+- A failure logs once, at error level:
+  `log.error({ err: redactSecrets(error), appId, credentialId, gatewayId, gatewayObject }, 'Gateway compensation failed; reconcile will retry')`.
+- The `POST …/credentials` catch block, which logs a warning without the error, uses `compensate()` too.
+- New `apps/server/src/log-safety.ts` exports `redactSecrets(error)`. It returns a plain
+  `{ type, message, stack, cause }` copy, recursing into `cause` up to depth 5. Every string
+  matching `/pk_[A-Za-z0-9_-]+/g` becomes `pk_[redacted]`. Kong error bodies can echo the key,
+  so this runs on every compensation error.
+- The Fastify logger uses pino's `stdSerializers.errWithCause` for `err`, so `cause` shows up in
+  the log line.
+
+### 4. Seed at slug `sample` (criterion 5)
+- New column `apis.seeded boolean not null default false`. The migration backfills
+  `seeded = true` where `slug = 'sample' and gateway_service_name = 'portal-sample' and created_by is null`.
+- `seedSample` checks first: if a row at `sample` exists and `seeded = false`, it logs
+  `info` `Sample seed skipped: slug "sample" is taken by an admin-published API` and returns
+  before any Kong call.
+- The upsert gets a guard, `onConflictDoUpdate({ target: apis.slug, set, where: eq(apis.seeded, true) })`,
+  with `seeded: true` on insert. If `returning()` is empty, an admin published at `sample`
+  between the check and the insert. Then it logs the same skip line and rolls back. The version
+  upsert runs only after the API upsert returns a seeded row.
+- A seed-created row is refreshed on boot: service ids and the `1.0.0` document. That also
+  rewrites the sample's document in authored order on upgraded quickstarts (criterion 8).
+- **If Elango picks "always skip":** replace the first check with "any row at `sample` → skip" and
+  drop the refresh. The guard in the upsert stays. The column and tests stay.
+
+### 5. First admin after a crash (criterion 6)
+In `setup.ts`, a **usable admin** is a `user` with `role = 'admin'` that has an `account` row with
+`provider_id = 'credential'` and a non-null `password`.
+- `adminExists(db)` means a usable admin exists. It is used by boot, `GET /v1/setup`,
+  `prepareSetupToken` and the `createFirstAdmin` guard. A partial admin no longer hides the wizard.
+- In `createFirstAdmin`, when a `user` with the requested email exists **without** a credential
+  account, it is a partial row from a crashed start. Complete it in the same transaction: set
+  `role = 'admin'`, `emailVerified = true`, `name`, insert the credential account, and delete
+  setup tokens. If the user has a credential account, keep today's `400 validation` (email taken).
+- Boot in `startup.ts`: any `Problem` from `createFirstAdmin` is logged with `warn`
+  `First admin from ADMIN_EMAIL not created: <title>` and boot continues. The wizard stays
+  available while there is no usable admin. A non-`Problem` error still stops boot.
+- Exactly one usable admin: the advisory lock `71833003` and the usable-admin guard run in the
+  same transaction as the completion, so two boots can't both complete it.
+
+### 6. Catalog without full documents (criterion 7)
+- `publishedApis(db, viewer?, options?: { slug?: string; documents?: boolean })` selects explicit
+  version columns (`id, apiId, version, title, description, publishedAt, sourceFormat`). It does
+  not select `document`, `source_content`, `lint_warnings` or `change_summary` unless
+  `documents: true`. `slug` adds `where apis.slug = $1` in SQL.
+- `loadDocument(db, versionId)` reads one `document`.
+- Callers:
+
+| Caller | Change |
+| --- | --- |
+| `GET /v1/apis` | no documents |
+| `GET /v1/apis/{slug}` | `slug` filter; `apiDetail` selects version columns without `document` |
+| `GET /v1/apis/{slug}/openapi.json`, `versions.ts`, spec download, `agent-docs` per-API | `slug` filter, then `loadDocument` for one version |
+| `proxy.ts` | resolve target on rows without documents, then `loadDocument` for that one row's components |
+| `products.ts`, `gateways.ts`, `import.ts` | no documents (they use summary fields) |
+| `search.ts`, `llms.txt` / `agent-docs` site-wide | `documents: true` (spec 020 behavior, out of scope) |
+
+- The `PublishedApi` type keeps its shape minus `version.document`. Code that needs the document
+  takes it as an argument.
+- Test: a Drizzle `logger` passed in the integration test records SQL. The list request runs no
+  statement that selects `"document"`. The slug page selects `"document"` for exactly one row.
+  `connect(url, { logger })` takes an optional logger for that.
+
+### 7. Authored path order (criteria 8, 9, 10) — ADR 0015
+- `api_versions.document` becomes `json('document').$type<Record<string, unknown>>().notNull()`.
+- Writers are unchanged (import, versions, seed). `yaml.parse` and the bundler keep key order,
+  and Drizzle's `JSON.stringify` keeps insertion order.
+- Old rows keep their `jsonb` order. Re-import stores authored order. The seed refresh fixes the
+  quickstart sample.
+- The migration runs in the migrator's transaction (criterion 10). Test it by killing the
+  connection mid-migration with `pg_terminate_backend` from a second session on a database with
+  pre-022 rows. Then restart and check the column type and that the APIs render.
+
+### Data model (one migration, `pnpm --filter @portal/db exec drizzle-kit generate`)
+```sql
+create table gateway_operations (
+  id uuid primary key,
+  kind text not null check (kind in ('create-app','issue-credential','revoke-credential')),
+  app_id uuid not null,            -- no FK: the app row may not exist yet
+  credential_id uuid,
+  gateway_id uuid not null references gateways(id) on delete cascade,
+  started_at timestamptz not null default now()
+);
+create index gateway_operation_started_idx on gateway_operations (started_at);
+alter table apis add column seeded boolean not null default false;
+update apis set seeded = true
+  where slug = 'sample' and gateway_service_name = 'portal-sample' and created_by is null;
+alter table api_versions alter column document type json using document::json;
+```
+Drizzle-kit may not write the `update` or the `using` clause. Edit the generated SQL by hand to
+match, and keep the snapshot in step.
+
+### API contract
+No new endpoints, request fields or response fields. `getApiDocument` and `getApiVersionDocument`
+now say they keep authored key order. Error cases on the changed paths stay what they are today:
+`409 app-name-taken`, `409 credential-limit`, `409 app-revoked` and gateway `502/503` problems. Commit
+can now also return those 409s after a race, and `409 gateway-changed` when the gateway was
+switched mid-request. All are problem+json.
+
+### Risks and how to test them
+- **Reconcile deletes an in-flight consumer.** Integration test: delay Kong, run `reconcile()`
+  during step 2, and check that the app and key are created and still work through Kong.
+- **Slow Kong in tests.** A small HTTP delay proxy in front of the Kong Admin API in the Testcontainers
+  setup (Node `http`, no new dependency). Point the gateway connection at it.
+- **Forcing a DB failure after a Kong revoke (criterion 3).** In the test, create a Postgres trigger
+  on `credentials` that raises on update for the target id, revoke, drop the trigger, then run reconcile twice.
+- **Compensation failure (criterion 4).** Make the delay proxy return 500 for `DELETE` on the
+  consumer after a forced commit failure (a name collision), and capture logger output.
+- **Integer-like keys reorder.** This is documented, not a bug.
+- **Migration lock time.** `api_versions` is rewritten at boot. That is acceptable for
+  self-hosted sizes and is noted in the ADR.
+
+### Follow-ups
+- Move plan change, app delete, gateway switch, seed and `revokeApps` Kong calls to the
+  prepare → gateway → commit pattern.
+- The allowlist load, if profiling shows it is costly (out of scope above).
+
+### Tasks
+- [ ] [backend] Migration and schema: `gateway_operations`, `apis.seeded` with backfill, `api_versions.document` → `json` (§Data model, ADR 0015)
+- [ ] [backend] `gateway-operation.ts` and the prepare → gateway → commit split of `provisionApp`; apply to `POST /v1/apps`, admin subscription and access approval (§1)
+- [ ] [backend] `POST /v1/apps/{appId}/credentials` and key revoke on prepare → gateway → commit (§1)
+- [ ] [backend] Reconcile: in-flight op grace, finishing revoke ops, stale op cleanup, `{ drift }` return value (§2)
+- [ ] [backend] `log-safety.ts` `redactSecrets`, error-level `compensate()` with ids and `err`, `errWithCause` serializer (§3)
+- [ ] [backend] Seed guard and refresh for seed-created `sample` and the skip log line (§4)
+- [ ] [backend] Usable-admin check, completing a partial admin, boot continues after a `Problem` (§5)
+- [ ] [backend] `publishedApis` without documents, `slug` filter, `loadDocument`; update callers; optional `logger` in `connect` (§6)
+- [ ] [qa] Criterion 1: Kong delayed by the proxy, `pg_stat_activity` shows no open portal transaction during the call, for app create, key create, admin subscription and approval
+- [ ] [qa] Criterion 2: Kong error and timeout on create → problem+json, no app or key row, no consumer or key left in Kong (check Kong by tag)
+- [ ] [qa] Criterion 3: trigger-forced update failure after a Kong revoke, reconcile run twice, row revoked and no drift on the second run
+- [ ] [qa] Criterion 4: compensation failure logs one error entry with `err.message`, `err.cause` and app, key and gateway ids; no log line matches `pk_[A-Za-z0-9_-]{8,}`
+- [ ] [qa] Reconcile during an in-flight create does not delete the new consumer or key
+- [ ] [qa] Criterion 5: admin API at `sample`, restart with `SEED_SAMPLE=true`, API unchanged, skip line logged; seed-created sample still refreshed
+- [ ] [qa] Criterion 6: user row with `ADMIN_EMAIL` and no credential → boot completes and admin signs in; role-admin row without credential → wizard available; exactly one usable admin
+- [ ] [qa] Criterion 7: 20 APIs × 1 MB fixture, SQL logger shows no `document` in the list and one in the slug page; list response equal to the pre-change snapshot
+- [ ] [qa] Criteria 8, 9: quickstart sample sidebar order `/get`, `/post`, `/status/{code}`, `/uuid`, `/headers` (Playwright); pre-022 rows still render, try-it works, spec download valid, re-import stores authored order
+- [ ] [qa] Criterion 10: connection killed mid-migration → restart boots, column is `json` or untouched `jsonb`, APIs serve
+- [ ] [qa] `docker compose up` quickstart still works on a fresh volume and on an upgraded pre-022 volume
