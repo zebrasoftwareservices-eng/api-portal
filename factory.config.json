@@ -13,20 +13,20 @@
       "agent": "claude"
     },
     "backend-developer": {
-      "agent": "codex",
-      "model": "gpt-6.1-sol"
+      "agent": "grok",
+      "model": "grok-4.7"
     },
     "frontend-developer": {
-      "agent": "codex",
-      "model": "gpt-6.1-sol"
+      "agent": "grok",
+      "model": "grok-4.7"
     },
     "qa-tester": {
-      "agent": "codex",
-      "model": "gpt-6.1-sol"
+      "agent": "grok",
+      "model": "grok-4.7"
     },
     "user-tester": {
-      "agent": "codex",
-      "model": "gpt-6.1-sol"
+      "agent": "grok",
+      "model": "grok-4.7"
     },
     "researcher": {
       "agent": "grok",
@@ -51,7 +51,8 @@
     "agentLabels": {
       "claude": "Claude Code",
       "codex": "Codex",
-      "antigravity": "Antigravity"
+      "antigravity": "Antigravity",
+      "grok": "Grok"
     }
   }
 }
