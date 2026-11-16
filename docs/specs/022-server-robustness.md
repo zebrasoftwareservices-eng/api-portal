@@ -1,7 +1,7 @@
 ---
 id: 022
 title: Server robustness and authored path order
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear: JSO-188
@@ -401,14 +401,14 @@ A 390×844 pass and a Tab, Enter, and Escape pass both reached that sidebar orde
 
 ## Review
 
-Commit reviewed: `5521f4a` (code unchanged since the tested `1c3fd9d`; the suite was not re-run).
+Commit reviewed: `cb5df1f` (code unchanged since the tested `05a4be0`; docs only since then, so the suite was not re-run).
 
 **Blocking**
-- Criterion 4 is not met: the compensation log has no `err.cause`. `redactSecrets` copies `cause` and the logger uses `errWithCause`, but `GatewayUnavailableError` (`packages/adapter-sdk/src/index.ts:109`) takes no cause, and `KongAdapter.request` drops the fetch error and the 5xx status (`packages/adapter-kong/src/index.ts:91-101`). For a Kong outage, the most common compensation failure, the operator sees only "The API gateway is unavailable" and can't tell a refused connection from a timeout or a 500. Fix: accept `{ cause }` in the constructor (`super(message, { cause })`), pass the caught error at line 92, an `Error('Kong returned <status>')` at line 95 and the parse error at line 101. The criterion 4 test at `apps/server/src/server-robustness.test.ts:779` must also assert `err.cause`. The design said "no adapter changes"; that was a gap in the design, and this is a constructor option only. It closes the open minor in Bugs.
+- None. The earlier criterion 4 finding is fixed: `GatewayUnavailableError` takes `{ cause }` (`packages/adapter-sdk/src/index.ts:110`), and `KongAdapter.request` passes the fetch error, `Kong returned <status>` and the JSON parse error (`packages/adapter-kong/src/index.ts:91-105`). `kong.test.ts` covers all three, and `apps/server/src/server-robustness.test.ts:951` asserts `err.cause` in the compensation log. The cause never reaches a problem+json body: no handler reads `cause`, and logs pass through `redactSecrets`.
 
 **Suggestions**
 - `apps/server/src/apps.ts:405-490` (key create) and `apps/server/src/apps.ts:495-560` (key revoke) repeat the compensate-and-end-operation cleanup from `runGatewayPhase` (`apps/server/src/app-provisioning.ts:205-230`). Key create could use `runGatewayPhase` directly; revoke needs its `keepOperationOnCommitFailure` option.
 - `apps/server/src/app.ts:35-49` reaches pino through `createRequire(fastify)`. That works but depends on fastify's install layout. A direct `pino` dependency, pinned to the version fastify uses, is simpler.
 - `apps/server/src/reconcile.ts` still calls Kong inside its transaction. That is already listed under Follow-ups.
 
-Checked and fine: prepare → gateway → commit on app create, key create, admin subscription, subscribe approval and revoke; commit re-checks name, key limit and gateway; in-flight ops protect consumers and keys from reconcile; revoke ops are finished by reconcile; problem+json throughout; no `pk_` in logs; seed guard and skip line; usable-admin check and partial-admin completion; catalog list without `document`; migration in one transaction with backfill and `USING document::json`; contract note in `openapi.yaml`; quickstart passed in the Test report.
+Checked and fine: every criterion has a passing test in the Test report; prepare → gateway → commit on app create, key create, admin subscription, approval and revoke; commit re-checks name, key limit and gateway (new test for a gateway disabled mid-call); expired sessions get `401` problem+json with no Kong writes; in-flight ops protect consumers and keys from reconcile; no `pk_` in logs; seed guard and skip line; usable-admin check; catalog list without `document`; one-transaction migration; contract note in `openapi.yaml`; fresh and seeded quickstart passed.
