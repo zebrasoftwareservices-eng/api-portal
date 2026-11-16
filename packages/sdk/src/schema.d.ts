@@ -195,6 +195,10 @@ export interface paths {
          *     If the document has an `apiKey` scheme but no top-level `security`, the first `apiKey`
          *     scheme is applied at the top level, so the reference shows its key field (spec 003).
          *     Operation-level `security`, including `security: []`, is left as written.
+         *     Object keys keep the order the author wrote them in, so `paths` and the operations under
+         *     each path are served in authored order (spec 022). Documents stored before spec 022 keep
+         *     the order they were stored in until they are re-imported. Integer-like keys such as
+         *     response codes follow JSON object rules and are served in ascending order.
          */
         get: operations["getApiDocument"];
         put?: never;
@@ -214,8 +218,8 @@ export interface paths {
         };
         /**
          * OpenAPI document of one version, ready for the API reference
-         * @description Same transformation as `getApiDocument` (servers replaced, `portalApiKey` added when
-         *     needed). Every version shares the API's gateway base URL: the portal documents versions,
+         * @description Same transformation and authored key order as `getApiDocument` (servers replaced,
+         *     `portalApiKey` added when needed). Every version shares the API's gateway base URL: the portal documents versions,
          *     it doesn't route them (spec 012, out of scope).
          */
         get: operations["getApiVersionDocument"];
@@ -1455,6 +1459,181 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/theme": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What the portal needs to apply the live theme (spec 013, ADR 0016)
+         * @description Public and cheap: one primary-key read. The portal's root layout calls it on every server
+         *     render, so a saved theme shows on the next page load with no restart or rebuild (AC 1).
+         *     With no saved theme this is the shipped default and `isDefault` is true (AC 10).
+         *     `etag` changes whenever anything in the theme changes, including assets; every URL in the
+         *     response carries it as `?v=` so browsers can cache those URLs forever.
+         *     Never includes the custom CSS text itself.
+         */
+        get: operations["getPublicTheme"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/theme.css": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The live theme's tokens as CSS variables (no custom CSS)
+         * @description Generated from the stored values, never from free text: `:root` light tokens, dark tokens
+         *     under `prefers-color-scheme` / `[data-theme]`, `--radius` and `--portal-font-sans`.
+         *     The `v` query parameter is ignored for content; when it equals the current `etag` the
+         *     response is `Cache-Control: public, max-age=31536000, immutable`, otherwise `no-cache`.
+         *     Answers `ETag` and honours `If-None-Match` with 304.
+         */
+        get: operations["getThemeStylesheet"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/theme/custom.css": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The saved custom CSS, verbatim (empty when none)
+         * @description Served as its own `text/css` file, never inlined into HTML, so it cannot break out into
+         *     markup. The portal links it on public and developer pages only, never under `/admin`
+         *     (AC 3, AC 4). Same `v` / `ETag` caching rules as `/v1/theme.css`.
+         */
+        get: operations["getThemeCustomCss"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/theme/assets/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                kind: components["parameters"]["ThemeAssetKind"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The uploaded logo or favicon
+         * @description Bytes as uploaded, with the sniffed `Content-Type`, `X-Content-Type-Options: nosniff` and
+         *     `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; sandbox`, so an SVG
+         *     opened directly cannot run script. Same `v` / `ETag` caching rules as `/v1/theme.css`.
+         *     404 when no asset of that kind is saved; the portal then uses its built-in default.
+         */
+        get: operations["getThemeAsset"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/theme": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The editable theme, for Admin → Theme
+         * @description Asset bytes are not included; use the asset URLs, or export for a full copy.
+         */
+        get: operations["getThemeSettings"];
+        /**
+         * Save the whole theme in one atomic write
+         * @description Send every value in `values`. For `logo` and `favicon`: omit to keep the stored asset,
+         *     send `null` to remove it, or send `{ contentType, data }` to replace it. Everything is
+         *     validated first; on any error nothing is saved and the live theme is unchanged (AC 7).
+         *     Validation errors name the field in `errors[].pointer`, for example
+         *     `/values/colors/light/primary`, `/logo/data` or `/values/customCss`.
+         *     Low contrast is not an error; the editor warns before saving (AC 8).
+         *     Body limit 2 MB.
+         */
+        put: operations["saveTheme"];
+        post?: never;
+        /**
+         * Reset to the shipped default theme (AC 5)
+         * @description Removes the saved values, custom CSS, logo and favicon in one transaction. Idempotent.
+         */
+        delete: operations["resetTheme"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/theme/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download the theme as one JSON file, assets included (AC 6)
+         * @description `Content-Disposition: attachment; filename="portal-theme.json"`. The file is exactly the
+         *     body `POST /v1/admin/theme/import` accepts. Exporting the default theme works and gives
+         *     the default values with `logo` and `favicon` null.
+         */
+        get: operations["exportTheme"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/theme/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace the whole theme with an exported file (AC 6, AC 7)
+         * @description Replaces everything: a `null` logo or favicon in the file removes the stored one.
+         *     Same validation as `PUT /v1/admin/theme`, plus `format` must be `portal-theme` and
+         *     `version` must be `1`. A file that is not JSON answers 400 `/problems/validation` with
+         *     `detail` "The file is not valid JSON". On any error nothing is saved. Body limit 2 MB.
+         */
+        post: operations["importTheme"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{appId}/usage": {
         parameters: {
             query?: never;
@@ -2011,6 +2190,116 @@ export interface components {
         AccountSettings: components["schemas"]["SaveAccountSettingsRequest"] & {
             /** @description SMTP settings are saved or set in the environment. `requireVerifiedEmail` can't be turned on without them. */
             mailConfigured: boolean;
+        };
+        /**
+         * @description Six-digit hex colour. No names, alpha or functions, so values are safe to write into CSS.
+         * @example #1d4ed8
+         */
+        ThemeColor: string;
+        /**
+         * @description One mode's palette. Maps to the `packages/ui` tokens of the same name (`--background`,
+         *     `--muted-foreground`, …). `card`, `popover`, `secondary` and `ring` are derived from these.
+         */
+        ThemeColors: {
+            background: components["schemas"]["ThemeColor"];
+            foreground: components["schemas"]["ThemeColor"];
+            muted: components["schemas"]["ThemeColor"];
+            mutedForeground: components["schemas"]["ThemeColor"];
+            primary: components["schemas"]["ThemeColor"];
+            primaryForeground: components["schemas"]["ThemeColor"];
+            accent: components["schemas"]["ThemeColor"];
+            accentForeground: components["schemas"]["ThemeColor"];
+            border: components["schemas"]["ThemeColor"];
+        };
+        /**
+         * @description Body font from the offered list. All are open-licensed and self-hosted in the portal image,
+         *     so the portal makes no third-party font request. `system` is the shipped default.
+         * @enum {string}
+         */
+        ThemeFont: "system" | "inter" | "ibm-plex-sans" | "source-sans-3" | "noto-sans" | "atkinson-hyperlegible";
+        ThemeValues: {
+            colors: {
+                light: components["schemas"]["ThemeColors"];
+                dark: components["schemas"]["ThemeColors"];
+            };
+            font: components["schemas"]["ThemeFont"];
+            /** @description Corner radius in px (`--radius`) */
+            radius: number;
+            /**
+             * @description `system` follows the visitor's OS setting; `light` or `dark` forces that mode.
+             * @enum {string}
+             */
+            defaultMode: "system" | "light" | "dark";
+            /**
+             * @description Applied after the tokens on public and developer pages, never under `/admin`.
+             *     Max 64 KB. `@import` is rejected (`/problems/validation`, pointer `/values/customCss`)
+             *     because an imported sheet can change outside the portal and would not be exported.
+             */
+            customCss: string;
+        };
+        /**
+         * @description Base64 image. The server sniffs the bytes and rejects a mismatch with `contentType`.
+         *     Logo: PNG, SVG or WebP up to 512 KB decoded. Favicon: PNG, SVG or ICO up to 128 KB decoded.
+         *     An SVG containing `<script`, `<foreignObject`, an `on*` attribute, a `javascript:` URL or
+         *     an external `href` is rejected.
+         */
+        ThemeAssetUpload: {
+            /** @enum {string} */
+            contentType: "image/png" | "image/svg+xml" | "image/webp" | "image/x-icon";
+            /** Format: byte */
+            data: string;
+        };
+        ThemeAssetInfo: {
+            /** @enum {string} */
+            contentType: "image/png" | "image/svg+xml" | "image/webp" | "image/x-icon";
+            byteSize: number;
+            /** @description `/v1/theme/assets/{kind}?v=<etag>` */
+            url: string;
+        };
+        SaveThemeRequest: {
+            values: components["schemas"]["ThemeValues"];
+            /** @description Omit to keep, `null` to remove, an object to replace */
+            logo?: components["schemas"]["ThemeAssetUpload"] | null;
+            /** @description Omit to keep, `null` to remove, an object to replace */
+            favicon?: components["schemas"]["ThemeAssetUpload"] | null;
+        };
+        ThemeSettings: {
+            /** @description Nothing is saved; the shipped default is live */
+            isDefault: boolean;
+            etag: string;
+            values: components["schemas"]["ThemeValues"];
+            /** @description The shipped default values, for "Reset field" and the preview baseline */
+            defaults: components["schemas"]["ThemeValues"];
+            logo: components["schemas"]["ThemeAssetInfo"] | null;
+            favicon: components["schemas"]["ThemeAssetInfo"] | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+        };
+        PublicTheme: {
+            isDefault: boolean;
+            etag: string;
+            /** @enum {string} */
+            defaultMode: "system" | "light" | "dark";
+            font: components["schemas"]["ThemeFont"];
+            /** @description `/v1/theme.css?v=<etag>` */
+            stylesheetUrl: string;
+            /** @description `/v1/theme/custom.css?v=<etag>`, null when there is no custom CSS */
+            customCssUrl: string | null;
+            /** @description null means use the built-in logo */
+            logoUrl: string | null;
+            /** @description null means use the built-in favicon */
+            faviconUrl: string | null;
+        };
+        ThemeExport: {
+            /** @enum {string} */
+            format: "portal-theme";
+            /** @enum {integer} */
+            version: 1;
+            /** Format: date-time */
+            exportedAt?: string;
+            values: components["schemas"]["ThemeValues"];
+            logo: components["schemas"]["ThemeAssetUpload"] | null;
+            favicon: components["schemas"]["ThemeAssetUpload"] | null;
         };
         SearchResults: {
             items: components["schemas"]["SearchResult"][];
@@ -2894,6 +3183,7 @@ export interface components {
         ProductId: string;
         PlanId: string;
         RequestId: string;
+        ThemeAssetKind: "logo" | "favicon";
     };
     requestBodies: never;
     headers: never;
@@ -5390,6 +5680,242 @@ export interface operations {
                     "application/problem+json": components["schemas"]["Problem"];
                 };
             };
+        };
+    };
+    getPublicTheme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The live theme */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicTheme"];
+                };
+            };
+        };
+    };
+    getThemeStylesheet: {
+        parameters: {
+            query?: {
+                v?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Theme tokens */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/css": string;
+                };
+            };
+            /** @description Not modified */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getThemeCustomCss: {
+        parameters: {
+            query?: {
+                v?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Custom CSS */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/css": string;
+                };
+            };
+            /** @description Not modified */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getThemeAsset: {
+        parameters: {
+            query?: {
+                v?: string;
+            };
+            header?: never;
+            path: {
+                kind: components["parameters"]["ThemeAssetKind"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Image bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/svg+xml": string;
+                    "image/webp": string;
+                    "image/x-icon": string;
+                };
+            };
+            /** @description Not modified */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getThemeSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Theme settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThemeSettings"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    saveTheme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveThemeRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; live on the next page load */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThemeSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
+        };
+    };
+    resetTheme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reset; the response is the default theme */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThemeSettings"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    exportTheme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Theme file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThemeExport"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    importTheme: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ThemeExport"];
+            };
+        };
+        responses: {
+            /** @description Imported; live on the next page load */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ThemeSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PayloadTooLarge"];
         };
     };
     getAppUsage: {

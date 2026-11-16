@@ -274,11 +274,11 @@ None. The theme stays inside the portal. Kong and AWS are untouched.
   on `theme_assets`. That's acceptable, and there's no TTL cache, so replicas never disagree.
 
 ### Tasks
-- [ ] [backend] Create `packages/theme` (`@portal/theme`, tsc build, no runtime deps): types, `DEFAULT_THEME` (light from current `styles.css`, plus a dark palette that passes AA), `FONTS`, `validateTheme`, `renderThemeCss`, `contrastRatio`, `CONTRAST_PAIRS`, `themeEtag`, with unit tests including the styles.css drift test
-- [ ] [backend] Add `theme_settings` and `theme_assets` to `packages/db/src/schema.ts` and generate the migration with `pnpm --filter @portal/db exec drizzle-kit generate`; add a migration test
-- [ ] [backend] `apps/server/src/theme.ts`: public `GET /v1/theme`, `/v1/theme.css`, `/v1/theme/custom.css`, `/v1/theme/assets/{kind}` with etag/`If-None-Match`/cache headers, asset CSP and `nosniff`, and default fallback on a missing or invalid row
-- [ ] [backend] Admin `GET/PUT/DELETE /v1/admin/theme`, `GET /v1/admin/theme/export`, `POST /v1/admin/theme/import`: admin guard, 2 MB `bodyLimit`, magic-byte sniffing, SVG deny-list, `@import` check, one transaction per write, problem+json 400 with field pointers (including invalid JSON on import)
-- [ ] [backend] Integration tests (Testcontainers Postgres) for every route: 401/403, save → public etag changes, reset, export → import round trip, oversized and mismatched assets, bad colour, `@import`, invalid JSON; regenerate `packages/sdk`
+- [x] [backend] Create `packages/theme` (`@portal/theme`, tsc build, no runtime deps): types, `DEFAULT_THEME` (light from current `styles.css`, plus a dark palette that passes AA), `FONTS`, `validateTheme`, `renderThemeCss`, `contrastRatio`, `CONTRAST_PAIRS`, `themeEtag`, with unit tests including the styles.css drift test
+- [x] [backend] Add `theme_settings` and `theme_assets` to `packages/db/src/schema.ts` and generate the migration with `pnpm --filter @portal/db exec drizzle-kit generate`; add a migration test
+- [x] [backend] `apps/server/src/theme.ts`: public `GET /v1/theme`, `/v1/theme.css`, `/v1/theme/custom.css`, `/v1/theme/assets/{kind}` with etag/`If-None-Match`/cache headers, asset CSP and `nosniff`, and default fallback on a missing or invalid row
+- [x] [backend] Admin `GET/PUT/DELETE /v1/admin/theme`, `GET /v1/admin/theme/export`, `POST /v1/admin/theme/import`: admin guard, 2 MB `bodyLimit`, magic-byte sniffing, SVG deny-list, `@import` check, one transaction per write, problem+json 400 with field pointers (including invalid JSON on import)
+- [x] [backend] Integration tests (Testcontainers Postgres) for every route: 401/403, save → public etag changes, reset, export → import round trip, oversized and mismatched assets, bad colour, `@import`, invalid JSON; regenerate `packages/sdk`
 - [ ] [frontend] Dark default tokens in `packages/ui/src/styles.css` matching `DEFAULT_THEME.colors.dark`, applied by `prefers-color-scheme` and `[data-theme]`
 - [ ] [frontend] Root layout: fetch `/v1/theme` (no-store, timeout, default fallback), `ThemeProvider`, `generateMetadata` favicon, `data-theme`, `ThemeLinks` (nothing under `/admin`, plain `<link>`s), header logo (built-in under `/admin`), `<a>` for Admin entry links, self-hosted `@fontsource` fonts
 - [ ] [frontend] Preview mode in `ThemeLinks` (`?themePreview=1`, framed, same-origin `postMessage`, `<style>` via `textContent`); confirm framing headers allow `'self'`
@@ -301,6 +301,8 @@ Design: [docs/design/013-theme-editor.md](../design/013-theme-editor.md).
   `DEFAULT_THEME.colors.dark` and `styles.css` must match.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+**Backend.** `@portal/theme` (no runtime dependencies) owns the default palette, fonts, contrast check, CSS and etag. Migration `0010_theme` adds empty `theme_settings` and `theme_assets` tables. Public routes are `/api/v1/theme`, `/api/v1/theme.css`, `/api/v1/theme/custom.css` and `/api/v1/theme/assets/{logo|favicon}` with etag caching, `If-None-Match`, asset `nosniff` and a sandbox CSP. A missing or invalid row serves the shipped default and does not return asset bytes. Admin save, reset, export and import validate before one transaction: over 2 MB is 413, and a bad colour, `@import`, a mismatched or oversized asset, or a non-JSON import is 400 problem+json with the stored theme unchanged. Contrast never blocks a save. The server image copies `packages/theme/dist`. QA: the upgrade test locks `api_versions` on `0009_gateway_operations`, because `0010_theme` does not touch that table. The committed factory guard does not list `packages/theme` yet; add `under(path, 'packages/theme')` to the backend paths in `scripts/factory-guard.mjs` before the next backend commit.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
