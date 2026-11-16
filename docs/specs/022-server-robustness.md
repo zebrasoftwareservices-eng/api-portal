@@ -1,7 +1,7 @@
 ---
 id: 022
 title: Server robustness and authored path order
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear: JSO-188
@@ -377,6 +377,22 @@ Commit tested: `1c3fd9dacd169c57f40e8d5c8abd81eccf5f199d` · Portal: http://loca
 | Seeded compose quickstart, left up | `deploy/e2e/quickstart.spec.ts` | pass |
 
 `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed (344 tests in `@portal/server`). `pnpm test:e2e` then ran 105 tests against http://localhost:3005: 102 passed, 2 skipped, and one unexpected socket reset on the existing teams account-deletion test. That test passed when run again by itself. The crossed results for JSO-399, JSO-405, JSO-406, the Node.js snippet case, and the homepage outage case are the existing `test.fail` markers, and they failed as marked. The stack at http://localhost:3005 is still up, with the sample API seeded.
+
+## User testing
+
+Portal http://localhost:3005 at `6036d9b13954773bf2ac018317de27816c004833`. Notes: `docs/uat/022/report.md`.
+
+| User story | Result | Evidence |
+| --- | --- | --- |
+| App and key creation stays usable while Kong is slow | pass | Created "UAT sample reader". The app page showed "● Active". |
+| Reconcile stops reporting drift once a key is consistent | pass | Admin Gateways showed "● Connected". The word drift was not on that screen. |
+| Failed compensation is logged with its error and no key value | open minor | Not on screen. Bugs: Compensation error log has no `err.cause`. |
+| An API at slug `sample` survives a restart | pass | Admin row "sample", "1.0.0", "http://localhost:18005/sample". |
+| The portal boots and an admin can sign in | pass | Sign-in landed on "My apps". |
+| The catalog stays fast to browse | pass | Heading "APIs". Sample page heading "Sample HTTP API". |
+| The reference keeps the authored path order | pass | Sidebar: Inspect a GET request, Inspect a POST request, Return an HTTP status, Generate a UUID, Inspect request headers. |
+
+A 390×844 pass and a Tab, Enter, and Escape pass both reached that sidebar order. Try-it on GET /get showed "200 OK".
 
 ### Bugs
 
