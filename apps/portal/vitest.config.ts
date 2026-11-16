@@ -18,6 +18,9 @@ export default defineConfig({
       '@portal/sdk': fileURLToPath(
         new URL('../../packages/sdk/src/index.ts', import.meta.url),
       ),
+      '@portal/theme': fileURLToPath(
+        new URL('../../packages/theme/src/index.ts', import.meta.url),
+      ),
     },
   },
   esbuild: { jsx: 'automatic' },

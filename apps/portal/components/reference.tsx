@@ -8,6 +8,7 @@ import { api } from '../lib/client';
 import { useResource } from './use-resource';
 import { referenceOptions } from '../lib/reference-options';
 import { referenceDocument } from '../lib/reference-document';
+import { useColorMode } from '../lib/use-color-mode';
 export const Scalar = dynamic(
   () => import('@scalar/api-reference-react').then((m) => m.ApiReferenceReact),
   { ssr: false, loading: () => <p role="status">Loading API reference…</p> },
@@ -43,6 +44,7 @@ export function Reference({
   initialDocument?: Record<string, unknown>;
 }) {
   const [attempt, setAttempt] = useState(0);
+  const colorMode = useColorMode();
   const document = useResource(() =>
     initialDocument
       ? Promise.resolve({ data: initialDocument })
@@ -77,7 +79,7 @@ export function Reference({
           proxyUrl: '/api/v1/try-it',
           theme: 'none',
           hideDarkModeToggle: true,
-          forceDarkModeState: 'light',
+          forceDarkModeState: colorMode,
           persistAuth: false,
           agent: { disabled: true },
           withDefaultFonts: false,

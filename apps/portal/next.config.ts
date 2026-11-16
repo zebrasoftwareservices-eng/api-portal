@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { NextConfig } from 'next';
 import { demoEnabled, loadSampleDocument } from './lib/demo-build';
+import { PORTAL_FRAME_HEADERS } from './lib/theme';
 export default async function config(): Promise<NextConfig> {
   const demo = demoEnabled(process.env);
   return {
     output: 'standalone',
-    transpilePackages: ['@portal/sdk', '@portal/ui'],
+    transpilePackages: ['@portal/sdk', '@portal/theme', '@portal/ui'],
     env: {
       PORTAL_DEMO_ACTIVE: demo ? 'true' : 'false',
       PORTAL_DEMO_SAMPLE_API: demo
@@ -14,6 +15,10 @@ export default async function config(): Promise<NextConfig> {
     },
     async headers() {
       return [
+        {
+          source: '/:path*',
+          headers: [...PORTAL_FRAME_HEADERS],
+        },
         {
           source: '/invitations/accept',
           headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }],

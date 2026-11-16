@@ -4,12 +4,14 @@ import { useState } from 'react';
 import { Scalar, ReferenceBoundary } from './reference';
 import { referenceOptions } from '../lib/reference-options';
 import { referenceDocument } from '../lib/reference-document';
+import { useColorMode } from '../lib/use-color-mode';
 export function DemoReference({
   document,
 }: {
   document: Record<string, unknown>;
 }) {
   const [attempt, setAttempt] = useState(0);
+  const colorMode = useColorMode();
   return (
     <ReferenceBoundary key={attempt} retry={() => setAttempt((n) => n + 1)}>
       <Scalar
@@ -18,7 +20,7 @@ export function DemoReference({
           content: referenceDocument(document),
           theme: 'none',
           hideDarkModeToggle: true,
-          forceDarkModeState: 'light',
+          forceDarkModeState: colorMode,
           persistAuth: false,
           agent: { disabled: true },
           withDefaultFonts: false,

@@ -1,22 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminNav } from './admin-nav';
 const mocks = vi.hoisted(() => ({
   path: '/admin/apis',
   role: 'admin',
-  push: vi.fn(),
+  assign: vi.fn(),
   get: vi.fn().mockResolvedValue({ data: { items: [] } }),
 }));
 vi.mock('../lib/client', () => ({ api: { GET: mocks.get } }));
+vi.mock('../lib/navigate', () => ({ assignLocation: mocks.assign }));
 vi.mock('./providers', () => ({
   usePortal: () => ({ user: { role: mocks.role } }),
 }));
 vi.mock('next/navigation', () => ({
   usePathname: () => mocks.path,
-  useRouter: () => ({ push: mocks.push }),
 }));
+beforeEach(() => {
+  mocks.assign.mockReset();
+  mocks.path = '/admin/apis';
+  mocks.role = 'admin';
+});
 const items = [
   ['/admin/apis', 'APIs'],
   ['/admin/products', 'Products'],
@@ -25,10 +30,11 @@ const items = [
   ['/admin/gateways', 'Gateways'],
   ['/admin/settings/mail', 'Mail'],
   ['/admin/settings/accounts', 'Accounts'],
+  ['/admin/theme', 'Theme'],
 ] as const;
 describe('shared admin navigation', () => {
   it.each([...items, ['/admin/apis/api-id/versions', 'APIs'] as const])(
-    'marks the current section on %s and offers all seven destinations',
+    'marks the current section on %s and offers all eight destinations',
     (path, label) => {
       mocks.path = path;
       render(<AdminNav />);
@@ -44,7 +50,7 @@ describe('shared admin navigation', () => {
       ).toHaveValue(items.find(([, name]) => name === label)?.[0]);
     },
   );
-  it('navigates between all seven sections with the mobile select', async () => {
+  it('navigates between all eight sections with the mobile select', async () => {
     mocks.path = '/admin/gateways';
     const actor = userEvent.setup();
     render(<AdminNav />);
@@ -53,8 +59,17 @@ describe('shared admin navigation', () => {
         screen.getByRole('combobox', { name: 'Admin section' }),
         name,
       );
-      expect(mocks.push).toHaveBeenLastCalledWith(href);
+      expect(mocks.assign).toHaveBeenLastCalledWith(href);
     }
+  });
+  it('hides Theme and Insights from a developer', () => {
+    mocks.role = 'developer';
+    mocks.path = '/admin/apis';
+    render(<AdminNav />);
+    expect(screen.queryByRole('link', { name: 'Theme' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Insights' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'APIs' })).toBeInTheDocument();
+    mocks.role = 'admin';
   });
 });
 

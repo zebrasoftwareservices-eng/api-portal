@@ -6,17 +6,22 @@ import { Button, Dialog, DropdownMenu, toast } from '@portal/ui';
 import { isDemo, QUICKSTART_URL } from '../lib/demo';
 import { HeaderSearch } from './header-search';
 import { usePortal } from './providers';
+import { usePreviewLogo, usePublicTheme } from './theme-provider';
 export function Header() {
   const { user, sessionState } = usePortal();
+  const theme = usePublicTheme();
+  const previewLogo = usePreviewLogo();
   const pathname = usePathname();
   const router = useRouter();
+  const admin = pathname === '/admin' || pathname.startsWith('/admin/');
+  const logo = admin ? null : previewLogo !== undefined ? previewLogo : theme.logoUrl;
   const close = useRef<HTMLButtonElement>(null);
   if (pathname === '/setup')
     return (
       <header className="site-header">
         <div className="header-inner">
           <a className="brand" href="/">
-            Developer Portal
+            {logo ? <img className="brand-logo" src={logo} alt="Developer Portal" /> : 'Developer Portal'}
           </a>
         </div>
       </header>
@@ -123,7 +128,7 @@ export function Header() {
     <header className="site-header">
       <div className="header-inner">
         <a className="brand" href="/">
-          Developer Portal
+          {logo ? <img className="brand-logo" src={logo} alt="Developer Portal" /> : 'Developer Portal'}
         </a>
         <nav className="desktop-nav" aria-label="Main navigation">
           {links()}
