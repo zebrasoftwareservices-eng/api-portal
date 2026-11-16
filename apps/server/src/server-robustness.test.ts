@@ -34,10 +34,11 @@ import {
   apps,
   credentials,
   gatewayOperations,
+  session as authSession,
 } from '@portal/db';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
-import type { Auth } from './auth.js';
+import { createAuth, type Auth } from './auth.js';
 import { gatewayConnection } from './gateway-connection.js';
 import { reconcile } from './reconcile.js';
 import { seedSample } from './seed.js';
@@ -572,6 +573,176 @@ it('rejects invalid input, a missing session, a developer calling an admin route
       .set({ adminUrl: proxyAdminUrl })
       .where(eq(gateways.id, gatewayId));
   }
+});
+
+it('rejects an expired session on app, key, subscription and approval routes with no Kong writes', async () => {
+  const config = loadConfig({
+    DATABASE_URL: postgresContainer.getConnectionUri(),
+    NODE_ENV: 'test',
+  });
+  const auth = createAuth(connection.db, config, async () => {});
+  const { app: authed } = await createApp({
+    db: connection.db,
+    config,
+    auth,
+    enqueueReconcile: async () => {},
+    enqueueMail: async () => {},
+    enqueueRevocation: async () => {},
+  });
+  try {
+    const email = `expired-${uuidv7()}@example.com`;
+    const signup = await authed.inject({
+      method: 'POST',
+      url: '/api/auth/sign-up/email',
+      payload: { name: 'Expired', email, password: 'test-password-123' },
+    });
+    expect(signup.statusCode, signup.body).toBe(200);
+    const cookie = signup.headers['set-cookie']?.toString().split(';')[0] ?? '';
+    expect(cookie).toContain('session_token');
+    const me = await authed.inject({ url: '/api/v1/me', headers: { cookie } });
+    expect(me.statusCode, me.body).toBe(200);
+    await connection.db
+      .update(authSession)
+      .set({ expiresAt: new Date(0) })
+      .where(eq(authSession.userId, signup.json().user.id));
+    const ownedBefore = await ownedAppIds();
+    const appCount = (await connection.db.select({ id: apps.id }).from(apps))
+      .length;
+    const name = `expired-app-${uuidv7()}`;
+    const created = await authed.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      headers: { cookie },
+      payload: { name, teamId, apiIds: [looseApiId] },
+    });
+    expect(created.statusCode).toBe(401);
+    expect(created.headers['content-type']).toContain('application/problem+json');
+    expect(created.json().type).toBe('/problems/unauthenticated');
+    expect(await appsNamed(name)).toEqual([]);
+
+    const existing = await createLooseApp();
+    const keysBefore = await activeKeys(existing.app.id);
+    const issued = await authed.inject({
+      method: 'POST',
+      url: `/api/v1/apps/${existing.app.id}/credentials`,
+      headers: { cookie },
+    });
+    expect(issued.statusCode).toBe(401);
+    expect(issued.json().type).toBe('/problems/unauthenticated');
+    const revoked = await authed.inject({
+      method: 'DELETE',
+      url: `/api/v1/apps/${existing.app.id}/credentials/${existing.credential.id}`,
+      headers: { cookie },
+    });
+    expect(revoked.statusCode).toBe(401);
+    expect(await activeKeys(existing.app.id)).toEqual(keysBefore);
+
+    const subscribed = await authed.inject({
+      method: 'POST',
+      url: '/api/v1/admin/subscriptions',
+      headers: { cookie },
+      payload: { planId, teamId, name: `expired-sub-${uuidv7()}` },
+    });
+    expect(subscribed.statusCode).toBe(401);
+    expect(subscribed.json().type).toBe('/problems/unauthenticated');
+    const approved = await authed.inject({
+      method: 'POST',
+      url: `/api/v1/admin/access-requests/${uuidv7()}/approve`,
+      headers: { cookie },
+      payload: {},
+    });
+    expect(approved.statusCode).toBe(401);
+    expect(approved.json().type).toBe('/problems/unauthenticated');
+    expect(sorted(await ownedAppIds())).toEqual(
+      sorted([...ownedBefore, existing.app.id]),
+    );
+    expect(
+      await connection.db.select({ id: apps.id }).from(apps),
+    ).toHaveLength(appCount + 1);
+  } finally {
+    await authed.close();
+  }
+});
+
+it('returns problem+json and compensates when the gateway is disabled during app create or key issue', async () => {
+  const name = `disabled-${uuidv7()}`;
+  const ownedBefore = await ownedAppIds();
+  const opsBefore = (
+    await connection.db.select({ id: gatewayOperations.id }).from(gatewayOperations)
+  ).length;
+  let created: Awaited<ReturnType<typeof server.inject>> | undefined;
+  try {
+    created = await duringKong(
+      'hold',
+      () =>
+        server.inject({
+          method: 'POST',
+          url: '/api/v1/apps',
+          payload: { name, teamId, apiIds: [looseApiId] },
+        }),
+      async () => {
+        await connection.db
+          .update(gateways)
+          .set({ enabled: false })
+          .where(eq(gateways.id, gatewayId));
+      },
+    );
+  } finally {
+    await connection.db
+      .update(gateways)
+      .set({ enabled: true })
+      .where(eq(gateways.id, gatewayId));
+  }
+  expect(created?.statusCode, created?.body.slice(0, 400)).toBe(409);
+  expect(created?.headers['content-type']).toContain('application/problem+json');
+  expect(created?.json().type).toBe('/problems/gateway-disabled');
+  expect(await appsNamed(name)).toEqual([]);
+  expect(sorted(await ownedAppIds())).toEqual(sorted(ownedBefore));
+  expect(
+    await connection.db.select({ id: gatewayOperations.id }).from(gatewayOperations),
+  ).toHaveLength(opsBefore);
+
+  const existing = await createLooseApp();
+  const keysBefore = await activeKeys(existing.app.id);
+  const adapter = new KongAdapter({ adminUrl: kongAdmin, instanceId });
+  const beforeIds = (await adapter.listOwnedConsumers())
+    .find((row) => row.appId === existing.app.id)
+    ?.credentials.map((key) => key.id)
+    .sort();
+  let issued: Awaited<ReturnType<typeof server.inject>> | undefined;
+  try {
+    issued = await duringKong(
+      'hold',
+      () =>
+        server.inject({
+          method: 'POST',
+          url: `/api/v1/apps/${existing.app.id}/credentials`,
+        }),
+      async () => {
+        await connection.db
+          .update(gateways)
+          .set({ enabled: false })
+          .where(eq(gateways.id, gatewayId));
+      },
+    );
+  } finally {
+    await connection.db
+      .update(gateways)
+      .set({ enabled: true })
+      .where(eq(gateways.id, gatewayId));
+  }
+  expect(issued?.statusCode, issued?.body.slice(0, 400)).toBe(409);
+  expect(issued?.json().type).toBe('/problems/gateway-disabled');
+  expect(await activeKeys(existing.app.id)).toEqual(keysBefore);
+  expect(
+    (await adapter.listOwnedConsumers())
+      .find((row) => row.appId === existing.app.id)
+      ?.credentials.map((key) => key.id)
+      .sort(),
+  ).toEqual(beforeIds);
+  expect(
+    await connection.db.select({ id: gatewayOperations.id }).from(gatewayOperations),
+  ).toHaveLength(opsBefore);
 });
 
 function sorted(ids: string[]) {
