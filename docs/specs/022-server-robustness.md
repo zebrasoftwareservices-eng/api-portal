@@ -1,7 +1,7 @@
 ---
 id: 022
 title: Server robustness and authored path order
-status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
+status: done   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear: JSO-188
