@@ -64,6 +64,13 @@
       "when": 1794718334359,
       "tag": "0008_stale_the_anarchist",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794819179106,
+      "tag": "0009_gateway_operations",
+      "breakpoints": true
     }
   ]
 }

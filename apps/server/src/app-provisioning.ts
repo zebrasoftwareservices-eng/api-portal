@@ -6,9 +6,11 @@ import {
   apis,
   gatewayConsumers,
   subscriptions,
+  type Database,
 } from '@portal/db';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
+import type { GatewayAdapter, ConsumerRef } from '@portal/adapter-sdk';
 import { appApis, planLimits, type Db } from './app-plans.js';
 import {
   requireEnabled,
@@ -17,40 +19,68 @@ import {
 import { checkAppName } from './access-request-model.js';
 import type { FastifyBaseLogger } from 'fastify';
 import { notFound, Problem } from './problem.js';
-export type Compensations = { appId: string; run: () => Promise<unknown> }[];
+import { redactSecrets } from './log-safety.js';
+import {
+  beginOperation,
+  endOperation,
+  gatewayChanged,
+} from './gateway-operation.js';
+export type Compensation = {
+  appId: string;
+  credentialId?: string;
+  gatewayId: string;
+  gatewayObject: { consumer?: string; credential?: string };
+  run: () => Promise<unknown>;
+};
+export type Compensations = Compensation[];
 export async function compensate(
   operations: Compensations,
-  log: Pick<FastifyBaseLogger, 'warn'>,
+  log: Pick<FastifyBaseLogger, 'error'>,
 ) {
-  for (const { appId, run } of operations.reverse()) {
+  for (const operation of operations.reverse()) {
     try {
-      await run();
+      await operation.run();
     } catch (error) {
-      log.warn(
+      log.error(
         {
-          appId,
-          errorClass:
-            error instanceof Error ? error.constructor.name : typeof error,
+          err: redactSecrets(error),
+          appId: operation.appId,
+          credentialId: operation.credentialId,
+          gatewayId: operation.gatewayId,
+          gatewayObject: operation.gatewayObject,
         },
-        'App compensation failed; reconcile will retry',
+        'Gateway compensation failed; reconcile will retry',
       );
     }
   }
 }
-export async function provisionApp(
+export type AppInput = {
+  id?: string;
+  credentialId?: string;
+  apiIds?: string[];
+  planId: string;
+  teamId: string;
+  name: string;
+  description?: string | null;
+  createdBy: string;
+  origin: 'self' | 'request' | 'admin';
+};
+export type AppPlan = {
+  operationId: string;
+  appId: string;
+  credentialId?: string;
+  input: AppInput;
+  plan: typeof plans.$inferSelect;
+  selected: { api: typeof apis.$inferSelect }[];
+  gatewayId: string;
+  adapter: GatewayAdapter;
+  consumer?: ConsumerRef;
+};
+async function assertAppPlan(
   db: Db,
   connection: GatewayConnection,
-  input: {
-    id?: string;
-    apiIds?: string[];
-    planId: string;
-    teamId: string;
-    name: string;
-    description?: string | null;
-    createdBy: string;
-    origin: 'self' | 'request' | 'admin';
-  },
-  rollback: Compensations,
+  input: AppInput,
+  expectedGatewayId?: string,
 ) {
   await db.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
   await db.execute(
@@ -73,47 +103,130 @@ export async function provisionApp(
         .innerJoin(apis, eq(apis.id, planApis.apiId))
         .where(eq(planApis.planId, plan.id));
   await db.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
-  const { adapter, row: gateway } = requireEnabled(await connection.load(db));
+  const loaded = await connection.load(db);
+  if (
+    expectedGatewayId !== undefined &&
+    (!loaded || loaded.row.id !== expectedGatewayId)
+  )
+    throw gatewayChanged();
+  const { adapter, row: gateway } = requireEnabled(loaded);
   if (selected.some((a) => a.api.gatewayId !== gateway.id))
     throw new Problem(
       400,
       'validation',
       'APIs must use the configured gateway.',
     );
+  return { plan, selected, gatewayId: gateway.id, adapter };
+}
+export async function prepareApp(
+  db: Db,
+  connection: GatewayConnection,
+  input: AppInput,
+): Promise<AppPlan> {
+  const checked = await assertAppPlan(db, connection, input);
   const appId = input.id ?? uuidv7();
-  rollback.push({ appId, run: () => adapter.deleteConsumer({ id: appId }) });
-  const consumer = await adapter.ensureConsumer({ id: appId });
-  for (const id of new Set(selected.map((a) => a.api.gatewayServiceId)))
-    await adapter.grantAccess({ id: appId }, { id });
-  if (!plan.builtin)
-    await adapter.applyPlanLimits({ id: appId }, planLimits(plan));
+  const operationId = await beginOperation(db, {
+    kind: 'create-app',
+    appId,
+    credentialId: input.credentialId,
+    gatewayId: checked.gatewayId,
+  });
+  return { operationId, appId, credentialId: input.credentialId, input, ...checked };
+}
+export async function applyAppToGateway(
+  adapter: GatewayAdapter,
+  plan: AppPlan,
+  rollback: Compensations,
+) {
+  rollback.push({
+    appId: plan.appId,
+    credentialId: plan.credentialId,
+    gatewayId: plan.gatewayId,
+    gatewayObject: {
+      consumer: plan.appId,
+      ...(plan.credentialId ? { credential: plan.credentialId } : {}),
+    },
+    run: () => adapter.deleteConsumer({ id: plan.appId }),
+  });
+  const consumer = await adapter.ensureConsumer({ id: plan.appId });
+  for (const id of new Set(plan.selected.map((a) => a.api.gatewayServiceId)))
+    await adapter.grantAccess({ id: plan.appId }, { id });
+  if (!plan.plan.builtin)
+    await adapter.applyPlanLimits({ id: plan.appId }, planLimits(plan.plan));
+  return consumer;
+}
+export async function commitApp(
+  db: Db,
+  connection: GatewayConnection,
+  plan: AppPlan,
+) {
+  await assertAppPlan(db, connection, plan.input, plan.gatewayId);
+  if (!plan.consumer) throw new Error('Gateway consumer missing');
   const [app] = await db
     .insert(apps)
     .values({
-      id: appId,
-      planId: plan.id,
-      teamId: input.teamId,
-      name: input.name,
-      description: input.description,
-      createdBy: input.createdBy,
-      origin: input.origin,
-      keyIssued: input.origin === 'self',
+      id: plan.appId,
+      planId: plan.plan.id,
+      teamId: plan.input.teamId,
+      name: plan.input.name,
+      description: plan.input.description,
+      createdBy: plan.input.createdBy,
+      origin: plan.input.origin,
+      keyIssued: plan.input.origin === 'self',
     })
     .returning();
-  if (plan.builtin && selected.length)
-    await db
-      .insert(subscriptions)
-      .values(
-        selected.map(({ api }) => ({ id: uuidv7(), appId, apiId: api.id })),
-      );
+  if (plan.plan.builtin && plan.selected.length)
+    await db.insert(subscriptions).values(
+      plan.selected.map(({ api }) => ({
+        id: uuidv7(),
+        appId: plan.appId,
+        apiId: api.id,
+      })),
+    );
   await db.insert(gatewayConsumers).values({
     id: uuidv7(),
-    appId,
-    gatewayId: gateway.id,
-    externalId: consumer.id,
-    username: consumer.username,
+    appId: plan.appId,
+    gatewayId: plan.gatewayId,
+    externalId: plan.consumer.id,
+    username: plan.consumer.username,
   });
+  await endOperation(db, plan.operationId);
   return app!;
+}
+export async function runGatewayPhase<T>(
+  db: Database,
+  log: Pick<FastifyBaseLogger, 'error'>,
+  work: {
+    prepare: () => Promise<AppPlan>;
+    gateway: (plan: AppPlan, rollback: Compensations) => Promise<void>;
+    commit: (plan: AppPlan) => Promise<T>;
+    keepOperationOnCommitFailure?: boolean;
+  },
+): Promise<T> {
+  const rollback: Compensations = [];
+  let plan: AppPlan | undefined;
+  let stage: 'prepare' | 'gateway' | 'commit' = 'prepare';
+  try {
+    plan = await work.prepare();
+    stage = 'gateway';
+    await work.gateway(plan, rollback);
+    stage = 'commit';
+    return await work.commit(plan);
+  } catch (error) {
+    await compensate(rollback, log);
+    if (plan && !(work.keepOperationOnCommitFailure && stage === 'commit'))
+      await endOperation(db, plan.operationId).catch((endError) => {
+        log.error(
+          {
+            err: redactSecrets(endError),
+            appId: plan!.appId,
+            gatewayId: plan!.gatewayId,
+          },
+          'Gateway operation cleanup failed; reconcile will retry',
+        );
+      });
+    throw error;
+  }
 }
 export async function applyAppPlan(
   db: Db,
@@ -137,7 +250,7 @@ export async function applyAppPlan(
     ),
   );
   await db.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
-  const { adapter } = requireEnabled(await connection.load(db));
+  const { adapter, row: gateway } = requireEnabled(await connection.load(db));
   const restore = [
     () => adapter.applyPlanLimits({ id: app.id }, planLimits(oldPlan)),
     ...[...oldServices].map(
@@ -147,7 +260,14 @@ export async function applyAppPlan(
       .filter((id) => !oldServices.has(id))
       .map((id) => () => adapter.revokeAccess({ id: app.id }, { id })),
   ];
-  rollback.push(...restore.reverse().map((run) => ({ appId: app.id, run })));
+  rollback.push(
+    ...restore.reverse().map((run) => ({
+      appId: app.id,
+      gatewayId: gateway.id,
+      gatewayObject: { consumer: app.id },
+      run,
+    })),
+  );
   await adapter.applyPlanLimits({ id: app.id }, planLimits(newPlan));
   for (const id of newServices)
     await adapter.grantAccess({ id: app.id }, { id });

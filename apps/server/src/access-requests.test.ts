@@ -974,9 +974,10 @@ it('logs consumer rollback failures without hiding the original error', async ()
   vi.spyOn(adapter, 'grantAccess').mockRejectedValueOnce(
     new GatewayUnavailableError(),
   );
-  vi.spyOn(adapter, 'deleteConsumer').mockRejectedValueOnce(
-    new TypeError('secret-admin-token'),
-  );
+  const cause = new Error('nested pk_zzzzzzzzzzzzzzzz');
+  const failure = new TypeError('failed pk_secretadmintokenvalue');
+  failure.cause = cause;
+  vi.spyOn(adapter, 'deleteConsumer').mockRejectedValueOnce(failure);
   const response = await server.inject({
     method: 'POST',
     url: '/api/v1/admin/subscriptions',
@@ -986,13 +987,19 @@ it('logs consumer rollback failures without hiding the original error', async ()
   const warning = logs
     .map((line) => JSON.parse(line))
     .find(
-      (entry) => entry.msg === 'App compensation failed; reconcile will retry',
+      (entry) =>
+        entry.msg === 'Gateway compensation failed; reconcile will retry',
     );
   expect(warning).toMatchObject({
+    level: 50,
     appId: expect.any(String),
-    errorClass: 'TypeError',
+    gatewayId: expect.any(String),
+    err: {
+      message: 'failed pk_[redacted]',
+      cause: { message: 'nested pk_[redacted]' },
+    },
   });
-  expect(logs.join('')).not.toContain('secret-admin-token');
+  expect(logs.join('')).not.toMatch(/pk_[A-Za-z0-9_-]{8,}/);
   expect(await connection.db.select().from(apps)).toHaveLength(0);
 });
 
@@ -1000,7 +1007,7 @@ it('logs each failed plan restoration and continues remaining compensation', asy
   const created = await subscribe();
   vi.spyOn(adapter, 'applyPlanLimits')
     .mockRejectedValueOnce(new GatewayUnavailableError())
-    .mockRejectedValueOnce(new TypeError('secret-plan-token'));
+    .mockRejectedValueOnce(new TypeError('failed pk_secretplantokenvalue'));
   const response = await server.inject({
     method: 'PUT',
     url: `/api/v1/apps/${created.app.id}/plan`,
@@ -1010,13 +1017,16 @@ it('logs each failed plan restoration and continues remaining compensation', asy
   const warning = logs
     .map((line) => JSON.parse(line))
     .find(
-      (entry) => entry.msg === 'App compensation failed; reconcile will retry',
+      (entry) =>
+        entry.msg === 'Gateway compensation failed; reconcile will retry',
     );
   expect(warning).toMatchObject({
+    level: 50,
     appId: created.app.id,
-    errorClass: 'TypeError',
+    gatewayId: expect.any(String),
+    err: { message: 'failed pk_[redacted]' },
   });
-  expect(logs.join('')).not.toContain('secret-plan-token');
+  expect(logs.join('')).not.toMatch(/pk_[A-Za-z0-9_-]{8,}/);
   expect(adapter.grantAccess).toHaveBeenCalledWith(
     { id: created.app.id },
     { id: apiId },

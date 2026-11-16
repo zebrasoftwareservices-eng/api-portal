@@ -10,6 +10,7 @@ import {
   uuid,
   smallint,
   jsonb,
+  json,
   check,
   uniqueIndex,
   index,
@@ -62,6 +63,28 @@ export const gateways = pgTable(
     uniqueIndex('gateway_singleton').on(sql`(1)`),
   ],
 );
+export const gatewayOperations = pgTable(
+  'gateway_operations',
+  {
+    id: uuid('id').primaryKey(),
+    kind: text('kind')
+      .notNull()
+      .$type<'create-app' | 'issue-credential' | 'revoke-credential'>(),
+    appId: uuid('app_id').notNull(),
+    credentialId: uuid('credential_id'),
+    gatewayId: uuid('gateway_id')
+      .notNull()
+      .references(() => gateways.id, { onDelete: 'cascade' }),
+    startedAt: time('started_at').notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'gateway_operation_kind',
+      sql`${t.kind} in ('create-app','issue-credential','revoke-credential')`,
+    ),
+    index('gateway_operation_started_idx').on(t.startedAt),
+  ],
+);
 export const apis = pgTable(
   'apis',
   {
@@ -74,6 +97,7 @@ export const apis = pgTable(
     gatewayServiceId: text('gateway_service_id').notNull(),
     gatewayServiceName: text('gateway_service_name').notNull(),
     routePath: text('route_path').notNull(),
+    seeded: boolean('seeded').notNull().default(false),
     createdBy: uuid('created_by').references(() => user.id, {
       onDelete: 'set null',
     }),
@@ -100,7 +124,7 @@ export const apiVersions = pgTable(
     version: text('version').notNull(),
     title: text('title').notNull(),
     description: text('description'),
-    document: jsonb('document').$type<Record<string, unknown>>().notNull(),
+    document: json('document').$type<Record<string, unknown>>().notNull(),
     sourceUrl: text('source_url'),
     sourceContent: text('source_content'),
     sourceFormat: text('source_format'),

@@ -328,14 +328,14 @@ switched mid-request. All are problem+json.
 - The allowlist load, if profiling shows it is costly (out of scope above).
 
 ### Tasks
-- [ ] [backend] Migration and schema: `gateway_operations`, `apis.seeded` with backfill, `api_versions.document` → `json` (§Data model, ADR 0015)
-- [ ] [backend] `gateway-operation.ts` and the prepare → gateway → commit split of `provisionApp`; apply to `POST /v1/apps`, admin subscription and access approval (§1)
-- [ ] [backend] `POST /v1/apps/{appId}/credentials` and key revoke on prepare → gateway → commit (§1)
-- [ ] [backend] Reconcile: in-flight op grace, finishing revoke ops, stale op cleanup, `{ drift }` return value (§2)
-- [ ] [backend] `log-safety.ts` `redactSecrets`, error-level `compensate()` with ids and `err`, `errWithCause` serializer (§3)
-- [ ] [backend] Seed guard and refresh for seed-created `sample` and the skip log line (§4)
-- [ ] [backend] Usable-admin check, completing a partial admin, boot continues after a `Problem` (§5)
-- [ ] [backend] `publishedApis` without documents, `slug` filter, `loadDocument`; update callers; optional `logger` in `connect` (§6)
+- [x] [backend] Migration and schema: `gateway_operations`, `apis.seeded` with backfill, `api_versions.document` → `json` (§Data model, ADR 0015)
+- [x] [backend] `gateway-operation.ts` and the prepare → gateway → commit split of `provisionApp`; apply to `POST /v1/apps`, admin subscription and access approval (§1)
+- [x] [backend] `POST /v1/apps/{appId}/credentials` and key revoke on prepare → gateway → commit (§1)
+- [x] [backend] Reconcile: in-flight op grace, finishing revoke ops, stale op cleanup, `{ drift }` return value (§2)
+- [x] [backend] `log-safety.ts` `redactSecrets`, error-level `compensate()` with ids and `err`, `errWithCause` serializer (§3)
+- [x] [backend] Seed guard and refresh for seed-created `sample` and the skip log line (§4)
+- [x] [backend] Usable-admin check, completing a partial admin, boot continues after a `Problem` (§5)
+- [x] [backend] `publishedApis` without documents, `slug` filter, `loadDocument`; update callers; optional `logger` in `connect` (§6)
 - [ ] [qa] Criterion 1: Kong delayed by the proxy, `pg_stat_activity` shows no open portal transaction during the call, for app create, key create, admin subscription and approval
 - [ ] [qa] Criterion 2: Kong error and timeout on create → problem+json, no app or key row, no consumer or key left in Kong (check Kong by tag)
 - [ ] [qa] Criterion 3: trigger-forced update failure after a Kong revoke, reconcile run twice, row revoked and no drift on the second run
@@ -347,3 +347,10 @@ switched mid-request. All are problem+json.
 - [ ] [qa] Criteria 8, 9: quickstart sample sidebar order `/get`, `/post`, `/status/{code}`, `/uuid`, `/headers` (Playwright); pre-022 rows still render, try-it works, spec download valid, re-import stores authored order
 - [ ] [qa] Criterion 10: connection killed mid-migration → restart boots, column is `json` or untouched `jsonb`, APIs serve
 - [ ] [qa] `docker compose up` quickstart still works on a fresh volume and on an upgraded pre-022 volume
+
+## Build notes
+
+- Migration `0009_gateway_operations` adds `gateway_operations`, `apis.seeded` (backfill where slug is `sample`, service is `portal-sample`, and `created_by` is null), and changes `api_versions.document` to `json` with `USING document::json`.
+- App create, key issue, admin subscription, and an access approval that creates an app run prepare → gateway → commit. A name collision, or a gateway that is replaced or disabled during the Kong call, returns 409 and compensates. Two creates can both call Kong; the loser compensates. Key revoke uses the same split, keeps the operation when commit fails, and still completes when that same gateway is disabled. `reconcile()` returns `{ drift: { credentialIds } }`, skips ops younger than 10 minutes, and finishes a stale revoke.
+- A compensation failure logs one error, `Gateway compensation failed; reconcile will retry`, with `err` (message and cause; every `pk_` value becomes `pk_[redacted]`), `appId`, `credentialId`, `gatewayId`, and `gatewayObject`.
+- Seed logs `Sample seed skipped: slug "sample" is taken by an admin-published API` and makes no Kong call when `seeded` is false, and refreshes a seed-created sample. A user at the admin email with no credential account is completed; a role-admin without a credential account still sees the wizard. A `Problem` from `ADMIN_EMAIL` logs `First admin from ADMIN_EMAIL not created: <title>` and boot continues. Catalog list and summary callers omit `document`; search and `llms.txt` pass `{ documents: true }`, and one document is loaded with `loadDocument`. `connect(url, { logger })` accepts a Drizzle logger. Plan change, app delete, gateway switch, seed, and `revokeApps` still call Kong inside a transaction.

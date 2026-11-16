@@ -32,7 +32,21 @@ import { registerSetup } from './setup.js';
 import { registerGateways } from './gateways.js';
 import { registerProxy } from './proxy.js';
 import { sql } from 'drizzle-orm';
+import { createRequire } from 'node:module';
 import { Problem } from './problem.js';
+const fastifyRequire = createRequire(import.meta.url);
+const { stdSerializers } = createRequire(fastifyRequire.resolve('fastify'))(
+  'pino',
+) as {
+  stdSerializers: {
+    errWithCause: (err: Error) => {
+      type: string;
+      message: string;
+      stack: string;
+      [key: string]: unknown;
+    };
+  };
+};
 export interface AppOptions {
   db: Database;
   config: Config;
@@ -127,6 +141,7 @@ export async function createApp(options: AppOptions) {
                     '$1/[REDACTED]',
                   ),
               }),
+              err: stdSerializers.errWithCause,
             },
           },
   });

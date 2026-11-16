@@ -6,14 +6,16 @@ import { anonymous, loadViewer } from './access-policy.js';
 import type { Auth } from './auth.js';
 import {
   baseUrl,
+  loadDocument,
   publishedApis,
   publicDocument,
   type PublishedApi,
+  type PublishedApiWithDocument,
 } from './catalog.js';
 import { notFound } from './problem.js';
 
 type ObjectValue = Record<string, unknown>;
-type Version = typeof apiVersions.$inferSelect;
+type MarkdownVersion = { id: string; title: string; version: string };
 const object = (value: unknown): ObjectValue =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as ObjectValue)
@@ -26,7 +28,10 @@ const latestPath = (slug: string) => `/api/v1/apis/${encodeURIComponent(slug)}`;
 const versionPath = (slug: string, version: string) =>
   `${latestPath(slug)}/versions/${encodeURIComponent(version)}`;
 
-export function renderLlmsTxt(rows: PublishedApi[], publicUrl: string) {
+export function renderLlmsTxt(
+  rows: PublishedApiWithDocument[],
+  publicUrl: string,
+) {
   const lines = [
     '# Developer Portal',
     '',
@@ -52,7 +57,7 @@ export function renderLlmsTxt(rows: PublishedApi[], publicUrl: string) {
 
 export function renderMarkdown(
   row: PublishedApi,
-  version: Version,
+  version: MarkdownVersion,
   document: ObjectValue,
   publicUrl: string,
 ) {
@@ -182,7 +187,12 @@ export function registerAgentDocs(
     reply
       .type('text/plain; charset=utf-8')
       .header('Cache-Control', 'public, max-age=60')
-      .send(renderLlmsTxt(await publishedApis(db, anonymous), publicUrl)),
+      .send(
+        renderLlmsTxt(
+          await publishedApis(db, anonymous, { documents: true }),
+          publicUrl,
+        ),
+      ),
   );
   for (const format of ['reference.md', 'spec'] as const) {
     for (const versioned of [false, true]) {
@@ -190,37 +200,45 @@ export function registerAgentDocs(
         `/api/v1/apis/:slug${versioned ? '/versions/:version' : ''}/${format}`,
         async (req, reply) => {
           const { slug, version: name } = req.params;
-          const row = (
-            await publishedApis(db, await loadViewer(db, auth, req))
-          ).find((row) => row.api.slug === slug);
+          const [row] = await publishedApis(
+            db,
+            await loadViewer(db, auth, req),
+            { slug },
+          );
           if (!row) throw notFound(`No published API with slug '${slug}'.`);
-          const version = versioned
-            ? (
-                await db
-                  .select()
-                  .from(apiVersions)
-                  .where(
-                    and(
-                      eq(apiVersions.apiId, row.api.id),
-                      eq(apiVersions.version, name!),
-                    ),
+          const [version] = await db
+            .select({
+              id: apiVersions.id,
+              title: apiVersions.title,
+              version: apiVersions.version,
+              sourceContent: apiVersions.sourceContent,
+              sourceFormat: apiVersions.sourceFormat,
+            })
+            .from(apiVersions)
+            .where(
+              versioned
+                ? and(
+                    eq(apiVersions.apiId, row.api.id),
+                    eq(apiVersions.version, name!),
                   )
-              )[0]
-            : row.version;
+                : eq(apiVersions.id, row.version.id),
+            );
           if (!version)
             throw notFound(`API '${slug}' has no version '${name}'.`);
           reply.header('Cache-Control', 'private, no-cache');
-          if (format === 'reference.md')
+          if (format === 'reference.md') {
+            const document = await loadDocument(db, version.id);
             return reply
               .type('text/markdown; charset=utf-8')
               .send(
                 renderMarkdown(
                   row,
                   version,
-                  publicDocument(row, version.document),
+                  publicDocument(row, document),
                   publicUrl,
                 ),
               );
+          }
           const extension =
             version.sourceContent === null || version.sourceFormat === 'json'
               ? 'json'
@@ -236,7 +254,7 @@ export function registerAgentDocs(
             )
             .send(
               version.sourceContent ??
-                JSON.stringify(version.document, null, 2),
+                JSON.stringify(await loadDocument(db, version.id), null, 2),
             );
         },
       );

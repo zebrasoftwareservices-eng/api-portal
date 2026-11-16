@@ -21,6 +21,7 @@ import {
   instanceSettings,
   gateways,
   user,
+  account,
   apis,
   apiVersions,
   apps,
@@ -291,11 +292,19 @@ it('rate limits setup per IP with problem+json', async () => {
 });
 it('rejects a preexisting developer email and allows a fresh one, preserving password sign-in', async () => {
   await boot();
+  const existingId = uuidv7();
   await db.db.insert(user).values({
-    id: uuidv7(),
+    id: existingId,
     name: 'Old',
     email: 'old@example.com',
     role: 'developer',
+  });
+  await db.db.insert(account).values({
+    id: uuidv7(),
+    accountId: existingId,
+    providerId: 'credential',
+    userId: existingId,
+    password: 'already-set',
   });
   const duplicate = await call('POST', 'setup/admin', {
     email: 'OLD@example.com',
@@ -310,6 +319,56 @@ it('rejects a preexisting developer email and allows a fresh one, preserving pas
     payload: { email: 'admin@example.com', password: 'test-password-123' },
   });
   expect(signin.statusCode, signin.body).toBe(200);
+});
+it('completes a user that has no credential account and leaves the wizard up for a role-only admin', async () => {
+  await boot();
+  const partialId = uuidv7();
+  await db.db.insert(user).values({
+    id: partialId,
+    name: 'Partial',
+    email: 'partial@example.com',
+    role: 'developer',
+  });
+  expect((await call('GET', 'setup')).json().adminRequired).toBe(true);
+  const completed = await call(
+    'POST',
+    'setup/admin',
+    {
+      email: 'partial@example.com',
+      password: 'test-password-123',
+      name: 'Completed Admin',
+    },
+    '',
+  );
+  expect(completed.statusCode, completed.body).toBe(201);
+  expect(completed.json()).toMatchObject({
+    id: partialId,
+    role: 'admin',
+    email: 'partial@example.com',
+    name: 'Completed Admin',
+  });
+  const signin = await app.inject({
+    method: 'POST',
+    url: '/api/auth/sign-in/email',
+    payload: { email: 'partial@example.com', password: 'test-password-123' },
+  });
+  expect(signin.statusCode, signin.body).toBe(200);
+  await app.close();
+  await db.client`truncate "user",gateways,setup_tokens cascade`;
+  await db.db
+    .insert(plans)
+    .values({ id: BUILTIN_PLAN_ID, name: 'Unlimited', builtin: true });
+  await boot();
+  await db.db.insert(user).values({
+    id: uuidv7(),
+    name: 'Role only',
+    email: 'role@example.com',
+    role: 'admin',
+  });
+  expect((await call('GET', 'setup')).json()).toEqual({
+    adminRequired: true,
+    setupTokenRequired: false,
+  });
 });
 it('saves encrypted credentials without leaking them, uses them on the next request, and refuses a second add before outbound calls', async () => {
   await boot();
@@ -696,7 +755,7 @@ it('offers the sample only once on the enabled bundled Kong and refuses other Ko
     409,
   );
 });
-it('save waits for a slow app creation holding the shared gateway lock', async () => {
+it('does not hold the gateway lock during app creation, so a save finishes and the create compensates', async () => {
   await boot();
   await claim();
   const id = await connectGateway();
@@ -718,28 +777,18 @@ it('save waits for a slow app creation holding the shared gateway lock', async (
   // inject is a thenable: consume it so the request starts before awaiting the barrier.
   const creation = Promise.resolve(creating);
   await started;
-  let saved = false;
-  const saving = call('PATCH', `admin/gateways/${id}`, { enabled: false }).then(
-    (result) => {
-      saved = true;
-      return result;
-    },
-  );
-  try {
-    await expect
-      .poll(
-        async () =>
-          (
-            await db.client`select count(*)::int as n from pg_locks where locktype='advisory' and not granted`
-          )[0]!.n,
-      )
-      .toBeGreaterThan(0);
-    expect(saved).toBe(false);
-  } finally {
-    release();
-  }
-  expect((await creation).statusCode).toBe(201);
-  expect((await saving).statusCode).toBe(200);
+  const saved = await call('PATCH', `admin/gateways/${id}`, { enabled: false });
+  expect(saved.statusCode, saved.body).toBe(200);
+  expect(
+    (
+      await db.client`select count(*)::int as n from pg_locks where locktype='advisory' and not granted`
+    )[0]!.n,
+  ).toBe(0);
+  release();
+  const created = await creation;
+  expect(created.statusCode, created.body).toBe(409);
+  expect(created.json().type).toBe('/problems/gateway-disabled');
+  expect(await db.db.select().from(apps)).toHaveLength(0);
 });
 
 it.each(['import', 'sample'])(

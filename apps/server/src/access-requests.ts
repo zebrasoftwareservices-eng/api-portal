@@ -25,7 +25,10 @@ import {
 } from './access-request-model.js';
 import {
   applyAppPlan,
-  provisionApp,
+  prepareApp,
+  applyAppToGateway,
+  commitApp,
+  runGatewayPhase,
   compensate,
   type Compensations,
 } from './app-provisioning.js';
@@ -246,107 +249,143 @@ export function registerAccessRequests(
           })
           .parse(request.body ?? {});
         const rollback: Compensations = [];
-        let result;
-        try {
-          result = await db.transaction(async (tx) => {
-            await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
-            // Same product lock as access updates prevents an approval from crossing a visibility save.
-            const [target] = await tx
-              .select({ productId: plans.productId })
-              .from(accessRequests)
-              .innerJoin(plans, eq(plans.id, accessRequests.planId))
-              .where(eq(accessRequests.id, requestId));
-            if (!target?.productId) throw notFound();
-            await tx
-              .select()
-              .from(products)
-              .where(eq(products.id, target.productId))
-              .for('update');
-            const [row] = await tx
-              .select()
-              .from(accessRequests)
-              .where(eq(accessRequests.id, requestId))
-              .for('update');
-            if (!row) throw notFound();
-            if (row.status !== 'pending')
-              throw new Problem(
-                409,
-                'request-decided',
-                'This request has already been decided.',
-              );
-            let appId = row.appId;
-            if (decision === 'approve') {
+        const lockRequest = async (tx: Db) => {
+          await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
+          // Same product lock as access updates prevents an approval from crossing a visibility save.
+          const [target] = await tx
+            .select({ productId: plans.productId })
+            .from(accessRequests)
+            .innerJoin(plans, eq(plans.id, accessRequests.planId))
+            .where(eq(accessRequests.id, requestId));
+          if (!target?.productId) throw notFound();
+          await tx
+            .select()
+            .from(products)
+            .where(eq(products.id, target.productId))
+            .for('update');
+          const [row] = await tx
+            .select()
+            .from(accessRequests)
+            .where(eq(accessRequests.id, requestId))
+            .for('update');
+          if (!row) throw notFound();
+          if (row.status !== 'pending')
+            throw new Problem(
+              409,
+              'request-decided',
+              'This request has already been decided.',
+            );
+          return { row, productId: target.productId };
+        };
+        const finish = async (
+          tx: Db,
+          appId: string | null,
+        ) => {
+          const [updated] = await tx
+            .update(accessRequests)
+            .set({
+              status: decision === 'approve' ? 'approved' : 'rejected',
+              appId,
+              decidedBy: user.id,
+              decidedAt: new Date(),
+              decisionNote: note || null,
+            })
+            .where(eq(accessRequests.id, requestId))
+            .returning();
+          await enqueue(
+            {
+              template:
+                decision === 'approve' ? 'access-approved' : 'access-rejected',
+              requestId,
+            },
+            tx,
+          );
+          return requestView(tx, updated!);
+        };
+        if (decision !== 'approve')
+          return db.transaction(async (tx) => {
+            const { row } = await lockRequest(tx);
+            return finish(tx, row.appId);
+          });
+        const prepared = await db.transaction(async (tx) => {
+          const { row, productId } = await lockRequest(tx);
+          if (
+            !(await productVisible(
+              tx,
+              await teamViewer(tx, [row.teamId]),
+              productId,
+            ))
+          )
+            throw notFound();
+          if (row.kind !== 'subscribe') return { subscribe: false as const };
+          return {
+            subscribe: true as const,
+            plan: await prepareApp(tx, connection, {
+              planId: row.planId,
+              teamId: row.teamId,
+              name: row.name,
+              description: row.description,
+              createdBy: user.id,
+              origin: 'request',
+            }),
+          };
+        });
+        if (!prepared.subscribe) {
+          try {
+            return await db.transaction(async (tx) => {
+              const { row, productId } = await lockRequest(tx);
               if (
                 !(await productVisible(
                   tx,
                   await teamViewer(tx, [row.teamId]),
-                  target.productId,
+                  productId,
                 ))
               )
                 throw notFound();
-              if (row.kind === 'subscribe') {
-                const app = await provisionApp(
-                  tx,
-                  connection,
-                  {
-                    planId: row.planId,
-                    teamId: row.teamId,
-                    name: row.name,
-                    description: row.description,
-                    createdBy: user.id,
-                    origin: 'request',
-                  },
-                  rollback,
+              const [app] = await tx
+                .select()
+                .from(apps)
+                .where(eq(apps.id, row.appId!))
+                .for('update');
+              if (!app || app.status !== 'active')
+                throw new Problem(
+                  409,
+                  'app-revoked',
+                  'This subscription has been revoked.',
                 );
-                appId = app.id;
-              } else {
-                const [app] = await tx
-                  .select()
-                  .from(apps)
-                  .where(eq(apps.id, row.appId!))
-                  .for('update');
-                if (!app || app.status !== 'active')
-                  throw new Problem(
-                    409,
-                    'app-revoked',
-                    'This subscription has been revoked.',
-                  );
-                const [plan] = await tx
-                  .select()
-                  .from(plans)
-                  .where(eq(plans.id, row.planId))
-                  .for('share');
-                await applyAppPlan(tx, connection, app, plan!, rollback);
-              }
-            }
-            const [updated] = await tx
-              .update(accessRequests)
-              .set({
-                status: decision === 'approve' ? 'approved' : 'rejected',
-                appId,
-                decidedBy: user.id,
-                decidedAt: new Date(),
-                decisionNote: note || null,
-              })
-              .where(eq(accessRequests.id, requestId))
-              .returning();
-            await enqueue(
-              {
-                template:
-                  decision === 'approve'
-                    ? 'access-approved'
-                    : 'access-rejected',
-                requestId,
-              },
-              tx,
-            );
-            return requestView(tx, updated!);
-          });
-        } catch (error) {
-          await compensate(rollback, server.log);
-          throw error;
+              const [plan] = await tx
+                .select()
+                .from(plans)
+                .where(eq(plans.id, row.planId))
+                .for('share');
+              await applyAppPlan(tx, connection, app, plan!, rollback);
+              return finish(tx, row.appId);
+            });
+          } catch (error) {
+            await compensate(rollback, server.log);
+            throw error;
+          }
         }
-        return result;
+        return runGatewayPhase(db, server.log, {
+          prepare: async () => prepared.plan,
+          gateway: async (plan, ops) => {
+            plan.consumer = await applyAppToGateway(plan.adapter, plan, ops);
+          },
+          commit: (plan) =>
+            db.transaction(async (tx) => {
+              const { row, productId } = await lockRequest(tx);
+              if (
+                !(await productVisible(
+                  tx,
+                  await teamViewer(tx, [row.teamId]),
+                  productId,
+                ))
+              )
+                throw notFound();
+              const app = await commitApp(tx, connection, plan);
+              return finish(tx, app.id);
+            }),
+        });
       },
     );
 }

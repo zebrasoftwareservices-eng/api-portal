@@ -3,7 +3,12 @@ import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import type { AdapterFor } from './gateway-connection.js';
 import type { Database } from '@portal/db';
-import { publishedApis, baseUrl, type PublishedApi } from './catalog.js';
+import {
+  publishedApis,
+  baseUrl,
+  loadDocument,
+  type PublishedApi,
+} from './catalog.js';
 import { readLimited } from './import.js';
 import type { Auth } from './auth.js';
 import { loadViewer, canSeeApi } from './access-policy.js';
@@ -131,7 +136,8 @@ export async function registerProxy(
           'content-type',
           'content-length',
         ]);
-        const components = target.row.version.document.components as
+        const document = await loadDocument(db, target.row.version.id);
+        const components = document.components as
           | {
               securitySchemes?: Record<
                 string,

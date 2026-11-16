@@ -849,8 +849,10 @@ it('serializes simultaneous duplicate subscriptions before any second Kong write
     'application/problem+json',
   );
   expect(conflict.json().type).toBe('/problems/app-name-taken');
-  expect(adapter.ensureConsumer).toHaveBeenCalledTimes(1);
-  expect(adapter.issueCredential).toHaveBeenCalledTimes(1);
+  expect(adapter.ensureConsumer).toHaveBeenCalledTimes(2);
+  expect(adapter.issueCredential).toHaveBeenCalledTimes(2);
+  expect(adapter.deleteConsumer).toHaveBeenCalledTimes(1);
+  expect(adapter.revokeCredential).toHaveBeenCalledTimes(1);
   const created = results.find((result) => result.statusCode === 201)!.json();
   expect(
     (await active(created.app.id)).map((credential) => credential.id),

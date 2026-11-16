@@ -43,11 +43,20 @@ import {
   requestConflict,
 } from './access-request-model.js';
 import {
-  provisionApp,
+  prepareApp,
+  applyAppToGateway,
+  commitApp,
+  runGatewayPhase,
   applyAppPlan,
   compensate,
   type Compensations,
 } from './app-provisioning.js';
+import {
+  beginOperation,
+  endOperation,
+  gatewayChanged,
+} from './gateway-operation.js';
+import { redactSecrets } from './log-safety.js';
 import type { EnqueueMail } from './mail/queue.js';
 import { generateKey } from './crypto.js';
 type Tx = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -162,249 +171,289 @@ export function registerApps(
     const appId = uuidv7(),
       id = uuidv7(),
       key = generateKey();
-    const rollback: Compensations = [];
-    try {
-      const result = await db.transaction(async (tx) => {
-        await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
-        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
-        const [owner] = await tx
-          .select({ id: users.id })
-          .from(users)
-          .where(eq(users.id, user.id))
-          .for('key share');
-        if (!owner) throw notFound();
-        const teamId = target.teamId ?? (await currentTeamId(tx, user.id));
-        const membership = await teamAccess(tx, teamId, user.id, 'write');
-        await requireVerified(tx, user);
-        // Reject mixed API/plan input before resolving its plan, while keeping
-        // plan-only requests' visibility checks ahead of their other validation.
-        const apiInput =
-          target.apiIds === undefined
-            ? undefined
-            : createSchema.parse(request.body);
-        const [plan] = await tx
-          .select()
-          .from(plans)
-          .where(eq(plans.id, target.planId ?? BUILTIN_PLAN_ID))
-          .for('share');
-        if (!plan || (target.planId && plan.builtin)) throw notFound();
-        await requireSelfService(
-          tx,
-          plan.productId,
-          teamId,
-          user.id,
-          user.role === 'admin',
+    const assertCreate = async (tx: Tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
+      const [owner] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .for('key share');
+      if (!owner) throw notFound();
+      const teamId = target.teamId ?? (await currentTeamId(tx, user.id));
+      const membership = await teamAccess(tx, teamId, user.id, 'write');
+      await requireVerified(tx, user);
+      // Reject mixed API/plan input before resolving its plan, while keeping
+      // plan-only requests' visibility checks ahead of their other validation.
+      const apiInput =
+        target.apiIds === undefined
+          ? undefined
+          : createSchema.parse(request.body);
+      const [plan] = await tx
+        .select()
+        .from(plans)
+        .where(eq(plans.id, target.planId ?? BUILTIN_PLAN_ID))
+        .for('share');
+      if (!plan || (target.planId && plan.builtin)) throw notFound();
+      await requireSelfService(
+        tx,
+        plan.productId,
+        teamId,
+        user.id,
+        user.role === 'admin',
+      );
+      const input = apiInput ?? createSchema.parse(request.body);
+      if (plan.requiresApproval)
+        throw new Problem(
+          409,
+          'approval-required',
+          'Request access to this plan.',
         );
-        const input = apiInput ?? createSchema.parse(request.body);
-        if (plan.requiresApproval)
-          throw new Problem(
-            409,
-            'approval-required',
-            'Request access to this plan.',
-          );
-        // Serialize names before gateway writes, including simultaneous identical submissions.
-        await tx.execute(
-          sql`select pg_advisory_xact_lock(hashtextextended(${teamId + ':' + input.name},0))`,
+      // Serialize names before gateway writes, including simultaneous identical submissions.
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${teamId + ':' + input.name},0))`,
+      );
+      const [duplicate] = await tx
+        .select({ id: apps.id })
+        .from(apps)
+        .where(
+          and(
+            eq(apps.teamId, teamId),
+            eq(apps.name, input.name),
+            ne(apps.status, 'revoked'),
+          ),
         );
-        const [duplicate] = await tx
-          .select({ id: apps.id })
-          .from(apps)
-          .where(
-            and(
-              eq(apps.teamId, teamId),
-              eq(apps.name, input.name),
-              ne(apps.status, 'revoked'),
-            ),
-          );
-        if (duplicate)
-          throw new Problem(
-            409,
-            'app-name-taken',
-            'This team already has an app with this name.',
-          );
-
-        const apiIds =
-          input.apiIds ??
-          (
-            await tx.select().from(planApis).where(eq(planApis.planId, plan.id))
-          ).map((a) => a.apiId);
-        const selected = await tx
-          .select()
-          .from(apis)
-          .where(inArray(apis.id, apiIds));
-        if (selected.length !== apiIds.length) throw notFound();
-        const viewer = await teamViewer(
-          tx,
-          [teamId],
-          user.id,
-          user.role === 'admin',
+      if (duplicate)
+        throw new Problem(
+          409,
+          'app-name-taken',
+          'This team already has an app with this name.',
         );
-        for (const apiId of apiIds)
-          if (!(await canSeeApi(tx, viewer, apiId))) throw notFound();
-        if (input.apiIds) {
-          // Membership blocks direct access regardless of visibility; only visible
-          // products can appear in the refusal after every API passed canSeeApi.
-          const memberships = await tx
+      const apiIds =
+        input.apiIds ??
+        (
+          await tx.select().from(planApis).where(eq(planApis.planId, plan.id))
+        ).map((a) => a.apiId);
+      const selected = await tx
+        .select()
+        .from(apis)
+        .where(inArray(apis.id, apiIds));
+      if (selected.length !== apiIds.length) throw notFound();
+      const viewer = await teamViewer(
+        tx,
+        [teamId],
+        user.id,
+        user.role === 'admin',
+      );
+      for (const api of apiIds)
+        if (!(await canSeeApi(tx, viewer, api))) throw notFound();
+      if (input.apiIds) {
+        // Membership blocks direct access regardless of visibility; only visible
+        // products can appear in the refusal after every API passed canSeeApi.
+        const memberships = await tx
+          .select({
+            apiId: productApis.apiId,
+            productId: productApis.productId,
+          })
+          .from(productApis)
+          .where(inArray(productApis.apiId, apiIds));
+        if (memberships.length) {
+          const visible = await tx
             .select({
-              apiId: productApis.apiId,
-              productId: productApis.productId,
+              id: products.id,
+              slug: products.slug,
+              name: products.name,
             })
-            .from(productApis)
-            .where(inArray(productApis.apiId, apiIds));
-          if (memberships.length) {
-            const visible = await tx
-              .select({
-                id: products.id,
-                slug: products.slug,
-                name: products.name,
-              })
-              .from(products)
-              .where(
-                and(
-                  inArray(
-                    products.id,
-                    memberships.map((m) => m.productId),
-                  ),
-                  visibleProductIds(tx, viewer),
+            .from(products)
+            .where(
+              and(
+                inArray(
+                  products.id,
+                  memberships.map((m) => m.productId),
                 ),
-              )
-              .orderBy(asc(products.name), asc(products.id));
-            const versions = await tx
-              .select({ apiId: apis.id, title: apiVersions.title })
-              .from(apis)
-              .innerJoin(apiVersions, eq(apiVersions.id, apis.latestVersionId))
-              .where(inArray(apis.id, apiIds));
-            const errors = apiIds.flatMap((apiId, index) => {
-              const links = memberships.filter((m) => m.apiId === apiId);
-              if (!links.length) return [];
-              const title =
-                versions.find((v) => v.apiId === apiId)?.title ??
-                selected.find((a) => a.id === apiId)!.slug;
-              const names = visible
-                .filter((p) => links.some((m) => m.productId === p.id))
-                .map((p) => p.name)
-                .join(', ');
-              return [
-                {
-                  pointer: `/apiIds/${index}`,
-                  message: `${title} is in ${names}.`,
-                },
-              ];
-            });
-            throw new Problem(
-              409,
-              'api-in-product',
-              `${errors.map((e) => e.message).join(' ')} Subscribe to ${visible.map((p) => p.name).join(', ')} instead.`,
-              errors,
-              { products: visible },
-            );
-          }
+                visibleProductIds(tx, viewer),
+              ),
+            )
+            .orderBy(asc(products.name), asc(products.id));
+          const versions = await tx
+            .select({ apiId: apis.id, title: apiVersions.title })
+            .from(apis)
+            .innerJoin(apiVersions, eq(apiVersions.id, apis.latestVersionId))
+            .where(inArray(apis.id, apiIds));
+          const errors = apiIds.flatMap((api, index) => {
+            const links = memberships.filter((m) => m.apiId === api);
+            if (!links.length) return [];
+            const title =
+              versions.find((v) => v.apiId === api)?.title ??
+              selected.find((a) => a.id === api)!.slug;
+            const names = visible
+              .filter((p) => links.some((m) => m.productId === p.id))
+              .map((p) => p.name)
+              .join(', ');
+            return [
+              {
+                pointer: `/apiIds/${index}`,
+                message: `${title} is in ${names}.`,
+              },
+            ];
+          });
+          throw new Problem(
+            409,
+            'api-in-product',
+            `${errors.map((e) => e.message).join(' ')} Subscribe to ${visible.map((p) => p.name).join(', ')} instead.`,
+            errors,
+            { products: visible },
+          );
         }
-        const app = await provisionApp(
-          tx,
-          connection,
-          {
+      }
+      return { plan, teamId, input, role: membership.role };
+    };
+    const result = await runGatewayPhase(db, server.log, {
+      prepare: () =>
+        db.transaction(async (tx) => {
+          const created = await assertCreate(tx);
+          return prepareApp(tx, connection, {
             id: appId,
-            planId: plan.id,
-            teamId,
-            name: input.name,
-            description: input.description,
+            credentialId: id,
+            planId: created.plan.id,
+            teamId: created.teamId,
+            name: created.input.name,
+            description: created.input.description,
             createdBy: user.id,
             origin: 'self',
-            apiIds: input.apiIds,
-          },
-          rollback,
-        );
-        const { adapter, row: gateway } = requireEnabled(
-          await connection.load(tx),
-        );
-        const gatewayId = gateway.id;
-        await adapter.issueCredential({ id: appId }, { id, key });
-        const [credential] = await tx
-          .insert(credentials)
-          .values({
-            id,
-            appId,
-            gatewayId,
-            createdBy: user.id,
-            keyHint: key.slice(-4),
-            status: 'active',
-          })
-          .returning();
-        if (!credential) throw new Error('Insert failed');
-        return {
-          app: await appView(tx, app, membership.role),
-          credential: {
-            ...credentialView(credential),
-            key,
-            headerName: 'apikey',
-          },
-        };
-      });
-      return reply
-        .code(201)
-        .header('Location', `/api/v1/apps/${appId}`)
-        .send(result);
-    } catch (error) {
-      await compensate(rollback, server.log);
-      throw error;
-    }
+            apiIds: created.input.apiIds,
+          });
+        }),
+      gateway: async (plan, rollback) => {
+        plan.consumer = await applyAppToGateway(plan.adapter, plan, rollback);
+        rollback.push({
+          appId,
+          credentialId: id,
+          gatewayId: plan.gatewayId,
+          gatewayObject: { credential: id },
+          run: () => plan.adapter.revokeCredential({ id: appId }, id),
+        });
+        await plan.adapter.issueCredential({ id: appId }, { id, key });
+      },
+      commit: (plan) =>
+        db.transaction(async (tx) => {
+          const created = await assertCreate(tx);
+          const app = await commitApp(tx, connection, plan);
+          const [credential] = await tx
+            .insert(credentials)
+            .values({
+              id,
+              appId,
+              gatewayId: plan.gatewayId,
+              createdBy: user.id,
+              keyHint: key.slice(-4),
+              status: 'active',
+            })
+            .returning();
+          if (!credential) throw new Error('Insert failed');
+          return {
+            app: await appView(tx, app, created.role),
+            credential: {
+              ...credentialView(credential),
+              key,
+              headerName: 'apikey',
+            },
+          };
+        }),
+    });
+    return reply
+      .code(201)
+      .header('Location', `/api/v1/apps/${appId}`)
+      .send(result);
   });
   server.post('/api/v1/apps/:appId/credentials', async (request, reply) => {
     const user = await requireUser(auth, request);
     const { appId } = appParams.parse(request.params);
     const id = uuidv7(),
       key = generateKey();
-    let attempted = false;
-    let adapter: GatewayAdapter | undefined;
+    const assertIssue = async (tx: Tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
+      const { app } = await appAccess(tx, appId, user.id, 'write');
+      if (app.status !== 'active')
+        throw new Problem(
+          409,
+          'app-revoked',
+          'This subscription has been revoked.',
+        );
+      const [plan] = await tx
+        .select()
+        .from(plans)
+        .where(eq(plans.id, app.planId));
+      if (!plan) throw notFound();
+      await requireVerified(tx, user);
+      const active = await tx
+        .select({ id: credentials.id })
+        .from(credentials)
+        .where(
+          and(eq(credentials.appId, appId), eq(credentials.status, 'active')),
+        );
+      if (active.length >= (plan.builtin ? 5 : 1))
+        throw new Problem(
+          409,
+          'credential-limit',
+          'This app has reached its active key limit. Revoke one before creating another.',
+        );
+      await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
+      const loaded = await connection.load(tx);
+      return { app, plan, loaded };
+    };
+    const rollback: Compensations = [];
+    let operationId: string | undefined;
     try {
+      const prepared = await db.transaction(async (tx) => {
+        const { app, plan, loaded } = await assertIssue(tx);
+        const gateway = requireEnabled(loaded);
+        const operationId = await beginOperation(tx, {
+          kind: 'issue-credential',
+          appId,
+          credentialId: id,
+          gatewayId: gateway.row.id,
+        });
+        return {
+          operationId,
+          plan,
+          app,
+          adapter: gateway.adapter,
+          gatewayId: gateway.row.id,
+          services: await appApis(tx, app),
+        };
+      });
+      operationId = prepared.operationId;
+      const consumer = await prepared.adapter.ensureConsumer({ id: appId });
+      for (const serviceId of new Set(
+        prepared.services.map((s) => s.gatewayServiceId),
+      ))
+        await prepared.adapter.grantAccess({ id: appId }, { id: serviceId });
+      if (!prepared.plan.builtin)
+        await prepared.adapter.applyPlanLimits(
+          { id: appId },
+          planLimits(prepared.plan),
+        );
+      rollback.push({
+        appId,
+        credentialId: id,
+        gatewayId: prepared.gatewayId,
+        gatewayObject: { credential: id },
+        run: () => prepared.adapter.revokeCredential({ id: appId }, id),
+      });
+      await prepared.adapter.issueCredential({ id: appId }, { id, key });
       const result = await db.transaction(async (tx) => {
-        await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
-        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
-        const { app } = await appAccess(tx, appId, user.id, 'write');
-        if (app.status !== 'active')
-          throw new Problem(
-            409,
-            'app-revoked',
-            'This subscription has been revoked.',
-          );
-        const [plan] = await tx
-          .select()
-          .from(plans)
-          .where(eq(plans.id, app.planId));
-        if (!plan) throw notFound();
-        await requireVerified(tx, user);
-        const active = await tx
-          .select({ id: credentials.id })
-          .from(credentials)
-          .where(
-            and(eq(credentials.appId, appId), eq(credentials.status, 'active')),
-          );
-        if (active.length >= (plan.builtin ? 5 : 1))
-          throw new Problem(
-            409,
-            'credential-limit',
-            'This app has reached its active key limit. Revoke one before creating another.',
-          );
-        await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
-        const gateway = requireEnabled(await connection.load(tx));
-        adapter = gateway.adapter;
-        const gatewayId = gateway.row.id;
-        attempted = true;
-        const consumer = await adapter.ensureConsumer({ id: appId });
-        const services = await appApis(tx, app);
-        for (const serviceId of new Set(
-          services.map((s) => s.gatewayServiceId),
-        ))
-          await adapter.grantAccess({ id: appId }, { id: serviceId });
-        if (!plan.builtin)
-          await adapter.applyPlanLimits({ id: appId }, planLimits(plan));
+        const { loaded } = await assertIssue(tx);
+        if (!loaded || loaded.row.id !== prepared.gatewayId)
+          throw gatewayChanged();
+        requireEnabled(loaded);
         await tx
           .insert(gatewayConsumers)
           .values({
             id: uuidv7(),
             appId,
-            gatewayId,
+            gatewayId: prepared.gatewayId,
             externalId: consumer.id,
             username: consumer.username,
           })
@@ -412,36 +461,32 @@ export function registerApps(
             target: [gatewayConsumers.appId, gatewayConsumers.gatewayId],
             set: { externalId: consumer.id, username: consumer.username },
           });
-        await adapter.issueCredential({ id: appId }, { id, key });
         const [credential] = await tx
           .insert(credentials)
           .values({
             id,
             appId,
-            gatewayId,
+            gatewayId: prepared.gatewayId,
             createdBy: user.id,
             keyHint: key.slice(-4),
             status: 'active',
           })
           .returning();
         if (!credential) throw new Error('Insert failed');
-        await tx
-          .update(apps)
-          .set({ keyIssued: true })
-          .where(eq(apps.id, appId));
+        await tx.update(apps).set({ keyIssued: true }).where(eq(apps.id, appId));
+        await endOperation(tx, prepared.operationId);
         return { ...credentialView(credential), key, headerName: 'apikey' };
       });
       return reply.code(201).send(result);
     } catch (error) {
-      if (attempted && adapter)
-        await adapter
-          .revokeCredential({ id: appId }, id)
-          .catch(() =>
-            server.log.warn(
-              { appId, credentialId: id },
-              'Credential compensation deferred to reconcile',
-            ),
+      await compensate(rollback, server.log);
+      if (operationId)
+        await endOperation(db, operationId).catch((endError) => {
+          server.log.error(
+            { err: redactSecrets(endError), appId, credentialId: id },
+            'Gateway operation cleanup failed; reconcile will retry',
           );
+        });
       throw error;
     }
   });
@@ -452,7 +497,7 @@ export function registerApps(
       const { appId, credentialId } = appParams
         .extend({ credentialId: z.uuid() })
         .parse(request.params);
-      await db.transaction(async (tx) => {
+      const assertRevoke = async (tx: Tx) => {
         await tx.execute(sql`select pg_advisory_xact_lock(71833005)`);
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833004)`);
         await appAccess(tx, appId, user.id, 'write');
@@ -463,15 +508,55 @@ export function registerApps(
             and(eq(credentials.appId, appId), eq(credentials.id, credentialId)),
           );
         if (!credential) throw notFound();
-        if (credential.status === 'revoked') return;
         await tx.execute(sql`select pg_advisory_xact_lock_shared(71833002)`);
-        const { adapter } = requireGateway(await connection.load(tx));
-        await adapter.revokeCredential({ id: appId }, credentialId);
-        await tx
-          .update(credentials)
-          .set({ status: 'revoked', revokedAt: new Date() })
-          .where(eq(credentials.id, credentialId));
-      });
+        return { credential, loaded: await connection.load(tx) };
+      };
+      let operationId: string | undefined;
+      let stage: 'prepare' | 'gateway' | 'commit' = 'prepare';
+      try {
+        const prepared = await db.transaction(async (tx) => {
+          const { credential, loaded } = await assertRevoke(tx);
+          if (credential.status === 'revoked') return { already: true as const };
+          const { adapter, row } = requireGateway(loaded);
+          const operationId = await beginOperation(tx, {
+            kind: 'revoke-credential',
+            appId,
+            credentialId,
+            gatewayId: row.id,
+          });
+          return { already: false as const, operationId, adapter, gatewayId: row.id };
+        });
+        if (!prepared.already) {
+          operationId = prepared.operationId;
+          stage = 'gateway';
+          await prepared.adapter.revokeCredential({ id: appId }, credentialId);
+          stage = 'commit';
+          await db.transaction(async (tx) => {
+            const { credential, loaded } = await assertRevoke(tx);
+            if (!loaded || loaded.row.id !== prepared.gatewayId)
+              throw gatewayChanged();
+            if (credential.status !== 'revoked')
+              await tx
+                .update(credentials)
+                .set({ status: 'revoked', revokedAt: new Date() })
+                .where(eq(credentials.id, credentialId));
+            await endOperation(tx, prepared.operationId);
+          });
+        }
+      } catch (error) {
+        if (operationId && stage !== 'commit')
+          await endOperation(db, operationId).catch((endError) => {
+            server.log.error(
+              {
+                err: redactSecrets(endError),
+                appId,
+                credentialId,
+              },
+              'Gateway operation cleanup failed; reconcile will retry',
+            );
+          });
+        throw error;
+      }
       return reply.code(204).send();
     },
   );
