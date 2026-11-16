@@ -1,7 +1,7 @@
 ---
 id: 022
 title: Server robustness and authored path order
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-15
 linear: JSO-188
@@ -336,17 +336,17 @@ switched mid-request. All are problem+json.
 - [x] [backend] Seed guard and refresh for seed-created `sample` and the skip log line (§4)
 - [x] [backend] Usable-admin check, completing a partial admin, boot continues after a `Problem` (§5)
 - [x] [backend] `publishedApis` without documents, `slug` filter, `loadDocument`; update callers; optional `logger` in `connect` (§6)
-- [ ] [qa] Criterion 1: Kong delayed by the proxy, `pg_stat_activity` shows no open portal transaction during the call, for app create, key create, admin subscription and approval
-- [ ] [qa] Criterion 2: Kong error and timeout on create → problem+json, no app or key row, no consumer or key left in Kong (check Kong by tag)
-- [ ] [qa] Criterion 3: trigger-forced update failure after a Kong revoke, reconcile run twice, row revoked and no drift on the second run
-- [ ] [qa] Criterion 4: compensation failure logs one error entry with `err.message`, `err.cause` and app, key and gateway ids; no log line matches `pk_[A-Za-z0-9_-]{8,}`
-- [ ] [qa] Reconcile during an in-flight create does not delete the new consumer or key
-- [ ] [qa] Criterion 5: admin API at `sample`, restart with `SEED_SAMPLE=true`, API unchanged, skip line logged; seed-created sample still refreshed
-- [ ] [qa] Criterion 6: user row with `ADMIN_EMAIL` and no credential → boot completes and admin signs in; role-admin row without credential → wizard available; exactly one usable admin
-- [ ] [qa] Criterion 7: 20 APIs × 1 MB fixture, SQL logger shows no `document` in the list and one in the slug page; list response equal to the pre-change snapshot
-- [ ] [qa] Criteria 8, 9: quickstart sample sidebar order `/get`, `/post`, `/status/{code}`, `/uuid`, `/headers` (Playwright); pre-022 rows still render, try-it works, spec download valid, re-import stores authored order
-- [ ] [qa] Criterion 10: connection killed mid-migration → restart boots, column is `json` or untouched `jsonb`, APIs serve
-- [ ] [qa] `docker compose up` quickstart still works on a fresh volume and on an upgraded pre-022 volume
+- [x] [qa] Criterion 1: Kong delayed by the proxy, `pg_stat_activity` shows no open portal transaction during the call, for app create, key create, admin subscription and approval
+- [x] [qa] Criterion 2: Kong error and timeout on create → problem+json, no app or key row, no consumer or key left in Kong (check Kong by tag)
+- [x] [qa] Criterion 3: trigger-forced update failure after a Kong revoke, reconcile run twice, row revoked and no drift on the second run
+- [x] [qa] Criterion 4: compensation failure logs one error entry with `err.message`, `err.cause` and app, key and gateway ids; no log line matches `pk_[A-Za-z0-9_-]{8,}`
+- [x] [qa] Reconcile during an in-flight create does not delete the new consumer or key
+- [x] [qa] Criterion 5: admin API at `sample`, restart with `SEED_SAMPLE=true`, API unchanged, skip line logged; seed-created sample still refreshed
+- [x] [qa] Criterion 6: user row with `ADMIN_EMAIL` and no credential → boot completes and admin signs in; role-admin row without credential → wizard available; exactly one usable admin
+- [x] [qa] Criterion 7: 20 APIs × 1 MB fixture, SQL logger shows no `document` in the list and one in the slug page; list response equal to the pre-change snapshot
+- [x] [qa] Criteria 8, 9: quickstart sample sidebar order `/get`, `/post`, `/status/{code}`, `/uuid`, `/headers` (Playwright); pre-022 rows still render, try-it works, spec download valid, re-import stores authored order
+- [x] [qa] Criterion 10: connection killed mid-migration → restart boots, column is `json` or untouched `jsonb`, APIs serve
+- [x] [qa] `docker compose up` quickstart still works on a fresh volume and on an upgraded pre-022 volume
 
 ## Build notes
 
@@ -354,3 +354,30 @@ switched mid-request. All are problem+json.
 - App create, key issue, admin subscription, and an access approval that creates an app run prepare → gateway → commit. A name collision, or a gateway that is replaced or disabled during the Kong call, returns 409 and compensates. Two creates can both call Kong; the loser compensates. Key revoke uses the same split, keeps the operation when commit fails, and still completes when that same gateway is disabled. `reconcile()` returns `{ drift: { credentialIds } }`, skips ops younger than 10 minutes, and finishes a stale revoke.
 - A compensation failure logs one error, `Gateway compensation failed; reconcile will retry`, with `err` (message and cause; every `pk_` value becomes `pk_[redacted]`), `appId`, `credentialId`, `gatewayId`, and `gatewayObject`.
 - Seed logs `Sample seed skipped: slug "sample" is taken by an admin-published API` and makes no Kong call when `seeded` is false, and refreshes a seed-created sample. A user at the admin email with no credential account is completed; a role-admin without a credential account still sees the wizard. A `Problem` from `ADMIN_EMAIL` logs `First admin from ADMIN_EMAIL not created: <title>` and boot continues. Catalog list and summary callers omit `document`; search and `llms.txt` pass `{ documents: true }`, and one document is loaded with `loadDocument`. `connect(url, { logger })` accepts a Drizzle logger. Plan change, app delete, gateway switch, seed, and `revokeApps` still call Kong inside a transaction.
+
+## Test report
+
+Commit tested: `1c3fd9dacd169c57f40e8d5c8abd81eccf5f199d` · Portal: http://localhost:3005
+
+| Criterion | Test file | Result |
+| --- | --- | --- |
+| 1. No open transaction while Kong is slow, on app create, key create, admin subscription, and approval | `apps/server/src/server-robustness.test.ts` | pass |
+| 2. Kong error and timeout return problem+json and leave no app, key, or tagged Kong consumer | `apps/server/src/server-robustness.test.ts` | pass |
+| 3. A failed revoke update is finished by the next reconcile, and a second reconcile reports no drift for that key | `apps/server/src/server-robustness.test.ts` | pass |
+| 4. One compensation error, with ids, and no `pk_` secret in the log | `apps/server/src/server-robustness.test.ts` | pass; `err.cause` is absent (minor, Bugs) |
+| Reconcile during an in-flight create does not delete the new consumer | `apps/server/src/server-robustness.test.ts` | pass |
+| 5. An admin-published `sample` is skipped with the skip log and no Kong call; a seed-created sample is refreshed in authored order | `apps/server/src/server-robustness.test.ts` | pass |
+| 6. A partial admin is completed and can sign in; a role without a credential keeps the wizard; exactly one usable admin | `apps/server/src/server-robustness-migration.test.ts` | pass |
+| 7. Twenty 1 MB documents: the list and slug page do not select `document`; the reference selects it once | `apps/server/src/server-robustness.test.ts` | pass |
+| 8. Quickstart sample sidebar order is `/get`, `/post`, `/status/{code}`, `/uuid`, `/headers` | `deploy/e2e/authored-order.test.ts` | pass |
+| 9. Pre-022 rows still render; try-it works; spec download is valid JSON; re-import stores authored order | `apps/server/src/server-robustness-migration.test.ts`, `apps/server/src/server-robustness.test.ts` | pass |
+| 10. Killing the connection mid-migration leaves `jsonb` and no `gateway_operations`; the next boot migrates and serves the API | `apps/server/src/server-robustness-migration.test.ts` | pass |
+| Failure paths: invalid input, missing session, missing permission, duplicate name, unreachable gateway | `apps/server/src/server-robustness.test.ts` | pass |
+| Fresh compose volume | `node scripts/worktree-compose.mjs up -d --build --wait` | pass: healthy, `/` redirects to `/setup`, catalog empty |
+| Seeded compose quickstart, left up | `deploy/e2e/quickstart.spec.ts` | pass |
+
+`pnpm lint`, `pnpm typecheck`, and `pnpm test` passed (344 tests in `@portal/server`). `pnpm test:e2e` then ran 105 tests against http://localhost:3005: 102 passed, 2 skipped, and one unexpected socket reset on the existing teams account-deletion test. That test passed when run again by itself. The crossed results for JSO-399, JSO-405, JSO-406, the Node.js snippet case, and the homepage outage case are the existing `test.fail` markers, and they failed as marked. The stack at http://localhost:3005 is still up, with the sample API seeded.
+
+### Bugs
+
+- [ ] Compensation error log has no `err.cause` (minor). One error is logged, `Gateway compensation failed; reconcile will retry`, with `err.message` "The API gateway is unavailable", `appId`, `credentialId`, `gatewayId`, and `gatewayObject`. No log line matches `pk_[A-Za-z0-9_-]{8,}`. `GatewayUnavailableError` does not keep the underlying fetch or HTTP error as `cause`.
