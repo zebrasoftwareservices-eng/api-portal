@@ -551,8 +551,14 @@ export interface paths {
          *     - `planId` subscribes to a product plan (spec 009). The app reaches the plan's APIs, with
          *       the plan's limits, and the subscription's name is the app's `name`.
          *     - `apiIds` is the spec 004 flow for APIs in no product. The app goes on the built-in
-         *       `Unlimited` plan. An API that is in a product is refused with `/problems/validation`
-         *       (pointer `/apiIds`); subscribe to one of its plans instead.
+         *       `Unlimited` plan. If any named API is in a product (spec 023), the whole request is
+         *       refused with 409 `/problems/api-in-product`: `errors[].pointer` is `/apiIds/<index>`
+         *       for each such API, `errors[].message` names it, and `products` lists the products the
+         *       caller can subscribe to instead. An API whose every product is hidden from the caller
+         *       is 404, like any API the caller can't see.
+         *     Sending `apiIds` together with `planId`, or any property not in the schema, is a 400
+         *     `/problems/validation` whose `errors[].pointer` names that property (for example
+         *     `/planId`). The product and plan checks run before any gateway call.
          *     The app belongs to `teamId` (default: the caller's current team), and needs the
          *     `admin` or `member` role there (spec 008). The role is checked before email verification
          *     and before any gateway call.
@@ -1758,6 +1764,8 @@ export interface components {
             errorCount?: number;
             /** @description With `/problems/confirmation-required`: teams with affected active subscriptions */
             affectedTeams?: number;
+            /** @description With `/problems/api-in-product` (spec 023): the products, visible to the caller, that include the refused APIs, by name. Subscribe at `/products/{slug}`. */
+            products?: components["schemas"]["ProductRef"][];
             /** @description With `/problems/confirmation-required`: affected active subscriptions */
             affectedSubscriptions?: number;
             /** @description With `/problems/team-needs-admin` from `DELETE /v1/me`: the teams where the caller is the only Admin and others are members */
@@ -2323,7 +2331,10 @@ export interface components {
             /** @enum {string} */
             state: "pending" | "accepted" | "cancelled" | "expired";
         };
-        /** @description Exactly one of `planId` (subscribe to a product plan) or `apiIds` (APIs in no product). */
+        /**
+         * @description Exactly one of `planId` (subscribe to a product plan) or `apiIds` (APIs in no product).
+         *     Both together, or any other property, is a 400 naming the property (spec 023).
+         */
         CreateAppRequest: {
             /** @description Unique in the team. For a subscription this is its name, such as `staging` or `prod`. */
             name: string;
@@ -2432,16 +2443,23 @@ export interface components {
             description: string;
             visibility: components["schemas"]["ProductVisibility"];
             apiCount: number;
+            /** @description Product plans only (never the built-in plan). 0 means the product cannot be subscribed to yet (spec 023 AC 7). */
             planCount: number;
-            /** Format: date-time */
-            createdAt: string;
-        };
-        ProductDetail: components["schemas"]["ProductSummary"] & {
+            /**
+             * @description True when the product has at least one plan and every plan has `requiresApproval`
+             *     (spec 023). The Create an app form then labels the link "Request access" instead of
+             *     "Subscribe". False when `planCount` is 0.
+             */
+            allPlansRequireApproval: boolean;
             /**
              * @description False for a `manual` product: plans can't be subscribed to or requested, only
              *     assigned by an admin (provisional, pending Elango).
              */
             selfService: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ProductDetail: components["schemas"]["ProductSummary"] & {
             /** @description The product's APIs, by title */
             apis: components["schemas"]["ApiSummary"][];
             /** @description The product's plans, oldest first (the plan comparison table's columns) */
@@ -3647,8 +3665,10 @@ export interface operations {
             };
             /**
              * @description The team already has an app with this name (`/problems/app-name-taken`), the plan
-             *     requires approval (`/problems/approval-required`), or the API's gateway connection is
-             *     disabled (`/problems/gateway-disabled`). Nothing is created in Kong or Postgres.
+             *     requires approval (`/problems/approval-required`), one of `apiIds` is in a product
+             *     (`/problems/api-in-product`, spec 023: subscribe to a product listed in `products`),
+             *     or the API's gateway connection is disabled (`/problems/gateway-disabled`). Nothing is
+             *     created in Kong or Postgres.
              */
             409: {
                 headers: {

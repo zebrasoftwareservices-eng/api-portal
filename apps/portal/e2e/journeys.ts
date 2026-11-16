@@ -2,6 +2,7 @@
 import { expect, test } from '@playwright/test';
 import './reference-snippets.test';
 import './usage.test';
+import './create-app-products.test';
 
 test('developer signs up, copies a one-time key, calls Kong and revokes it', async ({
   page,
@@ -23,7 +24,13 @@ test('developer signs up, copies a one-time key, calls Kong and revokes it', asy
   ).toBe(403);
   await page.goto('/admin/apis');
   await expect(page.getByRole('heading', { name: /not found/i })).toBeVisible();
-  await page.goto('/dashboard/apps/new?api=sample');
+  await page.goto('/dashboard/apps/new');
+  await expect(
+    page.getByRole('checkbox', { name: /Sample HTTP API.*\/sample$/ }),
+  ).not.toBeChecked();
+  await page
+    .getByRole('checkbox', { name: /Sample HTTP API.*\/sample$/ })
+    .check();
   await page.getByLabel('App name').fill(`QA ${crypto.randomUUID()}`);
   await expect(page.locator('input[type="checkbox"]:checked')).toHaveCount(1);
   await expect(

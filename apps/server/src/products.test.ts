@@ -11,6 +11,7 @@ import {
   teams,
   teamMembers,
   gateways,
+  gatewayConsumers,
   instanceSettings,
   apis,
   apiVersions,
@@ -313,8 +314,8 @@ it('collects invalid plan fields and prevents direct product-API subscriptions w
     url: '/api/v1/apps',
     payload: { teamId, name: 'Bypass', apiIds: [apiId] },
   });
-  expect(direct.statusCode).toBe(400);
-  expect(direct.json().errors[0].pointer).toBe('/apiIds');
+  expect(direct.statusCode).toBe(409);
+  expect(direct.json().errors[0].pointer).toBe('/apiIds/0');
   expect(adapter.ensureConsumer).not.toHaveBeenCalled();
 });
 it('collects product membership and quota errors alongside missing fields', async () => {
@@ -946,15 +947,13 @@ it('011 AC 8: initial and regenerated credentials record their own creator, incl
     expect.objectContaining({ id: created.credential.id, createdBy: adminId }),
   ]);
   const teammate = uuidv7();
-  await connection.db
-    .insert(user)
-    .values({
-      id: teammate,
-      name: 'Regenerator',
-      email: `${teammate}@example.com`,
-      role: 'developer',
-      emailVerified: true,
-    });
+  await connection.db.insert(user).values({
+    id: teammate,
+    name: 'Regenerator',
+    email: `${teammate}@example.com`,
+    role: 'developer',
+    emailVerified: true,
+  });
   await connection.db
     .insert(teamMembers)
     .values({ teamId, userId: teammate, role: 'member' });
@@ -973,4 +972,196 @@ it('011 AC 8: initial and regenerated credentials record their own creator, incl
     .from(credentials)
     .where(eq(credentials.id, created.credential.id));
   expect(old).toMatchObject({ status: 'revoked', createdBy: adminId });
+});
+
+// Spec 023: direct API creation must not bypass product plans.
+async function createLooseApi() {
+  const id = uuidv7();
+  await connection.db.insert(apis).values({
+    id,
+    slug: `api-${id}`,
+    gatewayId,
+    gatewayServiceId: id,
+    gatewayServiceName: id,
+    routePath: `/${id}`,
+  });
+  await connection.db.insert(apiVersions).values({
+    id,
+    apiId: id,
+    title: `API ${id}`,
+    version: '1',
+    document: {},
+  });
+  await connection.db
+    .update(apis)
+    .set({ latestVersionId: id })
+    .where(eq(apis.id, id));
+  return id;
+}
+async function appState() {
+  return {
+    apps: await connection.db.select().from(apps),
+    credentials: await connection.db.select().from(credentials),
+    consumers: await connection.db.select().from(gatewayConsumers),
+  };
+}
+function expectNoProvisioning() {
+  expect(adapter.ensureConsumer).not.toHaveBeenCalled();
+  expect(adapter.issueCredential).not.toHaveBeenCalled();
+  expect(adapter.grantAccess).not.toHaveBeenCalled();
+}
+it('refuses product APIs alone or mixed, with indexed errors and visible products only, before provisioning', async () => {
+  role = 'developer';
+  const apiId = await createLooseApi();
+  const secondApiId = await createLooseApi();
+  const productId = uuidv7();
+  const slug = `visible-${productId}`;
+  await connection.db.insert(products).values({
+    id: productId,
+    slug,
+    name: 'Product',
+    description: 'Visible',
+  });
+  await connection.db.insert(productApis).values([
+    { productId, apiId },
+    { productId, apiId: secondApiId },
+  ]);
+  const looseId = await createLooseApi();
+  const hiddenId = uuidv7();
+  await connection.db.insert(products).values({
+    id: hiddenId,
+    slug: `internal-${hiddenId}`,
+    name: 'Secret internal product',
+    description: 'Private',
+    visibility: 'internal',
+  });
+  await connection.db
+    .insert(productApis)
+    .values({ productId: hiddenId, apiId });
+  const before = await appState();
+  for (const apiIds of [[apiId], [looseId, apiId], [apiId, secondApiId]]) {
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      payload: { teamId, name: uuidv7(), apiIds },
+    });
+    expect(response.statusCode, response.body).toBe(409);
+    expect(response.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(response.json()).toMatchObject({
+      type: '/problems/api-in-product',
+      title: 'API offered in a product',
+      status: 409,
+      products: [{ id: productId, slug, name: 'Product' }],
+      errors: apiIds.flatMap((id, i) =>
+        id === looseId
+          ? []
+          : [
+              {
+                pointer: `/apiIds/${i}`,
+                message: `API ${id} is in Product.`,
+              },
+            ],
+      ),
+    });
+    expect(response.body).not.toContain('Secret internal product');
+    expect(response.body).not.toContain(hiddenId);
+    expect(await appState()).toEqual(before);
+    expectNoProvisioning();
+  }
+});
+it('returns 404 without naming an API whose only product is invisible to the team', async () => {
+  role = 'developer';
+  const privateApiId = await createLooseApi();
+  const id = uuidv7();
+  await connection.db.insert(products).values({
+    id,
+    slug: `internal-${id}`,
+    name: 'Invisible product',
+    description: 'Private',
+    visibility: 'internal',
+  });
+  await connection.db
+    .insert(productApis)
+    .values({ productId: id, apiId: privateApiId });
+  const before = await appState();
+  const response = await server.inject({
+    method: 'POST',
+    url: '/api/v1/apps',
+    payload: { teamId, name: uuidv7(), apiIds: [privateApiId] },
+  });
+  expect(response.statusCode, response.body).toBe(404);
+  expect(response.body).not.toContain('Invisible product');
+  expect(response.body).not.toContain(privateApiId);
+  expect(response.json().products).toBeUndefined();
+  expect(await appState()).toEqual(before);
+  expectNoProvisioning();
+});
+it('names planId and every unknown property in create-app validation errors before provisioning', async () => {
+  const before = await appState();
+  for (const extra of [
+    { planId },
+    { plan: 'free' },
+    { unexpected: true, 'a/b~c': true },
+  ]) {
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      payload: { teamId, name: uuidv7(), apiIds: [apiId], ...extra },
+    });
+    expect(response.statusCode, response.body).toBe(400);
+    expect(response.json().type).toBe('/problems/validation');
+    expect(
+      response.json().errors.map((e: { pointer: string }) => e.pointer),
+    ).toEqual(
+      Object.keys(extra).map(
+        (key) => '/' + key.replaceAll('~', '~0').replaceAll('/', '~1'),
+      ),
+    );
+    expect(await appState()).toEqual(before);
+    expectNoProvisioning();
+  }
+});
+it('lists approval and self-service flags for all-approval, mixed, no-plan and manual products', async () => {
+  const created = [];
+  for (const [visibility, approvals] of [
+    ['open', [true, true]],
+    ['open', [true, false]],
+    ['open', []],
+    ['manual', [false]],
+  ] as const) {
+    const id = uuidv7();
+    await connection.db.insert(products).values({
+      id,
+      slug: `flags-${id}`,
+      name: `Flags ${id}`,
+      description: 'Flags',
+      visibility,
+    });
+    for (const requiresApproval of approvals) {
+      await connection.db.insert(plans).values({
+        id: uuidv7(),
+        productId: id,
+        name: uuidv7(),
+        rateLimit: 1,
+        rateLimitUnit: 'second',
+        monthlyQuota: 10,
+        requiresApproval,
+      });
+    }
+    created.push({
+      id,
+      planCount: approvals.length,
+      allPlansRequireApproval: approvals.length > 0 && approvals.every(Boolean),
+      selfService: visibility !== 'manual',
+    });
+  }
+  const response = await server.inject({ url: '/api/v1/products' });
+  expect(response.statusCode, response.body).toBe(200);
+  for (const expected of created) {
+    expect(response.json().items).toContainEqual(
+      expect.objectContaining(expected),
+    );
+  }
 });

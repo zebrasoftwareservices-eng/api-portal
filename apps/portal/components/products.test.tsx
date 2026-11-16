@@ -39,6 +39,7 @@ vi.mock('./team-context', () => ({
 const product: Product = {
   visibility: 'open',
   selfService: true,
+  allPlansRequireApproval: false,
   id: 'product',
   name: 'Orders',
   slug: 'orders',

@@ -2,11 +2,13 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { uuidv7 } from 'uuidv7';
-import { eq, ne, and, desc, inArray, sql } from 'drizzle-orm';
+import { eq, ne, and, asc, desc, inArray, sql } from 'drizzle-orm';
 import {
   apps,
   accessRequests,
   apis,
+  apiVersions,
+  products,
   plans,
   planApis,
   productApis,
@@ -33,7 +35,7 @@ import {
   type TeamRole,
 } from './teams.js';
 import { appApis, appPlan, planLimits } from './app-plans.js';
-import { canSeeApi, teamViewer } from './access-policy.js';
+import { canSeeApi, teamViewer, visibleProductIds } from './access-policy.js';
 import { requireSelfService, reasonSchema } from './access-requests.js';
 import {
   pendingRequest,
@@ -66,7 +68,7 @@ const createSchema = z
     if (Boolean(v.apiIds) === Boolean(v.planId))
       ctx.addIssue({
         code: 'custom',
-        path: ['apiIds'],
+        path: [v.apiIds && v.planId ? 'planId' : 'apiIds'],
         message: 'Send exactly one of apiIds or planId.',
       });
   });
@@ -151,7 +153,11 @@ export function registerApps(
     const user = await requireUser(auth, request);
     await db.transaction((tx) => ensurePersonalTeam(tx, user.id));
     const target = z
-      .object({ teamId: z.uuid().optional(), planId: z.uuid().optional() })
+      .object({
+        teamId: z.uuid().optional(),
+        planId: z.uuid().optional(),
+        apiIds: z.unknown().optional(),
+      })
       .parse(request.body);
     const appId = uuidv7(),
       id = uuidv7(),
@@ -170,6 +176,12 @@ export function registerApps(
         const teamId = target.teamId ?? (await currentTeamId(tx, user.id));
         const membership = await teamAccess(tx, teamId, user.id, 'write');
         await requireVerified(tx, user);
+        // Reject mixed API/plan input before resolving its plan, while keeping
+        // plan-only requests' visibility checks ahead of their other validation.
+        const apiInput =
+          target.apiIds === undefined
+            ? undefined
+            : createSchema.parse(request.body);
         const [plan] = await tx
           .select()
           .from(plans)
@@ -183,7 +195,7 @@ export function registerApps(
           user.id,
           user.role === 'admin',
         );
-        const input = createSchema.parse(request.body);
+        const input = apiInput ?? createSchema.parse(request.body);
         if (plan.requiresApproval)
           throw new Problem(
             409,
@@ -229,26 +241,65 @@ export function registerApps(
         );
         for (const apiId of apiIds)
           if (!(await canSeeApi(tx, viewer, apiId))) throw notFound();
-        if (
-          input.apiIds &&
-          (
-            await tx
-              .select()
-              .from(productApis)
-              .where(inArray(productApis.apiId, apiIds))
-          ).length
-        )
-          throw new Problem(
-            400,
-            'validation',
-            'Subscribe using a product plan.',
-            [
-              {
-                pointer: '/apiIds',
-                message: 'APIs in a product require a plan.',
-              },
-            ],
-          );
+        if (input.apiIds) {
+          // Membership blocks direct access regardless of visibility; only visible
+          // products can appear in the refusal after every API passed canSeeApi.
+          const memberships = await tx
+            .select({
+              apiId: productApis.apiId,
+              productId: productApis.productId,
+            })
+            .from(productApis)
+            .where(inArray(productApis.apiId, apiIds));
+          if (memberships.length) {
+            const visible = await tx
+              .select({
+                id: products.id,
+                slug: products.slug,
+                name: products.name,
+              })
+              .from(products)
+              .where(
+                and(
+                  inArray(
+                    products.id,
+                    memberships.map((m) => m.productId),
+                  ),
+                  visibleProductIds(tx, viewer),
+                ),
+              )
+              .orderBy(asc(products.name), asc(products.id));
+            const versions = await tx
+              .select({ apiId: apis.id, title: apiVersions.title })
+              .from(apis)
+              .innerJoin(apiVersions, eq(apiVersions.id, apis.latestVersionId))
+              .where(inArray(apis.id, apiIds));
+            const errors = apiIds.flatMap((apiId, index) => {
+              const links = memberships.filter((m) => m.apiId === apiId);
+              if (!links.length) return [];
+              const title =
+                versions.find((v) => v.apiId === apiId)?.title ??
+                selected.find((a) => a.id === apiId)!.slug;
+              const names = visible
+                .filter((p) => links.some((m) => m.productId === p.id))
+                .map((p) => p.name)
+                .join(', ');
+              return [
+                {
+                  pointer: `/apiIds/${index}`,
+                  message: `${title} is in ${names}.`,
+                },
+              ];
+            });
+            throw new Problem(
+              409,
+              'api-in-product',
+              `${errors.map((e) => e.message).join(' ')} Subscribe to ${visible.map((p) => p.name).join(', ')} instead.`,
+              errors,
+              { products: visible },
+            );
+          }
+        }
         const app = await provisionApp(
           tx,
           connection,
