@@ -946,6 +946,7 @@ for (const width of [1280, 390]) {
       ['/admin/gateways', 'Gateways'],
       ['/admin/settings/mail', 'Mail'],
       ['/admin/settings/accounts', 'Accounts'],
+      ['/admin/theme', 'Theme'],
     ] as const;
     for (const [path, label] of sections) {
       await page.goto(path);

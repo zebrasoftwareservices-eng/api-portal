@@ -1,7 +1,7 @@
 ---
 id: 013
 title: Theme editor
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-16
 linear: JSO-241
@@ -283,9 +283,9 @@ None. The theme stays inside the portal. Kong and AWS are untouched.
 - [x] [frontend] Root layout: fetch `/v1/theme` (no-store, timeout, default fallback), `ThemeProvider`, `generateMetadata` favicon, `data-theme`, `ThemeLinks` (nothing under `/admin`, plain `<link>`s), header logo (built-in under `/admin`), `<a>` for Admin entry links, self-hosted `@fontsource` fonts
 - [x] [frontend] Preview mode in `ThemeLinks` (`?themePreview=1`, framed, same-origin `postMessage`, `<style>` via `textContent`); confirm framing headers allow `'self'`
 - [x] [frontend] `/admin/theme` editor per the UX doc: palettes (light/dark), font, radius, default mode, custom CSS textarea, logo/favicon upload with client checks, live iframe preview, contrast warnings, Save, Reset (confirm), Export, Import; server errors shown against the named field; add the Admin nav entry
-- [ ] [frontend] Docs: `docs/guides/theming.md` (limits, fonts, admin isolation, export/import for GitOps) and a README line
-- [ ] [qa] Playwright e2e per criterion: AC 1 (colour and logo live in a fresh context, no restart), AC 2 (preview updates, both modes after save via `colorScheme`), AC 3 (preview shows CSS, live unchanged until save), AC 4 (`body{display:none}`: direct and client-nav `/admin` usable, then remove), AC 5 (reset), AC 6 (export, reset, import → same theme and same etag), AC 7 (oversized logo, wrong type, malformed JSON, bad colour → named error, theme unchanged), AC 8 (contrast warning shown, save still allowed), AC 9 (developer 403 and visitor 401 on API, page not shown)
-- [ ] [qa] AC 10: fresh `docker compose up` timed under five minutes, default theme served, `/v1/theme` `isDefault: true`; demo build still renders with no server
+- [x] [frontend] Docs: `docs/guides/theming.md` (limits, fonts, admin isolation, export/import for GitOps) and a README line
+- [x] [qa] Playwright e2e per criterion: AC 1 (colour and logo live in a fresh context, no restart), AC 2 (preview updates, both modes after save via `colorScheme`), AC 3 (preview shows CSS, live unchanged until save), AC 4 (`body{display:none}`: direct and client-nav `/admin` usable, then remove), AC 5 (reset), AC 6 (export, reset, import → same theme and same etag), AC 7 (oversized logo, wrong type, malformed JSON, bad colour → named error, theme unchanged), AC 8 (contrast warning shown, save still allowed), AC 9 (developer 403 and visitor 401 on API, page not shown)
+- [x] [qa] AC 10: fresh `docker compose up` timed under five minutes, default theme served, `/v1/theme` `isDefault: true`; demo build still renders with no server
 
 ## UX  _(ui-designer)_
 Design: [docs/design/013-theme-editor.md](../design/013-theme-editor.md).
@@ -307,16 +307,26 @@ Design: [docs/design/013-theme-editor.md](../design/013-theme-editor.md).
 **Backend.** `@portal/theme` (no runtime dependencies) owns the default palette, fonts, contrast check, CSS and etag. Migration `0010_theme` adds empty `theme_settings` and `theme_assets` tables. Public routes are `/api/v1/theme`, `/api/v1/theme.css`, `/api/v1/theme/custom.css` and `/api/v1/theme/assets/{logo|favicon}` with etag caching, `If-None-Match`, asset `nosniff` and a sandbox CSP. A missing or invalid row serves the shipped default and does not return asset bytes. Admin save, reset, export and import validate before one transaction: over 2 MB is 413, and a bad colour, `@import`, a mismatched or oversized asset, or a non-JSON import is 400 problem+json with the stored theme unchanged. Contrast never blocks a save. The server image copies `packages/theme/dist`. QA: the upgrade test locks `api_versions` on `0009_gateway_operations`, because `0010_theme` does not touch that table. The committed factory guard does not list `packages/theme` yet; add `under(path, 'packages/theme')` to the backend paths in `scripts/factory-guard.mjs` before the next backend commit.
 
 ## Test report  _(qa-tester)_
-Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
+Commit tested: `fd20d502cb57da4cc39c9b542c5e29b5b299e54f` · Portal: http://localhost:3004
+
+Fresh `node scripts/worktree-compose.mjs up -d --build --wait` finished in 122.62s and `GET /api/v1/theme` returned `isDefault: true` (etag `0e555751a98cd27d`). The stack left up is that project, with the first admin and the sample catalog. `pnpm lint`, `pnpm typecheck`, and `pnpm test` passed, including 9 server theme integration tests and 13 `@portal/theme` unit tests. `pnpm test:e2e` was 96 passed, 2 skipped, 18 failed. Seven of those were the theme journey matching every heading named APIs after a product exists; the journey now uses the level-1 heading and passed 11/11 on a rerun. Two more expected seven admin sections; Theme is the eighth, and those two tests passed after the list included `/admin/theme`. The other nine call `docker compose` on project `portal` and fail because this worktree already holds mailpit port 8025. They are not theme product failures. The demo check passed with no control plane.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
-
-Long notes go in `docs/specs/log/013.md`, not here.
+| AC 1 colour and PNG logo on the next public load | `apps/portal/e2e/theme.test.ts`; `apps/server/src/theme.test.ts` save and public etag | pass |
+| AC 2 preview, then both colour schemes, font, and radius | `apps/portal/e2e/theme.test.ts` (framing headers on `GET /`) | pass |
+| AC 3 custom CSS in the preview, then public and developer pages | `apps/portal/e2e/theme.test.ts` | pass |
+| AC 4 `body { display: none }` leaves `/admin` usable, then the CSS is removed | `apps/portal/e2e/theme.test.ts` (direct load and client navigation) | pass |
+| AC 5 reset, including a second reset | `apps/portal/e2e/theme.test.ts`; server reset test | pass |
+| AC 6 export, reset, import, same etag | `apps/portal/e2e/theme.test.ts`; server export/import test | pass |
+| AC 7 oversized logo, wrong type, malformed JSON, bad colour | `apps/portal/e2e/theme.test.ts`; server 400 problem+json and 413 tests | pass |
+| AC 8 contrast warning, save still allowed | `apps/portal/e2e/theme.test.ts`; server low-contrast save | pass |
+| AC 9 visitor 401, developer 403, page not shown | `apps/portal/e2e/theme.test.ts`; server visitor and developer refusal | pass |
+| AC 10 fresh compose under five minutes, default theme, demo with no server | 122.62s compose and `isDefault: true`; `apps/portal/e2e/theme.test.ts`; `deploy/e2e-demo/demo.test.ts` | pass |
+| Failure paths | invalid input in AC 7; duplicate PUT and a second DELETE; missing permission in AC 9; ended session keeps the etag. Theme does not call a gateway. `apps/portal/lib/public-theme.test.ts` covers the public fetch timeout. | pass |
 
 ### Bugs
-<!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
-<!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
+None.
 
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
@@ -331,10 +341,10 @@ Earlier rounds go in `docs/specs/log/013.md`. The full report is `docs/uat/013/r
 return the spec to building. Earlier rounds go in `docs/specs/log/013.md`.
 
 ## Definition of Done
-- [ ] Every acceptance criterion has a passing automated test
+- [x] Every acceptance criterion has a passing automated test
 - [ ] Every user story passes in the browser (User testing section)
 - [ ] lint, typecheck, unit, integration and e2e all green in CI
-- [ ] Quickstart (`docker compose up`) still works end to end
+- [x] Quickstart (`docker compose up`) still works end to end
 - [ ] API contract, README and docs updated
 - [ ] Tech-lead review has no blocking findings
 - [ ] Elango merged the PR
