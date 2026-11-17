@@ -4,7 +4,8 @@ import { useEffect } from 'react';
 import { api } from '../lib/client';
 import { usePortal } from './providers';
 import { useResource } from './use-resource';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
+import { assignLocation } from '../lib/navigate';
 const items = [
   ['/admin/apis', 'APIs'],
   ['/admin/products', 'Products'],
@@ -13,13 +14,15 @@ const items = [
   ['/admin/gateways', 'Gateways'],
   ['/admin/settings/mail', 'Mail'],
   ['/admin/settings/accounts', 'Accounts'],
+  ['/admin/theme', 'Theme'],
 ] as const;
 export function AdminNav() {
   const { user } = usePortal();
   const path = usePathname();
   const hide = path === '/admin/insights' && user?.role !== 'admin';
   const visibleItems = items.filter(
-    ([href]) => href !== '/admin/insights' || user?.role === 'admin',
+    ([href]) =>
+      (href !== '/admin/insights' && href !== '/admin/theme') || user?.role === 'admin',
   );
   const pending = useResource(() =>
     hide
@@ -34,7 +37,6 @@ export function AdminNav() {
     return () => window.removeEventListener('access-requests-changed', refresh);
   }, [pending.reload]);
   const count = pending.data?.items.length || 0;
-  const router = useRouter();
   const current =
     items.find(([href]) => path === href || path.startsWith(`${href}/`))?.[0] ||
     '';
@@ -64,7 +66,9 @@ export function AdminNav() {
         Admin section
         <select
           value={current}
-          onChange={(event) => router.push(event.target.value)}
+          onChange={(event) => {
+            assignLocation(event.target.value);
+          }}
         >
           {visibleItems.map(([href, label]) => (
             <option key={href} value={href}>

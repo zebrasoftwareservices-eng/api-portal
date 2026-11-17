@@ -2,6 +2,7 @@
 import { registerUsage } from './usage.js';
 import { registerAccount } from './account.js';
 import { registerAdminSettings } from './admin-settings.js';
+import { registerTheme } from './theme.js';
 import { limitedAuth } from './auth-limits.js';
 import { mailQueue, type EnqueueMail } from './mail/queue.js';
 import { portalProxy } from './trusted-proxy.js';
@@ -192,6 +193,7 @@ export async function createApp(options: AppOptions) {
   });
   registerAccount(app, db, auth, connection, config, enqueue);
   registerAdminSettings(app, db, auth, config);
+  await registerTheme(app, db, auth);
   app.get('/api/v1/health/live', async () => ({ status: 'ok' }));
   app.get('/api/v1/health/ready', async () => databaseReadiness(db));
   app.get('/api/v1/health', async () => {

@@ -47,9 +47,15 @@ async function applyPre022(url: string) {
   const journal = JSON.parse(
     await readFile(join(migrationsFolder, 'meta/_journal.json'), 'utf8'),
   ) as { entries: { tag: string }[] };
+  // 0009 changes api_versions.document. Later migrations, including theme,
+  // must stay pending so a lock on that table still stops the upgrade.
+  const pendingAt = journal.entries.findIndex(
+    (entry) => entry.tag === '0009_gateway_operations',
+  );
+  if (pendingAt < 0) throw new Error('0009_gateway_operations is missing from the journal');
   const client = postgres(url, { max: 1 });
   try {
-    for (const entry of journal.entries.slice(0, -1)) {
+    for (const entry of journal.entries.slice(0, pendingAt)) {
       const text = await readFile(join(migrationsFolder, `${entry.tag}.sql`), 'utf8');
       const sqlText = text.replaceAll('--> statement-breakpoint', '');
       try {
@@ -71,7 +77,7 @@ async function applyPre022(url: string) {
         created_at bigint
       )`,
     );
-    for (const migration of migrations.slice(0, -1))
+    for (const migration of migrations.slice(0, pendingAt))
       await client`insert into drizzle.__drizzle_migrations (hash, created_at) values (${migration.hash}, ${migration.folderMillis})`;
     await client`insert into gateways (id, name, kind, admin_url, proxy_public_url, proxy_internal_url)
       values (${gatewayId}, 'kong', 'kong', 'http://127.0.0.1:9', 'http://127.0.0.1:9', 'http://127.0.0.1:9')`;

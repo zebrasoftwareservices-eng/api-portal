@@ -16,6 +16,7 @@ import {
   index,
   integer,
   foreignKey,
+  customType,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -600,4 +601,50 @@ export const usageIngestBatches = pgTable(
     receivedAt: time('received_at').notNull().defaultNow(),
   },
   (t) => [index('usage_ingest_received_idx').on(t.receivedAt)],
+);
+
+const bytea = customType<{ data: Buffer; driverData: Buffer | Uint8Array | string }>({
+  dataType: () => 'bytea',
+  toDriver: (value) => value,
+  fromDriver: (value) => {
+    if (typeof value === 'string') {
+      const hex = value.startsWith('\\x') ? value.slice(2) : value;
+      return Buffer.from(hex, 'hex');
+    }
+    return Buffer.from(value);
+  },
+});
+
+export const themeSettings = pgTable(
+  'theme_settings',
+  {
+    id: smallint('id').primaryKey().default(1),
+    values: jsonb('values').$type<Record<string, unknown>>().notNull(),
+    customCss: text('custom_css').notNull().default(''),
+    updatedBy: uuid('updated_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    updatedAt: updated(),
+  },
+  (t) => [check('theme_settings_singleton', sql`${t.id} = 1`)],
+);
+
+export const themeAssets = pgTable(
+  'theme_assets',
+  {
+    kind: text('kind').primaryKey().$type<'logo' | 'favicon'>(),
+    contentType: text('content_type').notNull(),
+    data: bytea('data').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    sha256: text('sha256').notNull(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    check('theme_asset_kind', sql`${t.kind} in ('logo','favicon')`),
+    check(
+      'theme_asset_content_type',
+      sql`${t.contentType} in ('image/png','image/svg+xml','image/webp','image/x-icon')`,
+    ),
+    check('theme_asset_byte_size', sql`${t.byteSize} between 1 and 524288`),
+  ],
 );

@@ -245,6 +245,21 @@ test('demo API endpoints return 404 even for stale sessions and mutation request
   }
 });
 
+test('013 AC 10: demo renders the shipped theme with no control plane', async ({
+  page,
+}) => {
+  const response = await page.goto('/');
+  expect(response?.status()).toBe(200);
+  await expect(
+    page.getByRole('heading', { name: 'APIs', exact: true, level: 1 }),
+  ).toBeVisible();
+  await expect(page.locator('header a.brand')).toHaveText('Developer Portal');
+  await expect(page.locator('img.brand-logo')).toHaveCount(0);
+  await expect(page.locator('link[href*="custom.css"]')).toHaveCount(0);
+  // SERVER_URL is unset, so /api is proxied at localhost:4000 and the proxy returns 502.
+  expect((await page.request.get('/api/v1/theme')).status()).toBe(502);
+});
+
 test('019 AC10: demo catalog and API never check app access', async ({
   page,
 }) => {

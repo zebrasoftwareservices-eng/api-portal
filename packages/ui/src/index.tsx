@@ -21,7 +21,13 @@ export function Button({
   ...props
 }: ComponentProps<'button'> & {
   asChild?: boolean;
-  variant?: 'default' | 'secondary' | 'ghost' | 'destructive' | 'link';
+  variant?:
+    | 'default'
+    | 'secondary'
+    | 'ghost'
+    | 'destructive'
+    | 'outline'
+    | 'link';
 }) {
   const C = asChild ? Slot : 'button';
   return <C className={`button ${variant} ${className}`} {...props} />;

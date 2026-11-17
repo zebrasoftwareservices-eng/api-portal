@@ -26,6 +26,7 @@ COPY --from=production-deps /app/packages ./packages
 COPY --from=production-deps /app/apps/server ./apps/server
 COPY --from=build /app/packages/sdk/dist ./packages/sdk/dist
 COPY --from=build /app/packages/db/dist ./packages/db/dist
+COPY --from=build /app/packages/theme/dist ./packages/theme/dist
 COPY --from=build /app/packages/adapter-sdk/dist ./packages/adapter-sdk/dist
 COPY --from=build /app/packages/adapter-kong/dist ./packages/adapter-kong/dist
 COPY --from=build /app/apps/server/dist ./apps/server/dist

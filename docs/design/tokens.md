@@ -8,8 +8,9 @@ Names follow the shadcn/ui convention (`--background`, `--primary`, …) so shad
 work unchanged and people who already theme shadcn know the names. Portal-specific tokens
 use the `--portal-` prefix.
 
-Spec 001 ships **one light theme**. Dark mode is out of scope (spec 001 "theming beyond the
-default theme"); the Scalar reference is forced to light so it matches the shell.
+Spec 001 shipped one light theme. Spec 013 adds the dark defaults below and runtime themes:
+admins override these variables from **Admin → Theme**, and the server serves the result as
+`/v1/theme.css`. The admin area always uses these built-in values.
 
 ## Colour
 
@@ -49,6 +50,36 @@ Rules:
 - Status is never shown by colour alone; every badge and alert also has a word and an icon.
 - A theme that overrides a colour pair must keep the listed contrast (4.5:1 text, 3:1 UI).
 
+## Dark mode defaults
+
+Spec 013. Applied under `@media (prefers-color-scheme: dark)` on `:root:not([data-theme=light])`
+and on `:root[data-theme=dark]`. `DEFAULT_THEME.colors.dark` in `@portal/theme` must match the
+first nine rows (the editable `ThemeColors`). Tokens not listed keep their `var()` derivation
+(`--card` → `--background`, `--secondary` → `--muted`, `--ring` → `--primary`, …).
+
+| Token | Value | Contrast |
+| --- | --- | --- |
+| `--background` | `#0f172a` | — |
+| `--foreground` | `#f1f5f9` | 16.3:1 on background |
+| `--muted` | `#1e293b` | — |
+| `--muted-foreground` | `#94a3b8` | 7.0:1 on background, 5.7:1 on muted |
+| `--primary` | `#60a5fa` | 7.0:1 on background |
+| `--primary-foreground` | `#0f172a` | 7.0:1 on primary |
+| `--accent` | `#172554` | — |
+| `--accent-foreground` | `#bfdbfe` | 10.3:1 (`--primary` on accent 5.8:1) |
+| `--border` | `#334155` | decorative only |
+| `--input` | `#64748b` | 3.8:1 on background (≥3:1) |
+| `--destructive` | `#f87171` | 6.5:1 on background |
+| `--destructive-foreground` | `#0f172a` | 6.5:1 |
+| `--portal-destructive-subtle` | `#450a0a` | `--destructive` 5.8:1 on it |
+| `--portal-success` | `#4ade80` | 10.2:1 on background |
+| `--portal-success-subtle` | `#052e16` | `--portal-success` 8.6:1 on it |
+| `--portal-warning` | `#fbbf24` | 10.7:1 on background |
+| `--portal-warning-subtle` | `#451a03` | `--portal-warning` 9.0:1 on it |
+
+Shadows and `--portal-overlay` keep their light values. Scalar follows the portal's mode instead
+of being forced to light.
+
 ## Typography
 
 | Token | Value |
@@ -56,7 +87,9 @@ Rules:
 | `--portal-font-sans` | `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif` |
 | `--portal-font-mono` | `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace` |
 
-System fonts only: no web-font download, nothing to slow the first paint of the quickstart.
+System fonts by default: no web-font download, nothing to slow the first paint of the quickstart.
+A theme may switch `--portal-font-sans` to one of the self-hosted fonts in spec 013 (Inter,
+IBM Plex Sans, Source Sans 3, Noto Sans, Atkinson Hyperlegible), followed by the system stack.
 
 | Step | Size / line height | Weight | Used for |
 | --- | --- | --- | --- |
@@ -101,7 +134,7 @@ All interactive elements: `outline: 2px solid var(--ring); outline-offset: 2px` 
 ## Mapping to Scalar
 
 `@scalar/api-reference-react` is themed with its own variables. `packages/ui` sets them
-from ours (custom theme, `forceDarkModeState: 'light'`, `hideDarkModeToggle: true`) so a
+from ours (custom theme, `hideDarkModeToggle: true`; since spec 013 the dark state follows the portal's mode) so a
 customer theme flows into the reference automatically:
 
 | Scalar variable | Portal token |

@@ -12,9 +12,12 @@ const baseUrl =
 export const api = createClient({ baseUrl });
 // Only the API page's access check bypasses global redirects and toasts.
 export const quietApi = createClient({ baseUrl });
+function themeAdminPath(schemaPath: string | undefined) {
+  return schemaPath === '/v1/admin/theme' || Boolean(schemaPath?.startsWith('/v1/admin/theme/'));
+}
 api.use({
   async onResponse({ response, schemaPath }) {
-    if (response.status === 401 && schemaPath !== '/v1/me') {
+    if (response.status === 401 && schemaPath !== '/v1/me' && !themeAdminPath(schemaPath)) {
       sessionStorage.setItem('portal-session-ended', 'true');
       window.location.assign(
         `/sign-in?next=${encodeURIComponent(window.location.pathname + window.location.search)}`,
@@ -24,7 +27,8 @@ api.use({
       response.status === 403 &&
       schemaPath !== '/v1/setup/admin' &&
       !schemaPath.startsWith('/v1/admin/products') &&
-      schemaPath !== '/v1/admin/insights'
+      schemaPath !== '/v1/admin/insights' &&
+      !themeAdminPath(schemaPath)
     ) {
       const problem = (await response
         .clone()
@@ -45,7 +49,8 @@ api.use({
   onError({ schemaPath }) {
     if (
       schemaPath === '/v1/apps/{appId}/usage' ||
-      schemaPath === '/v1/admin/insights'
+      schemaPath === '/v1/admin/insights' ||
+      themeAdminPath(schemaPath)
     )
       return;
     toast.error(

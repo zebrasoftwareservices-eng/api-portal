@@ -93,6 +93,7 @@ it('upgrades the recorded main migration journal without replaying 0001', async 
         'utf8',
       ),
     );
+    const migrationCount = journal.entries.length;
     journal.entries = journal.entries.slice(0, 2);
     await writeFile(
       join(folder, 'meta/_journal.json'),
@@ -113,7 +114,7 @@ it('upgrades the recorded main migration journal without replaying 0001', async 
     await migrate(url);
     const migrated =
       await client`select hash,created_at from drizzle.__drizzle_migrations order by id`;
-    expect(migrated).toHaveLength(10);
+    expect(migrated).toHaveLength(migrationCount);
     expect(migrated.slice(0, 2)).toEqual(originalJournal);
     expect(
       await client`select v.title,v.version from apis a join api_versions v on v.id=a.latest_version_id`,
