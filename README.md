@@ -90,6 +90,7 @@ seed requires a rebuild.
 - **Five-minute quickstart:** `docker compose up` gives a working portal against a real Kong.
 - **Any gateway:** one adapter interface per gateway, plus a JWT path any gateway can validate.
 - **Customize without forking:** theme, page builder, MDX in Git, custom widgets, headless API.
+- **Theme:** admins brand the public portal from Admin → Theme. See [docs/guides/theming.md](docs/guides/theming.md).
 - **Agent-ready:** every page as Markdown, `llms.txt`, and later an MCP server per API product.
 
 ## Roadmap
