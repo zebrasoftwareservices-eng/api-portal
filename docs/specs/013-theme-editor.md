@@ -1,7 +1,7 @@
 ---
 id: 013
 title: Theme editor
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-16
 linear: JSO-241
@@ -350,6 +350,30 @@ Earlier rounds go in `docs/specs/log/013.md`. The full report is `docs/uat/013/r
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/013.md`.
+
+Reviewed `git diff main...HEAD` at `d28d525`. The Test report names `fd20d50`. The two later
+commits change only e2e tests and docs, so I reran just those files against a fresh worktree
+stack: the theme journey passed 11/11, `007 M2` admin navigation passed at both widths, and the
+demo `013 AC 10` check passed. Every acceptance criterion is implemented and tested. The
+routes, the tables and the portal wiring match the Technical design and ADR 0016. Errors are
+problem+json with field pointers, including invalid JSON on import. Admin routes use
+`requireUser(..., true)` (401 then 403). Writes validate fully before one transaction. The
+admin area links neither stylesheet, and its entry links do full page loads. Assets are served
+with `nosniff` and a sandbox CSP. No gateway calls, secrets or quickstart changes.
+
+**Blocking:** none.
+
+**Suggestions** (no Fix task):
+- `apps/server/src/theme.ts:73`: `loadTheme` hashes `DEFAULT_THEME` on every public request.
+  Compute the fallback etag once in `registerTheme` and pass it in.
+- `apps/server/src/theme.ts:321` and `:371`: the design says the route schema also enforces the
+  rules, but neither write route declares a `schema`. `parseThemeWrite` covers every rule, so
+  this is not a gap today. The asset limit is written twice, though: `maxLength: 700000` in
+  `apps/server/openapi.yaml:3416` and `ASSET_BASE64_MAX_CHARS` in `packages/theme/src/types.ts:75`.
+  A contract test that compares them would stop drift.
+- `packages/theme/src/validate.ts:55`: `@import` inside a CSS string (for example
+  `content: "@import"`) is also rejected. That is a safe false positive. `docs/guides/theming.md:15`
+  says "including when it sits outside a comment". It should say "unless it is inside a comment".
 
 ## Definition of Done
 - [x] Every acceptance criterion has a passing automated test
