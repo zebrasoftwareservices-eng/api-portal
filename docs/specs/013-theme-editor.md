@@ -1,7 +1,7 @@
 ---
 id: 013
 title: Theme editor
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-16
 linear: JSO-241
@@ -331,7 +331,18 @@ None.
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
+| Logo and brand colour on the next public load | pass | "✓ Theme saved. Visitors see it on their next page load." Public links `rgb(194, 65, 12)` and the header logo. |
+| Preview, then both modes, font, and radius | pass | Preview primary `#c2410c` (light) and `#f59e0b` (dark), "Inter Variable", radius 24px, before the live page changed. |
+| Custom CSS in the preview, then on public and developer pages | pass | Preview outline on "APIs" before save. After save, "My apps" had the outline and admin "Theme" did not. |
+| Broken CSS leaves `/admin` usable | pass | Public dashboard was an empty page. `/admin/apis` showed "Manage APIs". |
+| Reset to the shipped default | pass | "✓ Theme reset to the default." Public primary `#60a5fa`, radius 8px, no header image. |
+| Export, then import | pass | "✓ Theme imported and applied." Public logo returned and primary was `#c2410c`. Import was on this portal after reset. |
+| Oversized logo, wrong type, bad JSON, bad colour | pass | "The logo is 2,134 KB; the limit is 512 KB." Import 400 problem+json. "Nothing changed." |
+| Contrast warning before save | pass | "⚠ Low contrast: 1.5:1 between Text and Background. Text needs at least 4.5:1." Save stayed enabled. |
+| Visitor and developer cannot open the editor | pass | Signed out: heading "Sign in", write API 401 "Sign in to continue." Developer: "Page not found", write API 403 "Administrator access is required." |
+| Shipped default before a theme is saved | pass | Heading "APIs", no header image, primary `#60a5fa`, radius 8px. QA timed compose at 122.62s. |
 
+No blocker or major. Minor notes are in `docs/uat/013/report.md`.
 One row per user-visible criterion. Evidence is a short quote of what was on the screen.
 Name an image only for an open failure. On a retest, change only the failed rows.
 Earlier rounds go in `docs/specs/log/013.md`. The full report is `docs/uat/013/report.md`.
