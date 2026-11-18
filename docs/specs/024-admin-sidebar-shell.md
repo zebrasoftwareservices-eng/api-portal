@@ -1,7 +1,7 @@
 ---
 id: 024
 title: Admin sidebar shell
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 024`
@@ -117,11 +117,13 @@ the UI or through the API, to create an app or request access as an admin.
       into `docs/design/024-*.md`, or is there a mock to follow? Elango
 - [ ] Do developers (and anonymous visitors) keep the current top-bar navigation, or should they
       also get the sidebar later as a separate spec? Elango
-- [ ] What should an admin see on a direct visit to a developer URL such as `/apps`, `/apps/new` or
+- [x] What should an admin see on a direct visit to a developer URL such as `/apps`, `/apps/new` or
       `/teams`: a redirect to the admin Apps page, or a page that says to use a developer account?
-      Elango, ui-designer
-- [ ] What happens to apps, subscriptions and keys an admin account already holds? Leave them, list
+      Elango, ui-designer — **Decided (Elango, 2026-11-18):** redirect `/dashboard/**` to `/admin/apps`.
+- [x] What happens to apps, subscriptions and keys an admin account already holds? Leave them, list
       them on the admin Apps page under a "portal admin" owner, or flag them for revocation? Elango
+      — **Decided (Elango, 2026-11-18):** leave them; list them under their team with the owner
+      marked "portal admin".
 - [ ] Does the server already have an endpoint that lists every team's apps with owner, plan and key
       hints, or does this need a new admin endpoint in `openapi.yaml`? tech-lead
 - [ ] Which Accounts rate limits exist today (for example sign-in attempts, password-reset emails,
@@ -276,3 +278,19 @@ admin endpoints read Postgres only.
 - [ ] [qa] Integration: admin refusal on all five endpoints with unchanged rows and Kong; admin apps endpoints never return a full key; developer refused on admin endpoints (AC 4, 5, 7, 8)
 - [ ] [qa] e2e (admin): sidebar order and Admin group, `/admin` lands on Gateways, APIs vs Products pages, Apps list and read-only app page, no developer actions anywhere, Accounts validation and reload keeps old values, chevron states (AC 1–6, 9, 10)
 - [ ] [qa] e2e (developer): My apps, team apps, create app, subscribe and request access unchanged; no sidebar, no Admin, no Insights, `/admin` refused (AC 8); quickstart still works
+
+## UX  _(ui-designer)_
+Design: [`docs/design/024-admin-sidebar-shell.md`](../design/024-admin-sidebar-shell.md).
+Admins get a top bar (brand, search, theme, account menu with Profile and Sign out only) and a
+240px light sidebar: APIs, Products, Apps, Requests (pending count), Insights, then an Admin group
+(APIs, Gateways, Mail, Accounts, Theme) that is expanded on its child pages; longest path match
+marks the current item with `aria-current`, a left bar and weight. The sidebar always uses the
+built-in tokens, even on themed pages. Below 1024px it becomes a modal drawer behind **Open menu**.
+The Apps table (Team, App, Owner with a **Portal admin** badge, Plan, `…hint` keys, status, **View**,
+**Load more**) stacks into cards at 375px; the read-only app page shows Plan and Keys cards and
+**Manage access** to the product's access screen, with no key or plan controls. Product and API pages
+show admins "Portal admins can't subscribe. Use a developer account to get a key." in place of the
+buttons. Accounts limits read `[10] attempts in [15] minutes` with inline errors and **Save account
+settings** bottom left. One `Chevron` (right→down; account menu down→up) replaces every arrow.
+Every state, copy, keyboard path and responsive rule is in the design file. One new token:
+`--portal-sidebar-width`.

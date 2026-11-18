@@ -113,6 +113,7 @@ API keys, URLs, header names, slugs and paths are always set in `--portal-font-m
 | `--portal-header-height` | `56px` below 768px, `64px` from 768px | Site header |
 | `--portal-form-max-width` | `640px` | Create-app and import forms |
 | `--portal-auth-max-width` | `400px` | Sign-up and sign-in cards |
+| `--portal-sidebar-width` | `240px` | Admin sidebar at ≥1024px (spec 024); the drawer below 1024px is 280px, max 85vw |
 
 ## Radius, shadow, motion
 
