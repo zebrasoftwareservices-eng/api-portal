@@ -772,6 +772,11 @@ paths:
         access request instead (`POST /v1/access-requests`). A plan of a `manual` product is
         refused with 403 `/problems/admin-assigned-only` (provisional, pending Elango: only a
         portal admin creates subscriptions on a Manual product).
+
+        Spec 024 (ADR 0017): a portal admin is not a developer. A caller whose portal role is
+        `admin` gets 403 `/problems/admin-not-developer` before any other check, before the
+        personal team is ensured and before any gateway call. Nothing is written. Admins create a
+        subscription for a team with `createAdminSubscription`.
       requestBody:
         required: true
         content:
@@ -791,6 +796,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403':
           description: |
+            `/problems/admin-not-developer` (the caller is a portal admin; spec 024),
             `/problems/team-role-forbidden`, `/problems/email-not-verified` (see
             `TeamForbiddenOrNotVerified`) or `/problems/admin-assigned-only` (the plan is on a
             `manual` product). Nothing was created, in Kong or the portal.
@@ -1070,6 +1076,9 @@ paths:
         no app in the team with this `name` (409 `/problems/app-name-taken`). The name is checked
         again on approval. Plans of a `manual` product get 403 `/problems/admin-assigned-only`
         (provisional, pending Elango).
+
+        Spec 024 (ADR 0017): a caller whose portal role is `admin` gets 403
+        `/problems/admin-not-developer` before any other check. No request row is written.
       requestBody:
         required: true
         content:
@@ -1089,6 +1098,7 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403':
           description: |
+            `/problems/admin-not-developer` (the caller is a portal admin; spec 024),
             `/problems/team-role-forbidden`, `/problems/email-not-verified` or
             `/problems/admin-assigned-only`. Nothing was created.
           content:
@@ -1608,6 +1618,68 @@ paths:
               schema: { $ref: '#/components/schemas/Problem' }
         '502': { $ref: '#/components/responses/GatewayRejected' }
         '503': { $ref: '#/components/responses/GatewayUnavailable' }
+
+  /v1/admin/apps:
+    get:
+      tags: [admin, apps]
+      operationId: listAdminApps
+      summary: Every team's apps, read-only, with key hints
+      description: |
+        Spec 024 AC 4. Portal admin only (403 `/problems/forbidden` otherwise). One item per app
+        in every team, all statuses, newest first. Never returns a key or key secret: each item
+        carries only the last four characters of each active key. A revoked key has no hint, and
+        an app whose key isn't issued yet has an empty `activeKeyHints`. No gateway call. Keyset
+        paging on (`createdAt`, `id`) descending; no filter or sort (out of scope).
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          description: '`nextCursor` from the previous page. Opaque.'
+          schema: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: Apps, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AdminApp' }
+                  nextCursor:
+                    type: [string, 'null']
+                    description: Pass as `cursor` for the next page; null on the last page
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /v1/admin/apps/{appId}:
+    get:
+      tags: [admin, apps]
+      operationId: getAdminApp
+      summary: One team's app, read-only
+      description: |
+        Spec 024 AC 5. Portal admin only. Works for any team's app; the admin needs no team
+        membership. Credentials carry only `keyHint` and status, never a key. There is no admin
+        write on this resource: to stop a team's access the admin uses Revoke on the product's
+        access screen (`/v1/admin/products/{productId}/access`, spec 010).
+      parameters:
+        - $ref: '#/components/parameters/AppId'
+      responses:
+        '200':
+          description: The app
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminAppDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /v1/admin/access-requests:
     get:
@@ -2766,7 +2838,9 @@ components:
           schema: { $ref: '#/components/schemas/Problem' }
     TeamForbiddenOrNotVerified:
       description: |
-        `/problems/team-role-forbidden` (the caller is `read-only` in the team; checked first) or
+        `/problems/admin-not-developer` (the caller's portal role is `admin`; checked before
+        anything else, spec 024 and ADR 0017: a portal admin never holds a gateway key or sends a
+        request), `/problems/team-role-forbidden` (the caller is `read-only` in the team) or
         `/problems/email-not-verified` (the admin requires a verified email and the user hasn't
         verified theirs; the UI offers to resend it with `POST /api/auth/send-verification-email`).
         Nothing was created, in Kong or the portal.
@@ -4287,6 +4361,71 @@ components:
           description: Required for, and only allowed with, `internal`. Replaces the named teams.
           items: { type: string, format: uuid }
         existingSubscriptions: { $ref: '#/components/schemas/ExistingSubscriptionsChoice' }
+
+    AdminAppTeam:
+      type: object
+      required: [id, name, personal]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, description: 'Personal teams are all named `Personal`; show `owner` beside them' }
+        personal: { type: boolean }
+
+    AdminAppOwner:
+      type: object
+      description: The user who created the app (`apps.created_by`)
+      required: [id, name, email, role]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string, format: email }
+        role:
+          type: string
+          enum: [developer, admin]
+          description: Portal role. `admin` marks an app an admin account created before spec 024.
+
+    AdminApp:
+      type: object
+      required: [id, name, status, team, owner, plan, activeKeyHints, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        status: { type: string, enum: [active, revoke-pending, revoked] }
+        team: { $ref: '#/components/schemas/AdminAppTeam' }
+        owner:
+          description: Null when the creating user's account was deleted
+          oneOf:
+            - $ref: '#/components/schemas/AdminAppOwner'
+            - type: 'null'
+        plan: { $ref: '#/components/schemas/AppPlan' }
+        activeKeyHints:
+          type: array
+          description: Last 4 characters of each active key, newest first. Never a full key.
+          items: { type: string, examples: ['9fQa'] }
+        createdAt: { type: string, format: date-time }
+
+    AdminAppDetail:
+      allOf:
+        - $ref: '#/components/schemas/AdminApp'
+        - type: object
+          required: [origin, keyIssued, revokedAt, description, subscriptions, credentials]
+          properties:
+            origin: { type: string, enum: [self, request, admin] }
+            keyIssued: { type: boolean }
+            revokedAt: { type: [string, 'null'], format: date-time }
+            description: { type: [string, 'null'] }
+            subscriptions:
+              type: array
+              items:
+                type: object
+                required: [apiId, slug, title]
+                properties:
+                  apiId: { type: string, format: uuid }
+                  slug: { $ref: '#/components/schemas/Slug' }
+                  title: { type: string }
+            credentials:
+              type: array
+              description: Active and revoked keys, newest first. Hint and status only; never the key.
+              items: { $ref: '#/components/schemas/Credential' }
 
     AdminTeam:
       type: object

@@ -1,7 +1,7 @@
 ---
 id: 024
 title: Admin sidebar shell
-status: draft   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 024`
@@ -130,3 +130,149 @@ the UI or through the API, to create an app or request access as an admin.
       If the design shows it won't fit one pull request, split it: the server refusal and hidden
       developer actions (criteria 6–8) first, then the sidebar, Apps pages, Accounts form and chevron.
       tech-lead
+
+## Technical design  _(tech-lead)_
+
+**Decision record:** [ADR 0017 — A portal admin is not a developer](../adr/0017-portal-admin-is-not-a-developer.md).
+**Size:** one pull request. The server part is one guard and two read endpoints; the rest is
+portal UI. Build order inside the PR: server refusal and hidden developer actions (AC 6–8) first,
+then the sidebar, Apps pages, Accounts form and chevron. If review finds the PR too large, the
+first half ships alone without changing the design.
+
+**Answers to the tech-lead open questions.**
+- *Admin apps endpoint:* none exists. `GET /v1/apps` is per team and needs membership;
+  `/v1/admin/products/{productId}/access` is per product. This spec adds `GET /v1/admin/apps`
+  and `GET /v1/admin/apps/{appId}`.
+- *Accounts rate limits:* three exist, all `{ max, windowMinutes }` (`AccountRateLimits`,
+  `max` 1–1000, `windowMinutes` 1–1440): `signInFailures` (attempts, default 10 in 15 minutes),
+  `passwordResetEmails` (emails, default 3 in 60), `verificationEmails` (emails, default 3 in 60).
+  The contract and server validation already fit AC 9; it is a form change only.
+- *Split:* not needed (above).
+
+**Provisional defaults for Elango's open questions** (the build follows these unless Elango
+answers otherwise before `building`):
+- *Developer URLs for an admin* (`/dashboard`, `/dashboard/apps/**`, `/dashboard/teams/**`):
+  the page redirects to `/admin/apps`. No dead-end page to design.
+- *Apps an admin account already holds:* left as they are, keys keep working. They appear on the
+  admin Apps list under their team with the owner marked "portal admin" (`owner.role: admin`).
+  The admin can no longer issue, regenerate or change plan on them (ADR 0017); it can still delete
+  them through the API, and stops access with Revoke on product access.
+- *Developers and anonymous visitors* keep the current top bar.
+- *The approved shell* is whatever the ui-designer writes in `docs/design/024-*.md`.
+
+### Components
+- **apps/server**
+  - `src/auth.ts` (beside `requireUser`): add `requireDeveloper(user)` that throws
+    `new Problem(403, 'admin-not-developer', 'A portal admin is not a developer', 'Use a developer account to create apps, request access or hold API keys.')`
+    when `user.role === 'admin'`.
+  - `src/apps.ts`: call `requireDeveloper` as the first line after `requireUser` in
+    `POST /api/v1/apps` (before `ensurePersonalTeam`), `PUT /api/v1/apps/:appId/plan`,
+    `POST /api/v1/apps/:appId/credentials` and `POST …/credentials/:credentialId/regenerate`.
+    Leave `GET`, `DELETE /apps/:appId` and `DELETE …/credentials/:credentialId` open.
+  - `src/access-requests.ts`: same first-line guard in `POST /api/v1/access-requests`.
+  - New `src/admin-apps.ts`, registered in `app.ts`: `GET /api/v1/admin/apps` and
+    `GET /api/v1/admin/apps/:appId`, admin-only with the existing admin guard (403
+    `/problems/forbidden`). Query `apps` join `teams`, left join `users` on `apps.created_by`,
+    join `plans` (and product), plus active `credentials.key_hint` grouped per app (one query
+    with `array_agg(key_hint order by created_at desc) filter (where status = 'active')`, not
+    N+1). Keyset paging: `order by apps.created_at desc, apps.id desc`, cursor =
+    base64url(`createdAt|id`), validated with zod; a malformed cursor is 400 `/problems/validation`
+    pointer `/cursor`. Detail reuses the existing subscription and credential view helpers but
+    selects only `id, kind, key_hint, status, created_at, revoked_at` from `credentials`; never
+    select the gateway credential id or any key material into the response object.
+- **apps/portal**
+  - New `components/portal-shell.tsx` (client), used by `app/layout.tsx`: when
+    `user.role === 'admin'` it renders the top bar (search, theme, account menu) plus
+    `components/admin-sidebar.tsx` and the page; otherwise the current header layout unchanged.
+  - `components/admin-sidebar.tsx` replaces `components/admin-nav.tsx` (delete it and its test;
+    keep its pending-requests count on **Requests**). Entries and routes, in order:
+    APIs → `/apis`, Products → `/admin/products`, Apps → `/admin/apps`, Requests →
+    `/admin/requests` (with count), Insights → `/admin/insights`, then the Admin group:
+    APIs → `/admin/apis`, Gateways → `/admin/gateways`, Mail → `/admin/settings/mail`,
+    Accounts → `/admin/settings/accounts`, Theme → `/admin/theme`. Current page uses
+    `aria-current="page"`; the group is a `<button aria-expanded>` that is expanded whenever the
+    path is one of its children. Links into `/admin` stay full page loads (ADR 0016 admin
+    isolation); the sidebar itself must not depend on custom theme CSS.
+  - `app/admin/layout.tsx`: drop `AdminNav`; `app/admin/page.tsx` (new) redirects to
+    `/admin/gateways` (AC 2).
+  - `app/apis/page.tsx` (new): published APIs from `GET /v1/apis`, each linking to
+    `/apis/[slug]`; no products (AC 3). Public, like the rest of `/apis`.
+  - `app/admin/apps/page.tsx` + `components/admin-apps.tsx`: table Team · App · Owner · Plan ·
+    Keys (`…9fQa` per active key, "—" if none) · Status · **View**, "Load more" on `nextCursor`.
+    Personal teams show "Personal (owner email)".
+  - `app/admin/apps/[appId]/page.tsx` + `components/admin-app-detail.tsx`: status, plan, APIs,
+    key hints and statuses, and a link "Manage access" to the product's access screen
+    (`/admin/products/[slug]`) when the plan has a product. No reveal, regenerate, create-key,
+    plan change or Cancel control. Do not reuse `app-detail.tsx`'s action components.
+  - Hide developer actions when `user.role === 'admin'`: **My apps** and **Teams** in the header
+    and account menu, **Create app**, **Subscribe** and **Request access** on catalog, product and
+    API pages (`create-app*.tsx`, `api-access.tsx`, `catalog-*`, `products/[slug]`). Admin visits
+    to `/dashboard/**` redirect to `/admin/apps`.
+  - `components/account-settings.tsx`: each limit is two inputs side by side — max with a unit
+    suffix ("attempts" for sign-in failures, "emails" for the two email limits) and window with
+    "minutes". Client validation: integer ≥ 1 (and ≤ the contract maximums); errors show inline
+    under the field, and no request is sent. Server 400 `errors[].pointer`
+    (`/rateLimits/signInFailures/max`, …) maps to the same inline errors. **Save** bottom left.
+  - Chevron: one `Chevron` component in `packages/ui` (inline SVG, `currentColor`, rotates by
+    CSS: 0° = right, 90° = down) used by the Admin group, every `<details>` summary and every
+    `<select>` wrapper (`SelectField`), and by the account menu with its own rule (down closed,
+    up open). Open state comes from `[open]` on details, `aria-expanded="true"` on buttons, and
+    for native selects `select:open` with a small JS fallback that sets `data-open` on
+    pointerdown/keydown and clears it on change/blur.
+- **packages/sdk:** regenerate `src/schema.d.ts` from the contract.
+- **packages/db, adapters:** no change.
+
+### API contract (`apps/server/openapi.yaml`, updated)
+- `GET /v1/admin/apps?limit=1..200 (default 50)&cursor=<opaque>` → 200
+  `{ items: AdminApp[], nextCursor: string|null }`; 400 validation; 401; 403 `/problems/forbidden`.
+- `GET /v1/admin/apps/{appId}` → 200 `AdminAppDetail`; 401; 403; 404 `/problems/not-found`.
+- `AdminApp`: `id, name, status (active|revoke-pending|revoked), team {id,name,personal},
+  owner {id,name,email,role}|null, plan: AppPlan, activeKeyHints: string[], createdAt`.
+  `AdminAppDetail` adds `origin, keyIssued, revokedAt, description, subscriptions[], credentials: Credential[]`.
+  No schema has a key, secret or gateway id.
+- New 403 `/problems/admin-not-developer` on `createApp`, `createAccessRequest` (inline 403
+  text) and on `changeAppPlan`, `createCredential`, `regenerateCredential` (through the shared
+  `TeamForbiddenOrNotVerified` response, which only those three use). Checked before every other
+  check; nothing written, no gateway call.
+
+### Data model
+No schema change and no migration. Owner comes from the existing `apps.created_by`; key hints
+from `credentials.key_hint`. If the list query is slow, an index on `apps (created_at desc, id desc)`
+is the only candidate; do not add it unless the integration test shows a sequential scan matters.
+
+### Gateway adapter calls
+None added. The refusal runs before any adapter call, so no Kong rollback path is involved. The
+admin endpoints read Postgres only.
+
+### Risks and how to test them
+- **Refusal placed too late** (a row or Kong consumer written before the 403). Test: as an admin,
+  call each of the five endpoints and assert 403 `/problems/admin-not-developer`, and that
+  `apps`, `access_requests`, `subscriptions`, `credentials` and `teams` row counts are unchanged
+  and the Kong consumer list is unchanged (Testcontainers Kong).
+- **Key leak in the admin list or detail.** Test: create an app with two keys, revoke one; assert
+  the JSON contains each active hint, no hint for the revoked key, and that the full key string
+  appears nowhere in either response body.
+- **Existing tests and demo seed that create apps as the admin** will now fail. Backend moves them
+  to a developer user in the same PR; do not weaken the guard.
+- **Developer regression (AC 8).** e2e: a developer in a team still sees My apps, creates an app,
+  subscribes and requests access; `/admin`, `/admin/apps` and `GET /v1/admin/apps` refuse them.
+- **Admin isolation (ADR 0016).** The shell now renders on themed pages. e2e: with custom CSS
+  that hides `nav`, the admin sidebar is still visible on `/admin/*`.
+- **Native select open state** varies by browser. Playwright on Chromium covers `select:open`;
+  the fallback is unit-tested with the component.
+- **Paging.** Integration test with 3 apps and `limit=2`: two pages, no duplicates, stable order.
+
+### Tasks
+- [ ] [backend] Add `requireDeveloper` and call it first in createApp, createAccessRequest, changeAppPlan, createCredential and regenerateCredential; 403 `/problems/admin-not-developer`, no writes, no Kong call (AC 7)
+- [ ] [backend] Add `GET /v1/admin/apps` (keyset paging, active key hints, owner, plan, team) and `GET /v1/admin/apps/{appId}` in `src/admin-apps.ts`, admin-only, matching the contract (AC 4–5)
+- [ ] [backend] Move existing tests and any seed path that create apps or requests as a portal admin onto a developer user; integration tests for the refusal (row counts + Kong unchanged) and for both admin endpoints (no full key, revoked key has no hint, paging, developer gets 403)
+- [ ] [backend] Regenerate `packages/sdk/src/schema.d.ts` from the updated contract
+- [ ] [frontend] Hide My apps, Teams, Create app, Subscribe and Request access for admins everywhere; redirect admin visits to `/dashboard/**` to `/admin/apps` (AC 6)
+- [ ] [frontend] `PortalShell` + `AdminSidebar` (entries, order, Admin group, current page, Requests count); remove `AdminNav`; `/admin` redirects to `/admin/gateways` with the group expanded (AC 1–2)
+- [ ] [frontend] `/apis` index of published APIs with reference links and no products; Products entry goes to `/admin/products` (AC 3)
+- [ ] [frontend] Admin Apps list `/admin/apps` and read-only app page `/admin/apps/[appId]` with key hints only and a link to product access (AC 4–5)
+- [ ] [frontend] Accounts form: max + unit and window + "minutes" side by side, inline validation for 0, negative and non-numbers, nothing sent on error, Save bottom left (AC 9)
+- [ ] [frontend] Shared `Chevron` in `packages/ui` used by the Admin group, details, selects (`select:open` + fallback) and the account menu (AC 10)
+- [ ] [qa] Integration: admin refusal on all five endpoints with unchanged rows and Kong; admin apps endpoints never return a full key; developer refused on admin endpoints (AC 4, 5, 7, 8)
+- [ ] [qa] e2e (admin): sidebar order and Admin group, `/admin` lands on Gateways, APIs vs Products pages, Apps list and read-only app page, no developer actions anywhere, Accounts validation and reload keeps old values, chevron states (AC 1–6, 9, 10)
+- [ ] [qa] e2e (developer): My apps, team apps, create app, subscribe and request access unchanged; no sidebar, no Admin, no Insights, `/admin` refused (AC 8); quickstart still works
