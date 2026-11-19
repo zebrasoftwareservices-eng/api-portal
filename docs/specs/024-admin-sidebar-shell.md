@@ -1,6 +1,7 @@
 ---
 id: 024
 title: Admin sidebar shell
+status: done   # draft → ready → designed → building → testing → uat → review → approved → done
 status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
