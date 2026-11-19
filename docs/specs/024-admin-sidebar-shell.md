@@ -1,7 +1,7 @@
 ---
 id: 024
 title: Admin sidebar shell
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 024`
@@ -343,6 +343,21 @@ resolvable from host Playwright), two were stale pre-024 admin navigation expect
 were QA assertion defects in the new spec tests. No spec-024 product blocker or major was
 confirmed, so the feature advances to UAT with the minor harness follow-up above and both browser
 QA tasks still open.
+
+## User testing
+
+| User story | Result | Evidence |
+| --- | --- | --- |
+| Admin sidebar and Admin group | Pass | “APIs”, “Products”, “Apps”, “Requests”, “Insights”, then “Admin”; `/admin` opened “Gateways”. |
+| Separate APIs and Products pages | Pass | “Published APIs and their reference documentation.” and “UAT Sample Product” appeared on separate pages. |
+| Cross-team Apps list | Pass | “Every app in every team” included team, owner, plan, last-four key hints, status, and View. |
+| Read-only admin app detail | Pass | “Only the team can see or change a key”; no reveal, regenerate, create-key, or cancel control. |
+| Admin cannot use developer actions | Pass | No My apps, Teams, Create app, Subscribe, or Request access action appeared in the admin session. |
+| Accounts rate-limit form | Pass | “10 attempts in 15 minutes”; invalid 0, negative, and non-number entries showed inline errors and reload restored old values. |
+| Developer journey | Pass | “My apps”, “Team: Personal”, “Create app”, a successful “UAT Free” subscription, and a refused `/admin` route. |
+| Consistent chevrons | Pass | Admin changed collapsed/right to expanded/down; the account menu opened with Enter and closed with Escape. |
+
+UAT also passed at 390 × 844 and by keyboard. Two non-blocking minor findings remain: desktop Apps table values can wrap character-by-character (`apps-table-columns-fail.png`), and the correctly rendered developer `/admin` refusal emitted React error #418; full evidence is in [`docs/uat/024/report.md`](../../uat/024/report.md).
 
 ## Bugs
 
