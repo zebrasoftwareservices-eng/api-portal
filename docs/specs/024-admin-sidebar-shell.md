@@ -1,7 +1,7 @@
 ---
 id: 024
 title: Admin sidebar shell
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 024`
@@ -358,6 +358,35 @@ QA tasks still open.
 | Consistent chevrons | Pass | Admin changed collapsed/right to expanded/down; the account menu opened with Enter and closed with Escape. |
 
 UAT also passed at 390 × 844 and by keyboard. Two non-blocking minor findings remain: desktop Apps table values can wrap character-by-character (`apps-table-columns-fail.png`), and the correctly rendered developer `/admin` refusal emitted React error #418; full evidence is in [`docs/uat/024/report.md`](../../uat/024/report.md).
+
+## Review  _(tech-lead)_
+
+Reviewed `git diff main...HEAD` at `841e750`. Application code is unchanged since the tested
+commit `66fa414`; the later commits only touch tests and docs, and the focused Chromium re-run
+of the three spec-024 e2e cases passed (`components/admin-shell.test.tsx` re-run here: 4/4).
+All ten criteria are implemented and covered. The guard runs right after `requireUser` on all
+five writes and before any parse, team or gateway work; the admin endpoints select only
+`id, kind, key_hint, status, created_at, revoked_at` from `credentials`; the contract, SDK and
+problem title match the design; no migration and no adapter change. CI is the second run.
+
+**Blocking:** none.
+
+**Suggestions** (no Fix task):
+- `apps/server/src/developer-writes.ts:1` — a test-only helper that monkey-patches
+  `app.inject` lives in `src/` without a `.test` suffix, so `tsconfig.json` compiles it into
+  `dist`. Move it to a test-support name the build excludes (for example
+  `src/test-support/developer-writes.ts` added to `exclude`, or `*.test-helper.ts`).
+- `apps/portal/components/admin-apps.tsx:51` — the "first new row" focus index is
+  `items.length - firstPage.length`, which is wrong when a later page is shorter than 50.
+  Record the old length before appending and focus that index.
+- `apps/portal/components/admin-apps.tsx:20` — key hints are React keys; two active keys with
+  the same last four characters warn. Use the index or the credential id.
+- `apps/server/src/admin-apps.ts:27` — paging orders on `date_trunc('milliseconds', created_at)`,
+  so no index can serve it. Fine at portal scale; revisit only if the list gets slow.
+- UAT minors (Apps table cells wrapping by character on desktop; React #418 hydration warning on
+  the developer `/admin` refusal) stay as minors for a later pass.
+- Branch scope: `f28c73d` (AGENTS.md role table) is unrelated to spec 024; fine to merge, but
+  note it in the PR description.
 
 ## Bugs
 
