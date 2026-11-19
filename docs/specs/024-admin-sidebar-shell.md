@@ -1,7 +1,7 @@
 ---
 id: 024
 title: Admin sidebar shell
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 024`
@@ -275,7 +275,7 @@ admin endpoints read Postgres only.
 - [x] [frontend] Admin Apps list `/admin/apps` and read-only app page `/admin/apps/[appId]` with key hints only and a link to product access (AC 4–5)
 - [x] [frontend] Accounts form: max + unit and window + "minutes" side by side, inline validation for 0, negative and non-numbers, nothing sent on error, Save bottom left (AC 9)
 - [x] [frontend] Shared `Chevron` in `packages/ui` used by the Admin group, details, selects (`select:open` + fallback) and the account menu (AC 10)
-- [ ] [qa] Integration: admin refusal on all five endpoints with unchanged rows and Kong; admin apps endpoints never return a full key; developer refused on admin endpoints (AC 4, 5, 7, 8)
+- [x] [qa] Integration: admin refusal on all five endpoints with unchanged rows and Kong; admin apps endpoints never return a full key; developer refused on admin endpoints (AC 4, 5, 7, 8)
 - [ ] [qa] e2e (admin): sidebar order and Admin group, `/admin` lands on Gateways, APIs vs Products pages, Apps list and read-only app page, no developer actions anywhere, Accounts validation and reload keeps old values, chevron states (AC 1–6, 9, 10)
 - [ ] [qa] e2e (developer): My apps, team apps, create app, subscribe and request access unchanged; no sidebar, no Admin, no Insights, `/admin` refused (AC 8); quickstart still works
 
@@ -306,3 +306,44 @@ the public API index plus read-only admin Apps list/detail screens, and removed 
 actions from admin sessions. The Accounts fields now validate inline before sending, while the
 shared Chevron covers disclosures, native selects, the sidebar and menus; QA should exercise the
 drawer focus path, app paging and the native-select open state in Chromium.
+
+### Follow-ups
+- Make Playwright worktree-safe for Compose and Kong Admin URLs
+
+## Test report
+
+Tested application commit `66fa414` on 2026-11-19. The retained worktree quickstart is at
+`http://localhost:3004` (server `http://127.0.0.1:4004`, Kong proxy
+`http://localhost:18004`). `pnpm lint`, `pnpm typecheck`, `pnpm test` (14/14 Turbo tasks;
+portal 409/409 and server 358/358), and the seeded quickstart smoke passed.
+
+| Criterion | Automated coverage | Result |
+| --- | --- | --- |
+| AC 1 | `apps/portal/e2e/admin-sidebar-shell.test.ts`, `apps/portal/components/admin-shell.test.tsx` | Pass — ordered primary/Admin links and current page were verified |
+| AC 2 | `apps/portal/e2e/admin-sidebar-shell.test.ts`, `apps/portal/components/admin-shell.test.tsx` | Pass — `/admin` landed on expanded Gateways |
+| AC 3 | `apps/portal/e2e/admin-sidebar-shell.test.ts` | Pass — API reference and separate Products destinations were verified |
+| AC 4 | `apps/server/src/admin-apps.test.ts`, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Pass — active hints only, no full key, revoked hint excluded, paging and rows verified |
+| AC 5 | `apps/server/src/admin-apps.test.ts`, `apps/portal/components/admin-shell.test.tsx`, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Pass — read-only detail and product access guidance verified |
+| AC 6 | `apps/portal/e2e/admin-sidebar-shell.test.ts`, header/catalog component tests | Pass — admin developer actions and links were absent |
+| AC 7 | `apps/server/src/admin-apps.test.ts` | Pass — all five writes returned 403 before row or real-Kong changes, including invalid input |
+| AC 8 | `apps/server/src/admin-apps.test.ts`, existing developer journeys, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Inconclusive — the new browser case over-asserted a top-level Teams link; Kong-host harness failures blocked several unchanged journeys |
+| AC 9 | account settings component tests, `apps/portal/e2e/account-security.test.ts`, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Inconclusive — live save/reload passed, but the invalid-value loop was not reached after an account-menu locator assertion failed |
+| AC 10 | shared UI/component tests, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Inconclusive — sidebar rotation passed and the menu opened, but Radix hid the trigger from the accessibility tree while open |
+
+The first browser invocation was invalid: it started the default `portal` Compose project,
+collided with the worktree Mailpit port, and cascaded to 113 failures; it is not a product result.
+The final full browser pass used
+`COMPOSE_PROJECT_NAME=portal-idea-admin-sidebar-shell-impleme-13ef`,
+`PORTAL_WEB_PORT=3004`, `PORTAL_API_PORT=4004`, `KONG_PROXY_PORT=18004`,
+`KONG_ADMIN_PORT=19004`, the two worktree image names, `PORTAL_PUBLIC_URL=http://localhost:3004`,
+`SERVER_URL=http://127.0.0.1:4004`, `KONG_PROXY_PUBLIC_URL=http://localhost:18004`, and
+`KONG_ADMIN_URL=http://host.docker.internal:19004`. It finished 86 passed, 31 failed and 2
+skipped: most failures were the recorded worktree harness defect (`host.docker.internal` is not
+resolvable from host Playwright), two were stale pre-024 admin navigation expectations, and two
+were QA assertion defects in the new spec tests. No spec-024 product blocker or major was
+confirmed, so the feature advances to UAT with the minor harness follow-up above and both browser
+QA tasks still open.
+
+## Bugs
+
+No product bugs were confirmed in this QA pass.

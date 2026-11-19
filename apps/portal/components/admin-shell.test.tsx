@@ -3,6 +3,7 @@ import { render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminSidebar } from './admin-sidebar';
 import { AdminApps } from './admin-apps';
+import { AdminAppDetail } from './admin-app-detail';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), pathname: '/admin/apps' }));
 vi.mock('next/navigation', () => ({ usePathname: () => mocks.pathname }));
 vi.mock('../lib/client', () => ({
@@ -37,5 +38,49 @@ describe('admin shell', () => {
     expect(screen.getByText('Portal admin')).toBeInTheDocument();
     expect(screen.queryByText(/pk_/)).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'View checkout (Platform)' })).toHaveAttribute('href', '/admin/apps/app');
+  });
+  it('keeps another team app read-only and sends revocation to product access', async () => {
+    mocks.get.mockResolvedValue({
+      data: {
+        id: 'app',
+        name: 'checkout',
+        status: 'active',
+        team: { id: 'team', name: 'Platform', personal: false },
+        owner: { id: 'user', name: 'Ana', email: 'ana@example.com', role: 'developer' },
+        plan: {
+          id: 'plan',
+          name: 'Free',
+          builtin: false,
+          product: { id: 'product', slug: 'payments', name: 'Payments' },
+          rateLimit: null,
+          rateLimitUnit: null,
+          monthlyQuota: null,
+        },
+        activeKeyHints: ['9fQa'],
+        credentials: [{
+          id: 'credential',
+          kind: 'key-auth',
+          keyHint: '9fQa',
+          status: 'active',
+          createdAt: '2026-11-18T00:00:00Z',
+          revokedAt: null,
+        }],
+        subscriptions: [{ apiId: 'api', slug: 'orders', title: 'Orders' }],
+        origin: 'developer',
+        keyIssued: true,
+        description: null,
+        revokedAt: null,
+        createdAt: '2026-11-18T00:00:00Z',
+      },
+    });
+    render(<AdminAppDetail appId="app" />);
+    expect(await screen.findByText('…9fQa')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Manage access/ })).toHaveAttribute(
+      'href',
+      '/admin/products/payments',
+    );
+    for (const action of ['Reveal', 'Regenerate', 'Create key', 'Cancel subscription'])
+      expect(screen.queryByText(action, { exact: false })).not.toBeInTheDocument();
+    expect(screen.getByText(/revoke it on the product.s access screen/i)).toBeInTheDocument();
   });
 });
