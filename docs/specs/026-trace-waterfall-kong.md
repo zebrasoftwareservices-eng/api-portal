@@ -10,9 +10,10 @@ linear:            # the one feature issue, e.g. JSO-117 — filled by `node scr
 # 026 — Trace waterfall for one API call on Kong
 
 ## Summary
-Portal admins open one recent call to a published Kong API and see a waterfall of the spans
-Kong recorded for it (request, router, each plugin phase, the upstream try), so they can see
-what used the time without leaving the portal.
+A portal admin turns Kong tracing on for chosen APIs, developer accounts or teams, checks the
+Kong node's settings with a Test button, and then sees a waterfall of the spans for the latest
+traced call (request, router, each plugin phase, the upstream try). The next traced call
+replaces it; the portal keeps no trace history.
 
 ## Problem
 A portal admin whose API is slow has nothing in the portal to diagnose it with. Spec 011 shows
@@ -33,95 +34,130 @@ Spans appear only when the node's `tracing_instrumentations` is set, and that is
 setting, not something the Admin API can change ([Kong tracing](https://developer.konghq.com/gateway/tracing/)).
 The quickstart runs `kong:3.9`, so traces are available there.
 
-Solved when, on the quickstart, an admin makes one try-it call and then opens it in the portal
-and names the slowest span, with no extra container and no stored secrets or client data.
+Solved when, on the quickstart, an admin turns tracing on for the sample API, the Test passes,
+one try-it call is made, and the admin names the slowest span in the portal, with no extra
+container, no stored secrets or client data, and nothing kept beyond that latest call.
 Evidence: [research brief](../research/show-opentelemetry-traces-for-one-api-re.md).
 
 ## Users
-- **Portal admin** (primary): diagnoses a slow or failing call on an API they published.
-- **Platform engineer**: runs the quickstart or connects an existing Kong, and decides whether
-  that Kong node emits spans.
+- **Portal admin** (primary): chooses what is traced, checks the Kong settings, and reads the
+  latest trace to diagnose a slow or failing call.
+- **Platform engineer**: runs the quickstart or an existing Kong, and sets the node settings the
+  turn-on dialog explains.
 
 ## User stories
-- As a portal admin, I want to see the recent calls to one published API with method, path,
-  status and total time, so that I can pick out a slow or failing one.
-- As a portal admin, I want to open one call and see its spans on a timeline, labelled request,
-  plugin or upstream, with the slowest marked, so that I know whether a plugin or the upstream
-  used the time.
-- As a platform engineer, I want the quickstart to trace calls with no extra container, and an
-  existing Kong to be told clearly which two settings turn tracing on, so that I opt in knowingly.
-- As a portal admin, I want traces to hold no query strings, client IPs, upstream addresses,
-  headers or bodies, and to expire quickly, so that tracing does not become a store of customer data.
+- As a portal admin, I want to turn tracing on for one API, one developer account or one team,
+  so that only the calls I care about are traced.
+- As a portal admin, I want the turn-on dialog to tell me which Kong node settings tracing needs,
+  let me enter the values my Kong uses, and test them, so that I know tracing works before I
+  make a call.
+- As a portal admin, I want to see the latest traced call's spans on one timeline, labelled
+  request, plugin or upstream, with the slowest marked, so that I know whether a plugin or the
+  upstream used the time.
+- As a platform engineer, I want the quickstart to trace calls with no extra container, so that
+  I can try the feature without setting up a collector.
+- As a portal admin, I want the portal to keep only the latest trace, without query strings,
+  client IPs, upstream addresses, headers or bodies, so that tracing never becomes a store of
+  customer data.
 
 ## Acceptance criteria
-1. **Given** a connected Kong and an admin who publishes an API **When** the publish (or a later
-   reconcile) runs, twice **Then** Kong holds exactly one `opentelemetry` plugin scoped to that
-   API's service, carrying the portal's tags, sending OTLP/HTTP traces to the portal server's
-   trace path with a bearer token; the second run creates or changes nothing.
-2. **Given** the quickstart from `docker compose -f deploy/docker-compose.yml up` with no added
-   container **When** a developer sends one try-it call to the sample API **Then** within 30
-   seconds an admin sees that call in the sample API's recent-calls list with its method, path
-   without the query string, status code and total duration in milliseconds.
-3. **Given** that call in the list **When** the admin opens it **Then** a waterfall shows each
-   span's name, start offset and duration on one time axis; the root span is labelled request,
-   spans named `rewrite|access|header_filter phase: <plugin>` are labelled plugin with the plugin
-   name, `balancer try #N` is labelled upstream, and the longest span other than the root is
-   marked slowest.
-4. **Given** a call sent with a query string (`?token=abc123`), custom headers and a body, and a
-   Kong span that carries a non-allowlisted attribute (for example a username) **When** its
-   trace is stored and later fetched through the API **Then** the database row and the response
-   hold only trace id, span id, parent span id, name, start, duration, status and the portal's
-   API id; `abc123`, the client IP, the upstream address, headers, bodies and the extra
-   attribute appear in neither.
-5. **Given** a trace batch posted to the trace path with a missing or wrong bearer token, or one
-   whose spans belong to a Kong service the portal does not publish **When** the server receives
-   it **Then** it answers with an RFC 9457 problem+json error (401 for the token, 4xx for the
-   unknown service) and stores no span; **and when** Kong resends a batch it already delivered,
-   no span is stored twice.
-6. **Given** a connected Kong whose node has `tracing_instrumentations` at its default `off`
-   **When** an admin opens an API's recent calls **Then** the page says tracing is off on the
-   gateway and names `tracing_instrumentations` and `tracing_sampling_rate` (and the
-   `KONG_TRACING_*` environment variables) with a link to the setup doc, instead of an empty list.
-7. **Given** a signed-in developer who is not a portal admin, or an anonymous visitor **When**
-   they request an API's recent-calls list, one trace, or the admin trace page **Then** the API
-   answers 403 (or 401) problem+json and the page is not shown.
-8. **Given** an API with traces older than the retention window and more than the per-API cap
-   (proposal: 24 hours and 200 traces, see Open questions) **When** housekeeping runs **Then**
-   traces older than the window are deleted and at most the cap's newest traces remain for that
-   API; **and on** the hosted demo, the daily reset deletes every trace.
-9. **Given** the quickstart compose file **When** it starts Kong **Then** the node sets
-   `KONG_TRACING_INSTRUMENTATIONS` to `request,router,balancer,plugin_rewrite,plugin_access,plugin_header_filter`
-   (no `db_query`, `dns_query` or `http_client`) and `KONG_TRACING_SAMPLING_RATE=1`, and the
-   quickstart still gives a working portal in under five minutes.
+1. **Given** a connected Kong and an admin who turns tracing on for API A, developer account B
+   and team C **When** the reconcile runs twice **Then** Kong holds portal-tagged
+   `opentelemetry` plugins scoped to A's service and to each Kong consumer of B's and of C's
+   apps, each sending OTLP/HTTP traces to the configured trace endpoint with a bearer token; the
+   second run creates or changes nothing; **and when** the admin turns one selection off and the
+   reconcile runs, only that selection's plugins are gone.
+2. **Given** tracing is on for API A only and A has a shown trace **When** a developer who is in
+   no selection calls API D **Then** after 30 seconds the trace page still shows A's call and no
+   span from the D call was stored.
+3. **Given** an admin who turns tracing on **When** the dialog opens **Then** it names
+   `tracing_instrumentations` and `tracing_sampling_rate` (and their `KONG_TRACING_*` environment
+   variables), says the Kong node must be restarted after changing them, and offers editable
+   fields for the trace endpoint (the portal address as Kong reaches it), the instrumentation
+   list and the sampling rate, prefilled with the quickstart values from criterion 10; the trace
+   endpoint the admin enters is the one written into the plugins in criterion 1.
+4. **Given** the quickstart Kong and the prefilled values **When** the admin clicks Test **Then**
+   within 15 seconds the dialog shows a pass.
+5. **Given** a Kong whose node has `tracing_instrumentations` off, **or** a trace endpoint Kong
+   cannot reach, **or** a Kong Admin API that does not answer **When** the admin clicks Test
+   **Then** within 15 seconds the dialog shows a failure whose message names that cause (tracing
+   off on the node, endpoint unreachable from Kong, gateway unreachable), one distinct message
+   per cause, and never a pass.
+6. **Given** tracing is on for the sample API on the quickstart **When** a developer sends one
+   try-it call **Then** within 30 seconds the admin trace page shows that call's method, path
+   without the query string, status code and total duration in milliseconds, and a waterfall of
+   each span's name, start offset and duration on one time axis: the root span is labelled
+   request, spans named `rewrite|access|header_filter phase: <plugin>` are labelled plugin with
+   the plugin name, `balancer try #N` is labelled upstream, and the longest span other than the
+   root is marked slowest; **and when** a second traced call is made, within 30 seconds the page
+   shows only the second call and the first can no longer be fetched through the API.
+7. **Given** a traced call sent with a query string (`?token=abc123`), custom headers and a body,
+   and a Kong span that carries a non-allowlisted attribute (for example a username) **When** its
+   trace is kept and then fetched through the API **Then** what the server keeps and returns holds
+   only trace id, span id, parent span id, name, start, duration, status and the portal's API id;
+   `abc123`, the client IP, the upstream address, headers, bodies and the extra attribute appear
+   in neither.
+8. **Given** a trace batch posted to the trace endpoint with a missing or wrong bearer token, or
+   one whose spans come from a service or consumer outside the admin's selection **When** the
+   server receives it **Then** it answers with RFC 9457 problem+json (401 for the token, 4xx for
+   the selection) and the shown trace does not change; **and when** Kong resends a batch it
+   already delivered, the shown trace holds each span once.
+9. **Given** a signed-in developer who is not a portal admin, or an anonymous visitor **When**
+   they request the latest trace, the tracing settings, the selection endpoints, the Test, or the
+   admin trace page **Then** the API answers 403 (or 401) problem+json and the page is not shown.
+10. **Given** the quickstart compose file **When** it starts Kong **Then** the node sets
+    `KONG_TRACING_INSTRUMENTATIONS` to `request,router,balancer,plugin_rewrite,plugin_access,plugin_header_filter`
+    (no `db_query`, `dns_query` or `http_client`) and `KONG_TRACING_SAMPLING_RATE=1`, and the
+    quickstart still gives a working portal in under five minutes.
 
 ## Out of scope
-- **A log viewer, a live log tail, and jumping from a log line to its trace.** Kong access logs
-  are a second export and would undo ADR 0011's redaction; spec 011's http-log stays a counter.
-- **Trace search, filters, a live tail and a LIVE badge.** The shipped Zuplo screen is a list you
-  open; one list per API proves the value.
+- **A log viewer, a live log tail, and jumping from a log line to its trace.** Traces only (Decision 1).
+  Kong access logs are a second export and would undo ADR 0011's redaction.
+- **Trace history, a recent-calls list, search, filters, a live tail, and retention settings.**
+  The portal shows the latest traced call only (Decision 3).
+- **A developer-facing waterfall, including inside try-it.** Portal admins only (Decision 2).
+- **Tracing per route or per app.** The selection is per API, per developer account or per team.
 - **Exporting traces to Jaeger, Honeycomb or any other backend.** An operator can point Kong's
   plugin at their own collector themselves.
-- **A developer-facing waterfall, including inside try-it.** The plugin list is the operator's
-  configuration, and showing a developer only their own calls needs a consumer id this spec
-  does not store.
-- **Latency charts, per-route metrics and response size.** Spec 011 left these out on purpose;
-  they are analytics, a separate item.
+- **Latency charts, per-route metrics and response size.** Analytics, a separate item (spec 011
+  left them out on purpose).
 - **Inventing spans Kong does not emit** (Zuplo's handler span). Labels come from Kong's own span names.
 - **AWS API Gateway, APISIX, Envoy and other adapters.** The span names are Kong's; AWS tracing
   was not researched (spec 017).
 - **Changing spec 011's http-log plugin** to keep raw requests.
-- **Setting `tracing_instrumentations` on an existing Kong for the operator.** The Admin API cannot;
-  the portal says what to set and the operator restarts the node.
-- **Staff roles limiting who sees traces.** Every portal admin sees them until spec 015.
+- **Changing `tracing_instrumentations` or `tracing_sampling_rate` on the Kong node.** The Admin API
+  cannot; the dialog explains them and the operator restarts the node.
+- **Staff roles limiting which admins see traces.** Every portal admin sees them until spec 015.
 - **Traces in the static Vercel demo** (spec 002). It has no gateway.
 
+## Decisions
+Elango, 2026-11-18.
+1. **Traces only.** A log viewer waits for a later spec.
+2. **Portal admins only see traces.** The admin turns tracing on per API, per developer account
+   or per team.
+3. **No retention policy and no trace history.** The UI shows the trace for the call just made and
+   the next traced call replaces it. The portal keeps only what it needs to show that latest
+   result; a short wait for Kong's spans, which arrive after the response, is fine.
+4. **Turning tracing on opens a dialog** that explains the Kong node settings and the restart,
+   offers fields for the admin's own values (trace endpoint, instrumentations, sampling rate),
+   and has a Test button that shows pass or a clear failure reason.
+5. **The admin's selection decides what is traced.** Calls outside it produce no trace. This
+   replaces the service-versus-consumer question.
+
 ## Open questions
-- [ ] Confirm this pull request is traces only and a log tail waits (the request said "otel logs"; the screenshot is a trace waterfall). — Elango
-- [ ] Confirm the viewer is portal admins on one published API, and a developer view of their own calls is a later spec. — Elango
-- [ ] Is 24 hours and at most 200 traces per API the right retention cap? — Elango
-- [ ] Is "tracing stays off on an existing Kong until the operator sets `tracing_instrumentations` and restarts the node" the right opt-in for a company's own Kong? — Elango
-- [ ] Should the plugin sit on the published service (every call, including a missing or rejected key) or on each portal consumer like usage collection (portal keys only; a rejected key leaves no trace)? This spec assumes the service. — Elango
-- [ ] How does the portal tell "tracing is off" from "no calls yet" (criterion 6): read the node's configuration through the Admin API, or infer from no spans arriving? — tech-lead
+- [ ] Is "the latest trace" one for the whole portal, or one per traced API or selection? This
+  spec assumes one for the whole portal. — Elango
+- [ ] Does "developer account" mean the apps of every team the developer belongs to, or only the
+  apps they created? Kong consumers are one per app and apps belong to teams (spec 008). — Elango
+- [ ] May the admin save tracing on after a failing Test, or must the Test pass first? — Elango
+- [ ] Keep the latest trace in server memory or in a single overwritten database row? Memory is
+  lost on restart and not shared across Helm server replicas (spec 016). — tech-lead
+- [ ] How does the Test verify the node: read its configuration from the Admin API root, send a
+  probe call and wait for spans, or both? Criterion 5 needs each cause told apart. — tech-lead
+- [ ] When a call matches both an API and a consumer selection, which plugin instance runs, and is
+  only one trace exported? — tech-lead
+- [ ] Selection, dialog and Test, ingest and the waterfall may not fit one pull request. If not,
+  the proposed cut is developer-account and team selection into a follow-up spec. — tech-lead
 
 ---
 <!-- Sections below are filled by later stages. -->
