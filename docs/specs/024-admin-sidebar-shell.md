@@ -1,7 +1,7 @@
 ---
 id: 024
 title: Admin sidebar shell
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 024`
@@ -269,12 +269,12 @@ admin endpoints read Postgres only.
 - [x] [backend] Add `GET /v1/admin/apps` (keyset paging, active key hints, owner, plan, team) and `GET /v1/admin/apps/{appId}` in `src/admin-apps.ts`, admin-only, matching the contract (AC 4–5)
 - [x] [backend] Move existing tests and any seed path that create apps or requests as a portal admin onto a developer user; integration tests for the refusal (row counts + Kong unchanged) and for both admin endpoints (no full key, revoked key has no hint, paging, developer gets 403)
 - [x] [backend] Regenerate `packages/sdk/src/schema.d.ts` from the updated contract
-- [ ] [frontend] Hide My apps, Teams, Create app, Subscribe and Request access for admins everywhere; redirect admin visits to `/dashboard/**` to `/admin/apps` (AC 6)
-- [ ] [frontend] `PortalShell` + `AdminSidebar` (entries, order, Admin group, current page, Requests count); remove `AdminNav`; `/admin` redirects to `/admin/gateways` with the group expanded (AC 1–2)
-- [ ] [frontend] `/apis` index of published APIs with reference links and no products; Products entry goes to `/admin/products` (AC 3)
-- [ ] [frontend] Admin Apps list `/admin/apps` and read-only app page `/admin/apps/[appId]` with key hints only and a link to product access (AC 4–5)
-- [ ] [frontend] Accounts form: max + unit and window + "minutes" side by side, inline validation for 0, negative and non-numbers, nothing sent on error, Save bottom left (AC 9)
-- [ ] [frontend] Shared `Chevron` in `packages/ui` used by the Admin group, details, selects (`select:open` + fallback) and the account menu (AC 10)
+- [x] [frontend] Hide My apps, Teams, Create app, Subscribe and Request access for admins everywhere; redirect admin visits to `/dashboard/**` to `/admin/apps` (AC 6)
+- [x] [frontend] `PortalShell` + `AdminSidebar` (entries, order, Admin group, current page, Requests count); remove `AdminNav`; `/admin` redirects to `/admin/gateways` with the group expanded (AC 1–2)
+- [x] [frontend] `/apis` index of published APIs with reference links and no products; Products entry goes to `/admin/products` (AC 3)
+- [x] [frontend] Admin Apps list `/admin/apps` and read-only app page `/admin/apps/[appId]` with key hints only and a link to product access (AC 4–5)
+- [x] [frontend] Accounts form: max + unit and window + "minutes" side by side, inline validation for 0, negative and non-numbers, nothing sent on error, Save bottom left (AC 9)
+- [x] [frontend] Shared `Chevron` in `packages/ui` used by the Admin group, details, selects (`select:open` + fallback) and the account menu (AC 10)
 - [ ] [qa] Integration: admin refusal on all five endpoints with unchanged rows and Kong; admin apps endpoints never return a full key; developer refused on admin endpoints (AC 4, 5, 7, 8)
 - [ ] [qa] e2e (admin): sidebar order and Admin group, `/admin` lands on Gateways, APIs vs Products pages, Apps list and read-only app page, no developer actions anywhere, Accounts validation and reload keeps old values, chevron states (AC 1–6, 9, 10)
 - [ ] [qa] e2e (developer): My apps, team apps, create app, subscribe and request access unchanged; no sidebar, no Admin, no Insights, `/admin` refused (AC 8); quickstart still works
@@ -298,3 +298,11 @@ buttons. Accounts limits read `[10] attempts in [15] minutes` with inline errors
 settings** bottom left. One `Chevron` (right→down; account menu down→up) replaces every arrow.
 Every state, copy, keyboard path and responsive rule is in the design file. One new token:
 `--portal-sidebar-width`.
+
+## Build notes
+
+Frontend: replaced the admin tab bar with the responsive `PortalShell` and `AdminSidebar`, added
+the public API index plus read-only admin Apps list/detail screens, and removed developer-only
+actions from admin sessions. The Accounts fields now validate inline before sending, while the
+shared Chevron covers disclosures, native selects, the sidebar and menus; QA should exercise the
+drawer focus path, app paging and the native-select open state in Chromium.
