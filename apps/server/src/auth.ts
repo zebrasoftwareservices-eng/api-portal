@@ -112,3 +112,13 @@ export async function requireUser(
     throw new Problem(403, 'forbidden', 'Administrator access is required.');
   return session.user;
 }
+// A portal admin is an operator, not a developer (ADR 0017). Call this
+// immediately after requireUser, before any other check or write.
+export function requireDeveloper(user: { role: string }) {
+  if (user.role === 'admin')
+    throw new Problem(
+      403,
+      'admin-not-developer',
+      'Use a developer account to create apps, request access or hold API keys.',
+    );
+}

@@ -4,3 +4,4 @@ import '../../apps/portal/e2e/setup-gateways.test';
 import '../../apps/portal/e2e/journeys';
 import '../../apps/portal/e2e/gateway';
 import '../../apps/portal/e2e/account-security.test';
+import '../../apps/portal/e2e/admin-sidebar-shell.test';

@@ -7,6 +7,7 @@ import {
   EmptyState,
   Input,
   PageHeader,
+  SelectField,
   Textarea,
   Table,
 } from '@portal/ui';
@@ -501,14 +502,14 @@ function Editor({
                   error={errors.rateLimitUnit}
                 >
                   {(props) => (
-                    <select
+                    <SelectField
                       {...props}
                       value={values.rateLimitUnit}
                       onChange={(e) => update('rateLimitUnit', e.target.value)}
                     >
                       <option value="second">second</option>
                       <option value="minute">minute</option>
-                    </select>
+                    </SelectField>
                   )}
                 </Field>
               </fieldset>

@@ -46,9 +46,11 @@ let server: Awaited<ReturnType<typeof createApp>>['app'];
 let adapter: KongAdapter;
 let proxyUrl: string;
 const adminId = uuidv7(),
+  developerId = uuidv7(),
   teamId = uuidv7(),
   gatewayId = uuidv7(),
   instanceId = uuidv7();
+let actor: 'admin' | 'developer' = 'admin';
 const enqueue = vi.fn(
   async (_payload: { template?: string; appId?: string }, _tx?: unknown) => {},
 );
@@ -88,19 +90,27 @@ beforeAll(async () => {
   const adminUrl = `http://${kong.getHost()}:${kong.getMappedPort(8001)}`;
   proxyUrl = `http://${kong.getHost()}:${kong.getMappedPort(8000)}`;
   adapter = new KongAdapter({ adminUrl, instanceId });
-  await connection.db
-    .insert(user)
-    .values({
+  await connection.db.insert(user).values([
+    {
       id: adminId,
       name: 'Admin',
       email: 'admin@example.com',
       role: 'admin',
       emailVerified: true,
-    });
+    },
+    {
+      id: developerId,
+      name: 'Developer',
+      email: 'dev@example.com',
+      role: 'developer',
+      emailVerified: true,
+    },
+  ]);
   await connection.db.insert(teams).values({ id: teamId, name: 'Team' });
-  await connection.db
-    .insert(teamMembers)
-    .values({ teamId, userId: adminId, role: 'admin' });
+  await connection.db.insert(teamMembers).values([
+    { teamId, userId: adminId, role: 'admin' },
+    { teamId, userId: developerId, role: 'member' },
+  ]);
   await connection.db.insert(instanceSettings).values({ id: 1, instanceId });
   await connection.db
     .insert(gateways)
@@ -115,13 +125,22 @@ beforeAll(async () => {
   const auth = {
     api: {
       getSession: async () => ({
-        user: {
-          id: adminId,
-          role: 'admin',
-          emailVerified: true,
-          name: 'Admin',
-          email: 'admin@example.com',
-        },
+        user:
+          actor === 'admin'
+            ? {
+                id: adminId,
+                role: 'admin',
+                emailVerified: true,
+                name: 'Admin',
+                email: 'admin@example.com',
+              }
+            : {
+                id: developerId,
+                role: 'developer',
+                emailVerified: true,
+                name: 'Developer',
+                email: 'dev@example.com',
+              },
       }),
     },
   } as unknown as Auth;
@@ -209,10 +228,12 @@ async function fixture(visibility: 'open' | 'manual') {
   });
   expect(assigned.statusCode, assigned.body).toBe(201);
   const appId = assigned.json().id as string;
+  actor = 'developer';
   const revealed = await server.inject({
     method: 'POST',
     url: `/api/v1/apps/${appId}/credentials`,
   });
+  actor = 'admin';
   expect(revealed.statusCode, revealed.body).toBe(201);
   const key = revealed.json().key as string;
   const call = async () => {

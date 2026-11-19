@@ -66,6 +66,7 @@ export function AccountSettings() {
             className="stack"
             onSubmit={async (e) => {
               e.preventDefault();
+              const form = e.currentTarget;
               if (lock.current) return;
               const invalid: Record<string, string> = {};
               for (const [key] of limits) {
@@ -103,7 +104,16 @@ export function AccountSettings() {
                   },
                 );
                 if (error) {
-                  setProblem(error);
+                  const inline = Object.fromEntries(
+                    (error.errors || []).flatMap((item) => {
+                      const match = item.pointer?.match(/^\/rateLimits\/([^/]+)\/(max|windowMinutes)$/);
+                      return match ? [[`${match[1]}-${match[2]}`, item.message]] : [];
+                    }),
+                  );
+                  if (Object.keys(inline).length) {
+                    setErrors(inline);
+                    requestAnimationFrame(() => focusInvalid(form));
+                  } else setProblem(error);
                   if (error.status === 409)
                     setSettings({
                       ...settings,
@@ -164,9 +174,10 @@ export function AccountSettings() {
               {limits.map(([key, label, legend, unit]) => (
                 <fieldset key={key} disabled={pending} className="stack">
                   <legend>{legend}</legend>
-                  <div className="row limit-row">
+                  <div className="limit-row">
                     {(['max', 'windowMinutes'] as const).map((field, i) => (
-                      <span key={field}>
+                      <span className="limit-field" key={field}>
+                        {i === 1 && <span aria-hidden="true">in</span>}
                         <label className="sr-only" htmlFor={`${key}-${field}`}>
                           {label}:{' '}
                           {i === 0
@@ -177,14 +188,12 @@ export function AccountSettings() {
                         </label>
                         <Input
                           id={`${key}-${field}`}
-                          type="number"
-                          min={1}
-                          max={i === 0 ? 1000 : 1440}
-                          step={1}
+                          type="text"
+                          inputMode="numeric"
                           aria-invalid={!!errors[`${key}-${field}`]}
                           aria-describedby={
                             errors[`${key}-${field}`]
-                              ? `${key}-error`
+                              ? `${key}-${field}-error`
                               : undefined
                           }
                           value={
@@ -208,15 +217,15 @@ export function AccountSettings() {
                             })
                           }
                         />{' '}
-                        {i === 0 ? `${unit} in` : 'minutes'}
+                        <span aria-hidden="true">{i === 0 ? unit : 'minutes'}</span>
+                        {errors[`${key}-${field}`] && (
+                          <span id={`${key}-${field}-error`} className="field-error limit-error">
+                            <span aria-hidden="true">⚠ </span>{errors[`${key}-${field}`]}
+                          </span>
+                        )}
                       </span>
                     ))}
                   </div>
-                  {(errors[`${key}-max`] || errors[`${key}-windowMinutes`]) && (
-                    <p id={`${key}-error`} className="field-error">
-                      {errors[`${key}-max`] || errors[`${key}-windowMinutes`]}
-                    </p>
-                  )}
                 </fieldset>
               ))}
               <p className="hint">
@@ -231,7 +240,7 @@ export function AccountSettings() {
                 )}
               </>
             )}
-            <Button disabled={pending}>
+            <Button className="account-save" disabled={pending}>
               {pending ? 'Saving…' : 'Save account settings'}
             </Button>
           </form>

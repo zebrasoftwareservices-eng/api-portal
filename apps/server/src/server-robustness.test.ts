@@ -37,6 +37,7 @@ import {
   session as authSession,
 } from '@portal/db';
 import { createApp } from './app.js';
+import { installDeveloperWrites } from './developer-writes.js';
 import { loadConfig } from './config.js';
 import { createAuth, type Auth } from './auth.js';
 import { gatewayConnection } from './gateway-connection.js';
@@ -437,6 +438,13 @@ beforeAll(async () => {
       stream: { write: (chunk: string) => logs.push(String(chunk)) },
     },
   }));
+  installDeveloperWrites(
+    server,
+    () => session?.role,
+    (next) => {
+      if (session) session.role = next;
+    },
+  );
   runtime = gatewayConnection(
     connection.db,
     loadConfig({ DATABASE_URL: url, NODE_ENV: 'test' }),

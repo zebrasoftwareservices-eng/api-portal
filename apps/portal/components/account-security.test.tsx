@@ -465,22 +465,15 @@ it.each([
   ['mail', MailSettings],
   ['accounts', AccountSettings],
 ] as const)(
-  'shows only the shared admin navigation on the %s page',
+  'leaves shared admin navigation to the portal shell on the %s page',
   (_, Component) => {
     render(
       <AdminLayout>
         <Component />
       </AdminLayout>,
     );
-    expect(
-      screen.getAllByRole('navigation', { name: 'Admin section' }),
-    ).toHaveLength(1);
-    for (const name of ['APIs', 'Gateways', 'Mail', 'Accounts']) {
-      expect(screen.getAllByRole('link', { name })).toHaveLength(1);
-    }
-    expect(
-      screen.getAllByRole('combobox', { name: 'Admin section' }),
-    ).toHaveLength(1);
+    expect(screen.queryByRole('navigation', { name: 'Admin section' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Admin section' })).not.toBeInTheDocument();
   },
 );
 it('clears a prior SMTP test error after corrected settings are saved', async () => {

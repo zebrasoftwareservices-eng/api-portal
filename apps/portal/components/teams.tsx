@@ -9,6 +9,7 @@ import {
   Card,
   Input,
   PageHeader,
+  SelectField,
   toast,
 } from '@portal/ui';
 import type { components } from '@portal/sdk';
@@ -317,7 +318,7 @@ export function TeamPage({ teamId }: { teamId: string }) {
                   )}
                 </Field>
                 <label htmlFor="invite-role">Role</label>
-                <select
+                <SelectField
                   id="invite-role"
                   aria-describedby="invite-role-help"
                   value={role}
@@ -329,7 +330,7 @@ export function TeamPage({ teamId }: { teamId: string }) {
                       {roleName(r)}
                     </option>
                   ))}
-                </select>
+                </SelectField>
                 <p id="invite-role-help" className="hint">
                   {roleHelp[role]}
                 </p>

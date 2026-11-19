@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 import { useRef, useState } from 'react';
-import { Button, Textarea } from '@portal/ui';
+import { Button, Chevron, Textarea } from '@portal/ui';
 import type { components } from '@portal/sdk';
 import type { Problem } from '../lib/types';
 import { Field } from './field';
@@ -90,7 +90,7 @@ export function LintWarnings({
   return (
     <details className="alert warning" id={id}>
       <summary>
-        ⚠ {findings.length} lint{' '}
+        <Chevron />⚠ {findings.length} lint{' '}
         {findings.length === 1 ? 'warning' : 'warnings'}. The document was
         published; fix {findings.length === 1 ? 'it' : 'these'} when you can.
       </summary>

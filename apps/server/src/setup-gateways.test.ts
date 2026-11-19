@@ -28,6 +28,7 @@ import {
   credentials,
   subscriptions,
   gatewayConsumers,
+  teamMembers,
 } from '@portal/db';
 import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
@@ -153,6 +154,24 @@ async function claim(production = false) {
   expect(response.statusCode, response.body).toBe(201);
   cookie = response.headers['set-cookie']!.toString().split(';')[0]!;
   ownerId = response.json().id;
+}
+async function signInDeveloper() {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/api/auth/sign-up/email',
+    payload: {
+      email: `dev-${uuidv7()}@example.com`,
+      name: 'Developer',
+      password: 'test-password-123',
+    },
+  });
+  expect(response.statusCode, response.body).toBe(200);
+  return {
+    cookie: response.cookies
+      .map((entry) => `${entry.name}=${entry.value}`)
+      .join('; '),
+    id: response.json().user.id as string,
+  };
 }
 async function connectGateway() {
   const response = await call('POST', 'admin/gateways', {
@@ -540,9 +559,10 @@ it('disables with no Kong call, blocks discovery/import/sample/app/key creation,
   const apiId = await publish(id);
   const appId = uuidv7(),
     credentialId = uuidv7();
+  const personalTeamId = await ensurePersonalTeam(db.db, ownerId);
   await db.db.insert(apps).values({
     id: appId,
-    teamId: await ensurePersonalTeam(db.db, ownerId),
+    teamId: personalTeamId,
     createdBy: ownerId,
     name: 'existing',
   });
@@ -564,10 +584,22 @@ it('disables with no Kong call, blocks discovery/import/sample/app/key creation,
     ['GET', 'admin/gateway/services'],
     ['POST', 'admin/apis', { invalid: 'body' }],
     ['POST', `admin/gateways/${id}/sample`],
-    ['POST', 'apps', { name: 'new', apiIds: [apiId] }],
-    ['POST', `apps/${appId}/credentials`],
   ] as const) {
     const response = await call(method, path, payload);
+    expect(response.statusCode, response.body).toBe(409);
+    expect(response.json().type).toBe('/problems/gateway-disabled');
+  }
+  const developer = await signInDeveloper();
+  await db.db.insert(teamMembers).values({
+    teamId: personalTeamId,
+    userId: developer.id,
+    role: 'member',
+  });
+  for (const [path, payload] of [
+    ['apps', { name: 'new', apiIds: [apiId] }],
+    [`apps/${appId}/credentials`, undefined],
+  ] as const) {
+    const response = await call('POST', path, payload, developer.cookie);
     expect(response.statusCode, response.body).toBe(409);
     expect(response.json().type).toBe('/problems/gateway-disabled');
   }
@@ -713,9 +745,16 @@ it('warns and requires confirmation for missing consumers, then reprovisions the
       })
     ).statusCode,
   ).toBe(200);
-  expect((await call('POST', `apps/${appId}/credentials`)).statusCode).toBe(
-    201,
-  );
+  const developer = await signInDeveloper();
+  await db.db.insert(teamMembers).values({
+    teamId: await ensurePersonalTeam(db.db, ownerId),
+    userId: developer.id,
+    role: 'member',
+  });
+  expect(
+    (await call('POST', `apps/${appId}/credentials`, undefined, developer.cookie))
+      .statusCode,
+  ).toBe(201);
   expect(ensure.mock.invocationCallOrder[0]).toBeLessThan(
     grant.mock.invocationCallOrder[0]!,
   );
@@ -773,7 +812,13 @@ it('does not hold the gateway lock during app creation, so a save finishes and t
     await blocked;
     return { id: 'consumer-' + appId, username: 'portal-app-' + appId };
   });
-  const creating = call('POST', 'apps', { name: 'slow', apiIds: [apiId] });
+  const developer = await signInDeveloper();
+  const creating = call(
+    'POST',
+    'apps',
+    { name: 'slow', apiIds: [apiId] },
+    developer.cookie,
+  );
   // inject is a thenable: consume it so the request starts before awaiting the barrier.
   const creation = Promise.resolve(creating);
   await started;

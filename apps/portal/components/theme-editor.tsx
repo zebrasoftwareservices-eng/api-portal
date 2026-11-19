@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 import { useEffect, useId, useRef, useState } from 'react';
-import { AlertDialog, Badge, Button, Card, Input, Label, Textarea } from '@portal/ui';
+import { AlertDialog, Badge, Button, Card, Input, Label, SelectField, Textarea } from '@portal/ui';
 import { AssetField } from './asset-field';
 import { ColorField } from './color-field';
 import {
@@ -741,7 +741,7 @@ export function ThemeEditor() {
             <h2>Font and shape</h2>
             <div className="field">
               <Label htmlFor="theme-font">Font</Label>
-              <select
+              <SelectField
                 id="theme-font"
                 value={draft.font}
                 disabled={saving}
@@ -753,7 +753,7 @@ export function ThemeEditor() {
                     {FONT_LABELS[id]}
                   </option>
                 ))}
-              </select>
+              </SelectField>
               <p className="theme-sample" style={{ fontFamily: FONTS[draft.font] }}>
                 Get your API key and make your first call in minutes.
               </p>

@@ -33,6 +33,7 @@ import {
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import type { Auth } from './auth.js';
+import { installDeveloperWrites } from './developer-writes.js';
 import { reconcile } from './reconcile.js';
 import { gatewayConnection } from './gateway-connection.js';
 let container: StartedPostgreSqlContainer;
@@ -171,6 +172,13 @@ beforeAll(async () => {
     adapterFor: () => adapter,
     enqueueReconcile: enqueue,
   }));
+  installDeveloperWrites(
+    server,
+    () => role,
+    (next) => {
+      role = next;
+    },
+  );
 });
 afterAll(async () => {
   await server?.close();

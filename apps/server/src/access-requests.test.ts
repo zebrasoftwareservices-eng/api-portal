@@ -31,6 +31,7 @@ import {
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import type { Auth } from './auth.js';
+import { installDeveloperWrites } from './developer-writes.js';
 import { reconcile } from './reconcile.js';
 import { revokeApps } from './revocation.js';
 import { renderMail } from './mail/templates.js';
@@ -182,6 +183,13 @@ beforeAll(async () => {
     enqueueMail: enqueue,
     enqueueRevocation: async () => {},
   }));
+  installDeveloperWrites(
+    server,
+    () => role,
+    (next) => {
+      role = next;
+    },
+  );
 });
 afterAll(async () => {
   await server?.close();

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Button, Input, Textarea, toast } from '@portal/ui';
+import { Button, Chevron, Input, SelectField, Textarea, toast } from '@portal/ui';
 import { api, networkProblem } from '../lib/client';
 import type { Problem } from '../lib/types';
 import { useTeams } from './team-context';
@@ -146,7 +146,7 @@ export function RequestAccess({
           {eligible.length > 1 ? (
             <label>
               Team
-              <select
+              <SelectField
                 value={teamId}
                 onChange={(e) => setTeamId(e.target.value)}
               >
@@ -155,7 +155,7 @@ export function RequestAccess({
                     {t.name}
                   </option>
                 ))}
-              </select>
+              </SelectField>
             </label>
           ) : (
             <p>
@@ -258,7 +258,7 @@ export function TeamRequests() {
               <DateValue value={r.submittedAt} />
             </p>
             <details>
-              <summary>Show reason</summary>
+              <summary><Chevron />Show reason</summary>
               <p className="access-note">{r.reason}</p>
             </details>
             {r.decision?.note && (
