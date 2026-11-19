@@ -14,8 +14,7 @@ import './theme-editor.css';
 import { currentUser } from '../lib/server';
 import { loadPublicTheme } from '../lib/public-theme';
 import { Providers } from '../components/providers';
-import { Header } from '../components/header';
-import { DemoNotice } from '../components/demo-notice';
+import { PortalShell } from '../components/portal-shell';
 import { ThemeLinks } from '../components/theme-links';
 import { ThemeProvider } from '../components/theme-provider';
 import { isDemo } from '../lib/demo';
@@ -51,14 +50,7 @@ export default async function Layout({
             <a className="skip" href="#main">
               Skip to content
             </a>
-            <Header />
-            <DemoNotice />
-            <main id="main" className="container">
-              {children}
-            </main>
-            <footer className="container">
-              Powered by Developer Portal · Apache 2.0
-            </footer>
+            <PortalShell>{children}</PortalShell>
           </Providers>
         </ThemeProvider>
       </body>

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 import { useState, useRef } from 'react';
-import { Button, Card, Input, toast } from '@portal/ui';
+import { Button, Card, Input, SelectField, toast } from '@portal/ui';
 import type { components } from '@portal/sdk';
 import { api, networkProblem } from '../lib/client';
 import type { Problem } from '../lib/types';
@@ -292,13 +292,13 @@ function AssignSubscription({
           />
           <label>
             Plan
-            <select value={planId} onChange={(e) => setPlanId(e.target.value)}>
+            <SelectField value={planId} onChange={(e) => setPlanId(e.target.value)}>
               {product.plans.map((p) => (
                 <option value={p.id} key={p.id}>
                   {p.name}
                 </option>
               ))}
-            </select>
+            </SelectField>
           </label>
           <label>
             Subscription name

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { Button, PageHeader, toast } from '@portal/ui';
+import { Button, PageHeader, SelectField, toast } from '@portal/ui';
 import { api, networkProblem } from '../lib/client';
 import type { Problem } from '../lib/types';
 import {
@@ -125,7 +125,7 @@ export function AdminRequests() {
       />
       <label>
         Status
-        <select
+        <SelectField
           value={filter}
           onChange={(e) => setFilter(e.target.value as typeof filter)}
         >
@@ -134,7 +134,7 @@ export function AdminRequests() {
               {s[0]!.toUpperCase() + s.slice(1)}
             </option>
           ))}
-        </select>
+        </SelectField>
       </label>
       <div id="request-queue" className="stack">
         {r.loading ? (

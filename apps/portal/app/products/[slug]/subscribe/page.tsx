@@ -20,10 +20,12 @@ export default async function Page({
 }) {
   const { slug } = await params;
   const { plan } = await searchParams;
-  if (!(await signedInUser()))
+  const user = await signedInUser();
+  if (!user)
     redirect(
       `/sign-in?next=${encodeURIComponent(`/products/${slug}/subscribe${plan ? `?plan=${plan}` : ''}`)}`,
     );
+  if (user.role === 'admin') redirect('/admin/apps');
   const { data, error } = await productBySlug(slug);
   if (error?.status === 404) notFound();
   if (!data) throw new Error('Product unavailable');

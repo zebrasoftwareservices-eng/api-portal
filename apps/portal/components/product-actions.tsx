@@ -107,6 +107,7 @@ export function ProductActions({ product }: { product: Product }) {
       <PlanTable
         product={product}
         action={(p) => {
+          if (user?.role === 'admin') return null;
           if (product.selfService === false) return null;
           if (
             current?.role === 'read-only' &&
@@ -170,6 +171,9 @@ export function ProductActions({ product }: { product: Product }) {
           );
         }}
       />
+      {user?.role === 'admin' && (
+        <p className="muted admin-developer-note">Portal admins can&apos;t subscribe. Use a developer account to get a key.</p>
+      )}
       {product.selfService === false && (
         <p className="muted">
           Access to this product is set up by your portal admin.

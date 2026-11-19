@@ -40,18 +40,6 @@ it.each([
     ['APIs', 'My apps'],
     'My apps',
   ],
-  [
-    '/dashboard/apps/one',
-    { role: 'admin', email: 'admin@example.com' },
-    ['APIs', 'My apps', 'Admin'],
-    'My apps',
-  ],
-  [
-    '/admin/apis',
-    { role: 'admin', email: 'admin@example.com' },
-    ['APIs', 'My apps', 'Admin'],
-    'Admin',
-  ],
 ] as const)(
   'uses consistent navigation on %s',
   (pathname, user, labels, current) => {
@@ -72,6 +60,13 @@ it.each([
     expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
   },
 );
+it('gives admins an account-only top bar without developer links', () => {
+  state.user = { role: 'admin', email: 'admin@example.com' };
+  render(<Header />);
+  expect(screen.getByRole('navigation', { name: 'Admin account' })).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'My apps' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument();
+});
 it.each(['escape', 'close'] as const)(
   'starts on Close menu, traps focus and restores focus with %s',
   async (method) => {

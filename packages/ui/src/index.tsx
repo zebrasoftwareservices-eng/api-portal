@@ -35,6 +35,59 @@ export function Button({
 export function Input(props: ComponentProps<'input'>) {
   return <input {...props} />;
 }
+export function Chevron({
+  variant = 'disclosure',
+  className = '',
+}: {
+  variant?: 'disclosure' | 'menu';
+  className?: string;
+}) {
+  return (
+    <svg
+      className={`chevron chevron-${variant} ${className}`}
+      viewBox="0 0 16 16"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d={variant === 'menu' ? 'm4 6 4 4 4-4' : 'm6 4 4 4-4 4'} />
+    </svg>
+  );
+}
+export function SelectField({ className = '', ...props }: ComponentProps<'select'>) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className={`select-field ${open ? 'is-open' : ''}`} data-open={open || undefined}>
+      <select
+        {...props}
+        className={className}
+        onPointerDown={(event) => {
+          setOpen(true);
+          props.onPointerDown?.(event);
+        }}
+        onKeyDown={(event) => {
+          if (['Enter', ' ', 'ArrowDown', 'ArrowUp'].includes(event.key)) setOpen(true);
+          props.onKeyDown?.(event);
+        }}
+        onChange={(event) => {
+          setOpen(false);
+          props.onChange?.(event);
+        }}
+        onBlur={(event) => {
+          setOpen(false);
+          props.onBlur?.(event);
+        }}
+      />
+      <Chevron />
+    </span>
+  );
+}
 export function Textarea(props: ComponentProps<'textarea'>) {
   return <textarea {...props} />;
 }
