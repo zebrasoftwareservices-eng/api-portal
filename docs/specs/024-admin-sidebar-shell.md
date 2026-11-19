@@ -265,10 +265,10 @@ admin endpoints read Postgres only.
 - **Paging.** Integration test with 3 apps and `limit=2`: two pages, no duplicates, stable order.
 
 ### Tasks
-- [ ] [backend] Add `requireDeveloper` and call it first in createApp, createAccessRequest, changeAppPlan, createCredential and regenerateCredential; 403 `/problems/admin-not-developer`, no writes, no Kong call (AC 7)
-- [ ] [backend] Add `GET /v1/admin/apps` (keyset paging, active key hints, owner, plan, team) and `GET /v1/admin/apps/{appId}` in `src/admin-apps.ts`, admin-only, matching the contract (AC 4–5)
-- [ ] [backend] Move existing tests and any seed path that create apps or requests as a portal admin onto a developer user; integration tests for the refusal (row counts + Kong unchanged) and for both admin endpoints (no full key, revoked key has no hint, paging, developer gets 403)
-- [ ] [backend] Regenerate `packages/sdk/src/schema.d.ts` from the updated contract
+- [x] [backend] Add `requireDeveloper` and call it first in createApp, createAccessRequest, changeAppPlan, createCredential and regenerateCredential; 403 `/problems/admin-not-developer`, no writes, no Kong call (AC 7)
+- [x] [backend] Add `GET /v1/admin/apps` (keyset paging, active key hints, owner, plan, team) and `GET /v1/admin/apps/{appId}` in `src/admin-apps.ts`, admin-only, matching the contract (AC 4–5)
+- [x] [backend] Move existing tests and any seed path that create apps or requests as a portal admin onto a developer user; integration tests for the refusal (row counts + Kong unchanged) and for both admin endpoints (no full key, revoked key has no hint, paging, developer gets 403)
+- [x] [backend] Regenerate `packages/sdk/src/schema.d.ts` from the updated contract
 - [ ] [frontend] Hide My apps, Teams, Create app, Subscribe and Request access for admins everywhere; redirect admin visits to `/dashboard/**` to `/admin/apps` (AC 6)
 - [ ] [frontend] `PortalShell` + `AdminSidebar` (entries, order, Admin group, current page, Requests count); remove `AdminNav`; `/admin` redirects to `/admin/gateways` with the group expanded (AC 1–2)
 - [ ] [frontend] `/apis` index of published APIs with reference links and no products; Products entry goes to `/admin/products` (AC 3)
@@ -278,6 +278,10 @@ admin endpoints read Postgres only.
 - [ ] [qa] Integration: admin refusal on all five endpoints with unchanged rows and Kong; admin apps endpoints never return a full key; developer refused on admin endpoints (AC 4, 5, 7, 8)
 - [ ] [qa] e2e (admin): sidebar order and Admin group, `/admin` lands on Gateways, APIs vs Products pages, Apps list and read-only app page, no developer actions anywhere, Accounts validation and reload keeps old values, chevron states (AC 1–6, 9, 10)
 - [ ] [qa] e2e (developer): My apps, team apps, create app, subscribe and request access unchanged; no sidebar, no Admin, no Insights, `/admin` refused (AC 8); quickstart still works
+
+### Build notes
+
+- Backend: portal admins are refused before all five developer-only writes, and the new read-only admin Apps list/detail endpoints provide keyset paging, ownership, plan/team data, subscriptions and key hints without key material. Existing app/request fixtures now execute those writes as developers; server lint, typecheck and all 358 tests pass, and the generated SDK matches the OpenAPI contract. QA should retain the unchanged-row/Kong assertions and verify revoked hints appear only in detail credential history, never in the list's active hints.
 
 ## UX  _(ui-designer)_
 Design: [`docs/design/024-admin-sidebar-shell.md`](../design/024-admin-sidebar-shell.md).

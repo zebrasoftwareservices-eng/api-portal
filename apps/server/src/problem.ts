@@ -62,6 +62,7 @@ function titles() {
     'gateway-service-has-acl': 'Another ACL plugin applies to this service',
     'gateway-service-already-linked':
       'This service already has a published API',
+    'admin-not-developer': 'A portal admin is not a developer',
   });
 }
 export function problemTitle(code: string) {

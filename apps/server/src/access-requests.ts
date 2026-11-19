@@ -10,7 +10,7 @@ import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
-import { requireUser, type Auth } from './auth.js';
+import { requireDeveloper, requireUser, type Auth } from './auth.js';
 import { ensurePersonalTeam, currentTeamId, teamAccess } from './teams.js';
 import { requireVerified } from './verified.js';
 import {
@@ -134,6 +134,7 @@ export function registerAccessRequests(
   });
   server.post('/api/v1/access-requests', async (request, reply) => {
     const user = await requireUser(auth, request);
+    requireDeveloper(user);
     await db.transaction((tx) => ensurePersonalTeam(tx, user.id));
     const target = z
       .object({ teamId: z.uuid().optional(), planId: z.uuid() })
