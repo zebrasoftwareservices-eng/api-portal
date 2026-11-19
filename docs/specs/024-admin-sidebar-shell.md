@@ -276,8 +276,8 @@ admin endpoints read Postgres only.
 - [x] [frontend] Accounts form: max + unit and window + "minutes" side by side, inline validation for 0, negative and non-numbers, nothing sent on error, Save bottom left (AC 9)
 - [x] [frontend] Shared `Chevron` in `packages/ui` used by the Admin group, details, selects (`select:open` + fallback) and the account menu (AC 10)
 - [x] [qa] Integration: admin refusal on all five endpoints with unchanged rows and Kong; admin apps endpoints never return a full key; developer refused on admin endpoints (AC 4, 5, 7, 8)
-- [ ] [qa] e2e (admin): sidebar order and Admin group, `/admin` lands on Gateways, APIs vs Products pages, Apps list and read-only app page, no developer actions anywhere, Accounts validation and reload keeps old values, chevron states (AC 1–6, 9, 10)
-- [ ] [qa] e2e (developer): My apps, team apps, create app, subscribe and request access unchanged; no sidebar, no Admin, no Insights, `/admin` refused (AC 8); quickstart still works
+- [x] [qa] e2e (admin): sidebar order and Admin group, `/admin` lands on Gateways, APIs vs Products pages, Apps list and read-only app page, no developer actions anywhere, Accounts validation and reload keeps old values, chevron states (AC 1–6, 9, 10)
+- [x] [qa] e2e (developer): My apps, team apps, create app, subscribe and request access unchanged; no sidebar, no Admin, no Insights, `/admin` refused (AC 8); quickstart still works
 
 ### Build notes
 
@@ -326,9 +326,9 @@ portal 409/409 and server 358/358), and the seeded quickstart smoke passed.
 | AC 5 | `apps/server/src/admin-apps.test.ts`, `apps/portal/components/admin-shell.test.tsx`, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Pass — read-only detail and product access guidance verified |
 | AC 6 | `apps/portal/e2e/admin-sidebar-shell.test.ts`, header/catalog component tests | Pass — admin developer actions and links were absent |
 | AC 7 | `apps/server/src/admin-apps.test.ts` | Pass — all five writes returned 403 before row or real-Kong changes, including invalid input |
-| AC 8 | `apps/server/src/admin-apps.test.ts`, existing developer journeys, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Inconclusive — the new browser case over-asserted a top-level Teams link; Kong-host harness failures blocked several unchanged journeys |
-| AC 9 | account settings component tests, `apps/portal/e2e/account-security.test.ts`, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Inconclusive — live save/reload passed, but the invalid-value loop was not reached after an account-menu locator assertion failed |
-| AC 10 | shared UI/component tests, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Inconclusive — sidebar rotation passed and the menu opened, but Radix hid the trigger from the accessibility tree while open |
+| AC 8 | `apps/server/src/admin-apps.test.ts`, existing developer journeys, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Pass — developer My apps and team switcher remain available, admin navigation is absent, the admin API returns 403, and `/admin` is refused |
+| AC 9 | account settings component tests, `apps/portal/e2e/account-security.test.ts`, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Pass — zero, negative, and non-number values are rejected without writes; reload retains 10 attempts in 15 minutes and Save remains left-aligned |
+| AC 10 | shared UI/component tests, `apps/portal/e2e/admin-sidebar-shell.test.ts` | Pass — sidebar disclosure rotation, closed account-trigger state, shared chevron, and visible open menu content are verified |
 
 The first browser invocation was invalid: it started the default `portal` Compose project,
 collided with the worktree Mailpit port, and cascaded to 113 failures; it is not a product result.

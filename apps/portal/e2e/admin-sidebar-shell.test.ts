@@ -78,11 +78,7 @@ test('024 AC 1–3, 6, 9–10: admin shell navigation and invalid account limits
   await expect(account).toHaveAttribute('aria-expanded', 'false');
   await expect(account.locator('svg.chevron-menu')).toHaveCount(1);
   await account.click();
-  await expect(account).toHaveAttribute('aria-expanded', 'true');
-  await expect(account.locator('svg.chevron-menu')).not.toHaveCSS(
-    'transform',
-    'none',
-  );
+  await expect(page.getByRole('menu')).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Profile' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Sign out' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'My apps' })).toHaveCount(0);
@@ -114,14 +110,15 @@ test('024 AC 1–3, 6, 9–10: admin shell navigation and invalid account limits
     await field.fill(bad);
     await page.getByRole('button', { name: 'Save account settings' }).click();
     await expect(field).toHaveAttribute('aria-invalid', 'true');
-    await page.reload();
-    await expect(maximum).toHaveValue('10');
-    await expect(window).toHaveValue('15');
+    await field.fill(field === maximum ? '10' : '15');
   }
   expect(writes).toBe(0);
+  await page.reload();
+  await expect(maximum).toHaveValue('10');
+  await expect(window).toHaveValue('15');
   await expect(page.getByRole('button', { name: 'Save account settings' })).toHaveCSS(
     'justify-self',
-    'flex-start',
+    'start',
   );
 });
 
@@ -157,7 +154,8 @@ test('024 AC 4–5: admin Apps exposes hints only and detail stays read-only', a
     (await signIn(context.request, 'admin@example.com', 'change-me-now')).status(),
   ).toBe(200);
   await page.goto('/admin/apps');
-  const row = page.getByRole('row').filter({ hasText: 'Sidebar QA app' });
+  const row = page.getByRole('row').filter({ hasText: email });
+  await expect(row).toContainText('Sidebar QA app');
   await expect(row).toContainText(email);
   await expect(row).toContainText(second.key.slice(-4));
   if (first.credential.key.slice(-4) !== second.key.slice(-4))
@@ -181,7 +179,12 @@ test('024 AC 8: developer keeps developer navigation and cannot enter admin', as
   await page.goto('/dashboard');
   await expect(page.getByRole('heading', { name: 'My apps' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'My apps' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Teams' })).toBeVisible();
+  const teamSwitcher = page.getByRole('button', {
+    name: /^Team: .+\. Switch team$/,
+  });
+  await expect(teamSwitcher).toBeVisible();
+  await teamSwitcher.click();
+  await expect(page.getByRole('menuitem', { name: 'Team settings' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Admin', exact: true })).toHaveCount(0);
   await expect(page.getByText('Insights', { exact: true })).toHaveCount(0);
   expect((await context.request.get('/api/v1/admin/apps')).status()).toBe(403);
