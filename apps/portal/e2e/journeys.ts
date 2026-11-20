@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import './reference-snippets.test';
 import './usage.test';
 import './create-app-products.test';
+import './tracing.test';
 
 test('developer signs up, copies a one-time key, calls Kong and revokes it', async ({
   page,

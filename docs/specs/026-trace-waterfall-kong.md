@@ -352,7 +352,8 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [ ] [qa] e2e (Playwright) on the quickstart: turn on the sample API, Test passes, one try-it call,
   and the waterfall shows the slowest span. Check criterion 10's compose values and the 5-minute
   start.
-
+- [ ] [backend] Fix: Tracing quickstart defaults omit required plugin phases
+- [ ] [backend] Fix: Tracing Test failures omit cause keys required by dialog
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -388,8 +389,8 @@ Long notes go in `docs/specs/log/026.md`, not here.
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
-
+- [ ] Tracing quickstart defaults omit required plugin phases (major)
+- [ ] Tracing Test failures omit cause keys required by dialog (major)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
@@ -410,3 +411,15 @@ return the spec to building. Earlier rounds go in `docs/specs/log/026.md`.
 - [ ] API contract, README and docs updated
 - [ ] Tech-lead review has no blocking findings
 - [ ] Elango merged the PR
+
+### Deferred Linear
+- **Bug** — Bug: Tracing quickstart defaults omit required plugin phases (major)
+  - parent: none
+  - priority: high
+  - create when the Linear limit allows
+  - body: Reproduction: GET /api/v1/admin/tracing before first save returns request,router,balancer,plugin_access, and deploy/docker-compose.yml sets the same subset. AC3 and AC10 require request,router,balancer,plugin_rewrite,plugin_access,plugin_header_filter; apps/server/src/tracing.test.ts and apps/portal/e2e/tracing.test.ts preserve the expected failure.
+- **Bug** — Bug: Tracing Test failures omit cause keys required by dialog (major)
+  - parent: none
+  - priority: high
+  - create when the Linear limit allows
+  - body: Reproduction: POST /api/v1/admin/tracing/test returns distinct detail text for gateway unreachable, tracing off, and proxy unreachable, but the problem body has no cause field. AdminTracing selects its required cause-specific title/body from error.cause, so live failures fall back to generic copy; apps/server/src/tracing.test.ts preserves the expected failure.
