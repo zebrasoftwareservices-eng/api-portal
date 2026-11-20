@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -354,7 +354,19 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
   start.
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/026-*.md`
+Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
+- A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
+  settings** (settings, last Test, apply status), **What's traced** (kind + target picker, rows with
+  **Stop tracing**) and **Latest traced call** (summary line, slowest-step line, waterfall, 3 s poll).
+- The **Turn on tracing** dialog names both node settings and their `KONG_TRACING_*` variables in a
+  copyable block that follows the fields, says to restart Kong, and has the endpoint, an
+  instrumentation checkbox group and the sampling rate. **Test** shows a pass with Kong's reported
+  values or one message per `cause`.
+- Waterfall rows use the server's `label` (from the Kong 3.9 classifier): plugin rows show the plugin
+  name, upstream rows "Upstream try", raw span name as secondary text. The slowest span gets a word
+  badge, an icon and a warning-coloured bar. It is a real table, with start and duration as text.
+- Each of Elango's three open defaults lives in one component (`LatestTraceCard` `apiId`,
+  `coversCopy`, `SaveGuardNotice`), so a change needs no redesign (design §7).
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
