@@ -356,7 +356,7 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Tracing Test failures omit cause keys required by dialog
 - [x] [backend] Fix: Production server image crashes on protobufjs named export
 - [ ] [backend] Fix: Full suite leaves open admin assignment credential active
-- [ ] [backend] Fix: Trace ingest accepts unsupported media type
+- [x] [backend] Fix: Trace ingest accepts unsupported media type
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -375,6 +375,8 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
 ## Build notes  _(backend-developer, frontend-developer)_
 
 - Backend: added the tracing adapter contract and Kong OTLP implementation, the tracing tables and generated migration, the admin/test/ingest/latest routes, and the singleton `tracing-apply` worker. Compose and Helm now expose the private trace ingest URL and Kong tracing defaults; the generated SDK includes the tracing contract. QA should exercise the Test probe against Kong 3.9 and the split-batch/selection rejection paths; the default remains one latest portal trace, developer-owned apps, and Save after a failing Test.
+
+- Backend (build loop 2): trace ingest now checks the media type first. A request that is not `application/x-protobuf` gets RFC 9457 415 `unsupported-media-type` before the token and selection checks, matching the existing contract. `@portal/server` passes lint, typecheck and all 364 tests, including QA's AC8 regression. The admin-revocation fix is still open for QA.
 
 - Frontend: added the admin-only Tracing page with Kong settings/Test/Save, API/developer/team
   selections, apply feedback, and the 3-second latest-trace waterfall. The portal package passes
@@ -408,7 +410,7 @@ Long notes go in `docs/specs/log/026.md`, not here.
 - [x] Tracing Test failures omit cause keys required by dialog (major)
 - [x] Production server image crashes on protobufjs named export (blocker)
 - [ ] Full suite leaves open admin assignment credential active (major) — Not reproduced alone or in the server suite (6/6 admin-revocation tests passed in both runs); QA should confirm on its full pass.
-- [ ] Trace ingest accepts unsupported media type (major)
+- [x] Trace ingest accepts unsupported media type (major)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |

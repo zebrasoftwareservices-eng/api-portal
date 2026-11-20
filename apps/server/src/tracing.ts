@@ -411,7 +411,15 @@ export function registerTracing(
 
   server.register(async (ingest) => {
     ingest.addContentTypeParser('application/x-protobuf', { parseAs: 'buffer' }, (_request, body, done) => done(null, body));
-    ingest.post('/api/v1/internal/traces/kong', { bodyLimit: 1024 * 1024, config: { rateLimit: false } }, async (request, reply) => {
+    ingest.post('/api/v1/internal/traces/kong', {
+      bodyLimit: 1024 * 1024,
+      config: { rateLimit: false },
+      // Media type first (ingest flow step 1): JSON would otherwise reach the global parser and the selection checks.
+      onRequest: async (request) => {
+        const type = request.headers['content-type']?.split(';')[0]?.trim().toLowerCase();
+        if (type !== 'application/x-protobuf') throw new Problem(415, 'unsupported-media-type', 'Trace ingest accepts application/x-protobuf only.');
+      },
+    }, async (request, reply) => {
       const expected = await token(db, connection);
       const supplied = request.headers.authorization?.match(/^Bearer (.+)$/)?.[1] ?? '';
       const hash = (value: string) => createHash('sha256').update(value).digest();

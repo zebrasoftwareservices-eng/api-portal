@@ -63,6 +63,7 @@ function titles() {
     'setup-complete': 'This portal already has an admin',
     'setup-token-invalid': 'Setup token not accepted',
     'database-unavailable': 'Database unavailable',
+    'unsupported-media-type': 'Unsupported media type',
     'sample-not-available': "The sample isn't available here",
     'gateway-service-has-acl': 'Another ACL plugin applies to this service',
     'gateway-service-already-linked':
