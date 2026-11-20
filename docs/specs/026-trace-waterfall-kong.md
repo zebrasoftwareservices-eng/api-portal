@@ -316,28 +316,28 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
   start time.
 
 ### Tasks
-- [ ] [backend] adapter-sdk: add `Capabilities.tracing`, the tracing types, the five
+- [x] [backend] adapter-sdk: add `Capabilities.tracing`, the tracing types, the five
   `GatewayAdapter` methods, `TracingUnavailableError` and `InvalidTraceBatchError`. Add a
   conformance case covering apply twice, a selection removed, and parse of a captured batch.
-- [ ] [backend] adapter-kong: implement `applyTracing` (service and consumer scopes, merged
+- [x] [backend] adapter-kong: implement `applyTracing` (service and consumer scopes, merged
   selection keys, diff and stale removal), `inspectTracing`, `ensureTraceProbe`, `classifySpan`,
   and `parseTraceBatch` with `protobufjs` and an OTLP JSON descriptor. Add unit tests for the
   allowlist and the classifier.
-- [ ] [backend] db: add the `tracing_settings`, `tracing_selections` and `trace_latest` tables,
+- [x] [backend] db: add the `tracing_settings`, `tracing_selections` and `trace_latest` tables,
   generated with `pnpm --filter @portal/db exec drizzle-kit generate`, plus a migration test.
-- [ ] [backend] server: add the admin tracing routes per the contract (settings, Test with
+- [x] [backend] server: add the admin tracing routes per the contract (settings, Test with
   rate limit and probe wait, selections with `resolveSelectionApps`, developers search, latest
   with labels and slowest computed on read). Add `TRACING_REQUIRE_PASSING_TEST` and
   `traceScopeKey`.
-- [ ] [backend] server: add `POST /v1/internal/traces/kong` (415, 413, 401, 400, probe, 422,
+- [x] [backend] server: add `POST /v1/internal/traces/kong` (415, 413, 401, 400, probe, 422,
   locked merge or replace, and the route-path API match with a 60 s service cache). Keep
   `/api/v1/internal/*` unforwarded by the portal rewrite.
-- [ ] [backend] server: add the `tracing-apply` pg-boss job and its triggers (selection, endpoint,
+- [x] [backend] server: add the `tracing-apply` pg-boss job and its triggers (selection, endpoint,
   app create, revoke and delete, periodic reconcile), and report its status in `Tracing.apply`.
-- [ ] [backend] deploy: add `KONG_TRACING_INSTRUMENTATIONS` and `KONG_TRACING_SAMPLING_RATE=1`
+- [x] [backend] deploy: add `KONG_TRACING_INSTRUMENTATIONS` and `KONG_TRACING_SAMPLING_RATE=1`
   on Kong, `PORTAL_TRACE_INGEST_URL` on the server and in the Helm values, and document both in
   the README and `.env.example`.
-- [ ] [backend] regenerate `packages/sdk`.
+- [x] [backend] regenerate `packages/sdk`.
 - [x] [frontend] admin Tracing page: the selections list with add (API, developer and team
   pickers) and remove, and the apply status.
 - [x] [frontend] turn-on dialog: name the node settings, their `KONG_TRACING_*` variables and the
@@ -369,6 +369,8 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   `coversCopy`, `SaveGuardNotice`), so a change needs no redesign (design §7).
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Backend: added the tracing adapter contract and Kong OTLP implementation, the tracing tables and generated migration, the admin/test/ingest/latest routes, and the singleton `tracing-apply` worker. Compose and Helm now expose the private trace ingest URL and Kong tracing defaults; the generated SDK includes the tracing contract. QA should exercise the Test probe against Kong 3.9 and the split-batch/selection rejection paths; the default remains one latest portal trace, developer-owned apps, and Save after a failing Test.
 
 - Frontend: added the admin-only Tracing page with Kong settings/Test/Save, API/developer/team
   selections, apply feedback, and the 3-second latest-trace waterfall. The portal package passes

@@ -38,6 +38,8 @@ services:
       # Apply new ACLs before serving a request on any worker, including pooled
       # try-it connections. Eventual workers can briefly bypass imported ACLs.
       KONG_WORKER_CONSISTENCY: strict
+      KONG_TRACING_INSTRUMENTATIONS: ${KONG_TRACING_INSTRUMENTATIONS:-request,router,balancer,plugin_access}
+      KONG_TRACING_SAMPLING_RATE: ${KONG_TRACING_SAMPLING_RATE:-1}
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
       KONG_PROXY_ERROR_LOG: /dev/stderr
@@ -77,6 +79,7 @@ services:
       PORTAL_BUNDLED_KONG_ADMIN_URL: http://kong:8001
       KONG_ADMIN_TOKEN: ${KONG_ADMIN_TOKEN:-}
       PORTAL_USAGE_INGEST_URL: ${PORTAL_USAGE_INGEST_URL:-http://server:4000/api/v1/internal/usage/kong}
+      PORTAL_TRACE_INGEST_URL: ${PORTAL_TRACE_INGEST_URL:-http://server:4000/api/v1/internal/traces/kong}
       PORTAL_USAGE_RETENTION_DAYS: ${PORTAL_USAGE_RETENTION_DAYS:-400}
       KONG_PROXY_INTERNAL_URL: ${KONG_PROXY_INTERNAL_URL:-http://kong:8000}
       KONG_PROXY_PUBLIC_URL: ${KONG_PROXY_PUBLIC_URL:-http://localhost:8000}

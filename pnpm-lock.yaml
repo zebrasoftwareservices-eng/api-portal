@@ -208,6 +208,9 @@ importers:
       '@portal/adapter-sdk':
         specifier: workspace:*
         version: link:../adapter-sdk
+      protobufjs:
+        specifier: ^7.6.6
+        version: 7.6.6
     devDependencies:
       testcontainers:
         specifier: ^11.8.1

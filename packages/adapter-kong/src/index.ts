@@ -2,7 +2,15 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
+import { Root } from 'protobufjs';
+import otlpDescriptor from './otlp-trace.json' with { type: 'json' };
 import {
+  InvalidTraceBatchError,
+  TracingUnavailableError,
+  type TracingPlan,
+  type TracingReport,
+  type TraceBatch,
+  type SpanClass,
   UsageUnavailableError,
   type UsageEvent,
   GatewayServiceConflictError,
@@ -58,6 +66,7 @@ export class KongAdapter implements GatewayAdapter {
       oauthClients: false,
       plans: true,
       usage: true,
+      tracing: true,
     } as const;
   }
   async request<T>(
@@ -1029,5 +1038,249 @@ export class KongAdapter implements GatewayAdapter {
           .filter((k) => k.consumer?.id === c.id)
           .map((k) => ({ id: k.id, tags: k.tags ?? [] })),
       }));
+  }
+
+  private tracingConfig(
+    plan: Pick<TracingPlan, 'endpoint' | 'token'>,
+    selections: string[],
+    apiId?: string,
+  ) {
+    return {
+      endpoint: plan.endpoint,
+      headers: { Authorization: `Bearer ${plan.token}` },
+      resource_attributes: {
+        'portal.instance': this.config.instanceId,
+        'portal.selections': [...new Set(selections)].sort().join(','),
+        ...(apiId ? { 'portal.api_id': apiId } : {}),
+      },
+      propagation: { extract: [], inject: ['preserve'] },
+    };
+  }
+
+  async applyTracing(plan: TracingPlan): Promise<TracingReport> {
+    const plugins = (await this.pages('/plugins?size=1000')).filter(
+      (plugin) =>
+        plugin.name === 'opentelemetry' &&
+        plugin.tags?.includes('portal-tracing') &&
+        this.owns(plugin),
+    );
+    const desired = new Map<
+      string,
+      { scope: Record<string, unknown>; selections: string[]; apiId?: string }
+    >();
+    for (const target of plan.targets) {
+      let key: string;
+      let scope: Record<string, unknown>;
+      if ('service' in target.scope) {
+        key = `service:${target.scope.service}`;
+        scope = { service: { id: target.scope.service } };
+      } else {
+        const consumer = await this.request<Entity>(
+          `/consumers/${consumerUsername({ id: target.scope.app })}`,
+          'GET',
+          undefined,
+          true,
+        );
+        if (!consumer) continue;
+        key = `consumer:${consumer.id}`;
+        scope = { consumer: { id: consumer.id } };
+      }
+      const current = desired.get(key);
+      desired.set(key, {
+        scope,
+        selections: [...(current?.selections ?? []), ...target.selections],
+        apiId: target.apiId ?? current?.apiId,
+      });
+    }
+    const report: TracingReport = { created: 0, updated: 0, removed: 0 };
+    const retained = new Set<string>();
+    for (const [key, value] of desired) {
+      const id = this.stableId('opentelemetry', key);
+      retained.add(id);
+      const body = {
+        name: 'opentelemetry',
+        ...value.scope,
+        enabled: true,
+        tags: [...portalTags(this.config.instanceId), 'portal-tracing'],
+        config: this.tracingConfig(plan, value.selections, value.apiId),
+      };
+      const existing = plugins.find((plugin) => plugin.id === id);
+      if (existing && isDeepStrictEqual(existing.config, body.config)) continue;
+      try {
+        await this.request(`/plugins/${id}`, 'PUT', body);
+      } catch (error) {
+        if (error instanceof GatewayRejectedError)
+          throw new TracingUnavailableError(error.status);
+        throw error;
+      }
+      if (existing) report.updated++;
+      else report.created++;
+    }
+    for (const plugin of plugins) {
+      if (retained.has(plugin.id)) continue;
+      await this.request(`/plugins/${plugin.id}`, 'DELETE', undefined, true);
+      report.removed++;
+    }
+    return report;
+  }
+
+  async inspectTracing() {
+    const root = await this.request<{
+      configuration?: {
+        tracing_instrumentations?: string | string[];
+        tracing_sampling_rate?: number | string;
+      };
+    }>('/');
+    const raw = root?.configuration?.tracing_instrumentations;
+    const instrumentations = Array.isArray(raw)
+      ? raw
+      : typeof raw === 'string'
+        ? raw.split(',').map((value) => value.trim()).filter(Boolean)
+        : [];
+    const rate = Number(root?.configuration?.tracing_sampling_rate ?? 0);
+    return {
+      instrumentations,
+      samplingRate: Number.isFinite(rate) ? rate : 0,
+    };
+  }
+
+  async ensureTraceProbe(input: {
+    endpoint: string;
+    token: string;
+    nonce: string;
+  }) {
+    const scope = this.config.instanceId;
+    const serviceId = this.stableId('trace-probe-service', scope);
+    const routeId = this.stableId('trace-probe-route', scope);
+    const probePath = `/__portal/trace-probe/${scope}`;
+    const tags = [...portalTags(scope), 'portal-internal'];
+    await this.request(`/services/${serviceId}`, 'PUT', {
+      name: 'portal-trace-probe',
+      url: 'http://127.0.0.1:65535',
+      tags,
+    });
+    await this.request(`/routes/${routeId}`, 'PUT', {
+      service: { id: serviceId },
+      paths: [probePath],
+      tags,
+    });
+    await this.request(`/plugins/${this.stableId('trace-probe-stop', scope)}`, 'PUT', {
+      name: 'request-termination',
+      route: { id: routeId },
+      config: { status_code: 204 },
+      tags,
+    });
+    try {
+      await this.request(`/plugins/${this.stableId('trace-probe-otel', scope)}`, 'PUT', {
+        name: 'opentelemetry',
+        route: { id: routeId },
+        config: {
+          ...this.tracingConfig(input, ['probe']),
+          sampling_rate: 1,
+          resource_attributes: {
+            ...this.tracingConfig(input, ['probe']).resource_attributes,
+            'portal.probe': input.nonce,
+          },
+        },
+        tags: [...tags, 'portal-tracing'],
+      });
+    } catch (error) {
+      if (error instanceof GatewayRejectedError)
+        throw new TracingUnavailableError(error.status);
+      throw error;
+    }
+    return { probePath };
+  }
+
+  classifySpan(name: string): SpanClass {
+    if (name === 'kong') return { label: 'request' };
+    if (name === 'kong.router' || name === 'router') return { label: 'router' };
+    if (name === 'kong.balancer' || /^balancer try #\d+$/.test(name))
+      return { label: 'upstream' };
+    const modern = /^kong\.(?:rewrite|access|header_filter)\.plugin\.(.+)$/.exec(name);
+    const legacy = /^(?:rewrite|access|header_filter) phase: (.+)$/.exec(name);
+    const plugin = modern?.[1] ?? legacy?.[1];
+    return plugin ? { label: 'plugin', plugin } : { label: 'other' };
+  }
+
+  parseTraceBatch(bytes: Uint8Array): TraceBatch {
+    try {
+      const type = Root.fromJSON(otlpDescriptor as never).lookupType(
+        'opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest',
+      );
+      const decoded = type.toObject(type.decode(bytes), {
+        longs: String,
+        bytes: String,
+        defaults: false,
+      }) as Record<string, unknown>;
+      const record = (value: unknown): Record<string, unknown> =>
+        value && typeof value === 'object' && !Array.isArray(value)
+          ? (value as Record<string, unknown>)
+          : {};
+      const textValue = (value: unknown) => {
+        const values = record(value);
+        return typeof values.stringValue === 'string' ? values.stringValue : undefined;
+      };
+      const attributes = (value: unknown) =>
+        Object.fromEntries(
+          (Array.isArray(value) ? value : []).flatMap((item) => {
+            const attr = record(item);
+            const key = typeof attr.key === 'string' ? attr.key : '';
+            const result = textValue(attr.value);
+            return key && result !== undefined ? [[key, result]] : [];
+          }),
+        );
+      const resourceSpans = Array.isArray(decoded.resourceSpans)
+        ? decoded.resourceSpans
+        : [];
+      let resource: TraceBatch['resource'] | undefined;
+      const spans: TraceBatch['spans'] = [];
+      for (const resourceEntry of resourceSpans) {
+        const entry = record(resourceEntry);
+        const attrs = attributes(record(entry.resource).attributes);
+        resource ??= {
+          instance: attrs['portal.instance'] ?? '',
+          selections: (attrs['portal.selections'] ?? '').split(',').filter(Boolean),
+          ...(attrs['portal.api_id'] ? { apiId: attrs['portal.api_id'] } : {}),
+          ...(attrs['portal.probe'] ? { probe: attrs['portal.probe'] } : {}),
+        };
+        for (const scopeEntry of Array.isArray(entry.scopeSpans) ? entry.scopeSpans : []) {
+          for (const item of Array.isArray(record(scopeEntry).spans) ? record(scopeEntry).spans as unknown[] : []) {
+            const span = record(item);
+            const spanAttrs = attributes(span.attributes);
+            const startNs = String(span.startTimeUnixNano ?? '0');
+            const endNs = String(span.endTimeUnixNano ?? startNs);
+            const path = spanAttrs['http.target']?.split('?')[0];
+            spans.push({
+              traceId: Buffer.from(String(span.traceId ?? ''), 'base64').toString('hex'),
+              spanId: Buffer.from(String(span.spanId ?? ''), 'base64').toString('hex'),
+              parentSpanId: span.parentSpanId
+                ? Buffer.from(String(span.parentSpanId), 'base64').toString('hex') || null
+                : null,
+              name: typeof span.name === 'string' ? span.name : '',
+              startNs,
+              durationNs: (BigInt(endNs) - BigInt(startNs)).toString(),
+              status: String(record(span.status).code ?? '0'),
+              ...(path && spanAttrs['http.method'] && spanAttrs['http.status_code']
+                ? {
+                    request: {
+                      method: spanAttrs['http.method'],
+                      path,
+                      statusCode: Number(spanAttrs['http.status_code']),
+                    },
+                  }
+                : {}),
+              ...(spanAttrs['http.route'] ? { routePath: spanAttrs['http.route'] } : {}),
+            });
+          }
+        }
+      }
+      if (!resource || !resource.instance || !spans.length)
+        throw new Error('missing OTLP fields');
+      return { resource, spans };
+    } catch (error) {
+      if (error instanceof InvalidTraceBatchError) throw error;
+      throw new InvalidTraceBatchError({ cause: error });
+    }
   }
 }

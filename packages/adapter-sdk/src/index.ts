@@ -12,6 +12,45 @@ export interface Capabilities {
   oauthClients: false;
   plans: boolean;
   usage: boolean;
+  tracing: boolean;
+}
+export type SpanClass =
+  | { label: 'request' | 'router' | 'upstream' | 'other' }
+  | { label: 'plugin'; plugin: string };
+export interface TraceSpanRecord {
+  traceId: string;
+  spanId: string;
+  parentSpanId: string | null;
+  name: string;
+  startNs: string;
+  durationNs: string;
+  status: string;
+  request?: { method: string; path: string; statusCode: number };
+  routePath?: string;
+}
+export interface TraceBatch {
+  resource: {
+    instance: string;
+    selections: string[];
+    apiId?: string;
+    probe?: string;
+  };
+  spans: TraceSpanRecord[];
+}
+export interface TracingTarget {
+  scope: { service: string } | { app: string };
+  selections: string[];
+  apiId?: string;
+}
+export interface TracingPlan {
+  endpoint: string;
+  token: string;
+  targets: TracingTarget[];
+}
+export interface TracingReport {
+  created: number;
+  updated: number;
+  removed: number;
 }
 export interface HealthReport {
   reachable: boolean;
@@ -105,6 +144,15 @@ export interface GatewayAdapter {
     body: Uint8Array;
   }): boolean;
   listOwnedConsumers(): Promise<OwnedConsumer[]>;
+  applyTracing(plan: TracingPlan): Promise<TracingReport>;
+  inspectTracing(): Promise<{ instrumentations: string[]; samplingRate: number }>;
+  ensureTraceProbe(input: {
+    endpoint: string;
+    token: string;
+    nonce: string;
+  }): Promise<{ probePath: string }>;
+  parseTraceBatch(bytes: Uint8Array): TraceBatch;
+  classifySpan(name: string): SpanClass;
 }
 export class GatewayUnavailableError extends Error {
   constructor(options?: { cause?: unknown }) {
@@ -116,6 +164,21 @@ export class GatewayRejectedError extends Error {
   constructor(readonly status: number) {
     super('The API gateway rejected the request');
     this.name = 'GatewayRejectedError';
+  }
+}
+export class TracingUnavailableError extends GatewayRejectedError {
+  readonly code = 'tracing-unavailable';
+  constructor(status = 400) {
+    super(status);
+    this.message =
+      'Kong refused the opentelemetry plugin; check KONG_PLUGINS.';
+    this.name = 'TracingUnavailableError';
+  }
+}
+export class InvalidTraceBatchError extends Error {
+  constructor(options?: { cause?: unknown }) {
+    super('The OTLP trace batch is invalid.', options);
+    this.name = 'InvalidTraceBatchError';
   }
 }
 export const consumerUsername = (app: AppRef) => `portal-app-${app.id}`;

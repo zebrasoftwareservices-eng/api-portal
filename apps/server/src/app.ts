@@ -35,6 +35,7 @@ import { registerProxy } from './proxy.js';
 import { sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import { Problem } from './problem.js';
+import { registerTracing } from './tracing.js';
 const fastifyRequire = createRequire(import.meta.url);
 const { stdSerializers } = createRequire(fastifyRequire.resolve('fastify'))(
   'pino',
@@ -54,6 +55,7 @@ export interface AppOptions {
   adapterFor?: AdapterFor;
   enqueueRevocation?: EnqueueRevocation;
   enqueueReconcile?: () => Promise<unknown>;
+  enqueueTracingApply?: () => Promise<unknown>;
   auth?: Auth;
   enqueueMail?: EnqueueMail;
   logger?: FastifyServerOptions['logger'];
@@ -238,6 +240,13 @@ export async function createApp(options: AppOptions) {
   registerVersions(app, db, auth, linter);
   registerTeams(app, db, auth, config, enqueue);
   registerUsage(app, db, auth, connection);
+  registerTracing(
+    app,
+    db,
+    auth,
+    connection,
+    options.enqueueTracingApply,
+  );
   registerApps(app, db, auth, connection, enqueue);
   registerAccessRequests(app, db, auth, connection, enqueue);
   registerProductAccess(

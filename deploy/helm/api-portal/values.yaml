@@ -5,6 +5,7 @@ image:
 imagePullSecrets: []
 server:
   usageIngestUrl: "" # Defaults to the server in-cluster URL; override for external Kong.
+  traceIngestUrl: "" # Defaults to the private in-cluster OTLP/HTTP endpoint.
   usageRetentionDays: 400
   replicas: 1
   resources: {}
