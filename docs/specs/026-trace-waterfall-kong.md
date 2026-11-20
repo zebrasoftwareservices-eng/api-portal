@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -163,12 +163,195 @@ Elango, 2026-11-18.
 <!-- Sections below are filled by later stages. -->
 
 ## Technical design  _(tech-lead)_
-Components · API contract · Data model · Adapter calls · Risks
+Lasting choices are in [ADR 0017](../adr/0017-traces-pushed-by-kong-opentelemetry-latest-in-one-row.md).
+Kong facts below were checked in the quickstart's `kong:3.9` image.
+
+**Kong 3.9's span names differ from criterion 6's wording.** The root is `kong`, plugin spans are
+`kong.<phase>.plugin.<name>` (for example `kong.access.plugin.key-auth`), each upstream try is
+`kong.balancer` (attribute `try_count`) and the router is `kong.router`. The
+`rewrite phase: <plugin>` and `balancer try #N` names belong to older Kong releases. The labels
+are the ones criterion 6 asks for. `classifySpan` maps both naming schemes, and tests use the
+3.9 names. The product manager should correct the criterion's wording.
+
+### Decisions on the open questions
+- **Tech lead: where the latest trace lives.** One overwritten Postgres row (`trace_latest`).
+  It survives restarts, and every Helm replica sees it. Memory is ruled out by spec 016's replicas.
+- **Tech lead: how the Test tells causes apart.** Both checks run in order. `GET /` answers or
+  `gateway-unreachable`. Its `configuration.tracing_instrumentations` includes `request` (or `all`)
+  or `tracing-off`. A probe call through the internal proxy works or `proxy-unreachable`. Its
+  spans arrive within 10 s or `endpoint-unreachable`. Kong refusing the probe objects is
+  `gateway-rejected`. The budget is 5 s plus 1 s plus 10 s, under the 15 s limit.
+- **Tech lead: a call matching both an API and a consumer selection.** Kong runs one instance of
+  a plugin per request, the most specific scope, and a consumer beats a service. The consumer's
+  instance exports, once. Its resource attributes list its selections. The API comes from matching
+  the root's `http.route` (ADR 0017 §6).
+- **Tech lead: one pull request?** Yes. Developer and team selection add one consumer-scoped plugin
+  kind and one query, about a day. The ingest, the Test and the waterfall are the same either way.
+  If the build overruns, the agreed cut is still developer and team selection.
+- **Elango (open), assumed defaults.** Each is isolated so a change is small:
+  1. *One latest trace per portal.* `trace_latest.scope_key` is always `'portal'`, set in one
+     function, `traceScopeKey(batch)`. Per API means returning the API id there and adding
+     `?apiId=` to `GET /latest`. There is no migration.
+  2. *A developer account covers the active apps that developer created* (`apps.created_by`), in
+     any team. `resolveSelectionApps(selection)` is the only place this is decided. Membership
+     means swapping its query for one on `team_members`.
+  3. *Saving after a failing Test is allowed.* The dialog shows the failure and still saves, so
+     an operator can save, then restart Kong. The constant `TRACING_REQUIRE_PASSING_TEST = false`
+     switches `PUT /admin/tracing` to 409 `/problems/tracing-test-required` unless the last Test
+     passed for the same values. The contract already lists that 409.
+
+### Components
+- `packages/adapter-sdk`: adds `Capabilities.tracing`, the five tracing methods below, and their
+  types (`TracingPlan`, `TracingReport`, `TraceBatch`, `TraceSpanRecord`, `SpanClass`). The
+  conformance suite gains a tracing case.
+- `packages/adapter-kong`: the `opentelemetry` plugin writes, the node inspection, the probe, and
+  OTLP Protobuf decoding with `protobufjs` (new dependency, because Kong sends only Protobuf). The
+  OTLP trace subset ships as a checked-in JSON descriptor.
+- `packages/db`: three tables and one migration.
+- `apps/server`: a `tracing.ts` module with the admin routes, ingest, the Test and the apply job.
+  It reuses `crypto.ts` for the token, the gateway URL validation for `traceEndpoint`,
+  `auth-limits` for the Test rate limit and pg-boss for `tracing-apply`. `config.ts` gains
+  `PORTAL_TRACE_INGEST_URL`, the prefilled endpoint.
+- `apps/portal`: the admin "Tracing" page. It has the selections list and add control, the
+  turn-on dialog with the fields and Test, and the latest-trace waterfall. The layout and copy
+  come from the UX section.
+- `packages/sdk`: regenerated.
+- `deploy/docker-compose.yml`: Kong gets `KONG_TRACING_INSTRUMENTATIONS` and
+  `KONG_TRACING_SAMPLING_RATE` (criterion 10). The server gets `PORTAL_TRACE_INGEST_URL`, default
+  `http://server:4000/api/v1/internal/traces/kong`. The Helm chart gets the same server variable.
+
+### API contract
+`apps/server/openapi.yaml`, tag `tracing`. Every `/v1/admin/tracing*` operation needs an admin
+session. A signed-out caller gets 401 and a non-admin gets 403 problem+json (criterion 9).
+| Method · path | Purpose | Notable responses |
+| --- | --- | --- |
+| `GET /v1/admin/tracing` | `Tracing`: supported, configured, settings (defaults before the first save), selections, lastTest, apply | 200 |
+| `PUT /v1/admin/tracing` | Save `TracingSettingsInput` (`traceEndpoint`, `instrumentations`, `samplingRate`). A changed endpoint queues an apply | 200; 400 field; 409 `tracing-test-required` (policy off) |
+| `POST /v1/admin/tracing/test` | The Test, without saving settings | 200 `TracingTestResult` (node values, warnings); 422 `tracing-check-failed` with `cause` and `node`; 409 `tracing-unsupported`; 429 |
+| `POST /v1/admin/tracing/selections` | `{kind: api\|developer\|team, targetId}`, idempotent, queues an apply | 201 new, 200 existing; 404 unknown target; 409 `tracing-not-configured` |
+| `DELETE /v1/admin/tracing/selections/{id}` | Turn one off, queue an apply | 204; 404 |
+| `GET /v1/admin/tracing/developers?q=` | Find developers for the add control. Teams use `GET /v1/admin/teams`, APIs use `GET /v1/admin/apis` | 200 |
+| `GET /v1/admin/tracing/latest` | `{trace: Trace \| null}`. The UI polls every 3 s | 200 |
+| `POST /v1/internal/traces/kong` | Kong's OTLP/HTTP Protobuf, `traceIngestToken` bearer, up to 1 MB | 200 empty OTLP response; 400; 401; 413; 415; 422 `trace-not-selected` |
+
+`Trace` holds `traceId`, `startedAt`, `receivedAt`, `durationMs` (root), `api` (id, slug and name,
+or null), `request` (`method`, `path` without the query, `statusCode`) and `spans`. Each span has
+`spanId`, `parentSpanId`, `name`, `label` (request, router, plugin, upstream or other), `plugin`,
+`startOffsetMs`, `durationMs`, `status` and `slowest`. `slowest` is true on exactly one span: the
+longest non-root span, with ties going to the earliest. Labels and `slowest` are computed on read.
+The stored data stays as criterion 7 lists it.
+
+### Data model (`packages/db`, one migration from `drizzle-kit generate`)
+- `tracing_settings`: a singleton (`id smallint` = 1, with a check). It holds `trace_endpoint`,
+  `instrumentations text[]`, `sampling_rate real`, `token_ciphertext` (generated once, encrypted
+  like the usage token), `configured_at`, `last_test_passed`, `last_test_cause`, `last_test_at`,
+  `probe_nonce`, `probe_received_at`, `apply_status`, `apply_message` and `applied_at`.
+- `tracing_selections`: `id uuid` (v7), `kind text` check (`api`, `developer`, `team`), and three
+  nullable FKs `api_id`, `user_id` and `team_id` that cascade on delete. A check requires exactly
+  the one matching `kind`, and each FK is unique. It also has `created_by` (set null) and `created_at`.
+- `trace_latest`: `scope_key text` PK (always `'portal'`, see default 1) and `trace_id`
+  (32 hex). It has `api_id` (FK `apis`, set null), `started_at`, `received_at`, `root_span_id`, and
+  `request jsonb` holding `{method, path, statusCode}` or null. `spans jsonb` holds up to 1000 of
+  `{spanId, parentSpanId, name, startNs, durationNs, status}`, with the nanosecond values as strings.
+
+### Adapter calls (Kong)
+- **`applyTracing({endpoint, token, targets})`.** Each target is
+  `{ scope: {service} | {app}, selections: string[], apiId? }`. The server builds targets from the
+  selections. An API maps to its gateway service. Developer and team selections map through
+  `resolveSelectionApps` to active apps with a consumer. Targets are deduplicated by scope and
+  their selection keys merged. The adapter lists plugins tagged `portal-tracing` and this
+  instance's tag. It `PUT`s each desired plugin, ID and config as in ADR 0017 §1, only when the
+  config differs, and `DELETE`s portal-tracing plugins that are no longer desired. It never touches
+  untagged or operator plugins. Running it twice changes nothing (criterion 1). A Kong 4xx on the
+  plugin raises `TracingUnavailableError` and becomes `apply.status: failed` with "Kong refused
+  the opentelemetry plugin; check KONG_PLUGINS". An unavailable gateway leaves `pending`, and the
+  pg-boss job retries with backoff. Deleting an app's consumer cascades its plugin.
+- **`inspectTracing()`.** `GET /` returns `{instrumentations, samplingRate}` from `configuration`.
+  An unreachable gateway or a 5xx raises `GatewayUnavailableError`.
+- **`ensureTraceProbe({endpoint, token, nonce})`.** Idempotent `PUT`s of the internal service,
+  the route `/__portal/trace-probe/<instanceId>`, the `request-termination` 204 and a route-scoped
+  `opentelemetry` plugin with `sampling_rate: 1` and `portal.probe=<nonce>`. The ADR 0011
+  heartbeat pattern is reused, tagged `portal-internal`. It returns `{probePath}`. The server
+  calls it through `KONG_PROXY_INTERNAL_URL`.
+- **`parseTraceBatch(bytes)`.** It returns `{resource: {instance, selections[], apiId?, probe?},
+  spans[]}`. Root spans also carry `request` and `routePath`. Every other attribute is discarded
+  here. It throws `InvalidTraceBatchError` on undecodable input, which becomes a 400.
+- **`classifySpan(name)`.** `kong` is request, `kong.router` or `router` is router,
+  `kong.<rewrite|access|header_filter>.plugin.<p>` or `<phase> phase: <p>` is plugin `p`, and
+  `kong.balancer` or `balancer try #N` is upstream. Anything else is other.
+- **Triggers for `tracing-apply`** (a singleton pg-boss job): a selection is added or removed, the
+  trace endpoint changes, an app is created, revoked or deleted, and the periodic reconcile.
+
+### Ingest flow (`POST /v1/internal/traces/kong`)
+1. Check `content-type` (415), size (413) and the bearer token in constant time (401).
+2. `parseTraceBatch`, or 400.
+3. If `probe` matches the stored `probe_nonce`, set `probe_received_at` and return 200. The shown
+   trace is not touched.
+4. If `instance` is not this portal, or no listed selection exists now, return 422
+   `trace-not-selected` (criterion 8).
+5. In one transaction: lock `trace_latest`, group spans by trace id, then merge, replace or drop
+   per ADR 0017 §3. The API is `resource.apiId`, else the root's `routePath` matched against the
+   cached published-API service routes. Return 200.
+Nothing from the body is logged. Log lines carry the trace id and span count only.
+
+### Risks and how to test them
+- *Span names or attributes differ by Kong version.* Classifier unit tests cover both schemes.
+  An integration test on Testcontainers `kong:3.9` asserts the real names and labels end to end.
+- *Leaking customer data* (criterion 7). An integration test sends a real call with `?token=abc123`,
+  a custom header and a body. A hand-built OTLP batch adds a span with an extra attribute
+  (`user.name`), because Kong itself won't emit one. The test then greps the DB row
+  and `GET /latest` for `abc123`, the client IP, the upstream address and the attribute name.
+  A unit test on `parseTraceBatch` asserts the output keys exactly.
+- *A trace split across batches, or resent* (criterion 8). Unit tests on the merge feed a trace
+  in two halves, in both orders, plus a resend, plus an older trace after a newer one.
+- *Calls outside the selection* (criterion 2). A Kong integration test makes a call to an
+  unselected API and checks no POST reached the ingest, and that the row is unchanged after 30 s.
+  A wiremock-style counter on the ingest is enough.
+- *A multi-replica Test.* The probe receipt goes through Postgres, and an integration test runs
+  the Test handler and the ingest on two server instances.
+- *A client-supplied `traceparent` merging two calls into one trace.* `propagation.extract: []`
+  prevents it. A test sends the same `traceparent` on two calls and expects two trace ids.
+- *The quickstart.* The QA run of `docker compose up` checks the Kong environment variables and the
+  under-5-minutes budget (criterion 10). An extra Kong environment variable doesn't change the
+  start time.
 
 ### Tasks
-- [ ] [backend] …
-- [ ] [frontend] …
-- [ ] [qa] …
+- [ ] [backend] adapter-sdk: add `Capabilities.tracing`, the tracing types, the five
+  `GatewayAdapter` methods, `TracingUnavailableError` and `InvalidTraceBatchError`. Add a
+  conformance case covering apply twice, a selection removed, and parse of a captured batch.
+- [ ] [backend] adapter-kong: implement `applyTracing` (service and consumer scopes, merged
+  selection keys, diff and stale removal), `inspectTracing`, `ensureTraceProbe`, `classifySpan`,
+  and `parseTraceBatch` with `protobufjs` and an OTLP JSON descriptor. Add unit tests for the
+  allowlist and the classifier.
+- [ ] [backend] db: add the `tracing_settings`, `tracing_selections` and `trace_latest` tables,
+  generated with `pnpm --filter @portal/db exec drizzle-kit generate`, plus a migration test.
+- [ ] [backend] server: add the admin tracing routes per the contract (settings, Test with
+  rate limit and probe wait, selections with `resolveSelectionApps`, developers search, latest
+  with labels and slowest computed on read). Add `TRACING_REQUIRE_PASSING_TEST` and
+  `traceScopeKey`.
+- [ ] [backend] server: add `POST /v1/internal/traces/kong` (415, 413, 401, 400, probe, 422,
+  locked merge or replace, and the route-path API match with a 60 s service cache). Keep
+  `/api/v1/internal/*` unforwarded by the portal rewrite.
+- [ ] [backend] server: add the `tracing-apply` pg-boss job and its triggers (selection, endpoint,
+  app create, revoke and delete, periodic reconcile), and report its status in `Tracing.apply`.
+- [ ] [backend] deploy: add `KONG_TRACING_INSTRUMENTATIONS` and `KONG_TRACING_SAMPLING_RATE=1`
+  on Kong, `PORTAL_TRACE_INGEST_URL` on the server and in the Helm values, and document both in
+  the README and `.env.example`.
+- [ ] [backend] regenerate `packages/sdk`.
+- [ ] [frontend] admin Tracing page: the selections list with add (API, developer and team
+  pickers) and remove, and the apply status.
+- [ ] [frontend] turn-on dialog: name the node settings, their `KONG_TRACING_*` variables and the
+  restart. Add editable, prefilled endpoint, instrumentation and sampling fields, Test with a
+  pass or a per-cause failure message, and Save (allowed after a failure, with a warning).
+- [ ] [frontend] latest-trace view: method, path, status and total ms, and the waterfall on one
+  time axis with labels, plugin names and the slowest marker. Poll every 3 s, and show an empty
+  state and a "not available for this gateway" state. Admins only.
+- [ ] [qa] integration on Testcontainers Kong 3.9: criteria 1 (apply twice, remove one), 2, 4,
+  5 (each of the three causes, plus proxy), 6 (real names, replaced by a second call, first not
+  fetchable), 7, 8 (token, unselected, resend) and 9.
+- [ ] [qa] e2e (Playwright) on the quickstart: turn on the sample API, Test passes, one try-it call,
+  and the waterfall shows the slowest span. Check criterion 10's compose values and the 5-minute
+  start.
 
 ## UX  _(ui-designer)_
 Summary + link to `docs/design/026-*.md`
