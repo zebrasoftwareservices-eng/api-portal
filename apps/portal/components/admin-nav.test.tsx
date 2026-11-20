@@ -27,6 +27,7 @@ const items = [
   ['/admin/products', 'Products'],
   ['/admin/requests', 'Requests'],
   ['/admin/insights', 'Insights'],
+  ['/admin/tracing', 'Tracing'],
   ['/admin/gateways', 'Gateways'],
   ['/admin/settings/mail', 'Mail'],
   ['/admin/settings/accounts', 'Accounts'],
@@ -34,7 +35,7 @@ const items = [
 ] as const;
 describe('shared admin navigation', () => {
   it.each([...items, ['/admin/apis/api-id/versions', 'APIs'] as const])(
-    'marks the current section on %s and offers all eight destinations',
+    'marks the current section on %s and offers every destination',
     (path, label) => {
       mocks.path = path;
       render(<AdminNav />);
@@ -50,7 +51,7 @@ describe('shared admin navigation', () => {
       ).toHaveValue(items.find(([, name]) => name === label)?.[0]);
     },
   );
-  it('navigates between all eight sections with the mobile select', async () => {
+  it('navigates between every section with the mobile select', async () => {
     mocks.path = '/admin/gateways';
     const actor = userEvent.setup();
     render(<AdminNav />);
@@ -62,12 +63,19 @@ describe('shared admin navigation', () => {
       expect(mocks.assign).toHaveBeenLastCalledWith(href);
     }
   });
-  it('hides Theme and Insights from a developer', () => {
+  it('hides Theme, Insights and Tracing from a developer', () => {
     mocks.role = 'developer';
     mocks.path = '/admin/apis';
     render(<AdminNav />);
-    expect(screen.queryByRole('link', { name: 'Theme' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Insights' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Theme' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Insights' }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Tracing' }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'APIs' })).toBeInTheDocument();
     mocks.role = 'admin';
   });
@@ -83,12 +91,15 @@ it('includes the pending request count in the navigation accessible name', async
   ).toHaveAttribute('href', '/admin/requests');
 });
 
-it('hides admin navigation and does not fetch pending requests for non-admin Insights visitors', () => {
-  mocks.path = '/admin/insights';
-  mocks.role = 'developer';
-  mocks.get.mockClear();
-  render(<AdminNav />);
-  expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
-  expect(mocks.get).not.toHaveBeenCalled();
-  mocks.role = 'admin';
-});
+it.each(['/admin/insights', '/admin/tracing'])(
+  'hides admin navigation and does not fetch pending requests for non-admin visitors at %s',
+  (path) => {
+    mocks.path = path;
+    mocks.role = 'developer';
+    mocks.get.mockClear();
+    render(<AdminNav />);
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    expect(mocks.get).not.toHaveBeenCalled();
+    mocks.role = 'admin';
+  },
+);

@@ -338,12 +338,12 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
   on Kong, `PORTAL_TRACE_INGEST_URL` on the server and in the Helm values, and document both in
   the README and `.env.example`.
 - [ ] [backend] regenerate `packages/sdk`.
-- [ ] [frontend] admin Tracing page: the selections list with add (API, developer and team
+- [x] [frontend] admin Tracing page: the selections list with add (API, developer and team
   pickers) and remove, and the apply status.
-- [ ] [frontend] turn-on dialog: name the node settings, their `KONG_TRACING_*` variables and the
+- [x] [frontend] turn-on dialog: name the node settings, their `KONG_TRACING_*` variables and the
   restart. Add editable, prefilled endpoint, instrumentation and sampling fields, Test with a
   pass or a per-cause failure message, and Save (allowed after a failure, with a warning).
-- [ ] [frontend] latest-trace view: method, path, status and total ms, and the waterfall on one
+- [x] [frontend] latest-trace view: method, path, status and total ms, and the waterfall on one
   time axis with labels, plugin names and the slowest marker. Poll every 3 s, and show an empty
   state and a "not available for this gateway" state. Admins only.
 - [ ] [qa] integration on Testcontainers Kong 3.9: criteria 1 (apply twice, remove one), 2, 4,
@@ -369,6 +369,11 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   `coversCopy`, `SaveGuardNotice`), so a change needs no redesign (design §7).
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend: added the admin-only Tracing page with Kong settings/Test/Save, API/developer/team
+  selections, apply feedback, and the 3-second latest-trace waterfall. The portal package passes
+  lint, typecheck, and all 429 Vitest tests; QA should exercise the live Kong Test causes and
+  selection apply status against the completed backend.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`

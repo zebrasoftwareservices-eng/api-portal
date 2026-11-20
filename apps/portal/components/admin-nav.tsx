@@ -11,6 +11,7 @@ const items = [
   ['/admin/products', 'Products'],
   ['/admin/requests', 'Requests'],
   ['/admin/insights', 'Insights'],
+  ['/admin/tracing', 'Tracing'],
   ['/admin/gateways', 'Gateways'],
   ['/admin/settings/mail', 'Mail'],
   ['/admin/settings/accounts', 'Accounts'],
@@ -19,10 +20,15 @@ const items = [
 export function AdminNav() {
   const { user } = usePortal();
   const path = usePathname();
-  const hide = path === '/admin/insights' && user?.role !== 'admin';
+  const hide =
+    (path === '/admin/insights' || path === '/admin/tracing') &&
+    user?.role !== 'admin';
   const visibleItems = items.filter(
     ([href]) =>
-      (href !== '/admin/insights' && href !== '/admin/theme') || user?.role === 'admin',
+      (href !== '/admin/insights' &&
+        href !== '/admin/tracing' &&
+        href !== '/admin/theme') ||
+      user?.role === 'admin',
   );
   const pending = useResource(() =>
     hide

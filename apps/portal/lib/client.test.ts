@@ -35,12 +35,15 @@ it('keeps product permission refusals on the form so the UI can explain that not
   expect(assign).not.toHaveBeenCalled();
 });
 
-it('leaves Insights permission refusals for its no-access page', async () => {
-  const assign = vi.fn();
-  vi.stubGlobal('window', { location: { assign } });
-  await middleware.mock.calls[0]![0].onResponse({
-    response: new Response(null, { status: 403 }),
-    schemaPath: '/v1/admin/insights',
-  });
-  expect(assign).not.toHaveBeenCalled();
-});
+it.each(['/v1/admin/insights', '/v1/admin/tracing'])(
+  'leaves %s permission refusals for its no-access page',
+  async (schemaPath) => {
+    const assign = vi.fn();
+    vi.stubGlobal('window', { location: { assign } });
+    await middleware.mock.calls[0]![0].onResponse({
+      response: new Response(null, { status: 403 }),
+      schemaPath,
+    });
+    expect(assign).not.toHaveBeenCalled();
+  },
+);
