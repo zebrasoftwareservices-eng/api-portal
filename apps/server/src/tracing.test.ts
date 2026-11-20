@@ -251,18 +251,34 @@ describe('tracing admin contract', () => {
     expect(defaults.json().settings).toEqual(settings);
   });
 
-  it('AC9 and failure paths: denies anonymous, developer, and invalid input', async () => {
-    for (const url of [
-      '/api/v1/admin/tracing',
-      '/api/v1/admin/tracing/latest',
-      '/api/v1/admin/tracing/developers',
-    ]) {
-      const anonymous = await server.inject(url);
-      expect(anonymous.statusCode).toBe(401);
-      expect(anonymous.headers['content-type']).toContain('application/problem+json');
-      const forbidden = await server.inject({ url, headers: { cookie: developerCookie } });
-      expect(forbidden.statusCode).toBe(403);
-      expect(forbidden.headers['content-type']).toContain('application/problem+json');
+  it('AC9 and failure paths: denies anonymous, developer, and expired sessions on every admin trace endpoint', async () => {
+    const selectionId = uuidv7();
+    const operations = [
+      { method: 'GET', url: '/api/v1/admin/tracing' },
+      { method: 'PUT', url: '/api/v1/admin/tracing', payload: settings },
+      { method: 'POST', url: '/api/v1/admin/tracing/test', payload: settings },
+      {
+        method: 'POST',
+        url: '/api/v1/admin/tracing/selections',
+        payload: { kind: 'api', targetId: apiId },
+      },
+      { method: 'DELETE', url: `/api/v1/admin/tracing/selections/${selectionId}` },
+      { method: 'GET', url: '/api/v1/admin/tracing/latest' },
+      { method: 'GET', url: '/api/v1/admin/tracing/developers' },
+    ];
+    for (const operation of operations) {
+      for (const [cookie, status] of [
+        ['', 401],
+        [developerCookie, 403],
+        ['better-auth.session_token=expired.invalid', 401],
+      ] as const) {
+        const response = await server.inject({
+          ...operation,
+          headers: cookie ? { cookie } : undefined,
+        });
+        expect(response.statusCode, `${operation.method} ${operation.url}`).toBe(status);
+        expect(response.headers['content-type']).toContain('application/problem+json');
+      }
     }
 
     const invalid = await server.inject({
@@ -312,6 +328,21 @@ describe('tracing admin contract', () => {
       expect(response.json().cause).toBe(cause);
     }
   });
+
+  it('AC5: reports an endpoint that does not receive the Kong probe', async () => {
+    const response = await server.inject({
+      method: 'POST',
+      url: '/api/v1/admin/tracing/test',
+      headers: { cookie: adminCookie },
+      payload: settings,
+    });
+    expect(response.statusCode).toBe(422);
+    expect(response.json()).toMatchObject({
+      cause: 'endpoint-unreachable',
+      detail: 'The trace endpoint did not receive the probe.',
+    });
+    expect(response.headers['content-type']).toContain('application/problem+json');
+  }, 15_000);
 
   it('AC1: selection creation is idempotent and reconcile converges after removal', async () => {
     await saveSettings();
@@ -369,6 +400,43 @@ describe('tracing admin contract', () => {
 });
 
 describe('trace ingest and latest trace', () => {
+  it('AC8 failure paths: rejects unsupported media, missing tokens, and oversized batches', async () => {
+    await saveSettings();
+    parsedBatch = batch('f'.repeat(32), uuidv7(), Date.now());
+    const unsupported = await server.inject({
+      method: 'POST',
+      url: '/api/v1/internal/traces/kong',
+      headers: {
+        authorization: `Bearer ${await token()}`,
+        'content-type': 'application/json',
+      },
+      payload: {},
+    });
+    expect(unsupported.statusCode).toBe(415);
+    expect(unsupported.headers['content-type']).toContain('application/problem+json');
+
+    const missingToken = await server.inject({
+      method: 'POST',
+      url: '/api/v1/internal/traces/kong',
+      headers: { 'content-type': 'application/x-protobuf' },
+      payload: Buffer.from('otlp'),
+    });
+    expect(missingToken.statusCode).toBe(401);
+    expect(missingToken.headers['content-type']).toContain('application/problem+json');
+
+    const oversized = await server.inject({
+      method: 'POST',
+      url: '/api/v1/internal/traces/kong',
+      headers: {
+        authorization: `Bearer ${await token()}`,
+        'content-type': 'application/x-protobuf',
+      },
+      payload: Buffer.alloc(1024 * 1024 + 1),
+    });
+    expect(oversized.statusCode).toBe(413);
+    expect(oversized.headers['content-type']).toContain('application/problem+json');
+  });
+
   it('AC2, AC7 and AC8: rejects tokens/unselected calls without changing the allowlisted row and deduplicates resends', async () => {
     await saveSettings();
     const selectionId = uuidv7();

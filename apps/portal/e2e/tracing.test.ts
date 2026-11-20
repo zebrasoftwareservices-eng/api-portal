@@ -18,7 +18,6 @@ test('026 AC3/10: tracing dialog mirrors every quickstart node value', async ({
   page,
   request,
 }) => {
-  test.fail(true, 'The quickstart and server defaults omit two required plugin phases.');
   expect(
     (
       await request.post('/api/auth/sign-in/email', {
@@ -85,4 +84,10 @@ test('026 AC4/6: quickstart probe passes and a selected call renders a waterfall
   await expect(latest).toContainText('/sample/get');
   await expect(latest).not.toContainText('abc123');
   await expect(latest).toContainText('Slowest');
+});
+
+test('026 AC9: an anonymous visitor cannot open the admin trace page', async ({ page }) => {
+  await page.goto('/admin/tracing');
+  await expect(page).toHaveURL(/\/sign-in(?:\?|$)/);
+  await expect(page.getByRole('heading', { name: 'Tracing', exact: true })).not.toBeVisible();
 });

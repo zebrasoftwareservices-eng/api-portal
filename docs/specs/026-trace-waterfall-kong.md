@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -356,6 +356,7 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Tracing Test failures omit cause keys required by dialog
 - [x] [backend] Fix: Production server image crashes on protobufjs named export
 - [ ] [backend] Fix: Full suite leaves open admin assignment credential active
+- [ ] [backend] Fix: Trace ingest accepts unsupported media type
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -407,6 +408,7 @@ Long notes go in `docs/specs/log/026.md`, not here.
 - [x] Tracing Test failures omit cause keys required by dialog (major)
 - [x] Production server image crashes on protobufjs named export (blocker)
 - [ ] Full suite leaves open admin assignment credential active (major) — Not reproduced alone or in the server suite (6/6 admin-revocation tests passed in both runs); QA should confirm on its full pass.
+- [ ] Trace ingest accepts unsupported media type (major)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
@@ -449,3 +451,8 @@ return the spec to building. Earlier rounds go in `docs/specs/log/026.md`.
   - priority: high
   - create when the Linear limit allows
   - body: Full pnpm test at aa8c2f8 failed once in apps/server/src/admin-revocation.test.ts: open admin assignment expected a revoked credential call to return 401 but received 200. The new tracing suites passed; this existing full-suite failure blocks a green QA pass and was not rerun per the one-full-pass rule.
+- **Bug** — Bug: Trace ingest accepts unsupported media type (major)
+  - parent: none
+  - priority: high
+  - create when the Linear limit allows
+  - body: POST /api/v1/internal/traces/kong with a valid bearer token and Content-Type: application/json. Expected RFC 9457 status 415 per AC8/technical ingest flow; received 422 trace-not-selected because JSON reaches the handler. Reproduced with: pnpm --filter @portal/server exec vitest run src/tracing.test.ts (1 failed, 8 passed).
