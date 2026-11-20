@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, test } from '@playwright/test';
 
 const settings = {
@@ -16,8 +18,8 @@ const settings = {
 
 test('026 AC3/10: tracing dialog mirrors every quickstart node value', async ({
   page,
-  request,
 }) => {
+  const request = page.request;
   expect(
     (
       await request.post('/api/auth/sign-in/email', {
@@ -26,23 +28,31 @@ test('026 AC3/10: tracing dialog mirrors every quickstart node value', async ({
     ).status(),
   ).toBe(200);
   await page.goto('/admin/tracing');
-  await page.getByRole('button', { name: /Turn on tracing|Edit settings/ }).click();
+  await page
+    .getByRole('button', { name: /Turn on tracing|Edit settings/ })
+    .click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toContainText('tracing_instrumentations');
   await expect(dialog).toContainText('tracing_sampling_rate');
   await expect(dialog).toContainText('KONG_TRACING_INSTRUMENTATIONS');
   await expect(dialog).toContainText('KONG_TRACING_SAMPLING_RATE');
   await expect(dialog).toContainText(/restart the Kong node/i);
-  await expect(dialog.getByLabel('Trace endpoint')).toHaveValue(settings.traceEndpoint);
+  await expect(dialog.getByLabel('Trace endpoint')).toHaveValue(
+    settings.traceEndpoint,
+  );
   await expect(dialog.getByLabel('Sampling rate')).toHaveValue('1');
   for (const instrumentation of settings.instrumentations)
-    await expect(dialog.getByLabel(instrumentation, { exact: true })).toBeChecked();
+    await expect(
+      dialog.getByRole('checkbox', {
+        name: new RegExp(`^${instrumentation}( \\(required\\))?$`),
+      }),
+    ).toBeChecked();
 });
 
 test('026 AC4/6: quickstart probe passes and a selected call renders a waterfall', async ({
   page,
-  request,
 }) => {
+  const request = page.request;
   test.setTimeout(45_000);
   expect(
     (
@@ -53,8 +63,10 @@ test('026 AC4/6: quickstart probe passes and a selected call renders a waterfall
   ).toBe(200);
   const saved = await request.put('/api/v1/admin/tracing', { data: settings });
   expect(saved.status(), await saved.text()).toBe(200);
-  const apis = await (await request.get('/api/v1/admin/apis')).json();
-  const sample = apis.items.find((api: { slug: string }) => api.slug === 'sample');
+  const apis = await (await request.get('/api/v1/apis')).json();
+  const sample = apis.items.find(
+    (api: { slug: string }) => api.slug === 'sample',
+  );
   expect(sample).toBeTruthy();
   expect(
     (
@@ -67,8 +79,13 @@ test('026 AC4/6: quickstart probe passes and a selected call renders a waterfall
   await page.goto('/admin/tracing');
   await page.getByRole('button', { name: 'Edit settings' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Test' }).click();
-  await expect(page.getByText('✓ Test passed')).toBeVisible({ timeout: 15_000 });
-  await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByText('✓ Test passed')).toBeVisible({
+    timeout: 15_000,
+  });
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Cancel' })
+    .click();
 
   const target =
     '/api/v1/try-it?scalar_url=' +
@@ -76,8 +93,12 @@ test('026 AC4/6: quickstart probe passes and a selected call renders a waterfall
       `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/sample/get?token=abc123`,
     );
   expect((await request.get(target)).status()).toBe(401);
-  const latest = page.getByRole('heading', { name: 'Latest traced call' }).locator('..');
-  await expect(latest.getByRole('table', { name: /Spans of the latest traced call/ })).toBeVisible({
+  const latest = page
+    .getByRole('heading', { name: 'Latest traced call' })
+    .locator('..');
+  await expect(
+    latest.getByRole('table', { name: /Spans of the latest traced call/ }),
+  ).toBeVisible({
     timeout: 30_000,
   });
   await expect(latest).toContainText('GET');
@@ -86,8 +107,29 @@ test('026 AC4/6: quickstart probe passes and a selected call renders a waterfall
   await expect(latest).toContainText('Slowest');
 });
 
-test('026 AC9: an anonymous visitor cannot open the admin trace page', async ({ page }) => {
+test('026 AC10: the quickstart Kong node sets the tracing instrumentations and sampling rate', () => {
+  const compose = readFileSync(
+    resolve(process.cwd(), 'deploy/docker-compose.yml'),
+    'utf8',
+  );
+  const instrumentations =
+    /KONG_TRACING_INSTRUMENTATIONS: \$\{KONG_TRACING_INSTRUMENTATIONS:-([^}]+)\}/.exec(
+      compose,
+    )?.[1];
+  expect(instrumentations?.split(',')).toEqual(settings.instrumentations);
+  for (const excluded of ['db_query', 'dns_query', 'http_client'])
+    expect(instrumentations).not.toContain(excluded);
+  expect(compose).toMatch(
+    /KONG_TRACING_SAMPLING_RATE: \$\{KONG_TRACING_SAMPLING_RATE:-1\}/,
+  );
+});
+
+test('026 AC9: an anonymous visitor cannot open the admin trace page', async ({
+  page,
+}) => {
   await page.goto('/admin/tracing');
   await expect(page).toHaveURL(/\/sign-in(?:\?|$)/);
-  await expect(page.getByRole('heading', { name: 'Tracing', exact: true })).not.toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Tracing', exact: true }),
+  ).not.toBeVisible();
 });
