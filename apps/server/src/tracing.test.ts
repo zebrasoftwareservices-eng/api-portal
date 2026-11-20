@@ -242,7 +242,7 @@ afterAll(async () => {
 });
 
 describe('tracing admin contract', () => {
-  it.fails('AC3 and AC10: pre-fills every quickstart instrumentation', async () => {
+  it('AC3 and AC10: pre-fills every quickstart instrumentation', async () => {
     const defaults = await server.inject({
       url: '/api/v1/admin/tracing',
       headers: { cookie: adminCookie },
@@ -295,7 +295,7 @@ describe('tracing admin contract', () => {
     }
   });
 
-  it.fails('AC5: returns stable cause keys for the dialog copy', async () => {
+  it('AC5: returns stable cause keys for the dialog copy', async () => {
     for (const [state, proxy, cause] of [
       ['unreachable', true, 'gateway-unreachable'],
       ['off', true, 'tracing-off'],

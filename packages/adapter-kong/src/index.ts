@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
-import { Root } from 'protobufjs';
+import protobuf from 'protobufjs';
 import otlpDescriptor from './otlp-trace.json' with { type: 'json' };
 import {
   InvalidTraceBatchError,
@@ -1205,7 +1205,7 @@ export class KongAdapter implements GatewayAdapter {
 
   parseTraceBatch(bytes: Uint8Array): TraceBatch {
     try {
-      const type = Root.fromJSON(otlpDescriptor as never).lookupType(
+      const type = protobuf.Root.fromJSON(otlpDescriptor as never).lookupType(
         'opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest',
       );
       const decoded = type.toObject(type.decode(bytes), {

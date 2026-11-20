@@ -57,7 +57,14 @@ function defaultSettings(config: GatewayConnection['config']) {
     traceEndpoint:
       config.PORTAL_TRACE_INGEST_URL ??
       'http://server:4000/api/v1/internal/traces/kong',
-    instrumentations: ['request', 'router', 'balancer', 'plugin_access'],
+    instrumentations: [
+      'request',
+      'router',
+      'balancer',
+      'plugin_rewrite',
+      'plugin_access',
+      'plugin_header_filter',
+    ],
     samplingRate: 1,
   };
 }
@@ -282,10 +289,22 @@ export function registerTracing(
     try {
       node = await gateway.adapter.inspectTracing();
     } catch {
-      throw new Problem(422, 'tracing-check-failed', 'Kong could not be reached.');
+      throw new Problem(
+        422,
+        'tracing-check-failed',
+        'Kong could not be reached.',
+        undefined,
+        { cause: 'gateway-unreachable' },
+      );
     }
     if (!node.instrumentations.some((value) => value === 'request' || value === 'all'))
-      throw new Problem(422, 'tracing-check-failed', 'Tracing is off on this Kong.');
+      throw new Problem(
+        422,
+        'tracing-check-failed',
+        'Tracing is off on this Kong.',
+        undefined,
+        { cause: 'tracing-off', node },
+      );
     const nonce = randomBytes(16).toString('hex');
     const [settings] = await db.select().from(tracingSettings).limit(1);
     const probeToken = settings
@@ -304,10 +323,30 @@ export function registerTracing(
     try {
       ({ probePath } = await gateway.adapter.ensureTraceProbe({ endpoint: normalizeUrl(input.traceEndpoint, 'traceEndpoint'), token: probeToken, nonce }));
     } catch (error) {
-      throw new Problem(422, 'tracing-check-failed', error instanceof TracingUnavailableError ? 'Kong refused the tracing plugin.' : 'The trace probe could not be configured.');
+      throw new Problem(
+        422,
+        'tracing-check-failed',
+        error instanceof TracingUnavailableError
+          ? 'Kong refused the tracing plugin.'
+          : 'The trace probe could not be configured.',
+        undefined,
+        {
+          cause:
+            error instanceof TracingUnavailableError
+              ? 'gateway-rejected'
+              : 'gateway-unreachable',
+          node,
+        },
+      );
     }
     if (!(await gateway.adapter.checkProxy(gateway.row.proxyInternalUrl + probePath)))
-      throw new Problem(422, 'tracing-check-failed', "The portal couldn't reach Kong's proxy.");
+      throw new Problem(
+        422,
+        'tracing-check-failed',
+        "The portal couldn't reach Kong's proxy.",
+        undefined,
+        { cause: 'proxy-unreachable', node },
+      );
     const deadline = Date.now() + 10_000;
     let received = false;
     while (Date.now() < deadline) {
@@ -317,7 +356,14 @@ export function registerTracing(
     }
     const at = new Date();
     await db.update(tracingSettings).set({ lastTestPassed: received, lastTestCause: received ? null : 'endpoint-unreachable', lastTestAt: at }).where(eq(tracingSettings.id, 1));
-    if (!received) throw new Problem(422, 'tracing-check-failed', 'The trace endpoint did not receive the probe.');
+    if (!received)
+      throw new Problem(
+        422,
+        'tracing-check-failed',
+        'The trace endpoint did not receive the probe.',
+        undefined,
+        { cause: 'endpoint-unreachable', node },
+      );
     return { passed: true, at: at.toISOString(), node, warnings: [] };
   });
   server.post('/api/v1/admin/tracing/selections', async (request, reply) => {

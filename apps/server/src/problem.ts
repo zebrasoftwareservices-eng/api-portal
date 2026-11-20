@@ -18,6 +18,11 @@ export class Problem extends Error {
       column?: number;
     }[],
     readonly fields?: {
+      cause?: string;
+      node?: {
+        instrumentations: string[];
+        samplingRate: number | null;
+      };
       products?: { id: string; slug: string; name: string }[];
       affectedTeams?: number;
       affectedSubscriptions?: number;

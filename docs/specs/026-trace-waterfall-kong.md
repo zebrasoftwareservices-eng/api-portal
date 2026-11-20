@@ -352,9 +352,9 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [ ] [qa] e2e (Playwright) on the quickstart: turn on the sample API, Test passes, one try-it call,
   and the waterfall shows the slowest span. Check criterion 10's compose values and the 5-minute
   start.
-- [ ] [backend] Fix: Tracing quickstart defaults omit required plugin phases
-- [ ] [backend] Fix: Tracing Test failures omit cause keys required by dialog
-- [ ] [backend] Fix: Production server image crashes on protobufjs named export
+- [x] [backend] Fix: Tracing quickstart defaults omit required plugin phases
+- [x] [backend] Fix: Tracing Test failures omit cause keys required by dialog
+- [x] [backend] Fix: Production server image crashes on protobufjs named export
 - [ ] [backend] Fix: Full suite leaves open admin assignment credential active
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
@@ -403,10 +403,10 @@ Long notes go in `docs/specs/log/026.md`, not here.
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] Tracing quickstart defaults omit required plugin phases (major)
-- [ ] Tracing Test failures omit cause keys required by dialog (major)
-- [ ] Production server image crashes on protobufjs named export (blocker)
-- [ ] Full suite leaves open admin assignment credential active (major)
+- [x] Tracing quickstart defaults omit required plugin phases (major)
+- [x] Tracing Test failures omit cause keys required by dialog (major)
+- [x] Production server image crashes on protobufjs named export (blocker)
+- [ ] Full suite leaves open admin assignment credential active (major) — Not reproduced alone or in the server suite (6/6 admin-revocation tests passed in both runs); QA should confirm on its full pass.
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |

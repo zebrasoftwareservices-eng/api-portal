@@ -38,7 +38,7 @@ services:
       # Apply new ACLs before serving a request on any worker, including pooled
       # try-it connections. Eventual workers can briefly bypass imported ACLs.
       KONG_WORKER_CONSISTENCY: strict
-      KONG_TRACING_INSTRUMENTATIONS: ${KONG_TRACING_INSTRUMENTATIONS:-request,router,balancer,plugin_access}
+      KONG_TRACING_INSTRUMENTATIONS: ${KONG_TRACING_INSTRUMENTATIONS:-request,router,balancer,plugin_rewrite,plugin_access,plugin_header_filter}
       KONG_TRACING_SAMPLING_RATE: ${KONG_TRACING_SAMPLING_RATE:-1}
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_ADMIN_ACCESS_LOG: /dev/stdout
