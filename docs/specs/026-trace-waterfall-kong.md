@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -354,6 +354,8 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
   start.
 - [ ] [backend] Fix: Tracing quickstart defaults omit required plugin phases
 - [ ] [backend] Fix: Tracing Test failures omit cause keys required by dialog
+- [ ] [backend] Fix: Production server image crashes on protobufjs named export
+- [ ] [backend] Fix: Full suite leaves open admin assignment credential active
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -379,10 +381,22 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   selection apply status against the completed backend.
 
 ## Test report  _(qa-tester)_
-Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
+Commit tested: `aa8c2f8bbf45155fd341780d5d7f52dae102ec01` · Portal: `http://localhost:3001`
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
+| 1 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts` | Pass — idempotent selection/apply and removal are automated. |
+| 2 | `apps/server/src/tracing.test.ts` | Pass — an unselected batch is rejected and the selected latest trace is unchanged. |
+| 3 | `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Fail — the dialog copy is covered, but the quickstart/server defaults omit two required plugin phases. |
+| 4 | `apps/portal/e2e/tracing.test.ts` | Blocked — the production server image exits before the quickstart becomes healthy. |
+| 5 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx` | Fail — distinct server details pass, but missing `cause` keys make the live dialog use generic copy. |
+| 6 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Blocked — replacement, Kong 3.9 labels and slowest-span rendering pass below the browser; the live journey cannot start. |
+| 7 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts` | Pass — stored/returned trace fields are allowlisted and secret markers are absent. |
+| 8 | `apps/server/src/tracing.test.ts` | Pass — wrong token and unselected batches return problem+json without replacement; resend deduplicates spans. |
+| 9 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx` | Pass — anonymous/developer API access is refused and the admin page denial state is covered. |
+| 10 | `apps/portal/e2e/tracing.test.ts`; `deploy/e2e/quickstart.spec.ts` | Fail — required compose values are incomplete and the production image crashes before readiness. |
+
+Full pass: `pnpm lint` and `pnpm typecheck` passed; `pnpm test` had one admin-revocation failure; quickstart and Playwright were blocked by the server-image crash.
 
 Long notes go in `docs/specs/log/026.md`, not here.
 
@@ -391,6 +405,8 @@ Long notes go in `docs/specs/log/026.md`, not here.
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [ ] Tracing quickstart defaults omit required plugin phases (major)
 - [ ] Tracing Test failures omit cause keys required by dialog (major)
+- [ ] Production server image crashes on protobufjs named export (blocker)
+- [ ] Full suite leaves open admin assignment credential active (major)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
@@ -423,3 +439,13 @@ return the spec to building. Earlier rounds go in `docs/specs/log/026.md`.
   - priority: high
   - create when the Linear limit allows
   - body: Reproduction: POST /api/v1/admin/tracing/test returns distinct detail text for gateway unreachable, tracing off, and proxy unreachable, but the problem body has no cause field. AdminTracing selects its required cause-specific title/body from error.cause, so live failures fall back to generic copy; apps/server/src/tracing.test.ts preserves the expected failure.
+- **Bug** — Bug: Production server image crashes on protobufjs named export (blocker)
+  - parent: none
+  - priority: urgent
+  - create when the Linear limit allows
+  - body: Reproduction: node scripts/worktree-compose.mjs up -d --build --wait builds images but the server exits before health. Container log: packages/adapter-kong/dist/index.js imports named Root from CommonJS protobufjs; Node 22 throws SyntaxError Named export Root not found. Portal remains unavailable, so Playwright and quickstart cannot pass.
+- **Bug** — Bug: Full suite leaves open admin assignment credential active (major)
+  - parent: none
+  - priority: high
+  - create when the Linear limit allows
+  - body: Full pnpm test at aa8c2f8 failed once in apps/server/src/admin-revocation.test.ts: open admin assignment expected a revoked credential call to return 401 but received 200. The new tracing suites passed; this existing full-suite failure blocks a green QA pass and was not rerun per the one-full-pass rule.
