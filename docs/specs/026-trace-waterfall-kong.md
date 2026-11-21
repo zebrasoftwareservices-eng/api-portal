@@ -377,7 +377,7 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Trace merge overwrites `started_at` with a child span's start when a trace's root arrives in an earlier batch than its children (Review B1); add the two-halves-in-both-orders merge test
 - [x] [backend] Decision 6: keep one latest trace per API — `traceScopeKey(batch)` returns the API id (resolved from the service, or from the root's `http.route` for a consumer-scoped plugin), `GET /admin/tracing/latest?apiId=` in openapi.yaml and the SDK; a call to API A leaves API B's latest trace unchanged (test)
 - [x] [frontend] Decision 6: the Latest traced call card picks which traced API to show (`LatestTraceCard apiId`), defaulting to the most recently traced API; component test
-- [ ] [backend] Fix: resolve a consumer-scoped trace's API per trace, not per batch (Review B2). In `apps/server/src/tracing.ts:461-469`, resolve each trace-id group from its own root `routePath`; a group with no root uses the `trace_latest` row already holding that trace id; drop groups that resolve to no API and answer 422 only when none resolves. Tests: one consumer-scoped batch with roots for `/sample` and `/orders` stores each under its own API; a root batch then a child-only batch for a developer selection merges into one trace
+- [x] [backend] Fix: resolve a consumer-scoped trace's API per trace, not per batch (Review B2). In `apps/server/src/tracing.ts:461-469`, resolve each trace-id group from its own root `routePath`; a group with no root uses the `trace_latest` row already holding that trace id; drop groups that resolve to no API and answer 422 only when none resolves. Tests: one consumer-scoped batch with roots for `/sample` and `/orders` stores each under its own API; a root batch then a child-only batch for a developer selection merges into one trace
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -433,6 +433,11 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   `GET /v1/admin/tracing/latest` accepts an optional `apiId`, defaults to the newest trace overall, and
   returns newest-first API choices using API titles. Split-batch merges keep the earliest start in both
   arrival orders, preserving span offsets. SDK checks pass, and server lint, typecheck and 366 tests pass.
+
+- Backend (build loop 7): consumer-scoped ingest now resolves every trace-id group from its own root route,
+  falls back to the stored trace row for child-only continuations, and drops only unresolved groups. A mixed
+  `/sample` and `/orders` batch retains both APIs, while root-then-child and child-before-root ordering merge
+  under the correct API. Server lint, typecheck and all 367 tests pass.
 
 ## Test report  _(qa-tester)_
 Commit tested: `d5fafc8` (HEAD `46f8ebf`, docs-only status commit on top) · Portal: `http://localhost:3001`

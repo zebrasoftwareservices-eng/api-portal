@@ -458,20 +458,26 @@ export function registerTracing(
       const [instance] = await db.execute<{ instance_id: string }>(sql`select instance_id from instance_settings limit 1`);
       const active = batch.resource.selections.length ? await db.select({ id: tracingSelections.id }).from(tracingSelections).where(inArray(tracingSelections.id, batch.resource.selections)) : [];
       if (batch.resource.instance !== instance?.instance_id || !active.length) throw new Problem(422, 'trace-not-selected', 'Trace does not belong to an active selection.');
-      if (!batch.resource.apiId) {
-        const routePath = batch.spans.find((span) => span.parentSpanId === null)?.routePath;
-        const [api] = routePath
-          ? await db.select({ id: apis.id }).from(apis).where(eq(apis.routePath, routePath)).limit(1)
-          : [];
-        if (!api) throw new Problem(422, 'trace-not-selected', 'Trace does not match a published API.');
-        batch = { ...batch, resource: { ...batch.resource, apiId: api.id } };
-      }
-      const scopeKey = traceScopeKey(batch);
       const groups = new Map<string, TraceBatch['spans']>();
       for (const span of batch.spans) groups.set(span.traceId, [...(groups.get(span.traceId) ?? []), span]);
-      await db.transaction(async (tx) => {
+      const accepted = await db.transaction(async (tx) => {
         await tx.execute(sql`select pg_advisory_xact_lock(71833026)`);
+        const resolvedGroups: Array<{ traceId: string; spans: TraceBatch['spans']; scopeKey: string }> = [];
         for (const [traceId, spans] of groups) {
+          const root = spans.find((span) => span.parentSpanId === null);
+          let apiId = batch.resource.apiId;
+          if (!apiId && root?.routePath) {
+            const [api] = await tx.select({ id: apis.id }).from(apis).where(eq(apis.routePath, root.routePath)).limit(1);
+            apiId = api?.id;
+          } else if (!apiId && !root) {
+            const [previous] = await tx.select({ apiId: traceLatest.apiId }).from(traceLatest).where(eq(traceLatest.traceId, traceId)).limit(1);
+            apiId = previous?.apiId ?? undefined;
+          }
+          if (apiId) resolvedGroups.push({ traceId, spans, scopeKey: apiId });
+        }
+        if (!resolvedGroups.length) throw new Problem(422, 'trace-not-selected', 'Trace does not match a published API.');
+
+        for (const { traceId, spans, scopeKey } of resolvedGroups) {
           const root = spans.find((span) => span.parentSpanId === null);
           const started = new Date(Number(BigInt((root ?? spans[0]!).startNs) / 1_000_000n));
           const [previous] = await tx.select().from(traceLatest).where(eq(traceLatest.scopeKey, scopeKey)).for('update');
@@ -486,8 +492,9 @@ export function registerTracing(
           const traceStarted = sameTrace && previous.startedAt < started ? previous.startedAt : started;
           await tx.insert(traceLatest).values({ scopeKey, traceId, apiId: scopeKey, startedAt: traceStarted, receivedAt: new Date(), rootSpanId: root?.spanId ?? previous?.rootSpanId ?? spans[0]!.spanId, request: root?.request ?? previous?.request ?? null, spans: merged }).onConflictDoUpdate({ target: traceLatest.scopeKey, set: { traceId, apiId: scopeKey, startedAt: traceStarted, receivedAt: new Date(), rootSpanId: root?.spanId ?? previous?.rootSpanId ?? spans[0]!.spanId, request: root?.request ?? previous?.request ?? null, spans: merged } });
         }
+        return resolvedGroups;
       });
-      server.log.info({ traceIds: [...groups.keys()], spanCount: batch.spans.length }, 'Trace batch accepted');
+      server.log.info({ traceIds: accepted.map(({ traceId }) => traceId), spanCount: accepted.reduce((count, group) => count + group.spans.length, 0) }, 'Trace batch accepted');
       return reply.type('application/x-protobuf').send(Buffer.alloc(0));
     });
   });
