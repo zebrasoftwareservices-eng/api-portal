@@ -4,6 +4,10 @@ import { KongAdapter } from './index.js';
 
 describe('Kong tracing', () => {
   const config = { adminUrl: 'http://kong:8001', instanceId: 'instance' };
+  const kong39UnauthorizedBatch = Buffer.from(
+    'CrQHCqQCCjcSJgokMDFhMWZkZjItZGFkNC03Zjk0LTg0ZGYtMjkwZGU0YTAzOGYzCg1wb3J0YWwuYXBpX2lkCjkSJgokMDFhMWZkZjItYzBkNy03ZDZjLTg4NGItNTNhMTVjN2U0YTI1Cg9wb3J0YWwuaW5zdGFuY2UKFhIGCgRrb25nCgxzZXJ2aWNlLm5hbWUKPRImCiQxNDk5NzIxYi1lNGY0LTQ3ZjAtYTk2NC05ZDc4MmFlZDI2Y2UKE3NlcnZpY2UuaW5zdGFuY2UuaWQKGhIHCgUzLjkuNAoPc2VydmljZS52ZXJzaW9uCjsSJgokMDFhMWZkZjMtNDMzYy03NTgwLWI5MjEtYzg1ZGYzMDAyMzI1ChFwb3J0YWwuc2VsZWN0aW9ucxKKBQoWCg1rb25nLWludGVybmFsEgUwLjEuMBLoAhIIm8u5RDB37+YwAioEa29uZwoQEj/Bv4SDr5+BMEqXHzT0TTkAKCLmrw3qGEEADmjmrw3qGEoXEgMYkQMKEGh0dHAuc3RhdHVzX2NvZGVKGBILCgkxMjcuMC4wLjEKCWh0dHAuaG9zdEoVEgYKBGh0dHAKC2h0dHAuc2NoZW1lSiASDgoMMTkyLjE2OC42NS4xCg5odHRwLmNsaWVudF9pcEo1EiIKIGY2ZWE5NDFjMzA2NjlkNDY1YTZkZGY1YmQ2YTgxYzBhCg9rb25nLnJlcXVlc3QuaWRKFBIFCgNHRVQKC2h0dHAubWV0aG9kShQSBQoDMS4xCgtodHRwLmZsYXZvckoXEgkKBy9zYW1wbGUKCmh0dHAucm91dGVKHRIOCgwxOTIuMTY4LjY1LjEKC25ldC5wZWVyLmlwSikSHQobaHR0cDovLzEyNy4wLjAuMS9zYW1wbGUvZ2V0CghodHRwLnVybBJHEggnaaZLqIGu3TABKgtrb25nLnJvdXRlcgoQEj/Bv4SDr5+BMEqXHzT0TSIIm8u5RDB37+Y5AD1W5q8N6hhBAFtd5q8N6hgSVxIIbGueuRquVx8wASoba29uZy5hY2Nlc3MucGx1Z2luLmtleS1hdXRoChASP8G/hIOvn4EwSpcfNPRNIgiby7lEMHfv5jkAkV/mrw3qGEEAr2Xmrw3qGBJjEgh6ZtQm88QVhzABKidrb25nLmhlYWRlcl9maWx0ZXIucGx1Z2luLm9wZW50ZWxlbWV0cnkKEBI/wb+Eg6+fgTBKlx809E0iCJvLuUQwd+/mOQBZZ+avDeoYQQBnZ+avDeoY',
+    'base64',
+  );
 
   it.each([
     ['kong', { label: 'request' }],
@@ -16,6 +20,18 @@ describe('Kong tracing', () => {
     ['custom', { label: 'other' }],
   ])('classifies %s', (name, expected) => {
     expect(new KongAdapter(config).classifySpan(name)).toEqual(expected);
+  });
+
+  it('parses request metadata from a captured Kong 3.9 OTLP batch', () => {
+    const batch = new KongAdapter(config).parseTraceBatch(kong39UnauthorizedBatch);
+    const root = batch.spans.find((span) => span.name === 'kong');
+
+    expect(root).toMatchObject({
+      request: { method: 'GET', path: '/sample/get', statusCode: 401 },
+      routePath: '/sample',
+    });
+    expect(JSON.stringify(batch)).not.toContain('127.0.0.1');
+    expect(JSON.stringify(batch)).not.toContain('192.168.65.1');
   });
 
   it('applies merged targets twice without rewriting and removes stale plugins', async () => {

@@ -358,7 +358,7 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Full suite leaves open admin assignment credential active
 - [x] [backend] Fix: Trace ingest accepts unsupported media type
 - [x] [backend] Fix: Quickstart Kong rejects tracing plugin during Test
-- [ ] [backend] Fix: Latest trace omits request method path and status
+- [x] [backend] Fix: Latest trace omits request method path and status
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -391,6 +391,12 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   config. The adapter's 76 tests pass, and the rebuilt quickstart Test passed before a selected
   sample try-it call produced a new latest trace with four spans.
 
+- Backend (build loop 4): a captured Kong 3.9 OTLP batch showed the request root uses
+  `http.method`, absolute `http.url`, and integer-valued `http.status_code`; the allowlist now also
+  accepts the newer semantic-convention equivalents while retaining only the query-free pathname.
+  All 77 adapter tests pass, and a live selected call persisted `GET /sample/get` with status 401
+  without its query string, client IP, or peer address.
+
 ## Test report  _(qa-tester)_
 Commit tested: `0292b45` · Portal: `http://localhost:3001`
 
@@ -420,7 +426,7 @@ Long notes go in `docs/specs/log/026.md`, not here.
 - [x] Full suite leaves open admin assignment credential active (major) — Not reproduced alone or in the server suite (6/6 admin-revocation tests passed in both runs); QA should confirm on its full pass.
 - [x] Trace ingest accepts unsupported media type (major)
 - [x] Quickstart Kong rejects tracing plugin during Test (major)
-- [ ] Latest trace omits request method path and status (major)
+- [x] Latest trace omits request method path and status (major)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |

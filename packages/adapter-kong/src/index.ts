@@ -1221,19 +1221,47 @@ export class KongAdapter implements GatewayAdapter {
         value && typeof value === 'object' && !Array.isArray(value)
           ? (value as Record<string, unknown>)
           : {};
-      const textValue = (value: unknown) => {
+      const attributeValue = (value: unknown): string | number | undefined => {
         const values = record(value);
-        return typeof values.stringValue === 'string' ? values.stringValue : undefined;
+        if (typeof values.stringValue === 'string') return values.stringValue;
+        if (typeof values.intValue === 'number' || typeof values.intValue === 'string') {
+          const integer = Number(values.intValue);
+          return Number.isSafeInteger(integer) ? integer : undefined;
+        }
+        return undefined;
       };
       const attributes = (value: unknown) =>
         Object.fromEntries(
           (Array.isArray(value) ? value : []).flatMap((item) => {
             const attr = record(item);
             const key = typeof attr.key === 'string' ? attr.key : '';
-            const result = textValue(attr.value);
+            const result = attributeValue(attr.value);
             return key && result !== undefined ? [[key, result]] : [];
           }),
         );
+      const textAttribute = (attrs: Record<string, string | number>, ...keys: string[]) => {
+        const value = keys.map((key) => attrs[key]).find((item) => typeof item === 'string');
+        return typeof value === 'string' ? value : undefined;
+      };
+      const integerAttribute = (attrs: Record<string, string | number>, ...keys: string[]) => {
+        const value = keys.map((key) => attrs[key]).find((item) => {
+          const numeric = typeof item === 'number' ? item : Number(item);
+          return Number.isSafeInteger(numeric) && numeric >= 100 && numeric <= 599;
+        });
+        if (value === undefined) return undefined;
+        return typeof value === 'number' ? value : Number(value);
+      };
+      const pathAttribute = (attrs: Record<string, string | number>) => {
+        const direct = textAttribute(attrs, 'http.target', 'url.path');
+        if (direct) return direct.split('?')[0];
+        const full = textAttribute(attrs, 'http.url', 'url.full');
+        if (!full) return undefined;
+        try {
+          return new URL(full, 'http://kong.invalid').pathname;
+        } catch {
+          return full.split('?')[0];
+        }
+      };
       const resourceSpans = Array.isArray(decoded.resourceSpans)
         ? decoded.resourceSpans
         : [];
@@ -1243,10 +1271,14 @@ export class KongAdapter implements GatewayAdapter {
         const entry = record(resourceEntry);
         const attrs = attributes(record(entry.resource).attributes);
         resource ??= {
-          instance: attrs['portal.instance'] ?? '',
-          selections: (attrs['portal.selections'] ?? '').split(',').filter(Boolean),
-          ...(attrs['portal.api_id'] ? { apiId: attrs['portal.api_id'] } : {}),
-          ...(attrs['portal.probe'] ? { probe: attrs['portal.probe'] } : {}),
+          instance: textAttribute(attrs, 'portal.instance') ?? '',
+          selections: (textAttribute(attrs, 'portal.selections') ?? '').split(',').filter(Boolean),
+          ...(textAttribute(attrs, 'portal.api_id')
+            ? { apiId: textAttribute(attrs, 'portal.api_id') }
+            : {}),
+          ...(textAttribute(attrs, 'portal.probe')
+            ? { probe: textAttribute(attrs, 'portal.probe') }
+            : {}),
         };
         for (const scopeEntry of Array.isArray(entry.scopeSpans) ? entry.scopeSpans : []) {
           for (const item of Array.isArray(record(scopeEntry).spans) ? record(scopeEntry).spans as unknown[] : []) {
@@ -1254,7 +1286,13 @@ export class KongAdapter implements GatewayAdapter {
             const spanAttrs = attributes(span.attributes);
             const startNs = String(span.startTimeUnixNano ?? '0');
             const endNs = String(span.endTimeUnixNano ?? startNs);
-            const path = spanAttrs['http.target']?.split('?')[0];
+            const method = textAttribute(spanAttrs, 'http.method', 'http.request.method');
+            const path = pathAttribute(spanAttrs);
+            const statusCode = integerAttribute(
+              spanAttrs,
+              'http.status_code',
+              'http.response.status_code',
+            );
             spans.push({
               traceId: Buffer.from(String(span.traceId ?? ''), 'base64').toString('hex'),
               spanId: Buffer.from(String(span.spanId ?? ''), 'base64').toString('hex'),
@@ -1265,16 +1303,18 @@ export class KongAdapter implements GatewayAdapter {
               startNs,
               durationNs: (BigInt(endNs) - BigInt(startNs)).toString(),
               status: String(record(span.status).code ?? '0'),
-              ...(path && spanAttrs['http.method'] && spanAttrs['http.status_code']
+              ...(path && method && statusCode !== undefined
                 ? {
                     request: {
-                      method: spanAttrs['http.method'],
+                      method,
                       path,
-                      statusCode: Number(spanAttrs['http.status_code']),
+                      statusCode,
                     },
                   }
                 : {}),
-              ...(spanAttrs['http.route'] ? { routePath: spanAttrs['http.route'] } : {}),
+              ...(textAttribute(spanAttrs, 'http.route')
+                ? { routePath: textAttribute(spanAttrs, 'http.route') }
+                : {}),
             });
           }
         }
