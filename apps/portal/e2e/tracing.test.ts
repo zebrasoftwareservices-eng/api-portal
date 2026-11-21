@@ -144,6 +144,135 @@ test('026 AC4/6: quickstart probe passes and a selected call renders a waterfall
   await expect(latest).toContainText('Slowest');
 });
 
+test('026 AC6: keeps and switches the latest trace independently for two APIs', async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const request = page.request;
+  expect(
+    (
+      await request.post('/api/auth/sign-in/email', {
+        data: { email: 'admin@example.com', password: 'change-me-now' },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (await request.put('/api/v1/admin/tracing', { data: settings })).status(),
+  ).toBe(200);
+
+  const id = crypto.randomUUID();
+  const slug = `trace-${id}`;
+  const title = `Trace API ${id}`;
+  const kong = process.env.KONG_ADMIN_URL ?? 'http://localhost:8001';
+  expect(
+    (
+      await request.put(`${kong}/services/${id}`, {
+        data: { name: slug, url: 'http://httpbin:8080' },
+      })
+    ).ok(),
+  ).toBe(true);
+  expect(
+    (
+      await request.post(`${kong}/services/${id}/routes`, {
+        data: { paths: [`/${slug}`] },
+      })
+    ).ok(),
+  ).toBe(true);
+  const imported = await request.post('/api/v1/admin/apis', {
+    data: {
+      slug,
+      gatewayServiceId: id,
+      spec: {
+        content: JSON.stringify({
+          openapi: '3.1.0',
+          info: { title, version: '1.0.0' },
+          paths: {
+            '/get': {
+              get: { responses: { '200': { description: 'OK' } } },
+            },
+          },
+        }),
+      },
+    },
+  });
+  expect(imported.status(), await imported.text()).toBe(201);
+  const tracedApi = await imported.json();
+  const catalog = await (await request.get('/api/v1/apis')).json();
+  const sample = catalog.items.find(
+    (api: { slug: string }) => api.slug === 'sample',
+  );
+  expect(sample).toBeTruthy();
+
+  const tracing = await (await request.get('/api/v1/admin/tracing')).json();
+  for (const api of [sample, tracedApi]) {
+    if (
+      !(tracing.selections as { kind: string; targetId: string }[]).some(
+        (selection) =>
+          selection.kind === 'api' && selection.targetId === api.id,
+      )
+    ) {
+      const selected = await request.post(
+        '/api/v1/admin/tracing/selections',
+        { data: { kind: 'api', targetId: api.id } },
+      );
+      expect([200, 201]).toContain(selected.status());
+    }
+  }
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get('/api/v1/admin/tracing')).json()).apply
+          .status,
+      { timeout: 30_000 },
+    )
+    .toBe('applied');
+
+  const proxy = process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000';
+  const call = (path: string) =>
+    request.get(
+      '/api/v1/try-it?scalar_url=' + encodeURIComponent(`${proxy}${path}`),
+    );
+  const latest = async (apiId: string) => {
+    const response = await request.get(
+      `/api/v1/admin/tracing/latest?apiId=${apiId}`,
+    );
+    expect(response.status(), await response.text()).toBe(200);
+    return (await response.json()).trace;
+  };
+
+  await call('/sample/get');
+  await expect
+    .poll(async () => (await latest(sample.id))?.request?.path, {
+      timeout: 30_000,
+    })
+    .toBe('/sample/get');
+  await call(`/${slug}/get`);
+  await expect
+    .poll(async () => (await latest(tracedApi.id))?.request?.path, {
+      timeout: 30_000,
+    })
+    .toBe(`/${slug}/get`);
+
+  const tracedBefore = await latest(tracedApi.id);
+  await page.goto('/admin/tracing');
+  const picker = page.getByLabel('Show the latest call to');
+  await expect(picker).toHaveValue(tracedApi.id, { timeout: 30_000 });
+  await expect(page.getByRole('main')).toContainText(`/${slug}/get`);
+  await picker.selectOption(sample.id);
+  await expect(page.getByRole('main')).toContainText('/sample/get');
+  await picker.selectOption(tracedApi.id);
+  await expect(page.getByRole('main')).toContainText(`/${slug}/get`);
+
+  const sampleBefore = await latest(sample.id);
+  await call('/sample/get');
+  await expect
+    .poll(async () => (await latest(sample.id))?.traceId, {
+      timeout: 30_000,
+    })
+    .not.toBe(sampleBefore.traceId);
+  expect((await latest(tracedApi.id)).traceId).toBe(tracedBefore.traceId);
+});
+
 test('026 AC10: the quickstart Kong node sets the tracing instrumentations and sampling rate', () => {
   const compose = readFileSync(
     resolve(process.cwd(), 'deploy/docker-compose.yml'),
