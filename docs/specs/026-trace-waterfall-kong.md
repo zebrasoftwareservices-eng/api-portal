@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: uat  # draft → ready → designed → building → testing → uat → review → approved → done
+status: review  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -465,6 +465,7 @@ Long notes go in `docs/specs/log/026.md`, not here.
 - [ ] The selections table names an API by its slug (`sample`) while the picker shows its title (`Sample HTTP API`) (minor)
 - [x] The first Test right after a Kong restart reported "Kong can't reach the trace endpoint"; the next Test passed (minor, seen once)
 - [ ] The Tracing API picker shows several APIs with the same title (three "Sample HTTP API", two "Orders QA") with nothing to tell them apart (minor)
+- [ ] The latest-call card says "Received 1 minutes ago" and announces an unrounded duration ("5.847296 milliseconds") (minor)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
@@ -473,10 +474,10 @@ Long notes go in `docs/specs/log/026.md`, not here.
 | 3 Turn-on dialog names node settings, restart, quickstart values | Pass | "Set these two node settings … then restart the Kong node"; `KONG_TRACING_INSTRUMENTATIONS=request,router,balancer,plugin_rewrite,plugin_access,plugin_header_filter`, `KONG_TRACING_SAMPLING_RATE=1`, endpoint `http://server:4000/api/v1/internal/traces/kong` |
 | 4 Test passes on the quickstart | Pass | "✓ Test passed — Kong delivered a test trace to the portal." in about 1 s |
 | 5 Test names the failure cause | Pass | Unreachable endpoint: "Kong can't reach the trace endpoint" (previous tester, re-seen as "Last test failed") |
-| 6 Latest call waterfall with Slowest | Pass | "GET /sample/get ⚠ 401 Unauthorized 14.3 ms total"; "⚠ Slowest: key-auth plugin — 9.76 ms, 68% of the call"; rows Request, Router, Plugin key-auth, Plugin opentelemetry; no query string |
+| 6 Latest call waterfall, one per API | Pass | Retest: two traced APIs; "Show the latest call to:" switches between "GET /qa-duplicate-a/anything ✓ 200 OK 14.2 ms total" (Slowest: opentelemetry plugin) and "POST /sample/post ⚠ 401 Unauthorized 5.85 ms total" (Slowest: key-auth plugin); a new call to one left the other's Trace ID unchanged; bars align with the axis |
 | 9 Non-admin cannot reach tracing | Pass | UI-signed-up developer: "You don't have access to Tracing"; `/api/v1/admin/tracing/latest` 403 problem+json |
-| Mobile 390×844 | Pass | No horizontal scroll (scrollWidth 390); waterfall stacks as cards with "⚠ Slowest" badge |
-| Keyboard | Pass | Retest: Enter on Edit settings opens "Tracing settings"; Escape closes it and focus returns to "Edit settings" |
+| Mobile 390×844 | Pass | Retest: scrollWidth 390; API selector full width; waterfall cards with aligned bars and "⚠ Slowest" badge |
+| Keyboard | Pass | Retest: Tab reaches "Show the latest call to" with a visible focus outline; typing "s" switches to Sample HTTP API and the card updates |
 
 One row per user-visible criterion. Evidence is a short quote of what was on the screen.
 Name an image only for an open failure. On a retest, change only the failed rows.
