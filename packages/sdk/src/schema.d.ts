@@ -1876,11 +1876,11 @@ export interface paths {
         };
         /**
          * The latest traced call and its spans
-         * @description Spec 026 AC 6, 7. One latest trace for the whole portal (open question 1 default). A newer
-         *     traced call replaces it; the replaced one can't be fetched. `trace` is null until a traced
-         *     call arrives. Holds only the allowlisted fields: no query string, client IP, upstream
-         *     address, header, body or other span attribute. Span labels are computed when read, from
-         *     Kong's span names. The UI polls this every 3 seconds while the page is open.
+         * @description Spec 026 AC 6, 7. One latest trace is kept per API. A newer traced call for the requested
+         *     API replaces it; the replaced one can't be fetched. `trace` is null until a traced call
+         *     arrives for that API. Holds only the allowlisted fields: no query string, client IP,
+         *     upstream address, header, body or other span attribute. Span labels are computed when read,
+         *     from Kong's span names. The UI polls this every 3 seconds while the page is open.
          */
         get: operations["getLatestTrace"];
         put?: never;
@@ -6539,7 +6539,9 @@ export interface operations {
     };
     getLatestTrace: {
         parameters: {
-            query?: never;
+            query: {
+                apiId: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
