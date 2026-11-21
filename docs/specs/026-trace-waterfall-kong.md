@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: review  # draft → ready → designed → building → testing → uat → review → approved → done
+status: building  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -171,7 +171,11 @@ Kong facts below were checked in the quickstart's `kong:3.9` image.
 `kong.balancer` (attribute `try_count`) and the router is `kong.router`. The
 `rewrite phase: <plugin>` and `balancer try #N` names belong to older Kong releases. The labels
 are the ones criterion 6 asks for. `classifySpan` maps both naming schemes, and tests use the
-3.9 names. The product manager should correct the criterion's wording.
+3.9 names. Proposed wording for criterion 6 (product manager to adopt): "the root span (`kong`) is
+labelled request, `kong.router` is labelled router, spans named `kong.<rewrite|access|header_filter>.plugin.<name>`
+are labelled plugin with that name, each `kong.balancer` span is labelled upstream, and the longest
+span other than the root is marked slowest". The older `<phase> phase: <plugin>` and
+`balancer try #N` names stay supported.
 
 ### Decisions on the open questions
 - **Tech lead: where the latest trace lives.** One overwritten Postgres row (`trace_latest`).
@@ -230,7 +234,7 @@ session. A signed-out caller gets 401 and a non-admin gets 403 problem+json (cri
 | `POST /v1/admin/tracing/test` | The Test, without saving settings | 200 `TracingTestResult` (node values, warnings); 422 `tracing-check-failed` with `cause` and `node`; 409 `tracing-unsupported`; 429 |
 | `POST /v1/admin/tracing/selections` | `{kind: api\|developer\|team, targetId}`, idempotent, queues an apply | 201 new, 200 existing; 404 unknown target; 409 `tracing-not-configured` |
 | `DELETE /v1/admin/tracing/selections/{id}` | Turn one off, queue an apply | 204; 404 |
-| `GET /v1/admin/tracing/developers?q=` | Find developers for the add control. Teams use `GET /v1/admin/teams`, APIs use `GET /v1/admin/apis` | 200 |
+| `GET /v1/admin/tracing/developers?q=` | Find developers for the add control. Teams use `GET /v1/admin/teams`, APIs use the published catalog `GET /v1/apis` (there is no `GET /v1/admin/apis`) | 200 |
 | `GET /v1/admin/tracing/latest` | `{trace: Trace \| null}`. The UI polls every 3 s | 200 |
 | `POST /v1/internal/traces/kong` | Kong's OTLP/HTTP Protobuf, `traceIngestToken` bearer, up to 1 MB | 200 empty OTLP response; 400; 401; 413; 415; 422 `trace-not-selected` |
 
@@ -290,8 +294,9 @@ The stored data stays as criterion 7 lists it.
 4. If `instance` is not this portal, or no listed selection exists now, return 422
    `trace-not-selected` (criterion 8).
 5. In one transaction: lock `trace_latest`, group spans by trace id, then merge, replace or drop
-   per ADR 0017 §3. The API is `resource.apiId`, else the root's `routePath` matched against the
-   cached published-API service routes. Return 200.
+   per ADR 0017 §3. The API is `resource.apiId` (set only on API-scoped plugins). The planned
+   fallback, matching the root's `routePath` against cached published-API routes, did not ship:
+   traces from developer or team selections have `api: null` (see Review). Return 200.
 Nothing from the body is logged. Log lines carry the trace id and span count only.
 
 ### Risks and how to test them
@@ -360,6 +365,7 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Quickstart Kong rejects tracing plugin during Test
 - [x] [backend] Fix: Latest trace omits request method path and status
 - [x] [frontend] Fix: Tracing API picker lists no APIs, so an API selection cannot be added
+- [ ] [backend] Fix: Trace merge overwrites `started_at` with a child span's start when a trace's root arrives in an earlier batch than its children (Review B1); add the two-halves-in-both-orders merge test
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -461,6 +467,44 @@ Earlier rounds go in `docs/specs/log/026.md`. The full report is `docs/uat/026/r
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/026.md`.
 
+Reviewed `git diff main...HEAD` at `c6a0210`. Suite not re-run: the last full run is QA's at
+`8aa14f1` (117 passed, 2 skipped, 1 failed: QA's own picker step, fixed test-only; 026 e2e 4/4
+after), and nothing but tests and docs changed since `1a8648a`. Criteria 1–10 are implemented and
+tested; contract, problem+json, token handling (encrypted, constant-time compare, never logged),
+tagged idempotent Kong writes and the compose values match the design.
+
+**Blocking**
+- **B1 — split-trace merge shifts the waterfall.** `apps/server/src/tracing.ts:446` takes
+  `started` from `spans[0]` when the batch has no root, and `:455` writes it to `started_at` even
+  when merging into the same trace. Kong enqueues a request's spans root first and batches up to
+  200 spans, so under load the root lands in one batch and its children in the next; the second
+  batch moves `started_at` to a child's start and every `startOffsetMs` (`:234`) is shifted, the
+  root's negative. Fix: when `previous.traceId === traceId`, keep the earlier of
+  `previous.startedAt` and `started` (or the root's start once known). The design's merge test
+  (two halves in both orders, ADR 0017 §3) was not written; add it.
+
+**Suggestions** (no Fix task)
+- S1 — Route-path API match not built. `apps/server/src/tracing.ts:455` uses only
+  `resource.apiId`; the ticked task's `routePath` match with a 60 s cache is absent, so traces from
+  developer or team selections, and calls hitting both an API and a consumer selection, show no
+  API. Design text now says so. Follow-up.
+- S2 — `apps/server/src/tracing.ts:409` returns `name: api.slug`; the contract's `name` should be
+  the API title. Same root as the open minor on slug vs title.
+- S3 — `apps/server/src/tracing.ts:313-321`: a Test before the first Save inserts the
+  `tracing_settings` row, so `configured` turns true and selections can be added with unsaved
+  values. Store the probe nonce without marking the settings configured.
+- S4 — The Test has no route-specific rate limit (`auth-limits` in the design); it relies on the
+  global limiter. Each Test holds a request for up to 10 s.
+- S5 — `apps/portal/e2e/setup-gateways.test.ts:39` (pre-existing, unchanged here) runs
+  `docker compose down -v` on whatever project the environment names; without
+  `COMPOSE_PROJECT_NAME` that is the default project and wipes a developer's quickstart volume.
+  Guard it: refuse to run unless `COMPOSE_PROJECT_NAME` is set and not the default, or an explicit
+  opt-in variable is set. Not a blocker for 026; recorded as a follow-up.
+- Criterion 6's span-name wording is out of date; proposed text is in the Technical design.
+
+Open minors (slug vs title, first Test after a Kong restart, duplicate picker titles) stay in
+Bugs. Status: `building` for B1.
+
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
 - [ ] Every user story passes in the browser (User testing section)
@@ -511,3 +555,9 @@ return the spec to building. Earlier rounds go in `docs/specs/log/026.md`.
   - priority: high
   - create when the Linear limit allows
   - body: Steps: sign in as the seeded admin, open /admin/tracing, look at What's traced with Kind = API; then switch Kind to Developer and back to API. Expected: the Target picker lists the portal's APIs (the quickstart sample API) so the admin can add an API selection (story 1, AC1). Actual: the Target picker only shows 'Search APIs…'; the page's GET /api/v1/admin/apis answers 404. After switching Developer -> API the API picker shows the developer accounts; choosing one and clicking Add shows 'That api no longer exists. Pick another.' (POST /api/v1/admin/tracing/selections 404). Reload brings back the empty list. An admin cannot add an API selection from the UI. Developer selections work. Screen: 1114x812 desktop, Orca built-in browser, http://localhost:3001, commit 83cf246. Image: selection-picker-fail.png (local).
+
+### Follow-ups
+- Guard the setup-gateways e2e helper so docker compose down -v never runs on the default quickstart project
+  setup-gateways.test.ts:39 runs docker compose down -v on the default project when COMPOSE_PROJECT_NAME is unset; guard it.
+- Match the trace root's http.route to a published API so developer and team traces name their API
+  tracing.ts:455 uses only resource.apiId; consumer-scoped traces have api null.
