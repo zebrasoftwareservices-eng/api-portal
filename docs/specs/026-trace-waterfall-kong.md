@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: testing  # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -440,22 +440,22 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   under the correct API. Server lint, typecheck and all 367 tests pass.
 
 ## Test report  _(qa-tester)_
-Commit tested: `d5fafc8` (HEAD `46f8ebf`, docs-only status commit on top) · Portal: `http://localhost:3001`
+Commit tested: `957e3b6` (HEAD `25e0305`, docs-only status commit on top) · Portal: `http://localhost:3001` (project `portal-tracing-5334`)
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
-| 1 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts`; `packages/adapter-kong/src/conformance.test.ts` | Pass — duplicate selection requests are idempotent, two reconciles converge, removal removes only the target, and real Kong accepts the portal-tagged probe/plugin configuration. |
-| 2 | `apps/server/src/tracing.test.ts` | Pass — an unselected batch is rejected and cannot replace a selected API's latest trace. |
-| 3 | `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — the dialog names both Kong settings and environment variables, explains restart, and pre-fills the quickstart values. |
-| 4 | `apps/portal/e2e/tracing.test.ts` | Pass — the live quickstart Test reports a pass inside the 15-second assertion. |
-| 5 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx` | Pass — gateway unreachable, tracing off, proxy unreachable and endpoint unreachable have distinct cause keys and failure copy. |
-| 6 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — split batches preserve the earliest root start in both orders; live traces render method/path/status, timings and Slowest; two APIs retain independent latest traces and the selector switches between them. |
-| 7 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts` | Pass — stored and returned fields are allowlisted and query tokens, network addresses, headers, bodies and extra attributes are absent. |
-| 8 | `apps/server/src/tracing.test.ts` | Pass — unsupported media, missing/wrong bearer tokens, oversized and unselected batches return problem+json without replacement, while resends deduplicate spans. |
-| 9 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — anonymous, developer and expired sessions are refused on every admin tracing endpoint, and the page is not shown. |
-| 10 | `apps/portal/e2e/tracing.test.ts`; `deploy/e2e/quickstart.spec.ts` | Pass — compose has the exact allowed instrumentations and sampling rate; the isolated rebuild became healthy in under five minutes and serves the seeded portal. |
+| 1 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts`; `packages/adapter-kong/src/conformance.test.ts`; `apps/portal/e2e/tracing.test.ts` | Pass. Duplicate selection requests are idempotent, two reconciles converge, and removal removes only its target. Live: a developer-account selection applies on real Kong and traces that developer's keyed calls. |
+| 2 | `apps/server/src/tracing.test.ts` | Pass. Unselected batches, consumer traces whose root route matches no published API, and child-only batches with no stored trace all get 422 and leave the shown trace unchanged. |
+| 3 | `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass. The dialog names both Kong settings and their environment variables, explains the restart, and pre-fills the quickstart values. |
+| 4 | `apps/portal/e2e/tracing.test.ts` | Pass. The live quickstart Test passes inside 15 seconds. |
+| 5 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx` | Pass. Gateway unreachable, tracing off, proxy unreachable and endpoint unreachable each have a distinct cause key and failure copy. |
+| 6 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass. A mixed consumer batch keeps each trace under its own root-route API. Root-then-child batches merge under that API. A batch with unresolved and resolved traces keeps only the resolved one. Live: one traced developer called two APIs, each API showed its own latest trace, and the second call did not replace the first API's trace. |
+| 7 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts`; `apps/portal/e2e/tracing.test.ts` | Pass. Stored and returned fields are allowlisted. Live: `?token=abc123` on a developer call is absent from the stored path. |
+| 8 | `apps/server/src/tracing.test.ts` | Pass. Unsupported media, missing or wrong tokens, oversized batches and batches outside the selection return problem+json without replacing the shown trace. Resends deduplicate spans. |
+| 9 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass. Anonymous, developer and expired sessions are refused on every admin tracing endpoint, and the page is not shown. |
+| 10 | `apps/portal/e2e/tracing.test.ts`; `deploy/e2e/quickstart.spec.ts` | Pass. Compose sets the exact instrumentations and sampling rate. The fresh isolated build came up healthy and serves the seeded catalog. |
 
-Full pass: `pnpm lint`, `pnpm typecheck` and `pnpm test` passed (server 366/366, portal 436/436 and Kong adapter 77/77). The one full `pnpm test:e2e` run recorded 100 passed, 2 skipped and 19 environment failures because its internal Compose helpers had not inherited this worktree's project/port variables; all 19 failures passed in focused reruns after supplying the complete isolated environment, including `SERVER_URL`. The five spec-026 Playwright tests passed in the full run, the first Test after an isolated Kong restart passed, and `portal-tracing-5334` remains up for UAT.
+Focused retest for build loop 7 (server only). `pnpm lint`, `pnpm typecheck` and `pnpm test` pass: server 368/368, portal 436/436, Kong adapter 77/77, db 11, sdk 16, theme 13. The isolated stack was built fresh after the Docker reinstall and seeded with the quickstart admin and sample API. All six spec-026 Playwright tests passed against it, including the new live developer-account journey, and so did the quickstart spec. The full `pnpm test:e2e` suite was not rerun; it passed at `f9bfe9e`, and this build changed only server ingest.
 
 Long notes go in `docs/specs/log/026.md`, not here.
 
@@ -475,6 +475,7 @@ Long notes go in `docs/specs/log/026.md`, not here.
 - [x] The first Test right after a Kong restart reported "Kong can't reach the trace endpoint"; the next Test passed (minor, seen once)
 - [ ] The Tracing API picker shows several APIs with the same title (three "Sample HTTP API", two "Orders QA") with nothing to tell them apart (minor)
 - [ ] The latest-call card says "Received 1 minutes ago" and announces an unrounded duration ("5.847296 milliseconds") (minor)
+- [ ] A consumer-scoped child-only batch that arrives before its root batch gets 422 and its spans are dropped, so the later root shows without them; same-batch reordering and root-then-child merge correctly (minor)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |

@@ -299,3 +299,144 @@ test('026 AC9: an anonymous visitor cannot open the admin trace page', async ({
     page.getByRole('heading', { name: 'Tracing', exact: true }),
   ).not.toBeVisible();
 });
+
+test('026 AC1/6: a traced developer account keeps one latest trace per called API', async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(120_000);
+  const admin = page.request;
+  expect(
+    (
+      await admin.post('/api/auth/sign-in/email', {
+        data: { email: 'admin@example.com', password: 'change-me-now' },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (await admin.put('/api/v1/admin/tracing', { data: settings })).status(),
+  ).toBe(200);
+
+  // A second Kong API that requires a key, imported into the portal.
+  const id = crypto.randomUUID();
+  const slug = `dev-trace-${id}`;
+  const kong = process.env.KONG_ADMIN_URL ?? 'http://localhost:8001';
+  for (const [path, data] of [
+    [`/services/${id}`, { name: slug, url: 'http://httpbin:8080' }],
+    [`/services/${id}/routes`, { paths: [`/${slug}`] }],
+    [`/services/${id}/plugins`, { name: 'key-auth' }],
+  ] as const) {
+    const response = path.endsWith('/routes') || path.endsWith('/plugins')
+      ? await admin.post(`${kong}${path}`, { data })
+      : await admin.put(`${kong}${path}`, { data });
+    expect(response.ok(), await response.text()).toBe(true);
+  }
+  const imported = await admin.post('/api/v1/admin/apis', {
+    data: {
+      slug,
+      gatewayServiceId: id,
+      spec: {
+        content: JSON.stringify({
+          openapi: '3.1.0',
+          info: { title: `Developer Trace ${id}`, version: '1.0.0' },
+          paths: {
+            '/get': { get: { responses: { '200': { description: 'OK' } } } },
+          },
+        }),
+      },
+    },
+  });
+  expect(imported.status(), await imported.text()).toBe(201);
+  const second = await imported.json();
+  const sample = (await (await admin.get('/api/v1/apis')).json()).items.find(
+    (api: { slug: string }) => api.slug === 'sample',
+  );
+  expect(sample).toBeTruthy();
+
+  // The developer signs up and gets one key for both APIs.
+  const developerContext = await browser.newContext({
+    baseURL: test.info().project.use.baseURL,
+  });
+  try {
+    const developer = developerContext.request;
+    expect(
+      (
+        await developer.post('/api/auth/sign-up/email', {
+          data: {
+            name: 'Trace Developer',
+            email: `trace-dev-${id}@example.com`,
+            password: 'QA-password-123',
+          },
+        })
+      ).ok(),
+    ).toBe(true);
+    const me = await (await developer.get('/api/v1/me')).json();
+    const app = await developer.post('/api/v1/apps', {
+      data: { name: 'Traced app', apiIds: [sample.id, second.id] },
+    });
+    expect(app.status(), await app.text()).toBe(201);
+    const key = (await app.json()).credential.key as string;
+
+    // Only the developer account is selected for tracing, not either API.
+    const selected = await admin.post('/api/v1/admin/tracing/selections', {
+      data: { kind: 'developer', targetId: me.id },
+    });
+    expect([200, 201]).toContain(selected.status());
+    await expect
+      .poll(
+        async () =>
+          (await (await admin.get('/api/v1/admin/tracing')).json()).apply
+            .status,
+        { timeout: 30_000 },
+      )
+      .toBe('applied');
+
+    const proxy = process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000';
+    const call = async (path: string) => {
+      const response = await developer.get(`${proxy}${path}`, {
+        headers: { apikey: key },
+      });
+      expect(response.status(), path).toBe(200);
+    };
+    const latest = async (apiId: string) => {
+      const response = await admin.get(
+        `/api/v1/admin/tracing/latest?apiId=${apiId}`,
+      );
+      expect(response.status(), await response.text()).toBe(200);
+      return (await response.json()).trace;
+    };
+
+    const sampleBefore = (await latest(sample.id))?.traceId;
+    await call('/sample/get?token=abc123');
+    await expect
+      .poll(async () => (await latest(sample.id))?.traceId, { timeout: 30_000 })
+      .not.toBe(sampleBefore);
+    const sampleTrace = await latest(sample.id);
+    expect(sampleTrace.request).toMatchObject({ method: 'GET', path: '/sample/get', statusCode: 200 });
+    expect(sampleTrace.api.id).toBe(sample.id);
+
+    await call(`/${slug}/get`);
+    await expect
+      .poll(async () => (await latest(second.id))?.request?.path, {
+        timeout: 30_000,
+      })
+      .toBe(`/${slug}/get`);
+    const secondTrace = await latest(second.id);
+    expect(secondTrace.api.id).toBe(second.id);
+    expect(secondTrace.traceId).not.toBe(sampleTrace.traceId);
+    expect(JSON.stringify(secondTrace)).not.toContain('abc123');
+
+    // The second API's call did not replace the sample API's latest trace.
+    expect((await latest(sample.id)).traceId).toBe(sampleTrace.traceId);
+    const newest = await (await admin.get('/api/v1/admin/tracing/latest')).json();
+    expect(newest.apis.map((api: { id: string }) => api.id)).toEqual(
+      expect.arrayContaining([sample.id, second.id]),
+    );
+
+    await admin.delete(
+      `/api/v1/admin/tracing/selections/${(await selected.json()).id}`,
+    );
+  } finally {
+    await developerContext.close();
+  }
+});

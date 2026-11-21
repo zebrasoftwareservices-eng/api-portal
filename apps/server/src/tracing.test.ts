@@ -619,6 +619,56 @@ describe('trace ingest and latest trace', () => {
     expect(stored!.spans).toHaveLength(3);
   });
 
+  it('AC2 and AC8 failure paths: drops consumer-scoped traces that resolve to no published API', async () => {
+    await saveSettings();
+    const developerSelectionId = uuidv7();
+    const adminId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'admin')))[0]!.id;
+    const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
+    await connection.db.insert(tracingSelections).values({
+      id: developerSelectionId,
+      kind: 'developer',
+      userId: developerId,
+      createdBy: adminId,
+    });
+    const consumer = (traceId: string, routePath: string | undefined, startedMs: number) => {
+      const trace = batch(traceId, developerSelectionId, startedMs);
+      trace.resource = { instance: instanceId, selections: [developerSelectionId] };
+      trace.spans[0] = { ...trace.spans[0]!, routePath };
+      return trace;
+    };
+    const now = Date.now();
+
+    const shown = consumer('a'.repeat(32), '/sample', now);
+    expect((await ingest(shown)).statusCode).toBe(200);
+
+    const unknownRoute = await ingest(consumer('d'.repeat(32), '/unpublished', now + 1000));
+    expect(unknownRoute.statusCode).toBe(422);
+    expect(unknownRoute.headers['content-type']).toContain('application/problem+json');
+    const noRoute = await ingest(consumer('e'.repeat(32), undefined, now + 1000));
+    expect(noRoute.statusCode).toBe(422);
+    const orphan = consumer('f'.repeat(32), '/orders', now + 1000);
+    const orphanChildren = await ingest({ ...orphan, spans: orphan.spans.slice(1) });
+    expect(orphanChildren.statusCode).toBe(422);
+    expect(orphanChildren.headers['content-type']).toContain('application/problem+json');
+
+    let rows = await connection.db.select().from(traceLatest);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ scopeKey: apiId, traceId: 'a'.repeat(32) });
+    expect(rows[0]!.spans).toHaveLength(3);
+
+    const mixed = consumer('9'.repeat(32), '/unpublished', now + 2000);
+    const ordersCall = consumer('8'.repeat(32), '/orders', now + 2000);
+    expect((await ingest({ ...mixed, spans: [...mixed.spans, ...ordersCall.spans] })).statusCode).toBe(200);
+    rows = await connection.db.select().from(traceLatest);
+    expect(rows.map((row) => [row.scopeKey, row.traceId]).sort()).toEqual(
+      [
+        [apiId, 'a'.repeat(32)],
+        [apiBId, '8'.repeat(32)],
+      ].sort(),
+    );
+    expect(rows.flatMap((row) => row.spans as Array<{ traceId: string }>).some((span) => span.traceId === '9'.repeat(32))).toBe(false);
+  });
+
   it('AC6: replaces an older call, classifies real Kong 3.9 names, and marks one slowest span', async () => {
     await saveSettings();
     const selectionId = uuidv7();
