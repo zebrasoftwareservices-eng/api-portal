@@ -21,7 +21,9 @@ type Raw<T> = { data?: T; error?: unknown; response: Response };
 type TracingClient = {
   GET(path: '/v1/admin/tracing'): Promise<Raw<TracingState>>;
   GET(path: '/v1/admin/tracing/latest'): Promise<Raw<{ trace: Trace | null }>>;
-  GET(path: '/v1/admin/apis'): Promise<Raw<{ items: Target[] }>>;
+  GET(
+    path: '/v1/apis',
+  ): Promise<Raw<{ items: Array<{ id: string; slug: string; title: string }> }>>;
   GET(path: '/v1/admin/teams'): Promise<Raw<{ items: Target[] }>>;
   GET(
     path: '/v1/admin/tracing/developers',
@@ -88,16 +90,21 @@ export const tracingApi = {
           params: { query: { q } },
         }),
       );
-    const result = await settle(() =>
-      kind === 'api'
-        ? client.GET('/v1/admin/apis')
-        : client.GET('/v1/admin/teams'),
-    );
-    if (result.data && kind === 'api')
-      result.data.items = result.data.items.map((item) => ({
-        ...item,
-        name: item.name || (item as Target & { title?: string }).title || '',
-      }));
-    return result;
+    if (kind === 'api') {
+      const result = await settle(() => client.GET('/v1/apis'));
+      return {
+        ...result,
+        data: result.data
+          ? {
+              items: result.data.items.map(({ id, slug, title }) => ({
+                id,
+                slug,
+                name: title,
+              })),
+            }
+          : undefined,
+      };
+    }
+    return settle(() => client.GET('/v1/admin/teams'));
   },
 };

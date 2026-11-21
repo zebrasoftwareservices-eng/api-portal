@@ -359,7 +359,7 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Trace ingest accepts unsupported media type
 - [x] [backend] Fix: Quickstart Kong rejects tracing plugin during Test
 - [x] [backend] Fix: Latest trace omits request method path and status
-- [ ] [frontend] Fix: Tracing API picker lists no APIs, so an API selection cannot be added
+- [x] [frontend] Fix: Tracing API picker lists no APIs, so an API selection cannot be added
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -398,6 +398,13 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   All 77 adapter tests pass, and a live selected call persisted `GET /sample/get` with status 401
   without its query string, client IP, or peer address.
 
+- Frontend (build loop 5): the API picker now reads `GET /v1/apis`. The contract's `GET /v1/admin/apis` has
+  only a POST, and the catalog list returns every published API to an admin session, hidden and
+  restricted ones included, so no server route was added. Changing the kind clears the target list,
+  the selected target and the search, and drops late responses for the previous kind. Escape from the
+  settings dialog returns focus to Edit settings. Portal lint, typecheck and 435 tests pass. The
+  tech lead should correct the contract table's `GET /v1/admin/apis` to `GET /v1/apis`.
+
 ## Test report  _(qa-tester)_
 Commit tested: `d7b9d1d` · Portal: `http://localhost:3001`
 
@@ -428,8 +435,8 @@ Long notes go in `docs/specs/log/026.md`, not here.
 - [x] Trace ingest accepts unsupported media type (major)
 - [x] Quickstart Kong rejects tracing plugin during Test (major)
 - [x] Latest trace omits request method path and status (major)
-- [ ] Tracing API picker lists no APIs, so an API selection cannot be added (major)
-- [ ] Escape from Tracing settings dialog leaves focus on the page body, not Edit settings (minor)
+- [x] Tracing API picker lists no APIs, so an API selection cannot be added (major)
+- [x] Escape from Tracing settings dialog leaves focus on the page body, not Edit settings (minor)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |

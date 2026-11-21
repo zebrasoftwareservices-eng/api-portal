@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from 'react';
 import {
   Badge,
   Button,
@@ -170,6 +177,7 @@ export function TracingSettingsCard({
   onSaved(value: TracingState): void;
 }) {
   const [open, setOpen] = useState(false);
+  const editButton = useRef<HTMLButtonElement>(null);
   const rate = tracing.settings.samplingRate;
   const gloss =
     rate === 1
@@ -182,6 +190,7 @@ export function TracingSettingsCard({
       <div className="tracing-card-heading">
         <h2>Kong settings</h2>
         <Button
+          ref={editButton}
           variant={tracing.configured ? 'secondary' : 'default'}
           onClick={() => setOpen(true)}
         >
@@ -246,6 +255,7 @@ export function TracingSettingsCard({
         tracing={tracing}
         onOpenChange={setOpen}
         onSaved={onSaved}
+        returnFocusRef={editButton}
       />
     </Card>
   );
@@ -301,11 +311,13 @@ export function TracingSettingsDialog({
   tracing,
   onOpenChange,
   onSaved,
+  returnFocusRef,
 }: {
   open: boolean;
   tracing: TracingState;
   onOpenChange(value: boolean): void;
   onSaved(value: TracingState): void;
+  returnFocusRef?: RefObject<HTMLButtonElement | null>;
 }) {
   const [values, setValues] = useState(tracing.settings);
   const [result, setResult] = useState<TestState>({ kind: 'idle' });
@@ -414,6 +426,12 @@ export function TracingSettingsDialog({
         <Dialog.Content
           className="dialog tracing-dialog"
           aria-describedby="tracing-dialog-lead"
+          onCloseAutoFocus={(event) => {
+            if (returnFocusRef?.current?.isConnected) {
+              event.preventDefault();
+              returnFocusRef.current.focus();
+            }
+          }}
         >
           <div className="tracing-dialog-body stack">
             <Dialog.Title>
@@ -689,22 +707,26 @@ export function TracingSelections({
   const [query, setQuery] = useState('');
   const [working, setWorking] = useState(false);
   const [error, setError] = useState('');
-  const loadTargets = useCallback(async () => {
-    const response = await tracingApi.targets(kind, query);
-    if (response.data) setTargets(response.data.items);
-  }, [kind, query]);
   useEffect(() => {
     if (!tracing.configured) return;
-    const timer = setTimeout(
-      () => void loadTargets(),
-      kind === 'developer' ? 250 : 0,
-    );
-    return () => clearTimeout(timer);
-  }, [kind, loadTargets, tracing.configured]);
-  useEffect(() => {
+    let active = true;
+    const timer = setTimeout(() => {
+      void tracingApi.targets(kind, query).then((response) => {
+        if (active && response.data) setTargets(response.data.items);
+      });
+    }, kind === 'developer' ? 250 : 0);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [kind, query, tracing.configured]);
+  const changeKind = (next: TracingSelection['kind']) => {
+    setKind(next);
+    setTargets([]);
     setTargetId('');
     setQuery('');
-  }, [kind]);
+    setError('');
+  };
   const add = async () => {
     if (!targetId) return;
     setWorking(true);
@@ -771,7 +793,7 @@ export function TracingSelections({
             value={kind}
             disabled={!tracing.configured || working}
             onChange={(event) =>
-              setKind(event.target.value as TracingSelection['kind'])
+              changeKind(event.target.value as TracingSelection['kind'])
             }
           >
             <option value="api">API</option>
