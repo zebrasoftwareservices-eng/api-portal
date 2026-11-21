@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: review  # draft → ready → designed → building → testing → uat → review → approved → done
+status: building  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -86,11 +86,13 @@ Evidence: [research brief](../research/show-opentelemetry-traces-for-one-api-re.
 6. **Given** tracing is on for the sample API on the quickstart **When** a developer sends one
    try-it call **Then** within 30 seconds the admin trace page shows that call's method, path
    without the query string, status code and total duration in milliseconds, and a waterfall of
-   each span's name, start offset and duration on one time axis: the root span is labelled
-   request, spans named `rewrite|access|header_filter phase: <plugin>` are labelled plugin with
-   the plugin name, `balancer try #N` is labelled upstream, and the longest span other than the
-   root is marked slowest; **and when** a second traced call is made, within 30 seconds the page
-   shows only the second call and the first can no longer be fetched through the API.
+   each span's name, start offset and duration on one time axis: the root span (`kong`) is
+   labelled request, `kong.router` is labelled router, spans named
+   `kong.<rewrite|access|header_filter>.plugin.<name>` are labelled plugin with that name, each
+   `kong.balancer` span is labelled upstream, and the longest span other than the root is marked
+   slowest (the older `<phase> phase: <plugin>` and `balancer try #N` names stay supported);
+   **and when** a second traced call to the same API is made, within 30 seconds the page shows
+   only the second call for that API and the first can no longer be fetched through the API.
 7. **Given** a traced call sent with a query string (`?token=abc123`), custom headers and a body,
    and a Kong span that carries a non-allowlisted attribute (for example a username) **When** its
    trace is kept and then fetched through the API **Then** what the server keeps and returns holds
@@ -177,11 +179,7 @@ Kong facts below were checked in the quickstart's `kong:3.9` image.
 `kong.balancer` (attribute `try_count`) and the router is `kong.router`. The
 `rewrite phase: <plugin>` and `balancer try #N` names belong to older Kong releases. The labels
 are the ones criterion 6 asks for. `classifySpan` maps both naming schemes, and tests use the
-3.9 names. Proposed wording for criterion 6 (product manager to adopt): "the root span (`kong`) is
-labelled request, `kong.router` is labelled router, spans named `kong.<rewrite|access|header_filter>.plugin.<name>`
-are labelled plugin with that name, each `kong.balancer` span is labelled upstream, and the longest
-span other than the root is marked slowest". The older `<phase> phase: <plugin>` and
-`balancer try #N` names stay supported.
+3.9 names. Criterion 6 now uses the 3.9 names (adopted 2026-11-21).
 
 ### Decisions on the open questions
 - **Tech lead: where the latest trace lives.** One overwritten Postgres row (`trace_latest`).
@@ -194,17 +192,18 @@ span other than the root is marked slowest". The older `<phase> phase: <plugin>`
 - **Tech lead: a call matching both an API and a consumer selection.** Kong runs one instance of
   a plugin per request, the most specific scope, and a consumer beats a service. The consumer's
   instance exports, once. Its resource attributes list its selections. The API comes from matching
-  the root's `http.route` (ADR 0017 §6).
+  each trace's root `http.route` (ADR 0017 §6).
 - **Tech lead: one pull request?** Yes. Developer and team selection add one consumer-scoped plugin
   kind and one query, about a day. The ingest, the Test and the waterfall are the same either way.
   If the build overruns, the agreed cut is still developer and team selection.
-- **Elango (open), assumed defaults.** Each is isolated so a change is small:
-  1. *One latest trace per portal.* `trace_latest.scope_key` is always `'portal'`, set in one
-     function, `traceScopeKey(batch)`. Per API means returning the API id there and adding
-     `?apiId=` to `GET /latest`. There is no migration.
+- **Elango, 2026-11-21 (decisions 6–8).**
+  1. *One latest trace per API.* `trace_latest.scope_key` is the API id, returned by
+     `traceScopeKey(batch)` once the trace's API is resolved: `portal.api_id` for an API-scoped
+     plugin, otherwise the trace's root `http.route` matched against `apis.route_path`.
+     `GET /latest?apiId=` picks one API; without it the newest is returned, and `apis` lists every
+     API that has a latest trace for the UI selector. There is no migration.
   2. *A developer account covers the active apps that developer created* (`apps.created_by`), in
-     any team. `resolveSelectionApps(selection)` is the only place this is decided. Membership
-     means swapping its query for one on `team_members`.
+     any team. `resolveSelectionApps(selection)` is the only place this is decided.
   3. *Saving after a failing Test is allowed.* The dialog shows the failure and still saves, so
      an operator can save, then restart Kong. The constant `TRACING_REQUIRE_PASSING_TEST = false`
      switches `PUT /admin/tracing` to 409 `/problems/tracing-test-required` unless the last Test
@@ -241,7 +240,7 @@ session. A signed-out caller gets 401 and a non-admin gets 403 problem+json (cri
 | `POST /v1/admin/tracing/selections` | `{kind: api\|developer\|team, targetId}`, idempotent, queues an apply | 201 new, 200 existing; 404 unknown target; 409 `tracing-not-configured` |
 | `DELETE /v1/admin/tracing/selections/{id}` | Turn one off, queue an apply | 204; 404 |
 | `GET /v1/admin/tracing/developers?q=` | Find developers for the add control. Teams use `GET /v1/admin/teams`, APIs use the published catalog `GET /v1/apis` (there is no `GET /v1/admin/apis`) | 200 |
-| `GET /v1/admin/tracing/latest` | `{trace: Trace \| null}`. The UI polls every 3 s | 200 |
+| `GET /v1/admin/tracing/latest?apiId=` | `{trace: Trace \| null, apis: [{id, name, receivedAt}]}`. `apiId` (optional, uuid) picks one API's latest trace; without it, the newest. `apis` is newest first. The UI polls every 3 s | 200; 400 bad `apiId` |
 | `POST /v1/internal/traces/kong` | Kong's OTLP/HTTP Protobuf, `traceIngestToken` bearer, up to 1 MB | 200 empty OTLP response; 400; 401; 413; 415; 422 `trace-not-selected` |
 
 `Trace` holds `traceId`, `startedAt`, `receivedAt`, `durationMs` (root), `api` (id, slug and name,
@@ -259,7 +258,7 @@ The stored data stays as criterion 7 lists it.
 - `tracing_selections`: `id uuid` (v7), `kind text` check (`api`, `developer`, `team`), and three
   nullable FKs `api_id`, `user_id` and `team_id` that cascade on delete. A check requires exactly
   the one matching `kind`, and each FK is unique. It also has `created_by` (set null) and `created_at`.
-- `trace_latest`: `scope_key text` PK (always `'portal'`, see default 1) and `trace_id`
+- `trace_latest`: `scope_key text` PK (the API id, decision 6) and `trace_id`
   (32 hex). It has `api_id` (FK `apis`, set null), `started_at`, `received_at`, `root_span_id`, and
   `request jsonb` holding `{method, path, statusCode}` or null. `spans jsonb` holds up to 1000 of
   `{spanId, parentSpanId, name, startNs, durationNs, status}`, with the nanosecond values as strings.
@@ -299,10 +298,14 @@ The stored data stays as criterion 7 lists it.
    trace is not touched.
 4. If `instance` is not this portal, or no listed selection exists now, return 422
    `trace-not-selected` (criterion 8).
-5. In one transaction: lock `trace_latest`, group spans by trace id, then merge, replace or drop
-   per ADR 0017 §3. The API is `resource.apiId` (set only on API-scoped plugins). The planned
-   fallback, matching the root's `routePath` against cached published-API routes, did not ship:
-   traces from developer or team selections have `api: null` (see Review). Return 200.
+5. Group spans by trace id and resolve each group's API: `resource.apiId` for an API-scoped
+   plugin (one service per plugin instance, so one API per batch). A consumer-scoped plugin's
+   batch can hold calls to several APIs, so each group uses its own root's `routePath` matched
+   against `apis.route_path`; a group without a root (the rest of a trace split across batches)
+   uses the `trace_latest` row that already holds that trace id. A group that resolves to no API
+   is dropped; if none resolves, 422 `trace-not-selected`.
+6. In one transaction, per group: lock that API's `trace_latest` row, then merge, replace or drop
+   per ADR 0017 §3. Return 200.
 Nothing from the body is logged. Log lines carry the trace id and span count only.
 
 ### Risks and how to test them
@@ -374,6 +377,7 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Trace merge overwrites `started_at` with a child span's start when a trace's root arrives in an earlier batch than its children (Review B1); add the two-halves-in-both-orders merge test
 - [x] [backend] Decision 6: keep one latest trace per API — `traceScopeKey(batch)` returns the API id (resolved from the service, or from the root's `http.route` for a consumer-scoped plugin), `GET /admin/tracing/latest?apiId=` in openapi.yaml and the SDK; a call to API A leaves API B's latest trace unchanged (test)
 - [x] [frontend] Decision 6: the Latest traced call card picks which traced API to show (`LatestTraceCard apiId`), defaulting to the most recently traced API; component test
+- [ ] [backend] Fix: resolve a consumer-scoped trace's API per trace, not per batch (Review B2). In `apps/server/src/tracing.ts:461-469`, resolve each trace-id group from its own root `routePath`; a group with no root uses the `trace_latest` row already holding that trace id; drop groups that resolve to no API and answer 422 only when none resolves. Tests: one consumer-scoped batch with roots for `/sample` and `/orders` stores each under its own API; a root batch then a child-only batch for a developer selection merges into one trace
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -487,43 +491,41 @@ Earlier rounds go in `docs/specs/log/026.md`. The full report is `docs/uat/026/r
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/026.md`.
 
-Reviewed `git diff main...HEAD` at `c6a0210`. Suite not re-run: the last full run is QA's at
-`8aa14f1` (117 passed, 2 skipped, 1 failed: QA's own picker step, fixed test-only; 026 e2e 4/4
-after), and nothing but tests and docs changed since `1a8648a`. Criteria 1–10 are implemented and
-tested; contract, problem+json, token handling (encrypted, constant-time compare, never logged),
-tagged idempotent Kong writes and the compose values match the design.
+Re-reviewed `git diff 37e128a..HEAD` at `55dee2e` against decisions 6–8 and the contract. Suite not
+re-run: QA's full pass covers the last code commit `d5fafc8` (server 366, portal 436, adapter 77,
+the five 026 Playwright tests), and only tests and docs changed after it. B1 is fixed: same-trace
+merges keep the earlier `started_at` (`apps/server/src/tracing.ts:486`), tested in both orders.
+`GET /latest?apiId=` and `apis` match `openapi.yaml` and the SDK; a bad `apiId` is a 400
+problem+json; the latest-trace `name` is now the API title. API-scoped tracing, the quickstart
+path, keeps one latest trace per API as decision 6 asks.
 
 **Blocking**
-- **B1 — split-trace merge shifts the waterfall.** `apps/server/src/tracing.ts:446` takes
-  `started` from `spans[0]` when the batch has no root, and `:455` writes it to `started_at` even
-  when merging into the same trace. Kong enqueues a request's spans root first and batches up to
-  200 spans, so under load the root lands in one batch and its children in the next; the second
-  batch moves `started_at` to a child's start and every `startOffsetMs` (`:234`) is shifted, the
-  root's negative. Fix: when `previous.traceId === traceId`, keep the earlier of
-  `previous.startedAt` and `started` (or the root's start once known). The design's merge test
-  (two halves in both orders, ADR 0017 §3) was not written; add it.
+- **B2 — a consumer-scoped batch is attributed to one API.** `apps/server/src/tracing.ts:461-469`
+  resolves the API once per batch from the first root's `routePath`, and `:487` stores every trace
+  in the batch under it. A consumer-scoped plugin (developer or team selection) has one Kong queue
+  for all the APIs the app calls, and Kong coalesces spans for up to 1 s into one batch. A
+  developer who calls API A then API B within that second gets B's call stored as A's latest
+  trace, and B shows nothing, against decision 6. The same code answers 422 to the second half of
+  a split trace (no root, so no `routePath`), so its children are lost and Kong retries for 60 s:
+  the B1 split case returns for developer and team selections. Fix task added.
 
 **Suggestions** (no Fix task)
-- S1 — Route-path API match not built. `apps/server/src/tracing.ts:455` uses only
-  `resource.apiId`; the ticked task's `routePath` match with a 60 s cache is absent, so traces from
-  developer or team selections, and calls hitting both an API and a consumer selection, show no
-  API. Design text now says so. Follow-up.
-- S2 — `apps/server/src/tracing.ts:409` returns `name: api.slug`; the contract's `name` should be
-  the API title. Same root as the open minor on slug vs title.
-- S3 — `apps/server/src/tracing.ts:313-321`: a Test before the first Save inserts the
-  `tracing_settings` row, so `configured` turns true and selections can be added with unsaved
-  values. Store the probe nonce without marking the settings configured.
+- S1 — Consumer-scoped route matching has no real-Kong test. The unit test sets `routePath`
+  by hand; nothing confirms Kong 3.9's root `http.route` equals `apis.route_path` for the
+  quickstart route. Add it to the Testcontainers case when B2 is fixed.
+- S2 — `apps/server/src/tracing.ts:465` matches with `limit(1)` and no published filter. Two APIs
+  on the same route path pick one arbitrarily; prefer published APIs and order by `created_at`.
+- S3 — `apps/server/src/tracing.ts:313-321`: a Test before the first Save still inserts the
+  `tracing_settings` row, so `configured` turns true with unsaved values (unchanged since last
+  round).
 - S4 — The Test has no route-specific rate limit (`auth-limits` in the design); it relies on the
-  global limiter. Each Test holds a request for up to 10 s.
-- S5 — `apps/portal/e2e/setup-gateways.test.ts:39` (pre-existing, unchanged here) runs
-  `docker compose down -v` on whatever project the environment names; without
-  `COMPOSE_PROJECT_NAME` that is the default project and wipes a developer's quickstart volume.
-  Guard it: refuse to run unless `COMPOSE_PROJECT_NAME` is set and not the default, or an explicit
-  opt-in variable is set. Not a blocker for 026; recorded as a follow-up.
-- Criterion 6's span-name wording is out of date; proposed text is in the Technical design.
+  global limiter (unchanged).
+- S5 — `apps/portal/e2e/setup-gateways.test.ts:39` (pre-existing) runs `docker compose down -v` on
+  whatever project the environment names. Guard it with `COMPOSE_PROJECT_NAME`. Follow-up.
 
-Open minors (slug vs title, first Test after a Kong restart, duplicate picker titles) stay in
-Bugs. Status: `building` for B1.
+Technical design and ADR 0017 now say one latest trace per API, and criterion 6 uses Kong 3.9's
+span names. Open minors (slug vs title in the selections table, duplicate picker titles, the
+"1 minutes ago" copy) stay in Bugs. Status: `building` for B2.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test

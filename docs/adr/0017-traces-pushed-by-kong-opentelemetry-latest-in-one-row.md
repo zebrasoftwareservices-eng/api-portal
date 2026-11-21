@@ -1,4 +1,4 @@
-# ADR 0017 — Kong pushes OTLP traces to the portal, which keeps only the latest one in a Postgres row
+# ADR 0017 — Kong pushes OTLP traces to the portal, which keeps only the latest one per API in a Postgres row
 
 - Status: Proposed (accept by merging)
 - Date: 2026-11-20
@@ -7,8 +7,9 @@
   [ADR 0011](0011-usage-collected-by-kong-http-log.md) (Kong pushes to a portal ingest endpoint)
 
 ## Context
-Spec 026 shows an admin the span waterfall of the latest traced call on Kong, for the APIs,
-developer accounts and teams the admin selects. The portal has no trace history (Decision 3),
+Spec 026 shows an admin the span waterfall of the latest traced call to each API on Kong
+(Decision 6), for the APIs, developer accounts and teams the admin selects. The portal has no
+trace history (Decision 3),
 the quickstart may not gain a container, and nothing stored may hold a query string, client
 IP, upstream address, header, body or other span attribute.
 
@@ -21,7 +22,8 @@ Facts checked against the quickstart's `kong:3.9` image:
   `http.status_code`; balancer spans carry the upstream `net.peer.ip`/`port`.
 - The `opentelemetry` plugin only exports OTLP/HTTP Protobuf, expects a 200, and retries anything
   else through Kong's queue. Each plugin instance has its own queue, so a batch comes from one
-  instance and carries that instance's `resource_attributes`.
+  instance and carries that instance's `resource_attributes`. A service-scoped instance's batch
+  covers one API; a consumer-scoped instance's batch can hold calls to several APIs.
 - `propagation.extract: []` makes Kong ignore incoming trace headers (a fresh trace id per call);
   `propagation.inject: []` stops it adding headers upstream.
 - Kong runs one instance of a plugin per request, the most specific: a consumer-scoped instance
@@ -32,7 +34,8 @@ Options for storing the latest trace:
 - **Server memory.** Lost on restart; with several Helm replicas, Kong posts to one replica and
   the admin's browser may read another.
 - **An external tracing backend (Jaeger, Tempo).** A new container, and history the spec rules out.
-- **One overwritten Postgres row.** Shared by replicas, survives restarts, one small write per batch.
+- **One overwritten Postgres row per API.** Shared by replicas, survives restarts, one small write
+  per trace.
 
 ## Decision
 1. **Kong pushes with `opentelemetry`.** The Kong adapter writes one portal-tagged plugin per
@@ -53,9 +56,9 @@ Options for storing the latest trace:
    `http.route`. All other attributes are dropped there, before the server sees them. New
    dependency: `protobufjs`, because Kong sends only Protobuf; the OTLP trace message subset ships
    as a JSON descriptor in the adapter, with no code generation step.
-3. **One row holds the latest trace.** Table `trace_latest`, keyed by `scope_key` (today always
-   `portal`). An accepted batch locks the row (`SELECT … FOR UPDATE`) and, per trace id in the
-   batch: merges spans by span id when it is the shown trace (so a resent batch adds nothing and a
+3. **One row per API holds its latest trace.** Table `trace_latest`, keyed by `scope_key`, the
+   API id (spec 026 Decision 6, 2026-11-21). For each trace id in an accepted batch, the server
+   resolves the API (§6), locks that API's row (`SELECT … FOR UPDATE`) and: merges spans by span id when it is the shown trace (so a resent batch adds nothing and a
    trace split across batches joins up); replaces the row when the trace started later than the
    shown one; drops it otherwise. Spans per trace are capped at 1000. Nothing else about calls is
    stored, and the raw body is never logged.
@@ -69,10 +72,12 @@ Options for storing the latest trace:
    attribute `portal.probe=<nonce>`), calls it through the internal proxy URL, and waits up to 10
    seconds for the nonce to be recorded in `tracing_settings` by whichever replica received it.
    Each failure has its own cause.
-6. **The API of a consumer-scoped trace is matched by route.** A consumer-scoped plugin can't
-   know which service was called, so the server matches the root's `http.route` against the
-   routes of the services behind published APIs (from `listServices()`, cached for 60 seconds).
-   No match leaves the API null.
+6. **Each trace's API is resolved before it is stored.** An API-scoped plugin sends
+   `portal.api_id`. A consumer-scoped plugin can't know which service was called, so the server
+   matches each trace's own root `http.route` against `apis.route_path`, per trace and never once
+   per batch. A trace with no root in the batch (the rest of a split trace) joins the row that
+   already holds its trace id. A trace that resolves to no API is dropped; a batch where none
+   resolves gets 422.
 
 ## Consequences
 - Kong must reach the portal server at the trace endpoint, as for usage. The quickstart sets
@@ -83,7 +88,8 @@ Options for storing the latest trace:
   receipt. The trace endpoint should stay on a private network.
 - The trace token is visible to anyone who can read Kong's Admin API. It can only replace the
   shown trace with spans tagged with an active selection.
-- Per-API or per-selection latest traces (spec 026 open question 1) are a change of `scope_key`,
-  not of the table.
+- Per-API latest traces were a change of `scope_key`, not of the table; per-selection would be
+  the same. `GET /v1/admin/tracing/latest?apiId=` reads one API's row and lists the APIs that
+  have one.
 - Another gateway adds tracing by implementing the five adapter methods; span labels come from
   its own `classifySpan`.
