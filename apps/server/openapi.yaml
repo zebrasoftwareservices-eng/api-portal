@@ -2750,15 +2750,16 @@ paths:
       operationId: getLatestTrace
       summary: The latest traced call and its spans
       description: |
-        Spec 026 AC 6, 7. One latest trace is kept per API. A newer traced call for the requested
-        API replaces it; the replaced one can't be fetched. `trace` is null until a traced call
-        arrives for that API. Holds only the allowlisted fields: no query string, client IP,
+        Spec 026 AC 6, 7. One latest trace is kept per API. With `apiId`, returns that API's latest
+        trace; without it, returns the most recently received trace across all APIs. `trace` is null
+        until a matching traced call arrives. `apis` lists every API with a latest trace, newest
+        first, for the UI selector. Holds only the allowlisted fields: no query string, client IP,
         upstream address, header, body or other span attribute. Span labels are computed when read,
         from Kong's span names. The UI polls this every 3 seconds while the page is open.
       parameters:
         - name: apiId
           in: query
-          required: true
+          required: false
           schema: { type: string, format: uuid }
       responses:
         '200':
@@ -2767,12 +2768,21 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [trace]
+                required: [trace, apis]
                 properties:
                   trace:
                     oneOf:
                       - { $ref: '#/components/schemas/Trace' }
                       - { type: 'null' }
+                  apis:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, name, receivedAt]
+                      properties:
+                        id: { type: string, format: uuid }
+                        name: { type: string }
+                        receivedAt: { type: string, format: date-time }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 

@@ -1876,9 +1876,10 @@ export interface paths {
         };
         /**
          * The latest traced call and its spans
-         * @description Spec 026 AC 6, 7. One latest trace is kept per API. A newer traced call for the requested
-         *     API replaces it; the replaced one can't be fetched. `trace` is null until a traced call
-         *     arrives for that API. Holds only the allowlisted fields: no query string, client IP,
+         * @description Spec 026 AC 6, 7. One latest trace is kept per API. With `apiId`, returns that API's latest
+         *     trace; without it, returns the most recently received trace across all APIs. `trace` is null
+         *     until a matching traced call arrives. `apis` lists every API with a latest trace, newest
+         *     first, for the UI selector. Holds only the allowlisted fields: no query string, client IP,
          *     upstream address, header, body or other span attribute. Span labels are computed when read,
          *     from Kong's span names. The UI polls this every 3 seconds while the page is open.
          */
@@ -6539,8 +6540,8 @@ export interface operations {
     };
     getLatestTrace: {
         parameters: {
-            query: {
-                apiId: string;
+            query?: {
+                apiId?: string;
             };
             header?: never;
             path?: never;
@@ -6556,6 +6557,13 @@ export interface operations {
                 content: {
                     "application/json": {
                         trace: components["schemas"]["Trace"] | null;
+                        apis: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            /** Format: date-time */
+                            receivedAt: string;
+                        }[];
                     };
                 };
             };
