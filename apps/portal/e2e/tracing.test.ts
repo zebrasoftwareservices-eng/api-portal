@@ -93,9 +93,7 @@ test('026 AC4/6: quickstart probe passes and a selected call renders a waterfall
       `${process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000'}/sample/get?token=abc123`,
     );
   expect((await request.get(target)).status()).toBe(401);
-  const latest = page
-    .getByRole('heading', { name: 'Latest traced call' })
-    .locator('..');
+  const latest = page.getByRole('main');
   await expect(
     latest.getByRole('table', { name: /Spans of the latest traced call/ }),
   ).toBeVisible({
