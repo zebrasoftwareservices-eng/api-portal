@@ -144,12 +144,18 @@ Elango, 2026-11-18.
 5. **The admin's selection decides what is traced.** Calls outside it produce no trace. This
    replaces the service-versus-consumer question.
 
+Elango, 2026-11-21.
+6. **One latest trace per API**, not one for the whole portal. A traced call replaces only the
+   latest trace of its own API, and the admin picks which API's latest trace to view.
+7. **A developer account covers the apps that developer created** (the assumed default, kept).
+8. **Saving tracing after a failing Test is allowed** (the assumed default, kept).
+
 ## Open questions
-- [ ] Is "the latest trace" one for the whole portal, or one per traced API or selection? This
-  spec assumes one for the whole portal. — Elango
-- [ ] Does "developer account" mean the apps of every team the developer belongs to, or only the
-  apps they created? Kong consumers are one per app and apps belong to teams (spec 008). — Elango
-- [ ] May the admin save tracing on after a failing Test, or must the Test pass first? — Elango
+- [x] Is "the latest trace" one for the whole portal, or one per traced API? One per API
+  (decision 6). — Elango
+- [x] Does "developer account" mean the apps of every team the developer belongs to, or only the
+  apps they created? Only the apps they created (decision 7). — Elango
+- [x] May the admin save tracing on after a failing Test? Yes (decision 8). — Elango
 - [ ] Keep the latest trace in server memory or in a single overwritten database row? Memory is
   lost on restart and not shared across Helm server replicas (spec 016). — tech-lead
 - [ ] How does the Test verify the node: read its configuration from the Admin API root, send a
@@ -366,6 +372,8 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Latest trace omits request method path and status
 - [x] [frontend] Fix: Tracing API picker lists no APIs, so an API selection cannot be added
 - [ ] [backend] Fix: Trace merge overwrites `started_at` with a child span's start when a trace's root arrives in an earlier batch than its children (Review B1); add the two-halves-in-both-orders merge test
+- [ ] [backend] Decision 6: keep one latest trace per API — `traceScopeKey(batch)` returns the API id (resolved from the service, or from the root's `http.route` for a consumer-scoped plugin), `GET /admin/tracing/latest?apiId=` in openapi.yaml and the SDK; a call to API A leaves API B's latest trace unchanged (test)
+- [ ] [frontend] Decision 6: the Latest traced call card picks which traced API to show (`LatestTraceCard apiId`), defaulting to the most recently traced API; component test
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
