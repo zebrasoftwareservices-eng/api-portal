@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -355,8 +355,9 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Tracing quickstart defaults omit required plugin phases
 - [x] [backend] Fix: Tracing Test failures omit cause keys required by dialog
 - [x] [backend] Fix: Production server image crashes on protobufjs named export
-- [ ] [backend] Fix: Full suite leaves open admin assignment credential active
+- [x] [backend] Fix: Full suite leaves open admin assignment credential active
 - [x] [backend] Fix: Trace ingest accepts unsupported media type
+- [ ] [backend] Fix: Quickstart Kong rejects tracing plugin during Test
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -384,22 +385,22 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   selection apply status against the completed backend.
 
 ## Test report  _(qa-tester)_
-Commit tested: `aa8c2f8bbf45155fd341780d5d7f52dae102ec01` · Portal: `http://localhost:3001`
+Commit tested: `8d324a1` · Portal: `http://localhost:3001`
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
 | 1 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts` | Pass — idempotent selection/apply and removal are automated. |
 | 2 | `apps/server/src/tracing.test.ts` | Pass — an unselected batch is rejected and the selected latest trace is unchanged. |
-| 3 | `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Fail — the dialog copy is covered, but the quickstart/server defaults omit two required plugin phases. |
-| 4 | `apps/portal/e2e/tracing.test.ts` | Blocked — the production server image exits before the quickstart becomes healthy. |
-| 5 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx` | Fail — distinct server details pass, but missing `cause` keys make the live dialog use generic copy. |
-| 6 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Blocked — replacement, Kong 3.9 labels and slowest-span rendering pass below the browser; the live journey cannot start. |
+| 3 | `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — the dialog names the Kong settings and environment variables and shows all quickstart defaults. |
+| 4 | `apps/portal/e2e/tracing.test.ts` | Fail — the live Test returns 422 `gateway-rejected`; Kong refuses the `opentelemetry` plugin. |
+| 5 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx` | Pass — tracing-off, endpoint-unreachable and gateway-unreachable causes and dialog messages are distinct. |
+| 6 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Fail — replacement, Kong 3.9 labels and slowest-span rendering pass below the browser, but the live journey is blocked by the criterion 4 plugin rejection before a trace arrives. |
 | 7 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts` | Pass — stored/returned trace fields are allowlisted and secret markers are absent. |
 | 8 | `apps/server/src/tracing.test.ts` | Pass — wrong token and unselected batches return problem+json without replacement; resend deduplicates spans. |
-| 9 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx` | Pass — anonymous/developer API access is refused and the admin page denial state is covered. |
-| 10 | `apps/portal/e2e/tracing.test.ts`; `deploy/e2e/quickstart.spec.ts` | Fail — required compose values are incomplete and the production image crashes before readiness. |
+| 9 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — anonymous/developer API access is refused and an anonymous browser is redirected from the admin page. |
+| 10 | `apps/portal/e2e/tracing.test.ts`; `deploy/e2e/quickstart.spec.ts` | Pass — the required Kong values are present and the isolated quickstart built and became healthy. |
 
-Full pass: `pnpm lint` and `pnpm typecheck` passed; `pnpm test` had one admin-revocation failure; quickstart and Playwright were blocked by the server-image crash.
+Full pass: `pnpm lint`, `pnpm typecheck` and `pnpm test` passed on `be652c2` (server 364/364, portal 429/429), and the admin-revocation browser journey passed on `8d324a1`. The isolated quickstart built and became healthy; Playwright finished with 117 passed, 1 failed and 2 skipped, with the sole failure at AC4/AC6. The worktree stack remains up for follow-up at `http://localhost:3001`.
 
 Long notes go in `docs/specs/log/026.md`, not here.
 
@@ -409,8 +410,9 @@ Long notes go in `docs/specs/log/026.md`, not here.
 - [x] Tracing quickstart defaults omit required plugin phases (major)
 - [x] Tracing Test failures omit cause keys required by dialog (major)
 - [x] Production server image crashes on protobufjs named export (blocker)
-- [ ] Full suite leaves open admin assignment credential active (major) — Not reproduced alone or in the server suite (6/6 admin-revocation tests passed in both runs); QA should confirm on its full pass.
+- [x] Full suite leaves open admin assignment credential active (major) — Not reproduced alone or in the server suite (6/6 admin-revocation tests passed in both runs); QA should confirm on its full pass.
 - [x] Trace ingest accepts unsupported media type (major)
+- [ ] Quickstart Kong rejects tracing plugin during Test (major)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
@@ -458,3 +460,8 @@ return the spec to building. Earlier rounds go in `docs/specs/log/026.md`.
   - priority: high
   - create when the Linear limit allows
   - body: POST /api/v1/internal/traces/kong with a valid bearer token and Content-Type: application/json. Expected RFC 9457 status 415 per AC8/technical ingest flow; received 422 trace-not-selected because JSON reaches the handler. Reproduced with: pnpm --filter @portal/server exec vitest run src/tracing.test.ts (1 failed, 8 passed).
+- **Bug** — Bug: Quickstart Kong rejects tracing plugin during Test (major)
+  - parent: none
+  - priority: high
+  - create when the Linear limit allows
+  - body: On commit 8d324a1, start the isolated quickstart with node scripts/worktree-compose.mjs up -d --build --wait, export its worktree portal/API/Kong URLs, and run pnpm test:e2e. apps/portal/e2e/tracing.test.ts AC4/6 clicks Test and receives HTTP 422 problem+json with cause gateway-rejected and detail Kong refused the tracing plugin; server logs also report Kong refused the opentelemetry plugin. Expected the quickstart Test to pass within 15 seconds and then render a traced-call waterfall; actual result was 117 passed, 1 failed, 2 skipped, with AC4/AC6 blocked before the waterfall assertion.
