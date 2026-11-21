@@ -11,6 +11,11 @@ export type TracingState = components['schemas']['Tracing'];
 export type TraceSpan = components['schemas']['TraceSpan'];
 export type Trace = components['schemas']['Trace'];
 export type TestResult = components['schemas']['TracingTestResult'];
+export type LatestTraceApi = {
+  id: string;
+  name: string;
+  receivedAt: string;
+};
 export type Target = {
   id: string;
   name: string;
@@ -20,7 +25,10 @@ export type Target = {
 type Raw<T> = { data?: T; error?: unknown; response: Response };
 type TracingClient = {
   GET(path: '/v1/admin/tracing'): Promise<Raw<TracingState>>;
-  GET(path: '/v1/admin/tracing/latest'): Promise<Raw<{ trace: Trace | null }>>;
+  GET(
+    path: '/v1/admin/tracing/latest',
+    init?: { params: { query: { apiId?: string } } },
+  ): Promise<Raw<{ trace: Trace | null; apis: LatestTraceApi[] }>>;
   GET(
     path: '/v1/apis',
   ): Promise<Raw<{ items: Array<{ id: string; slug: string; title: string }> }>>;
@@ -68,7 +76,13 @@ async function settle<T>(run: () => Promise<Raw<T>>) {
 
 export const tracingApi = {
   get: () => settle(() => client.GET('/v1/admin/tracing')),
-  latest: () => settle(() => client.GET('/v1/admin/tracing/latest')),
+  latest: (apiId?: string) =>
+    settle(() =>
+      client.GET(
+        '/v1/admin/tracing/latest',
+        apiId ? { params: { query: { apiId } } } : undefined,
+      ),
+    ),
   save: (body: TracingSettings) =>
     settle(() => client.PUT('/v1/admin/tracing', { body })),
   test: (body: TracingSettings) =>

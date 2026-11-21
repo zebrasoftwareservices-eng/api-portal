@@ -6,6 +6,7 @@ import {
   AdminTracing,
   coversCopy,
   formatMs,
+  LatestTraceCard,
   TraceWaterfall,
   TracingSelections,
   TracingSettingsCard,
@@ -73,7 +74,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.get.mockResolvedValue({ data: tracing });
   mocks.targets.mockResolvedValue({ data: { items: [] } });
-  mocks.latest.mockResolvedValue({ data: { trace: null } });
+  mocks.latest.mockResolvedValue({ data: { trace: null, apis: [] } });
 });
 
 it('shows the three tracing cards and the not-yet-traced state', async () => {
@@ -149,6 +150,67 @@ describe('waterfall', () => {
 it('isolates developer coverage copy for the created-app default', () => {
   expect(coversCopy('developer', 2)).toBe('2 apps they created');
   expect(coversCopy('developer', 0)).toMatch(/when they create one/);
+});
+
+it('defaults to the most recently traced API and fetches the API the admin picks', async () => {
+  const olderTrace: Trace = {
+    ...trace,
+    traceId: 'older',
+    receivedAt: '2026-11-20T00:00:00Z',
+    request: { method: 'POST', path: '/payments', statusCode: 201 },
+    api: { id: 'payments', slug: 'payments', name: 'Payments API' },
+  };
+  mocks.latest
+    .mockResolvedValueOnce({
+      data: {
+        trace,
+        apis: [
+          { id: 'api', name: 'Sample API', receivedAt: trace.receivedAt },
+          {
+            id: 'payments',
+            name: 'Payments API',
+            receivedAt: olderTrace.receivedAt,
+          },
+        ],
+      },
+    })
+    .mockResolvedValueOnce({
+      data: {
+        trace,
+        apis: [
+          { id: 'api', name: 'Sample API', receivedAt: trace.receivedAt },
+          {
+            id: 'payments',
+            name: 'Payments API',
+            receivedAt: olderTrace.receivedAt,
+          },
+        ],
+      },
+    })
+    .mockResolvedValue({
+      data: {
+        trace: olderTrace,
+        apis: [
+          { id: 'api', name: 'Sample API', receivedAt: trace.receivedAt },
+          {
+            id: 'payments',
+            name: 'Payments API',
+            receivedAt: olderTrace.receivedAt,
+          },
+        ],
+      },
+    });
+
+  render(
+    <LatestTraceCard enabled hasSelections selections={tracing.selections} />,
+  );
+
+  const picker = await screen.findByLabelText('Show the latest call to');
+  expect(picker).toHaveValue('api');
+  expect(mocks.latest).toHaveBeenNthCalledWith(1, undefined);
+  await userEvent.selectOptions(picker, 'payments');
+  expect(await screen.findByText('/payments')).toBeInTheDocument();
+  expect(mocks.latest).toHaveBeenLastCalledWith('payments');
 });
 
 describe('selection picker', () => {

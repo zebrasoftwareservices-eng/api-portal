@@ -904,26 +904,33 @@ export function LatestTraceCard({
   enabled,
   hasSelections,
   selections,
-  apiId: _apiId,
+  apiId: initialApiId,
 }: {
   enabled: boolean;
   hasSelections: boolean;
   selections: TracingSelection[];
   apiId?: string;
 }) {
+  const [apiId, setApiId] = useState(initialApiId);
+  const [apis, setApis] = useState<
+    Array<{ id: string; name: string; receivedAt: string }>
+  >([]);
   const [trace, setTrace] = useState<Trace | null>();
   const [error, setError] = useState(false);
   const [announcement, setAnnouncement] = useState('');
   const current = useRef('');
   const poll = useCallback(async () => {
     if (!enabled) return;
-    const response = await tracingApi.latest();
+    const response = await tracingApi.latest(apiId);
     if (response.error) {
       setError(true);
       return;
     }
     setError(false);
     const next = response.data?.trace ?? null;
+    const nextApis = response.data?.apis ?? [];
+    setApis(nextApis);
+    if (!apiId) setApiId(next?.api?.id ?? nextApis[0]?.id);
     const key = next ? `${next.traceId}:${next.receivedAt}` : '';
     if (next && current.current && current.current !== key)
       setAnnouncement(
@@ -938,7 +945,10 @@ export function LatestTraceCard({
         ? old
         : next,
     );
-  }, [enabled]);
+  }, [apiId, enabled]);
+  useEffect(() => {
+    setApiId(initialApiId);
+  }, [initialApiId]);
   useEffect(() => {
     if (!enabled) return;
     void poll();
@@ -958,20 +968,45 @@ export function LatestTraceCard({
     <Card className="stack tracing-card">
       <div className="tracing-card-heading">
         <h2>Latest traced call</h2>
-        {trace && (
-          <time
-            dateTime={trace.receivedAt}
-            title={new Date(trace.receivedAt).toISOString()}
-          >
-            Received {relative(trace.receivedAt)}
-          </time>
-        )}
+        <div className="tracing-latest-controls">
+          {apis.length > 0 && (
+            <label>
+              Show the latest call to:
+              <select
+                aria-label="Show the latest call to"
+                value={apiId ?? ''}
+                onChange={(event) => {
+                  current.current = '';
+                  setAnnouncement('');
+                  setError(false);
+                  setTrace(undefined);
+                  setApiId(event.target.value);
+                }}
+              >
+                {apis.map((api) => (
+                  <option key={api.id} value={api.id}>
+                    {api.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {trace && (
+            <time
+              dateTime={trace.receivedAt}
+              title={new Date(trace.receivedAt).toISOString()}
+            >
+              Received {relative(trace.receivedAt)}
+            </time>
+          )}
+        </div>
       </div>
       <span className="sr-only" aria-live="polite">
         {announcement}
       </span>
       <p className="muted">
-        Only the latest call is kept. The next traced call replaces this one.
+        Only the latest call to each API is kept. The next traced call to this
+        API replaces this one.
       </p>
       {!enabled ? (
         <p>Turn on tracing and choose what to trace to see calls here.</p>
