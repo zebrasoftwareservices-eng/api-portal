@@ -157,6 +157,59 @@ conformance(
   },
 );
 
+it('installs the server trace probe config on Kong 3.9', async () => {
+  const probeAdapter = new KongAdapter({
+    adminUrl: `http://${kong.getHost()}:${kong.getMappedPort(8001)}`,
+    instanceId: randomUUID(),
+  });
+  const result = await probeAdapter.ensureTraceProbe({
+    endpoint: 'http://server:4000/api/v1/internal/traces/kong',
+    token: 'trace-token',
+    nonce: 'probe-nonce',
+  });
+  try {
+    const routes = await probeAdapter.request<{
+      data: { id: string; paths: string[]; service: { id: string } }[];
+    }>('/routes?size=1000');
+    const route = routes!.data.find((item) =>
+      item.paths.includes(result.probePath),
+    );
+    expect(route).toBeDefined();
+    const plugins = await probeAdapter.request<{
+      data: { name: string; config: Record<string, unknown> }[];
+    }>(`/routes/${route!.id}/plugins`);
+    expect(plugins!.data.find((plugin) => plugin.name === 'opentelemetry'))
+      .toMatchObject({
+        config: {
+          traces_endpoint:
+            'http://server:4000/api/v1/internal/traces/kong',
+          headers: { Authorization: 'Bearer trace-token' },
+          propagation: {
+            extract: [],
+            inject: ['preserve'],
+            default_format: 'w3c',
+          },
+          resource_attributes: {
+            'portal.selections': 'probe',
+            'portal.probe': 'probe-nonce',
+          },
+          sampling_rate: 1,
+        },
+      });
+  } finally {
+    const routes = await probeAdapter.request<{
+      data: { id: string; paths: string[]; service: { id: string } }[];
+    }>('/routes?size=1000');
+    const route = routes!.data.find((item) =>
+      item.paths.includes(result.probePath),
+    );
+    if (route) {
+      await probeAdapter.request(`/routes/${route.id}`, 'DELETE');
+      await probeAdapter.request(`/services/${route.service.id}`, 'DELETE');
+    }
+  }
+});
+
 it('protects real services, converts deny to allow without replacing its ID, and converges', async () => {
   const serviceId = randomUUID();
   const pluginId = randomUUID();

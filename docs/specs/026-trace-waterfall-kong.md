@@ -357,7 +357,7 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Production server image crashes on protobufjs named export
 - [x] [backend] Fix: Full suite leaves open admin assignment credential active
 - [x] [backend] Fix: Trace ingest accepts unsupported media type
-- [ ] [backend] Fix: Quickstart Kong rejects tracing plugin during Test
+- [x] [backend] Fix: Quickstart Kong rejects tracing plugin during Test
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -383,6 +383,12 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   selections, apply feedback, and the 3-second latest-trace waterfall. The portal package passes
   lint, typecheck, and all 429 Vitest tests; QA should exercise the live Kong Test causes and
   selection apply status against the completed backend.
+
+- Backend (build loop 3): Kong 3.9 rejected the probe because `propagation.default_format` is
+  required with `inject: ["preserve"]`; the adapter now sends `default_format: "w3c"` and the
+  current `traces_endpoint` field. A Testcontainers Kong 3.9 regression installs the exact probe
+  config. The adapter's 76 tests pass, and the rebuilt quickstart Test passed before a selected
+  sample try-it call produced a new latest trace with four spans.
 
 ## Test report  _(qa-tester)_
 Commit tested: `8d324a1` · Portal: `http://localhost:3001`
@@ -412,7 +418,7 @@ Long notes go in `docs/specs/log/026.md`, not here.
 - [x] Production server image crashes on protobufjs named export (blocker)
 - [x] Full suite leaves open admin assignment credential active (major) — Not reproduced alone or in the server suite (6/6 admin-revocation tests passed in both runs); QA should confirm on its full pass.
 - [x] Trace ingest accepts unsupported media type (major)
-- [ ] Quickstart Kong rejects tracing plugin during Test (major)
+- [x] Quickstart Kong rejects tracing plugin during Test (major)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |

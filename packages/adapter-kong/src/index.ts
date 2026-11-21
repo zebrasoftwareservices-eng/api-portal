@@ -1046,14 +1046,18 @@ export class KongAdapter implements GatewayAdapter {
     apiId?: string,
   ) {
     return {
-      endpoint: plan.endpoint,
+      traces_endpoint: plan.endpoint,
       headers: { Authorization: `Bearer ${plan.token}` },
       resource_attributes: {
         'portal.instance': this.config.instanceId,
         'portal.selections': [...new Set(selections)].sort().join(','),
         ...(apiId ? { 'portal.api_id': apiId } : {}),
       },
-      propagation: { extract: [], inject: ['preserve'] },
+      propagation: {
+        extract: [],
+        inject: ['preserve'],
+        default_format: 'w3c',
+      },
     };
   }
 

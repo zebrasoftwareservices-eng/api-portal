@@ -47,6 +47,13 @@ describe('Kong tracing', () => {
     expect(await adapter.applyTracing(plan)).toMatchObject({ created: 1 });
     expect(await adapter.applyTracing({ ...plan, targets: [] })).toMatchObject({ removed: 1 });
     const writes = fetcher.mock.calls.filter((call) => call[1]?.method === 'PUT');
-    expect(JSON.parse(writes[0]![1].body).config.resource_attributes['portal.selections']).toBe('one,two');
+    const pluginConfig = JSON.parse(writes[0]![1].body).config;
+    expect(pluginConfig.traces_endpoint).toBe('http://server/traces');
+    expect(pluginConfig.resource_attributes['portal.selections']).toBe('one,two');
+    expect(pluginConfig.propagation).toEqual({
+      extract: [],
+      inject: ['preserve'],
+      default_format: 'w3c',
+    });
   });
 });
