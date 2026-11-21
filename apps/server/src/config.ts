@@ -43,6 +43,7 @@ const envSchema = z.object({
   PORTAL_VERSION: z.string().min(1).default('dev'),
   PORTAL_RATE_LIMIT_POLICY: z.enum(['cluster', 'local']).default('cluster'),
   PORTAL_USAGE_INGEST_URL: z.url().optional(),
+  PORTAL_TRACE_INGEST_URL: z.url().optional(),
   PORTAL_USAGE_RETENTION_DAYS: z.coerce.number().int().min(62).default(400),
   PORTAL_LINT_RULESET: z.string().optional(),
   PORTAL_PROXY_HOST: z.string().min(1).default('localhost'),

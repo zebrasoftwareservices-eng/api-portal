@@ -15,6 +15,7 @@ import {
   uniqueIndex,
   index,
   integer,
+  real,
   foreignKey,
   customType,
   type AnyPgColumn,
@@ -390,6 +391,89 @@ export const gatewayConsumers = pgTable(
     createdAt: created(),
   },
   (t) => [uniqueIndex('consumer_app_gateway_unique').on(t.appId, t.gatewayId)],
+);
+export const tracingSettings = pgTable(
+  'tracing_settings',
+  {
+    id: smallint('id').primaryKey().default(1),
+    traceEndpoint: text('trace_endpoint').notNull(),
+    instrumentations: text('instrumentations').array().notNull(),
+    samplingRate: real('sampling_rate').notNull(),
+    tokenCiphertext: text('token_ciphertext').notNull(),
+    configuredAt: time('configured_at').notNull().defaultNow(),
+    lastTestPassed: boolean('last_test_passed'),
+    lastTestCause: text('last_test_cause'),
+    lastTestAt: time('last_test_at'),
+    probeNonce: text('probe_nonce'),
+    probeReceivedAt: time('probe_received_at'),
+    applyStatus: text('apply_status')
+      .notNull()
+      .default('pending')
+      .$type<'pending' | 'applied' | 'failed'>(),
+    applyMessage: text('apply_message'),
+    appliedAt: time('applied_at'),
+  },
+  (t) => [
+    check('tracing_settings_singleton', sql`${t.id} = 1`),
+    check(
+      'tracing_settings_sampling_rate',
+      sql`${t.samplingRate} >= 0 and ${t.samplingRate} <= 1`,
+    ),
+    check(
+      'tracing_settings_apply_status',
+      sql`${t.applyStatus} in ('pending','applied','failed')`,
+    ),
+  ],
+);
+export const tracingSelections = pgTable(
+  'tracing_selections',
+  {
+    id: uuid('id').primaryKey(),
+    kind: text('kind').notNull().$type<'api' | 'developer' | 'team'>(),
+    apiId: uuid('api_id').references(() => apis.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id').references(() => user.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: created(),
+  },
+  (t) => [
+    check('tracing_selection_kind', sql`${t.kind} in ('api','developer','team')`),
+    check(
+      'tracing_selection_target',
+      sql`(${t.kind} = 'api' and ${t.apiId} is not null and ${t.userId} is null and ${t.teamId} is null) or (${t.kind} = 'developer' and ${t.apiId} is null and ${t.userId} is not null and ${t.teamId} is null) or (${t.kind} = 'team' and ${t.apiId} is null and ${t.userId} is null and ${t.teamId} is not null)`,
+    ),
+    uniqueIndex('tracing_selection_api_unique').on(t.apiId),
+    uniqueIndex('tracing_selection_user_unique').on(t.userId),
+    uniqueIndex('tracing_selection_team_unique').on(t.teamId),
+  ],
+);
+export interface StoredTraceSpan {
+  spanId: string;
+  parentSpanId: string | null;
+  name: string;
+  startNs: string;
+  durationNs: string;
+  status: string;
+}
+export const traceLatest = pgTable(
+  'trace_latest',
+  {
+    scopeKey: text('scope_key').primaryKey(),
+    traceId: text('trace_id').notNull(),
+    apiId: uuid('api_id').references(() => apis.id, { onDelete: 'set null' }),
+    startedAt: time('started_at').notNull(),
+    receivedAt: time('received_at').notNull().defaultNow(),
+    rootSpanId: text('root_span_id').notNull(),
+    request: jsonb('request').$type<{
+      method: string;
+      path: string;
+      statusCode: number;
+    } | null>(),
+    spans: jsonb('spans').$type<StoredTraceSpan[]>().notNull(),
+  },
+  (t) => [check('trace_latest_id', sql`${t.traceId} ~ '^[0-9a-f]{32}$'`)],
 );
 export const credentials = pgTable(
   'credentials',

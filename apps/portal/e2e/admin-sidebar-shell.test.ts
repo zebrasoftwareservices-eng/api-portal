@@ -42,6 +42,7 @@ test('024 AC 1–3, 6, 9–10: admin shell navigation and invalid account limits
     'Apps',
     'Requests',
     'Insights',
+    'Tracing',
     'APIs',
     'Gateways',
     'Mail',

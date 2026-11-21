@@ -1,4 +1,255 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+.tracing-page {
+  gap: 24px;
+  max-width: var(--portal-page-max-width);
+}
+.tracing-card {
+  gap: 16px;
+}
+.tracing-card-heading,
+.tracing-status,
+.tracing-summary,
+.tracing-trace-id {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.tracing-card-heading h2 {
+  margin: 0;
+}
+.tracing-latest-controls,
+.tracing-latest-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.tracing-settings {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.25fr) 1fr;
+  gap: 12px;
+  margin: 0;
+}
+.tracing-settings dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.tracing-settings code,
+.tracing-summary code,
+.tracing-trace-id code,
+.tracing-code code {
+  overflow-wrap: anywhere;
+}
+.status-success {
+  color: var(--portal-success);
+}
+.error-text {
+  color: var(--destructive);
+}
+.tracing-dialog {
+  width: min(var(--portal-form-max-width), calc(100vw - 32px));
+}
+.tracing-dialog-body {
+  gap: 12px;
+}
+.tracing-code {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px;
+  background: var(--muted);
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+}
+.tracing-checks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.tracing-check {
+  font-weight: 400;
+}
+.tracing-dialog-actions {
+  position: sticky;
+  bottom: -24px;
+  background: var(--card);
+  padding-top: 16px;
+}
+.tracing-add {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.25fr) 1fr auto;
+  gap: 12px;
+  align-items: end;
+}
+.tracing-add label {
+  display: grid;
+  gap: 6px;
+}
+.tracing-add select {
+  width: 100%;
+}
+.tracing-selections td:last-child {
+  text-align: right;
+}
+.tracing-row-skeleton {
+  height: 32px;
+  margin-block: 8px;
+}
+.tracing-skeleton {
+  min-height: 180px;
+}
+.tracing-empty {
+  text-align: center;
+  padding: 24px;
+}
+.tracing-slowest,
+.tracing-poll-warning,
+.trace-slowest-badge {
+  color: var(--portal-warning);
+}
+.trace-status-success {
+  color: var(--portal-success);
+  background: var(--portal-success-subtle);
+}
+.trace-status-warning {
+  color: var(--portal-warning);
+  background: var(--portal-warning-subtle);
+}
+.trace-status-error,
+.trace-error-badge {
+  color: var(--destructive);
+  background: var(--portal-destructive-subtle);
+}
+.trace-waterfall {
+  table-layout: fixed;
+}
+.trace-waterfall th:first-child {
+  width: 30%;
+}
+.trace-waterfall th:nth-child(2),
+.trace-waterfall th:nth-child(3) {
+  width: 11%;
+}
+.trace-waterfall tr:hover td {
+  background: var(--accent);
+}
+.trace-raw {
+  display: block;
+  color: var(--muted-foreground);
+  margin-top: 4px;
+}
+.trace-axis {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 400;
+}
+.span-track {
+  position: relative;
+  height: 16px;
+  background: var(--muted);
+  overflow: hidden;
+}
+.span-bar {
+  position: absolute;
+  min-width: 2px;
+  height: 100%;
+  background: var(--primary);
+}
+.span-bar.root {
+  background: var(--muted-foreground);
+}
+.span-bar.slowest {
+  background: var(--portal-warning);
+}
+@media (max-width: 767px) {
+  .tracing-card-heading {
+    align-items: stretch;
+  }
+  .tracing-latest-controls,
+  .tracing-latest-controls label,
+  .tracing-latest-controls select {
+    width: 100%;
+  }
+  .tracing-card-heading .button {
+    width: 100%;
+  }
+  .tracing-settings {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .tracing-settings dd {
+    margin-bottom: 8px;
+  }
+  .tracing-add {
+    grid-template-columns: 1fr;
+  }
+  .tracing-add .button {
+    width: 100%;
+  }
+  .tracing-dialog {
+    inset: 0;
+    transform: none;
+    width: 100%;
+    max-width: none;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .tracing-dialog-actions {
+    flex-direction: column-reverse;
+    bottom: -24px;
+  }
+  .tracing-dialog-actions .button {
+    width: 100%;
+  }
+  .trace-waterfall,
+  .trace-waterfall tbody,
+  .trace-waterfall tr {
+    display: block;
+  }
+  .trace-waterfall thead {
+    display: block;
+  }
+  .trace-waterfall thead th {
+    display: none;
+  }
+  .trace-waterfall thead th:last-child {
+    display: block;
+    width: 100%;
+  }
+  .trace-waterfall td {
+    display: inline-block;
+    border: 0;
+    padding-block: 6px;
+  }
+  .trace-waterfall td:first-child {
+    width: 65%;
+  }
+  .trace-waterfall td:nth-child(2) {
+    display: none;
+  }
+  .trace-waterfall td:nth-child(3) {
+    width: 35%;
+    text-align: right;
+  }
+  .trace-waterfall td:last-child {
+    display: block;
+    width: 100%;
+    border-bottom: 1px solid var(--border);
+  }
+  .trace-axis span:not(:first-child):not(:last-child) {
+    display: none;
+  }
+  .trace-raw {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+}
 .access-status {
   gap: 0.25rem;
 }

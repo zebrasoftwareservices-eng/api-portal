@@ -54,7 +54,9 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(target);
     }
     if (
-      ((path.startsWith('/admin') && path !== '/admin/insights') ||
+      ((path.startsWith('/admin') &&
+        path !== '/admin/insights' &&
+        path !== '/admin/tracing') ||
         path === '/setup/gateway') &&
       (!('role' in data.user) || data.user.role !== 'admin')
     )

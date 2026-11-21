@@ -1792,6 +1792,198 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/tracing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Trace settings, the active selections, the last Test and the last apply
+         * @description Spec 026, ADR 0018. Portal admins only. Never returns the trace ingest token. Before any
+         *     save, `settings` holds the defaults the dialog prefills (`PORTAL_TRACE_INGEST_URL`,
+         *     `request,router,balancer,plugin_rewrite,plugin_access,plugin_header_filter`, `1`) and
+         *     `configured` is false. When the gateway adapter can't trace (`supported: false`) the UI
+         *     says tracing isn't available for this gateway.
+         */
+        get: operations["getTracing"];
+        /**
+         * Save the trace endpoint and the node values the admin entered
+         * @description Send the whole object. Saves even when the last Test failed or none was run (spec 026
+         *     open question 3; the default is to allow it, and the 409 below is used only if Elango
+         *     decides the Test must pass first). A changed `traceEndpoint` queues a tracing apply that
+         *     rewrites every portal tracing plugin. `instrumentations` and `samplingRate` are recorded
+         *     for the dialog and compared with the node by the Test; the portal never changes them on
+         *     the node (Kong's Admin API can't).
+         */
+        put: operations["saveTracingSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tracing/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check that the Kong node traces and can deliver spans to the entered endpoint
+         * @description Spec 026 AC 4, 5. Answers within 15 seconds. The checks run in this order and the first
+         *     failure is returned:
+         *     1. `GET /` on the Admin API. No answer, a timeout or 5xx is `gateway-unreachable`.
+         *     2. The node's `configuration.tracing_instrumentations` from that response. `off`, empty, or
+         *        a list without `request` (and not `all`) is `tracing-off`. The response names the
+         *        node's values so the admin can compare them with what they entered.
+         *     3. The portal-internal probe route (`/__portal/trace-probe/<instanceId>`, a
+         *        `request-termination` 204 with a route-scoped `opentelemetry` plugin sending to the
+         *        entered `traceEndpoint`, sampling rate 1) is written with idempotent `PUT`s and called
+         *        once through the internal proxy URL. A failure to call it is `proxy-unreachable`.
+         *     4. The server waits up to 10 seconds for that probe's spans (matched by a one-time nonce in
+         *        the plugin's resource attributes) to reach `POST /v1/internal/traces/kong` on any server
+         *        replica. No spans in time is `endpoint-unreachable`.
+         *     The probe never changes the shown trace and saves no settings. The result is recorded as
+         *     the last Test. Rate-limited to 10 requests per minute per admin.
+         */
+        post: operations["testTracing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tracing/selections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Turn tracing on for one API, one developer account or one team
+         * @description Spec 026 AC 1. Idempotent: an existing selection for the same target is returned with
+         *     200. Queues a tracing apply; the selection's `apply` state says when Kong holds its
+         *     plugins. A developer account covers the active apps that developer created
+         *     (`apps.created_by`, spec 026 open question 2 default); a team covers its active apps.
+         */
+        post: operations["addTracingSelection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tracing/selections/{selectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                selectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Turn tracing off for one selection
+         * @description Spec 026 AC 1. Spans tagged only with this selection are refused from now on, and a
+         *     tracing apply removes its plugins (and only its plugins) from Kong. The shown trace stays.
+         */
+        delete: operations["removeTracingSelection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tracing/developers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Find developer accounts to trace */
+        get: operations["listTracingDevelopers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/tracing/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The latest traced call and its spans
+         * @description Spec 026 AC 6, 7. One latest trace is kept per API. With `apiId`, returns that API's latest
+         *     trace; without it, returns the most recently received trace across all APIs. `trace` is null
+         *     until a matching traced call arrives. `apis` lists every API with a latest trace, newest
+         *     first, for the UI selector. Holds only the allowlisted fields: no query string, client IP,
+         *     upstream address, header, body or other span attribute. Span labels are computed when read,
+         *     from Kong's span names. The UI polls this every 3 seconds while the page is open.
+         */
+        get: operations["getLatestTrace"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/internal/traces/kong": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Receive a batch of spans from a portal Kong opentelemetry plugin
+         * @description Called by Kong, not by browsers or the SDK (ADR 0018). The body is an OTLP/HTTP
+         *     `ExportTraceServiceRequest` in Protobuf, as Kong's `opentelemetry` plugin sends it, with
+         *     `Authorization: Bearer <trace ingest token>`. The token is generated by the portal, stored
+         *     encrypted, compared in constant time and separate from the usage ingest token. The
+         *     portal's Next.js rewrite does not forward `/api/v1/internal/*`.
+         *
+         *     Each batch comes from one plugin instance (Kong queues per plugin), so its resource
+         *     attributes say which selections it belongs to (`portal.selections`) or that it is a Test
+         *     probe (`portal.probe`). A batch whose instance isn't this portal, or none of whose
+         *     selections is on, is refused with 422 and stores nothing. Kong retries any non-200, up
+         *     to the plugin's `queue.max_retry_time` (60 s).
+         *
+         *     From each span the server keeps trace id, span id, parent span id, name, start, duration
+         *     and status; from the root span it also keeps the method, the path without its query string
+         *     and the response status. Every other attribute (client IP, `http.url`'s query, upstream
+         *     address and port, request id) is dropped before anything is stored or logged. Spans with
+         *     the shown trace's id are merged by span id (a resent batch adds nothing); spans of a newer
+         *     trace replace the shown trace; spans of an older trace are dropped. Up to 1 MB.
+         */
+        post: operations["ingestKongTraces"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/try-it": {
         parameters: {
             query: {
@@ -1994,6 +2186,10 @@ export interface components {
                 /** @description Lint findings only. URL of the external file the finding is in; null for the imported document itself */
                 source?: string | null;
             }[];
+            /** @description With `/problems/tracing-check-failed`: gateway-unreachable, tracing-off, proxy-unreachable, endpoint-unreachable or gateway-rejected */
+            cause?: string;
+            /** @description With `/problems/tracing-check-failed`: the Kong node values, when they were read */
+            node?: components["schemas"]["TracingNodeValues"];
             /** @description Only on `/problems/openapi-lint-failed`: total number of error findings */
             errorCount?: number;
             /** @description With `/problems/confirmation-required`: teams with affected active subscriptions */
@@ -3092,6 +3288,137 @@ export interface components {
             /** @description Unique in the team */
             name: string;
             description?: string;
+        };
+        TracingSettingsInput: {
+            /**
+             * Format: uri
+             * @description The portal's trace ingest URL as Kong reaches it, e.g.
+             *     `http://server:4000/api/v1/internal/traces/kong`. http(s), no credentials, query or
+             *     fragment; same address rules as the gateway URL fields.
+             */
+            traceEndpoint: string;
+            /** @description The node's `tracing_instrumentations` as the admin says it is set */
+            instrumentations: ("all" | "off" | "request" | "router" | "balancer" | "plugin_rewrite" | "plugin_access" | "plugin_header_filter" | "db_query" | "dns_query" | "http_client")[];
+            /** @description The node's `tracing_sampling_rate` as the admin says it is set */
+            samplingRate: number;
+        };
+        /** @description What the Kong node reports in `GET /` `configuration` */
+        TracingNodeValues: {
+            instrumentations: string[];
+            samplingRate: number | null;
+        };
+        TracingTestResult: {
+            /** @constant */
+            passed: true;
+            /** Format: date-time */
+            at: string;
+            node: components["schemas"]["TracingNodeValues"];
+            /**
+             * @description Non-failing notes, e.g. the node's values differ from the ones entered, or the node's
+             *     sampling rate is below 1 so some calls won't be traced.
+             */
+            warnings: string[];
+        };
+        TracingLastTest: {
+            passed: boolean;
+            /** Format: date-time */
+            at: string;
+            /** @enum {string|null} */
+            cause?: "gateway-unreachable" | "tracing-off" | "proxy-unreachable" | "endpoint-unreachable" | "gateway-rejected" | null;
+        };
+        /** @description The last tracing apply to Kong */
+        TracingApply: {
+            /** @enum {string} */
+            status: "pending" | "applied" | "failed";
+            /** Format: date-time */
+            at?: string | null;
+            /** @description With `failed`: why, never a token or response body */
+            message?: string | null;
+        };
+        TracingSelection: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "api" | "developer" | "team";
+            /**
+             * Format: uuid
+             * @description The API
+             */
+            targetId: string;
+            /** @description API name, developer name and email, or team name */
+            label: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description For developer and team selections, how many active apps (Kong consumers) are traced; null for an API */
+            apps: number | null;
+        };
+        AddTracingSelectionRequest: {
+            /** @enum {string} */
+            kind: "api" | "developer" | "team";
+            /** Format: uuid */
+            targetId: string;
+        };
+        TracingDeveloper: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: email */
+            email: string;
+        };
+        Tracing: {
+            /** @description The gateway adapter's `capabilities().tracing` */
+            supported: boolean;
+            /** @description Settings have been saved at least once */
+            configured: boolean;
+            settings: components["schemas"]["TracingSettingsInput"];
+            selections: components["schemas"]["TracingSelection"][];
+            lastTest: components["schemas"]["TracingLastTest"] | null;
+            apply: components["schemas"]["TracingApply"];
+        };
+        TraceSpan: {
+            spanId: string;
+            parentSpanId: string | null;
+            /** @description Kong's span name, e.g. `kong.access.plugin.key-auth` */
+            name: string;
+            /** @enum {string} */
+            label: "request" | "router" | "plugin" | "upstream" | "other";
+            /** @description With `plugin`: the plugin name */
+            plugin: string | null;
+            /** @description Start relative to the trace start */
+            startOffsetMs: number;
+            durationMs: number;
+            /** @enum {string} */
+            status: "unset" | "ok" | "error";
+            /** @description True on exactly one span: the longest one other than the root (ties: earliest start) */
+            slowest: boolean;
+        };
+        Trace: {
+            traceId: string;
+            /**
+             * Format: date-time
+             * @description When the newest span of this trace arrived
+             */
+            receivedAt: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** @description The root span's duration; null until the root span arrives */
+            durationMs: number | null;
+            /** @description The portal API the call went to; null when it can't be matched */
+            api: {
+                /** Format: uuid */
+                id: string;
+                slug: string;
+                name: string;
+            } | null;
+            /** @description From the root span; null until it arrives */
+            request: {
+                method: string;
+                /** @description The request path without its query string */
+                path: string;
+                statusCode: number | null;
+            } | null;
+            /** @description Ordered by start, then by depth */
+            spans: components["schemas"]["TraceSpan"][];
         };
     };
     responses: {
@@ -6161,6 +6488,314 @@ export interface operations {
                 };
             };
             413: components["responses"]["PayloadTooLarge"];
+        };
+    };
+    getTracing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tracing state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tracing"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    saveTracingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TracingSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tracing"];
+                };
+            };
+            400: components["responses"]["GatewayFieldInvalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /**
+             * @description `/problems/tracing-test-required`: only when the portal requires a passing Test for
+             *     these exact values before saving (off by default). Nothing was saved.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    testTracing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TracingSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description Every check passed */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TracingTestResult"];
+                };
+            };
+            400: components["responses"]["GatewayFieldInvalid"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description No enabled gateway connection, or its adapter can't trace (`/problems/tracing-unsupported`). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /**
+             * @description A check failed (`/problems/tracing-check-failed`). `cause` is one of
+             *     `gateway-unreachable`, `tracing-off`, `proxy-unreachable`, `endpoint-unreachable`,
+             *     `gateway-rejected` (Kong refused the probe objects, for example the `opentelemetry`
+             *     plugin isn't in `KONG_PLUGINS`); `detail` is the message for that cause and `node`
+             *     carries the node's values when step 2 ran. Never a pass.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            429: components["responses"]["RateLimited"];
+        };
+    };
+    addTracingSelection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddTracingSelectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Already on */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TracingSelection"];
+                };
+            };
+            /** @description Turned on */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TracingSelection"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description `/problems/tracing-not-configured` (save the settings first) or
+             *     `/problems/tracing-unsupported`. Nothing was saved.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    removeTracingSelection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                selectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Turned off */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTracingDevelopers: {
+        parameters: {
+            query?: {
+                /** @description Case-insensitive match on name or email */
+                q?: string;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Developers, by name */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["TracingDeveloper"][];
+                    };
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getLatestTrace: {
+        parameters: {
+            query?: {
+                apiId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The latest trace, or null */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        trace: components["schemas"]["Trace"] | null;
+                        apis: {
+                            /** Format: uuid */
+                            id: string;
+                            name: string;
+                            /** Format: date-time */
+                            receivedAt: string;
+                        }[];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    ingestKongTraces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/x-protobuf": string;
+            };
+        };
+        responses: {
+            /** @description Accepted, or a duplicate, acknowledged. An empty `ExportTraceServiceResponse` (OTLP needs 200). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-protobuf": string;
+                };
+            };
+            /** @description Not a decodable OTLP traces request (`/problems/validation`). Nothing stored. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Missing or wrong trace ingest token (`/problems/unauthenticated`). Nothing stored. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            413: components["responses"]["PayloadTooLarge"];
+            /** @description Not `application/x-protobuf` (`/problems/unsupported-media-type`). */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The batch belongs to no active selection or to another portal (`/problems/trace-not-selected`). Nothing stored. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     tryItGet: {

@@ -21,3 +21,11 @@ Kong batches at most 200 entries per delivery, with a one-second coalescing dela
 five-minute retry budget; each batch uses one aggregate upsert, plus digest, first-call
 and collection metadata writes. The ingest route accepts at most 5000 entries and 2 MB.
 A one-minute internal heartbeat detects delayed collection without adding another service.
+
+## Trace collection
+
+Kong must start with `KONG_TRACING_INSTRUMENTATIONS` containing `request` (the quickstart
+uses `request,router,balancer,plugin_rewrite,plugin_access,plugin_header_filter`) and
+`KONG_TRACING_SAMPLING_RATE=1`.
+`PORTAL_TRACE_INGEST_URL` is the private OTLP/HTTP endpoint Kong can reach; Compose and
+Helm default it to `/api/v1/internal/traces/kong` on the server service.

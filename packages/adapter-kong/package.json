@@ -16,7 +16,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@portal/adapter-sdk": "workspace:*"
+    "@portal/adapter-sdk": "workspace:*",
+    "protobufjs": "^7.6.6"
   },
   "devDependencies": {
     "testcontainers": "^11.8.1"

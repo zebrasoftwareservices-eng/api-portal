@@ -25,6 +25,7 @@ import { reconcile } from './reconcile.js';
 import { mailQueue, processMail } from './mail/queue.js';
 import { housekeeping } from './auth-limits.js';
 import { backgroundJob } from './background-job.js';
+import { applyTracing } from './tracing.js';
 export async function start(config: Config) {
   await migrate(config.DATABASE_URL);
   const { db, client } = connect(config.DATABASE_URL);
@@ -92,6 +93,17 @@ export async function start(config: Config) {
           'gateway-reconcile',
           {},
           { singletonKey: 'gateway-reconcile' },
+        ),
+      enqueueTracingApply: () =>
+        boss.send(
+          'tracing-apply',
+          {},
+          {
+            singletonKey: 'tracing-apply',
+            retryLimit: 20,
+            retryBackoff: true,
+            retryDelay: 5,
+          },
         ),
     });
     if (
@@ -216,6 +228,10 @@ export async function start(config: Config) {
       name: 'gateway-reconcile',
       policy: 'singleton',
     });
+    await boss.createQueue('tracing-apply', {
+      name: 'tracing-apply',
+      policy: 'singleton',
+    });
     await boss.createQueue('seed-sample', {
       name: 'seed-sample',
       policy: 'singleton',
@@ -227,6 +243,12 @@ export async function start(config: Config) {
       }),
     );
     await boss.work(
+      'tracing-apply',
+      backgroundJob('tracing-apply', app.log, () =>
+        applyTracing(db, connection, app.log),
+      ),
+    );
+    await boss.work(
       'seed-sample',
       backgroundJob('seed-sample', app.log, () => seedIfEnabled()),
     );
@@ -235,6 +257,12 @@ export async function start(config: Config) {
       '*/5 * * * *',
       {},
       { singletonKey: 'gateway-reconcile' },
+    );
+    await boss.schedule(
+      'tracing-apply',
+      '*/5 * * * *',
+      {},
+      { singletonKey: 'tracing-apply', retryLimit: 20, retryBackoff: true },
     );
     await boss.send(
       'gateway-reconcile',

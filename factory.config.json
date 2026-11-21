@@ -13,20 +13,16 @@
       "agent": "claude"
     },
     "backend-developer": {
-      "agent": "grok",
-      "model": "grok-4.7"
+      "agent": "codex"
     },
     "frontend-developer": {
-      "agent": "grok",
-      "model": "grok-4.7"
+      "agent": "codex"
     },
     "qa-tester": {
-      "agent": "grok",
-      "model": "grok-4.7"
+      "agent": "codex"
     },
     "user-tester": {
-      "agent": "grok",
-      "model": "grok-4.7"
+      "agent": "codex"
     },
     "researcher": {
       "agent": "grok",

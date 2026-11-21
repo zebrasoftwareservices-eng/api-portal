@@ -13,6 +13,7 @@ const primary = [
   ['/admin/apps', 'Apps'],
   ['/admin/requests', 'Requests'],
   ['/admin/insights', 'Insights'],
+  ['/admin/tracing', 'Tracing'],
 ] as const;
 const admin = [
   ['/admin/apis', 'APIs'],

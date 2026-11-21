@@ -20,9 +20,17 @@ describe('admin shell', () => {
   it('renders the ordered sidebar, pending count, and longest current match', async () => {
     render(<AdminSidebar />);
     const nav = screen.getByRole('navigation', { name: 'Admin' });
-    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['APIs', 'Products', 'Apps', 'Requests', 'Insights']);
+    expect(within(nav).getAllByRole('link').map((link) => link.textContent)).toEqual(['APIs', 'Products', 'Apps', 'Requests', 'Insights', 'Tracing']);
     expect(within(nav).getByRole('link', { name: 'Apps' })).toHaveAttribute('aria-current', 'page');
     expect(await within(nav).findByRole('link', { name: 'Requests, 2 pending' })).toHaveTextContent('2');
+    expect(within(nav).getByRole('button', { name: 'Admin' })).toHaveAttribute('aria-expanded', 'false');
+  });
+  it('links Tracing after Insights and marks it current on /admin/tracing', () => {
+    mocks.pathname = '/admin/tracing';
+    render(<AdminSidebar />);
+    const nav = screen.getByRole('navigation', { name: 'Admin' });
+    expect(within(nav).getByRole('link', { name: 'Tracing' })).toHaveAttribute('href', '/admin/tracing');
+    expect(within(nav).getByRole('link', { name: 'Tracing' })).toHaveAttribute('aria-current', 'page');
     expect(within(nav).getByRole('button', { name: 'Admin' })).toHaveAttribute('aria-expanded', 'false');
   });
   it('expands the Admin group on child pages', async () => {

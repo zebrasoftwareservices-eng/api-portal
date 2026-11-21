@@ -123,13 +123,16 @@ describe('protected portal routes', () => {
     },
   );
 
-  it('allows a non-admin to reach the Insights permission screen', async () => {
-    getSession.mockResolvedValue({ data: { user: { role: 'developer' } } });
-    const response = await middleware(
-      new NextRequest('https://portal.example/admin/insights'),
-    );
-    expect(response.headers.get('x-middleware-next')).toBe('1');
-  });
+  it.each(['/admin/insights', '/admin/tracing'])(
+    'allows a non-admin to reach the permission screen at %s',
+    async (path) => {
+      getSession.mockResolvedValue({ data: { user: { role: 'developer' } } });
+      const response = await middleware(
+        new NextRequest(`https://portal.example${path}`),
+      );
+      expect(response.headers.get('x-middleware-next')).toBe('1');
+    },
+  );
 
   it('allows an admin to open the import page', async () => {
     getSession.mockResolvedValue({ data: { user: { role: 'admin' } } });

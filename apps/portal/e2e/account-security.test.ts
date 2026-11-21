@@ -943,6 +943,7 @@ for (const width of [1280, 390]) {
       ['/admin/products', 'Products'],
       ['/admin/requests', 'Requests'],
       ['/admin/insights', 'Insights'],
+      ['/admin/tracing', 'Tracing'],
       ['/admin/gateways', 'Gateways'],
       ['/admin/settings/mail', 'Mail'],
       ['/admin/settings/accounts', 'Accounts'],
