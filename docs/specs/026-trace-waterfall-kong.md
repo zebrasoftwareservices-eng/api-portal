@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: review  # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -497,41 +497,39 @@ Earlier rounds go in `docs/specs/log/026.md`. The full report is `docs/uat/026/r
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/026.md`.
 
-Re-reviewed `git diff 37e128a..HEAD` at `55dee2e` against decisions 6–8 and the contract. Suite not
-re-run: QA's full pass covers the last code commit `d5fafc8` (server 366, portal 436, adapter 77,
-the five 026 Playwright tests), and only tests and docs changed after it. B1 is fixed: same-trace
-merges keep the earlier `started_at` (`apps/server/src/tracing.ts:486`), tested in both orders.
-`GET /latest?apiId=` and `apis` match `openapi.yaml` and the SDK; a bad `apiId` is a 400
-problem+json; the latest-trace `name` is now the API title. API-scoped tracing, the quickstart
-path, keeps one latest trace per API as decision 6 asks.
+Re-reviewed `git diff 815215f..HEAD` at `d85f0aa`. I did not re-run the suite. QA's report names
+`957e3b6`, the last code commit (server 368, portal 436, adapter 77, all six 026 Playwright tests and
+the quickstart spec on a fresh stack), and only tests and docs changed after it. CI is the second run.
+
+B2 is fixed. `apps/server/src/tracing.ts:465-478` now resolves the API once per trace inside the
+ingest transaction. A trace with a root uses the root's `routePath`. A child-only trace uses the
+API already stored for that trace ID. A trace that resolves to no API is dropped, and a batch with
+nothing resolved gets a 422 problem+json (`:478`). Each trace is stored under its own API
+(`:480-495`). The unit tests cover a mixed batch across two APIs, root-then-child merge, reordering
+within one batch, and unresolved traces. The new live Playwright journey shows a traced developer
+calling two APIs on real Kong, with each API keeping its own latest trace. That journey also covers
+most of S1: Kong's root `http.route` matches `apis.route_path` for the quickstart route.
 
 **Blocking**
-- **B2 — a consumer-scoped batch is attributed to one API.** `apps/server/src/tracing.ts:461-469`
-  resolves the API once per batch from the first root's `routePath`, and `:487` stores every trace
-  in the batch under it. A consumer-scoped plugin (developer or team selection) has one Kong queue
-  for all the APIs the app calls, and Kong coalesces spans for up to 1 s into one batch. A
-  developer who calls API A then API B within that second gets B's call stored as A's latest
-  trace, and B shows nothing, against decision 6. The same code answers 422 to the second half of
-  a split trace (no root, so no `routePath`), so its children are lost and Kong retries for 60 s:
-  the B1 split case returns for developer and team selections. Fix task added.
+- None.
 
 **Suggestions** (no Fix task)
-- S1 — Consumer-scoped route matching has no real-Kong test. The unit test sets `routePath`
-  by hand; nothing confirms Kong 3.9's root `http.route` equals `apis.route_path` for the
-  quickstart route. Add it to the Testcontainers case when B2 is fixed.
-- S2 — `apps/server/src/tracing.ts:465` matches with `limit(1)` and no published filter. Two APIs
-  on the same route path pick one arbitrarily; prefer published APIs and order by `created_at`.
-- S3 — `apps/server/src/tracing.ts:313-321`: a Test before the first Save still inserts the
-  `tracing_settings` row, so `configured` turns true with unsaved values (unchanged since last
-  round).
-- S4 — The Test has no route-specific rate limit (`auth-limits` in the design); it relies on the
-  global limiter (unchanged).
+- S6 — I accept QA's new item as a minor. A consumer-scoped batch that holds only children and
+  arrives before its root gets a 422 (`apps/server/src/tracing.ts:472-478`). Kong's OpenTelemetry
+  plugin queues a request's spans in creation order, root first, so this order should not happen
+  in practice. If it does, Kong's queue retries the non-2xx response for up to 60 s, and the retry
+  merges once the root is stored. Keep it in Bugs.
+- S2 — `apps/server/src/tracing.ts:470` still matches with `limit(1)` and no published filter. Two
+  APIs on the same route path pick one arbitrarily. Prefer published APIs and order by
+  `created_at`.
+- S3 — `apps/server/src/tracing.ts:313-321`: running a Test before the first Save still inserts the
+  `tracing_settings` row, so `configured` turns true with unsaved values. Unchanged.
+- S4 — The Test still has no route-specific rate limit and relies on the global limiter. Unchanged.
 - S5 — `apps/portal/e2e/setup-gateways.test.ts:39` (pre-existing) runs `docker compose down -v` on
   whatever project the environment names. Guard it with `COMPOSE_PROJECT_NAME`. Follow-up.
 
-Technical design and ADR 0017 now say one latest trace per API, and criterion 6 uses Kong 3.9's
-span names. Open minors (slug vs title in the selections table, duplicate picker titles, the
-"1 minutes ago" copy) stay in Bugs. Status: `building` for B2.
+The remaining minors stay in Bugs: slug vs title, duplicate picker titles, the
+"1 minutes ago" copy, and child-before-root. Status: `approved`, waiting for Elango to merge.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
