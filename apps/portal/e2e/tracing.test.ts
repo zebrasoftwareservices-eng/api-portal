@@ -101,6 +101,7 @@ test('026 AC4/6: quickstart probe passes and a selected call renders a waterfall
   });
   await expect(latest).toContainText('GET');
   await expect(latest).toContainText('/sample/get');
+  await expect(latest).toContainText('401');
   await expect(latest).not.toContainText('abc123');
   await expect(latest).toContainText('Slowest');
 });

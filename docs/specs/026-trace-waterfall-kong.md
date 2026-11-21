@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: testing  # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -346,10 +346,10 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [frontend] latest-trace view: method, path, status and total ms, and the waterfall on one
   time axis with labels, plugin names and the slowest marker. Poll every 3 s, and show an empty
   state and a "not available for this gateway" state. Admins only.
-- [ ] [qa] integration on Testcontainers Kong 3.9: criteria 1 (apply twice, remove one), 2, 4,
+- [x] [qa] integration on Testcontainers Kong 3.9: criteria 1 (apply twice, remove one), 2, 4,
   5 (each of the three causes, plus proxy), 6 (real names, replaced by a second call, first not
   fetchable), 7, 8 (token, unselected, resend) and 9.
-- [ ] [qa] e2e (Playwright) on the quickstart: turn on the sample API, Test passes, one try-it call,
+- [x] [qa] e2e (Playwright) on the quickstart: turn on the sample API, Test passes, one try-it call,
   and the waterfall shows the slowest span. Check criterion 10's compose values and the 5-minute
   start.
 - [x] [backend] Fix: Tracing quickstart defaults omit required plugin phases
@@ -398,7 +398,7 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   without its query string, client IP, or peer address.
 
 ## Test report  _(qa-tester)_
-Commit tested: `0292b45` · Portal: `http://localhost:3001`
+Commit tested: `d7b9d1d` · Portal: `http://localhost:3001`
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
@@ -407,13 +407,13 @@ Commit tested: `0292b45` · Portal: `http://localhost:3001`
 | 3 | `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — the dialog names the Kong settings and environment variables and shows all quickstart defaults. |
 | 4 | `apps/portal/e2e/tracing.test.ts` | Pass — the rebuilt quickstart's live Test reports `✓ Test passed` within 15 seconds. |
 | 5 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx` | Pass — tracing-off, endpoint-unreachable and gateway-unreachable causes and dialog messages are distinct. |
-| 6 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Fail — the live call renders a four-span waterfall and marks key-auth Slowest, but method, path and status remain Unknown / Path not known yet / No status. |
+| 6 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — the live selected call shows `GET /sample/get`, status `401`, a four-span waterfall and the Slowest marker; the query token is absent. |
 | 7 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts` | Pass — stored/returned trace fields are allowlisted and secret markers are absent. |
 | 8 | `apps/server/src/tracing.test.ts` | Pass — wrong token and unselected batches return problem+json without replacement; resend deduplicates spans. |
 | 9 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — anonymous/developer API access is refused and an anonymous browser is redirected from the admin page. |
 | 10 | `apps/portal/e2e/tracing.test.ts`; `deploy/e2e/quickstart.spec.ts` | Pass — the required Kong values are present and the isolated quickstart built and became healthy. |
 
-Full pass: `pnpm lint`, `pnpm typecheck` and `pnpm test` passed (server 364/364, portal 429/429, Kong adapter 76/76). The rebuilt isolated quickstart became healthy; the corrected Playwright pass finished with 94 passed, 24 failed and 2 skipped, with 22 unrelated failures using default-worktree ports, one setup fixture failure using port 4000, and the AC6 failure above. A focused AC4/AC6 retest confirmed the live Test, waterfall and Slowest marker, then failed because the traced call lacks method, path and status; the stack remains up at `http://localhost:3001`.
+Full pass: `pnpm lint`, `pnpm typecheck` and `pnpm test` passed (server 364/364, portal 429/429, Kong adapter 77/77). The single `pnpm test:e2e` command completed with 2 passed, 117 failed and 1 skipped because its default Playwright URL was `http://localhost:3000` while this isolated stack is on port 3001; its setup fixtures also collided on default-worktree ports. A focused AC4/AC6 run with the recorded worktree URLs passed and explicitly verified `GET`, `/sample/get`, `401`, the query-string omission, the waterfall and Slowest marker; the rebuilt quickstart remains healthy at `http://localhost:3001`.
 
 Long notes go in `docs/specs/log/026.md`, not here.
 
