@@ -1,4 +1,4 @@
-# ADR 0017 — Kong pushes OTLP traces to the portal, which keeps only the latest one per API in a Postgres row
+# ADR 0018 — Kong pushes OTLP traces to the portal, which keeps only the latest one per API in a Postgres row
 
 - Status: Proposed (accept by merging)
 - Date: 2026-11-20

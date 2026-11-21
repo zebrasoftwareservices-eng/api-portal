@@ -171,7 +171,7 @@ Elango, 2026-11-21.
 <!-- Sections below are filled by later stages. -->
 
 ## Technical design  _(tech-lead)_
-Lasting choices are in [ADR 0017](../adr/0017-traces-pushed-by-kong-opentelemetry-latest-in-one-row.md).
+Lasting choices are in [ADR 0018](../adr/0018-traces-pushed-by-kong-opentelemetry-latest-in-one-row.md).
 Kong facts below were checked in the quickstart's `kong:3.9` image.
 
 **Kong 3.9's span names differ from criterion 6's wording.** The root is `kong`, plugin spans are
@@ -192,7 +192,7 @@ are the ones criterion 6 asks for. `classifySpan` maps both naming schemes, and 
 - **Tech lead: a call matching both an API and a consumer selection.** Kong runs one instance of
   a plugin per request, the most specific scope, and a consumer beats a service. The consumer's
   instance exports, once. Its resource attributes list its selections. The API comes from matching
-  each trace's root `http.route` (ADR 0017 §6).
+  each trace's root `http.route` (ADR 0018 §6).
 - **Tech lead: one pull request?** Yes. Developer and team selection add one consumer-scoped plugin
   kind and one query, about a day. The ingest, the Test and the waterfall are the same either way.
   If the build overruns, the agreed cut is still developer and team selection.
@@ -269,7 +269,7 @@ The stored data stays as criterion 7 lists it.
   selections. An API maps to its gateway service. Developer and team selections map through
   `resolveSelectionApps` to active apps with a consumer. Targets are deduplicated by scope and
   their selection keys merged. The adapter lists plugins tagged `portal-tracing` and this
-  instance's tag. It `PUT`s each desired plugin, ID and config as in ADR 0017 §1, only when the
+  instance's tag. It `PUT`s each desired plugin, ID and config as in ADR 0018 §1, only when the
   config differs, and `DELETE`s portal-tracing plugins that are no longer desired. It never touches
   untagged or operator plugins. Running it twice changes nothing (criterion 1). A Kong 4xx on the
   plugin raises `TracingUnavailableError` and becomes `apply.status: failed` with "Kong refused
@@ -305,7 +305,7 @@ The stored data stays as criterion 7 lists it.
    uses the `trace_latest` row that already holds that trace id. A group that resolves to no API
    is dropped; if none resolves, 422 `trace-not-selected`.
 6. In one transaction, per group: lock that API's `trace_latest` row, then merge, replace or drop
-   per ADR 0017 §3. Return 200.
+   per ADR 0018 §3. Return 200.
 Nothing from the body is logged. Log lines carry the trace id and span count only.
 
 ### Risks and how to test them

@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Button, DropdownMenu as Menu, toast } from '@portal/ui';
+import { Button, Chevron, DropdownMenu as Menu, toast } from '@portal/ui';
 import type { components } from '@portal/sdk';
 import { api } from '../lib/client';
 export type Team = components['schemas']['TeamSummary'];
@@ -111,7 +111,7 @@ export function TeamBar({
               {pending
                 ? 'Switching…'
                 : `Team: ${current?.name || 'unavailable'}`}{' '}
-              <span aria-hidden="true">▾</span>
+              <Chevron variant="menu" />
             </Button>
           </Menu.Trigger>
           <Menu.Portal>

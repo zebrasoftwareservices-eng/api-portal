@@ -24,7 +24,7 @@ import {
   requireGateway,
   type GatewayConnection,
 } from './gateway-connection.js';
-import { requireUser, type Auth } from './auth.js';
+import { requireDeveloper, requireUser, type Auth } from './auth.js';
 import { Problem, notFound } from './problem.js';
 import { requireVerified } from './verified.js';
 import {
@@ -82,7 +82,14 @@ const createSchema = z
       });
   });
 const appParams = z.object({ appId: z.uuid() });
-function credentialView(c: typeof credentials.$inferSelect) {
+export function credentialView(c: {
+  id: string;
+  kind: string;
+  keyHint: string;
+  status: string;
+  createdAt: Date;
+  revokedAt: Date | null;
+}) {
   return {
     id: c.id,
     kind: c.kind as 'api-key',
@@ -160,6 +167,7 @@ export function registerApps(
   });
   server.post('/api/v1/apps', async (request, reply) => {
     const user = await requireUser(auth, request);
+    requireDeveloper(user);
     await db.transaction((tx) => ensurePersonalTeam(tx, user.id));
     const target = z
       .object({
@@ -368,6 +376,7 @@ export function registerApps(
   });
   server.post('/api/v1/apps/:appId/credentials', async (request, reply) => {
     const user = await requireUser(auth, request);
+    requireDeveloper(user);
     const { appId } = appParams.parse(request.params);
     const id = uuidv7(),
       key = generateKey();
@@ -562,6 +571,7 @@ export function registerApps(
   );
   server.put('/api/v1/apps/:appId/plan', async (request, reply) => {
     const user = await requireUser(auth, request);
+    requireDeveloper(user);
     const { appId } = appParams.parse(request.params);
     const { planId } = z.object({ planId: z.uuid() }).parse(request.body);
     const rollback: Compensations = [];
@@ -689,6 +699,7 @@ export function registerApps(
     '/api/v1/apps/:appId/credentials/:credentialId/regenerate',
     async (request, reply) => {
       const user = await requireUser(auth, request);
+      requireDeveloper(user);
       const { appId, credentialId } = appParams
         .extend({ credentialId: z.uuid() })
         .parse(request.params);

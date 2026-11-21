@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 import * as Menu from '@radix-ui/react-dropdown-menu';
+import { Chevron } from './index';
 export function VersionSwitcher({
   versions,
   current,
@@ -25,7 +26,7 @@ export function VersionSwitcher({
       >
         Version {current}{' '}
         {latest && <span className="badge latest">Latest</span>}{' '}
-        <span aria-hidden="true">▾</span>
+        <Chevron variant="menu" />
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Content

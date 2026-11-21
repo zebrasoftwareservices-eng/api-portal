@@ -29,6 +29,7 @@ import { registerAccessRequests } from './access-requests.js';
 import { registerProductAccess } from './product-access.js';
 import type { EnqueueRevocation } from './revocation.js';
 import { registerApps } from './apps.js';
+import { registerAdminApps } from './admin-apps.js';
 import { registerSetup } from './setup.js';
 import { registerGateways } from './gateways.js';
 import { registerProxy } from './proxy.js';
@@ -248,6 +249,7 @@ export async function createApp(options: AppOptions) {
     options.enqueueTracingApply,
   );
   registerApps(app, db, auth, connection, enqueue);
+  registerAdminApps(app, db, auth);
   registerAccessRequests(app, db, auth, connection, enqueue);
   registerProductAccess(
     app,

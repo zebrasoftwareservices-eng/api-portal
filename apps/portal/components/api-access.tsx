@@ -16,6 +16,7 @@ import {
   recoverySentence,
   type Access,
 } from '../lib/access';
+import { usePortal } from './providers';
 
 const AccessContext = createContext<{
   access: Access;
@@ -119,7 +120,10 @@ export function ApiAccessProvider({
   );
 }
 export function ApiAccessAction() {
+  const { user } = usePortal();
   const { access, slug, actionRef } = useAccess();
+  if (user?.role === 'admin')
+    return <p className="muted admin-developer-note">Portal admins can&apos;t subscribe. Use a developer account to get a key.</p>;
   const action = accessAction(access, slug);
   return (
     <div className="actions access-actions">

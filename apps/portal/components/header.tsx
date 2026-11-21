@@ -2,7 +2,7 @@
 'use client';
 import { useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Button, Dialog, DropdownMenu, toast } from '@portal/ui';
+import { Button, Chevron, Dialog, DropdownMenu, toast } from '@portal/ui';
 import { isDemo, QUICKSTART_URL } from '../lib/demo';
 import { HeaderSearch } from './header-search';
 import { usePortal } from './providers';
@@ -38,6 +38,12 @@ export function Header() {
       toast.error("We couldn't sign you out. Try again.");
     }
   }
+  function toggleTheme() {
+    const root = document.documentElement;
+    const dark = root.getAttribute('data-theme') === 'dark' ||
+      (!root.getAttribute('data-theme') && window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+    root.setAttribute('data-theme', dark ? 'light' : 'dark');
+  }
   const links = (mobile = false) => (
     <>
       <a
@@ -61,15 +67,11 @@ export function Header() {
         </>
       ) : user ? (
         <>
-          <a
+          {user.role !== 'admin' && <a
             href="/dashboard"
-            aria-current={
-              pathname.startsWith('/dashboard') ? 'page' : undefined
-            }
-          >
-            My apps
-          </a>
-          {user.role === 'admin' && (
+            aria-current={pathname.startsWith('/dashboard') ? 'page' : undefined}
+          >My apps</a>}
+          {user.role === 'admin' && !admin && (
             <a
               href="/admin/apis"
               aria-current={pathname.startsWith('/admin') ? 'page' : undefined}
@@ -93,7 +95,7 @@ export function Header() {
                   variant="ghost"
                   aria-label={`Account menu for ${user.email}`}
                 >
-                  {user.email} <span aria-hidden="true">⌄</span>
+                  <span className="account-email">{user.email}</span> <Chevron variant="menu" />
                 </Button>
               </DropdownMenu.Trigger>
               <DropdownMenu.Portal>
@@ -130,11 +132,29 @@ export function Header() {
         <a className="brand" href="/">
           {logo ? <img className="brand-logo" src={logo} alt="Developer Portal" /> : 'Developer Portal'}
         </a>
-        <nav className="desktop-nav" aria-label="Main navigation">
-          {links()}
-        </nav>
+        {user?.role === 'admin' ? (
+          <nav className="desktop-nav admin-topbar" aria-label="Admin account">
+            <HeaderSearch variant="inline" />
+            <Button variant="ghost" aria-label="Toggle theme" onClick={toggleTheme}>◐</Button>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <Button variant="ghost" aria-label={`Account menu for ${user.email}`}>
+                  <span className="account-email">{user.email}</span> <Chevron variant="menu" />
+                </Button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content className="account-menu" align="end">
+                  <DropdownMenu.Label className="muted">{user.email}</DropdownMenu.Label>
+                  <DropdownMenu.Separator />
+                  <DropdownMenu.Item asChild><a href="/profile">Profile</a></DropdownMenu.Item>
+                  <DropdownMenu.Item onSelect={signOut}>Sign out</DropdownMenu.Item>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          </nav>
+        ) : <nav className="desktop-nav" aria-label="Main navigation">{links()}</nav>}
         <HeaderSearch variant="icon" />
-        <div className="mobile-nav">
+        {user?.role !== 'admin' && <div className="mobile-nav">
           <Dialog.Root>
             <Dialog.Trigger asChild>
               <Button variant="ghost" aria-label="Open menu">
@@ -163,7 +183,7 @@ export function Header() {
               </Dialog.Content>
             </Dialog.Portal>
           </Dialog.Root>
-        </div>
+        </div>}
       </div>
     </header>
   );

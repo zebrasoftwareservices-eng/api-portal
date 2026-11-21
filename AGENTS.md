@@ -121,10 +121,10 @@ Codex custom agents (`.codex/agents/`), the Claude copy of the factory skill and
 | product-manager | Claude Code | Specs: stories, acceptance criteria, scope |
 | tech-lead | Claude Code | Technical design, API contract, ADRs, code review |
 | ui-designer | Claude Code | Flows, screens, states, copy, design tokens |
-| backend-developer | Codex | Server, database, gateway adapters |
-| frontend-developer | Codex | Portal UI |
-| qa-tester | Codex | Integration + e2e tests, test report, bugs |
-| user-tester | Codex | Real-user testing in Orca's built-in browser, a short report, bugs |
+| backend-developer | Grok | Server, database, gateway adapters |
+| frontend-developer | Grok | Portal UI |
+| qa-tester | Grok | Integration + e2e tests, test report, bugs |
+| user-tester | Grok | Real-user testing in Orca's built-in browser, a short report, bugs |
 
 A spec's `status` moves: `draft` → **Elango approves** → `ready` → tech-lead → `designed`
 → ui-designer → `building` → backend + frontend → `testing` → qa-tester → `uat`

@@ -50,14 +50,15 @@ describe('header theme logo', () => {
     expect(screen.getByRole('link', { name: 'Developer Portal' })).toBeInTheDocument();
   });
 
-  it('uses a full page load for the Admin entry', () => {
+  it('keeps admin navigation out of the top bar', () => {
     state.user = { email: 'admin@example.com', role: 'admin' };
     render(
       <ThemeProvider theme={DEFAULT_PUBLIC_THEME}>
         <Header />
       </ThemeProvider>,
     );
-    expect(screen.getByRole('link', { name: 'Admin' }).tagName).toBe('A');
-    expect(screen.getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin/apis');
+    expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'My apps' })).not.toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Admin account' })).toBeInTheDocument();
   });
 });

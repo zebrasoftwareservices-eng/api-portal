@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
 import { useEffect, useId, useRef, useState } from 'react';
-import { Button, Input, PageHeader, Table } from '@portal/ui';
+import { Button, Chevron, Input, PageHeader, SelectField, Table } from '@portal/ui';
 import type { GatewayService, Problem } from '../lib/types';
 import type { components } from '@portal/sdk';
 import { api, networkProblem, retrySeconds } from '../lib/client';
@@ -505,7 +505,7 @@ export function AdminApis() {
               }
             >
               {(props) => (
-                <select
+                <SelectField
                   {...props}
                   required
                   disabled={services.loading}
@@ -546,7 +546,7 @@ export function AdminApis() {
                         {serviceLabel(s)}
                       </option>
                     ))}
-                </select>
+                </SelectField>
               )}
             </Field>
             {!services.loading &&
@@ -611,7 +611,7 @@ export function AdminApis() {
               open={options}
               onToggle={(e) => setOptions(e.currentTarget.open)}
             >
-              <summary>More options</summary>
+              <summary><Chevron />More options</summary>
               <div className="stack">
                 <Field
                   label="Slug"
