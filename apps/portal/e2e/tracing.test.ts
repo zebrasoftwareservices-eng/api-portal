@@ -47,6 +47,11 @@ test('026 AC3/10: tracing dialog mirrors every quickstart node value', async ({
         name: new RegExp(`^${instrumentation}( \\(required\\))?$`),
       }),
     ).toBeChecked();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(
+    page.getByRole('button', { name: /Turn on tracing|Edit settings/ }),
+  ).toBeFocused();
 });
 
 test('026 AC4/6: quickstart probe passes and a selected call renders a waterfall', async ({
@@ -68,15 +73,48 @@ test('026 AC4/6: quickstart probe passes and a selected call renders a waterfall
     (api: { slug: string }) => api.slug === 'sample',
   );
   expect(sample).toBeTruthy();
-  expect(
-    (
-      await request.post('/api/v1/admin/tracing/selections', {
-        data: { kind: 'api', targetId: sample.id },
-      })
-    ).status(),
-  ).toBeLessThan(202);
+  // Start from no sample selection so the picker, not the API, adds it.
+  const before = await (await request.get('/api/v1/admin/tracing')).json();
+  for (const selection of before.selections as {
+    id: string;
+    kind: string;
+    targetId: string;
+  }[])
+    if (selection.kind === 'api' && selection.targetId === sample.id)
+      expect(
+        (
+          await request.delete(
+            `/api/v1/admin/tracing/selections/${selection.id}`,
+          )
+        ).status(),
+      ).toBe(204);
 
   await page.goto('/admin/tracing');
+  const kind = page.getByLabel('Kind');
+  const apiPicker = page.getByLabel('Select api');
+  await expect(kind).toHaveValue('api');
+  const sampleOption = apiPicker.locator(`option[value="${sample.id}"]`);
+  await expect(sampleOption).toHaveText(sample.title);
+  // A kind change resets the target list and the chosen target.
+  await apiPicker.selectOption(sample.id);
+  await expect(apiPicker).toHaveValue(sample.id);
+  await kind.selectOption('team');
+  await kind.selectOption('api');
+  await expect(apiPicker).toHaveValue('');
+  await expect(sampleOption).toBeAttached();
+  await apiPicker.selectOption(sample.id);
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(
+    page.getByRole('table').filter({ hasText: 'Covers' }),
+  ).toContainText(sample.slug);
+  const after = await (await request.get('/api/v1/admin/tracing')).json();
+  expect(
+    (after.selections as { kind: string; targetId: string }[]).some(
+      (selection) =>
+        selection.kind === 'api' && selection.targetId === sample.id,
+    ),
+  ).toBe(true);
+
   await page.getByRole('button', { name: 'Edit settings' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Test' }).click();
   await expect(page.getByText('✓ Test passed')).toBeVisible({

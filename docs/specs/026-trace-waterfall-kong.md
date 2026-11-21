@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: testing  # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -406,22 +406,22 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   tech lead should correct the contract table's `GET /v1/admin/apis` to `GET /v1/apis`.
 
 ## Test report  _(qa-tester)_
-Commit tested: `d7b9d1d` · Portal: `http://localhost:3001`
+Commit tested: `1a8648a` (HEAD `08c961f`, docs only on top) · Portal: `http://localhost:3001`
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
-| 1 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts` | Pass — idempotent selection/apply and removal are automated. |
+| 1 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts`; `apps/portal/e2e/tracing.test.ts` | Pass — idempotent selection/apply and removal are automated; the e2e now adds the sample API from the picker (by id), checks a kind change clears the chosen target, and sees the selection in the table and in `GET /admin/tracing`. |
 | 2 | `apps/server/src/tracing.test.ts` | Pass — an unselected batch is rejected and the selected latest trace is unchanged. |
-| 3 | `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — the dialog names the Kong settings and environment variables and shows all quickstart defaults. |
-| 4 | `apps/portal/e2e/tracing.test.ts` | Pass — the rebuilt quickstart's live Test reports `✓ Test passed` within 15 seconds. |
-| 5 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx` | Pass — tracing-off, endpoint-unreachable and gateway-unreachable causes and dialog messages are distinct. |
-| 6 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — the live selected call shows `GET /sample/get`, status `401`, a four-span waterfall and the Slowest marker; the query token is absent. |
-| 7 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts` | Pass — stored/returned trace fields are allowlisted and secret markers are absent. |
-| 8 | `apps/server/src/tracing.test.ts` | Pass — wrong token and unselected batches return problem+json without replacement; resend deduplicates spans. |
-| 9 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — anonymous/developer API access is refused and an anonymous browser is redirected from the admin page. |
-| 10 | `apps/portal/e2e/tracing.test.ts`; `deploy/e2e/quickstart.spec.ts` | Pass — the required Kong values are present and the isolated quickstart built and became healthy. |
+| 3 | `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — the dialog names the Kong settings and variables, shows the quickstart defaults, and Escape returns focus to the settings button. |
+| 4 | `apps/portal/e2e/tracing.test.ts` | Pass — the live Test reports `✓ Test passed` within 15 seconds. |
+| 5 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx` | Pass — tracing-off, endpoint-unreachable and gateway-unreachable causes and messages are distinct. |
+| 6 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — the selected live call shows `GET /sample/get`, `401`, the waterfall and the Slowest marker, without the query token. |
+| 7 | `apps/server/src/tracing.test.ts`; `packages/adapter-kong/src/tracing.test.ts` | Pass — stored/returned fields are allowlisted and secret markers are absent. |
+| 8 | `apps/server/src/tracing.test.ts` | Pass — wrong token and unselected batches return problem+json without replacement; a resend deduplicates spans. |
+| 9 | `apps/server/src/tracing.test.ts`; `apps/portal/components/admin-tracing.test.tsx`; `apps/portal/e2e/tracing.test.ts` | Pass — anonymous/developer API access is refused and an anonymous browser is redirected. |
+| 10 | `apps/portal/e2e/tracing.test.ts`; `deploy/e2e/quickstart.spec.ts` | Pass — the Kong values are present; the rebuilt isolated quickstart became healthy and serves the catalog. |
 
-Full pass: `pnpm lint`, `pnpm typecheck` and `pnpm test` passed (server 364/364, portal 429/429, Kong adapter 77/77). The single `pnpm test:e2e` command completed with 2 passed, 117 failed and 1 skipped because its default Playwright URL was `http://localhost:3000` while this isolated stack is on port 3001; its setup fixtures also collided on default-worktree ports. A focused AC4/AC6 run with the recorded worktree URLs passed and explicitly verified `GET`, `/sample/get`, `401`, the query-string omission, the waterfall and Slowest marker; the rebuilt quickstart remains healthy at `http://localhost:3001`.
+Full pass: `pnpm lint`, `pnpm typecheck` and `pnpm test` passed (server 364/364, portal 435/435, Kong adapter 77/77; turbo replayed the unchanged server and adapter results). The full `pnpm test:e2e` against this stack's ports ran 117 passed, 2 skipped and 1 failed. The failure was the new picker step in AC4/6, which used `name` where the catalog returns `title`. After that test-only fix, the 026 Playwright tests passed 4/4 against `http://localhost:3001`. The stack is left up.
 
 Long notes go in `docs/specs/log/026.md`, not here.
 
@@ -437,6 +437,8 @@ Long notes go in `docs/specs/log/026.md`, not here.
 - [x] Latest trace omits request method path and status (major)
 - [x] Tracing API picker lists no APIs, so an API selection cannot be added (major)
 - [x] Escape from Tracing settings dialog leaves focus on the page body, not Edit settings (minor)
+- [ ] The selections table names an API by its slug (`sample`) while the picker shows its title (`Sample HTTP API`) (minor)
+- [ ] The first Test right after a Kong restart reported "Kong can't reach the trace endpoint"; the next Test passed (minor, seen once)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
