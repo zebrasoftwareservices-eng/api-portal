@@ -371,8 +371,8 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Quickstart Kong rejects tracing plugin during Test
 - [x] [backend] Fix: Latest trace omits request method path and status
 - [x] [frontend] Fix: Tracing API picker lists no APIs, so an API selection cannot be added
-- [ ] [backend] Fix: Trace merge overwrites `started_at` with a child span's start when a trace's root arrives in an earlier batch than its children (Review B1); add the two-halves-in-both-orders merge test
-- [ ] [backend] Decision 6: keep one latest trace per API — `traceScopeKey(batch)` returns the API id (resolved from the service, or from the root's `http.route` for a consumer-scoped plugin), `GET /admin/tracing/latest?apiId=` in openapi.yaml and the SDK; a call to API A leaves API B's latest trace unchanged (test)
+- [x] [backend] Fix: Trace merge overwrites `started_at` with a child span's start when a trace's root arrives in an earlier batch than its children (Review B1); add the two-halves-in-both-orders merge test
+- [x] [backend] Decision 6: keep one latest trace per API — `traceScopeKey(batch)` returns the API id (resolved from the service, or from the root's `http.route` for a consumer-scoped plugin), `GET /admin/tracing/latest?apiId=` in openapi.yaml and the SDK; a call to API A leaves API B's latest trace unchanged (test)
 - [x] [frontend] Decision 6: the Latest traced call card picks which traced API to show (`LatestTraceCard apiId`), defaulting to the most recently traced API; component test
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
@@ -423,6 +423,12 @@ Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-
   defaults its accessible API selector to the most recently traced API, and sends `apiId` on later
   polls after an admin changes the selection. The per-API retention copy and responsive selector
   match Decision 6; portal lint, typecheck and all 436 tests pass, including the component regression.
+
+- Backend (build loop 6): trace rows are now scoped by API, including consumer-scoped batches resolved
+  from the root span's `http.route`; calls to one API no longer replace another API's latest trace.
+  `GET /v1/admin/tracing/latest` accepts an optional `apiId`, defaults to the newest trace overall, and
+  returns newest-first API choices using API titles. Split-batch merges keep the earliest start in both
+  arrival orders, preserving span offsets. SDK checks pass, and server lint, typecheck and 366 tests pass.
 
 ## Test report  _(qa-tester)_
 Commit tested: `1a8648a` (HEAD `08c961f`, docs only on top) · Portal: `http://localhost:3001`

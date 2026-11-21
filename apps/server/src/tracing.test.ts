@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import {
   apis,
+  apiVersions,
   connect,
   gateways,
   instanceSettings,
@@ -37,6 +38,9 @@ let developerCookie = '';
 const instanceId = uuidv7();
 const gatewayId = uuidv7();
 const apiId = uuidv7();
+const apiBId = uuidv7();
+const apiVersionId = uuidv7();
+const apiBVersionId = uuidv7();
 let inspected: 'ok' | 'off' | 'unreachable' = 'ok';
 let proxyWorks = true;
 let parsedBatch: TraceBatch;
@@ -194,6 +198,34 @@ beforeAll(async () => {
     gatewayServiceName: 'sample',
     routePath: '/sample',
   });
+  await connection.db.insert(apis).values({
+    id: apiBId,
+    slug: 'orders',
+    gatewayId,
+    gatewayServiceId: 'orders',
+    gatewayServiceName: 'orders',
+    routePath: '/orders',
+  });
+  await connection.db.insert(apiVersions).values([
+    {
+      id: apiVersionId,
+      apiId,
+      version: '1.0.0',
+      title: 'Sample API',
+      description: null,
+      document: { openapi: '3.1.0', info: { title: 'Sample API', version: '1.0.0' }, paths: {} },
+    },
+    {
+      id: apiBVersionId,
+      apiId: apiBId,
+      version: '1.0.0',
+      title: 'Orders API',
+      description: null,
+      document: { openapi: '3.1.0', info: { title: 'Orders API', version: '1.0.0' }, paths: {} },
+    },
+  ]);
+  await connection.db.update(apis).set({ latestVersionId: apiVersionId }).where(eq(apis.id, apiId));
+  await connection.db.update(apis).set({ latestVersionId: apiBVersionId }).where(eq(apis.id, apiBId));
   ({ app: server } = await createApp({
     db: connection.db,
     config: loadConfig({ DATABASE_URL: databaseUrl }),
@@ -463,6 +495,84 @@ describe('trace ingest and latest trace', () => {
     expect(rejected.statusCode).toBe(422);
     expect(rejected.headers['content-type']).toContain('application/problem+json');
     expect((await connection.db.select().from(traceLatest))[0]!.traceId).toBe('a'.repeat(32));
+  });
+
+  it('merges split trace batches in both orders without moving the trace start', async () => {
+    await saveSettings();
+    const selectionId = uuidv7();
+    await connection.db.insert(tracingSelections).values({
+      id: selectionId,
+      kind: 'api',
+      apiId,
+      createdBy: (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'admin')))[0]!.id,
+    });
+
+    for (const rootFirst of [true, false]) {
+      await connection.db.delete(traceLatest);
+      const startedMs = Date.now();
+      const complete = batch(rootFirst ? '1'.repeat(32) : '2'.repeat(32), selectionId, startedMs);
+      const rootHalf = { ...complete, spans: [complete.spans[0]!] };
+      const childHalf = { ...complete, spans: complete.spans.slice(1) };
+      for (const half of rootFirst ? [rootHalf, childHalf] : [childHalf, rootHalf])
+        expect((await ingest(half)).statusCode).toBe(200);
+
+      const [stored] = await connection.db.select().from(traceLatest);
+      expect(stored!.startedAt.getTime()).toBe(startedMs);
+      const latest = await server.inject({
+        url: `/api/v1/admin/tracing/latest?apiId=${apiId}`,
+        headers: { cookie: adminCookie },
+      });
+      expect(latest.statusCode).toBe(200);
+      expect(latest.json().trace.spans).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ spanId: 'root', startOffsetMs: 0 }),
+          expect.objectContaining({ spanId: 'plugin', startOffsetMs: 2 }),
+        ]),
+      );
+    }
+  });
+
+  it('keeps one latest trace per API and resolves consumer-scoped traces from the root route', async () => {
+    await saveSettings();
+    const apiSelectionId = uuidv7();
+    const developerSelectionId = uuidv7();
+    const adminId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'admin')))[0]!.id;
+    const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
+    await connection.db.insert(tracingSelections).values([
+      { id: apiSelectionId, kind: 'api', apiId, createdBy: adminId },
+      { id: developerSelectionId, kind: 'developer', userId: developerId, createdBy: adminId },
+    ]);
+
+    const now = Date.now();
+    const apiBTrace = batch('b'.repeat(32), developerSelectionId, now);
+    apiBTrace.resource = { instance: instanceId, selections: [developerSelectionId] };
+    apiBTrace.spans[0] = { ...apiBTrace.spans[0]!, routePath: '/orders' };
+    expect((await ingest(apiBTrace)).statusCode).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect((await ingest(batch('a'.repeat(32), apiSelectionId, now + 1000))).statusCode).toBe(200);
+
+    const newest = await server.inject({
+      url: '/api/v1/admin/tracing/latest',
+      headers: { cookie: adminCookie },
+    });
+    expect(newest.statusCode).toBe(200);
+    expect(newest.json()).toMatchObject({
+      trace: { traceId: 'a'.repeat(32), api: { id: apiId, name: 'Sample API' } },
+      apis: [
+        { id: apiId, name: 'Sample API' },
+        { id: apiBId, name: 'Orders API' },
+      ],
+    });
+
+    const apiBLatest = await server.inject({
+      url: `/api/v1/admin/tracing/latest?apiId=${apiBId}`,
+      headers: { cookie: adminCookie },
+    });
+    expect(apiBLatest.statusCode).toBe(200);
+    expect(apiBLatest.json().trace).toMatchObject({
+      traceId: 'b'.repeat(32),
+      api: { id: apiBId, name: 'Orders API' },
+    });
   });
 
   it('AC6: replaces an older call, classifies real Kong 3.9 names, and marks one slowest span', async () => {

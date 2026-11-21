@@ -6,6 +6,7 @@ import { uuidv7 } from 'uuidv7';
 import { z } from 'zod';
 import {
   apis,
+  apiVersions,
   apps,
   gatewayConsumers,
   teams,
@@ -28,7 +29,10 @@ import { normalizeUrl, requireEnabled, type GatewayConnection } from './gateway-
 import { Problem, notFound } from './problem.js';
 
 export const TRACING_REQUIRE_PASSING_TEST = false;
-export const traceScopeKey = (_batch?: TraceBatch) => 'portal';
+export const traceScopeKey = (batch: TraceBatch) => {
+  if (!batch.resource.apiId) throw new Error('Trace batch API scope was not resolved.');
+  return batch.resource.apiId;
+};
 const settingsInput = z.strictObject({
   traceEndpoint: z.string().max(2048),
   instrumentations: z
@@ -402,11 +406,28 @@ export function registerTracing(
   });
   server.get('/api/v1/admin/tracing/latest', async (request) => {
     await requireUser(auth, request, true);
+    const { apiId } = z.object({ apiId: z.uuid().optional() }).parse(request.query);
     const gateway = await connection.load();
-    const [row] = await db.select().from(traceLatest).where(eq(traceLatest.scopeKey, 'portal'));
-    if (!row || !gateway?.adapter) return { trace: null };
-    const api = row.apiId ? (await db.select({ id: apis.id, slug: apis.slug }).from(apis).where(eq(apis.id, row.apiId)))[0] : null;
-    return { trace: { ...traceView(row, gateway.adapter), api: api ? { ...api, name: api.slug } : null } };
+    const rows = await db
+      .select({ trace: traceLatest, apiId: apis.id, apiSlug: apis.slug, apiTitle: apiVersions.title })
+      .from(traceLatest)
+      .innerJoin(apis, eq(traceLatest.apiId, apis.id))
+      .leftJoin(apiVersions, eq(apis.latestVersionId, apiVersions.id))
+      .orderBy(desc(traceLatest.receivedAt));
+    const selected = apiId ? rows.find((row) => row.apiId === apiId) : rows[0];
+    const choices = rows.map((row) => ({
+      id: row.apiId,
+      name: row.apiTitle ?? row.apiSlug,
+      receivedAt: row.trace.receivedAt.toISOString(),
+    }));
+    if (!selected || !gateway?.adapter) return { trace: null, apis: choices };
+    return {
+      trace: {
+        ...traceView(selected.trace, gateway.adapter),
+        api: { id: selected.apiId, slug: selected.apiSlug, name: selected.apiTitle ?? selected.apiSlug },
+      },
+      apis: choices,
+    };
   });
 
   server.register(async (ingest) => {
@@ -437,6 +458,15 @@ export function registerTracing(
       const [instance] = await db.execute<{ instance_id: string }>(sql`select instance_id from instance_settings limit 1`);
       const active = batch.resource.selections.length ? await db.select({ id: tracingSelections.id }).from(tracingSelections).where(inArray(tracingSelections.id, batch.resource.selections)) : [];
       if (batch.resource.instance !== instance?.instance_id || !active.length) throw new Problem(422, 'trace-not-selected', 'Trace does not belong to an active selection.');
+      if (!batch.resource.apiId) {
+        const routePath = batch.spans.find((span) => span.parentSpanId === null)?.routePath;
+        const [api] = routePath
+          ? await db.select({ id: apis.id }).from(apis).where(eq(apis.routePath, routePath)).limit(1)
+          : [];
+        if (!api) throw new Problem(422, 'trace-not-selected', 'Trace does not match a published API.');
+        batch = { ...batch, resource: { ...batch.resource, apiId: api.id } };
+      }
+      const scopeKey = traceScopeKey(batch);
       const groups = new Map<string, TraceBatch['spans']>();
       for (const span of batch.spans) groups.set(span.traceId, [...(groups.get(span.traceId) ?? []), span]);
       await db.transaction(async (tx) => {
@@ -444,15 +474,17 @@ export function registerTracing(
         for (const [traceId, spans] of groups) {
           const root = spans.find((span) => span.parentSpanId === null);
           const started = new Date(Number(BigInt((root ?? spans[0]!).startNs) / 1_000_000n));
-          const [previous] = await tx.select().from(traceLatest).where(eq(traceLatest.scopeKey, traceScopeKey(batch))).for('update');
+          const [previous] = await tx.select().from(traceLatest).where(eq(traceLatest.scopeKey, scopeKey)).for('update');
           if (previous && previous.traceId !== traceId && previous.startedAt > started) continue;
-          const merged = previous?.traceId === traceId ? [...previous.spans] : [];
+          const sameTrace = previous?.traceId === traceId;
+          const merged = sameTrace ? [...previous.spans] : [];
           for (const span of spans) {
             const stored = { spanId: span.spanId, parentSpanId: span.parentSpanId, name: span.name, startNs: span.startNs, durationNs: span.durationNs, status: span.status };
             const index = merged.findIndex((value) => value.spanId === span.spanId);
             if (index >= 0) merged[index] = stored; else if (merged.length < 1000) merged.push(stored);
           }
-          await tx.insert(traceLatest).values({ scopeKey: traceScopeKey(batch), traceId, apiId: batch.resource.apiId ?? null, startedAt: started, receivedAt: new Date(), rootSpanId: root?.spanId ?? previous?.rootSpanId ?? spans[0]!.spanId, request: root?.request ?? previous?.request ?? null, spans: merged }).onConflictDoUpdate({ target: traceLatest.scopeKey, set: { traceId, apiId: batch.resource.apiId ?? null, startedAt: started, receivedAt: new Date(), rootSpanId: root?.spanId ?? previous?.rootSpanId ?? spans[0]!.spanId, request: root?.request ?? previous?.request ?? null, spans: merged } });
+          const traceStarted = sameTrace && previous.startedAt < started ? previous.startedAt : started;
+          await tx.insert(traceLatest).values({ scopeKey, traceId, apiId: scopeKey, startedAt: traceStarted, receivedAt: new Date(), rootSpanId: root?.spanId ?? previous?.rootSpanId ?? spans[0]!.spanId, request: root?.request ?? previous?.request ?? null, spans: merged }).onConflictDoUpdate({ target: traceLatest.scopeKey, set: { traceId, apiId: scopeKey, startedAt: traceStarted, receivedAt: new Date(), rootSpanId: root?.spanId ?? previous?.rootSpanId ?? spans[0]!.spanId, request: root?.request ?? previous?.request ?? null, spans: merged } });
         }
       });
       server.log.info({ traceIds: [...groups.keys()], spanCount: batch.spans.length }, 'Trace batch accepted');
