@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: uat  # draft → ready → designed → building → testing → uat → review → approved → done
+status: review  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -439,10 +439,11 @@ Long notes go in `docs/specs/log/026.md`, not here.
 - [x] Escape from Tracing settings dialog leaves focus on the page body, not Edit settings (minor)
 - [ ] The selections table names an API by its slug (`sample`) while the picker shows its title (`Sample HTTP API`) (minor)
 - [ ] The first Test right after a Kong restart reported "Kong can't reach the trace endpoint"; the next Test passed (minor, seen once)
+- [ ] The Tracing API picker shows several APIs with the same title (three "Sample HTTP API", two "Orders QA") with nothing to tell them apart (minor)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
-| 1 Turn tracing on for one API, developer or team | **Fail** (major) | Developer row added: "Journey QA … No active apps yet"; "Stop tracing sample" removed the API row; but the API Target picker shows only "Search APIs…" (`GET /api/v1/admin/apis` 404), and after Developer → API it lists developers and Add says "That api no longer exists. Pick another." `selection-picker-fail.png` |
+| 1 Turn tracing on for one API, developer or team | Pass | Retest: picker lists published APIs; added the quickstart Sample HTTP API → "Api · sample · Every call to this API"; Kind switches reset the target to "Choose a developer…" / "Search APIs…"; a try-it call replaced the latest trace ("Received 16 seconds ago", new Trace ID `245ec73c…ceb2`) |
 | 2 Call outside the selection keeps the shown trace | Pass | With only a developer selected, 3 calls to `/sample/get?token=abc123`; after 35 s Trace ID `816e4c43…324d` unchanged |
 | 3 Turn-on dialog names node settings, restart, quickstart values | Pass | "Set these two node settings … then restart the Kong node"; `KONG_TRACING_INSTRUMENTATIONS=request,router,balancer,plugin_rewrite,plugin_access,plugin_header_filter`, `KONG_TRACING_SAMPLING_RATE=1`, endpoint `http://server:4000/api/v1/internal/traces/kong` |
 | 4 Test passes on the quickstart | Pass | "✓ Test passed — Kong delivered a test trace to the portal." in about 1 s |
@@ -450,7 +451,7 @@ Long notes go in `docs/specs/log/026.md`, not here.
 | 6 Latest call waterfall with Slowest | Pass | "GET /sample/get ⚠ 401 Unauthorized 14.3 ms total"; "⚠ Slowest: key-auth plugin — 9.76 ms, 68% of the call"; rows Request, Router, Plugin key-auth, Plugin opentelemetry; no query string |
 | 9 Non-admin cannot reach tracing | Pass | UI-signed-up developer: "You don't have access to Tracing"; `/api/v1/admin/tracing/latest` 403 problem+json |
 | Mobile 390×844 | Pass | No horizontal scroll (scrollWidth 390); waterfall stacks as cards with "⚠ Slowest" badge |
-| Keyboard | Pass (minor) | Tab → Edit settings → Enter → Tab to Test → Enter passes → Escape closes; focus then lands on the page body, not Edit settings |
+| Keyboard | Pass | Retest: Enter on Edit settings opens "Tracing settings"; Escape closes it and focus returns to "Edit settings" |
 
 One row per user-visible criterion. Evidence is a short quote of what was on the screen.
 Name an image only for an open failure. On a retest, change only the failed rows.
