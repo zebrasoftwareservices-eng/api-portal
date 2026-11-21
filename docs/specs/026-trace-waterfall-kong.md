@@ -1,7 +1,7 @@
 ---
 id: 026
 title: Trace waterfall for one API call on Kong
-status: uat  # draft → ready → designed → building → testing → uat → review → approved → done
+status: building  # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-18
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 026`
@@ -359,6 +359,7 @@ Nothing from the body is logged. Log lines carry the trace id and span count onl
 - [x] [backend] Fix: Trace ingest accepts unsupported media type
 - [x] [backend] Fix: Quickstart Kong rejects tracing plugin during Test
 - [x] [backend] Fix: Latest trace omits request method path and status
+- [ ] [frontend] Fix: Tracing API picker lists no APIs, so an API selection cannot be added
 ## UX  _(ui-designer)_
 Design: [docs/design/026-trace-waterfall-kong.md](../design/026-trace-waterfall-kong.md). No new tokens.
 - A new admin-only **Tracing** tab (`/admin/tracing`, after Insights) holds three cards: **Kong
@@ -427,9 +428,20 @@ Long notes go in `docs/specs/log/026.md`, not here.
 - [x] Trace ingest accepts unsupported media type (major)
 - [x] Quickstart Kong rejects tracing plugin during Test (major)
 - [x] Latest trace omits request method path and status (major)
+- [ ] Tracing API picker lists no APIs, so an API selection cannot be added (major)
+- [ ] Escape from Tracing settings dialog leaves focus on the page body, not Edit settings (minor)
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
+| 1 Turn tracing on for one API, developer or team | **Fail** (major) | Developer row added: "Journey QA … No active apps yet"; "Stop tracing sample" removed the API row; but the API Target picker shows only "Search APIs…" (`GET /api/v1/admin/apis` 404), and after Developer → API it lists developers and Add says "That api no longer exists. Pick another." `selection-picker-fail.png` |
+| 2 Call outside the selection keeps the shown trace | Pass | With only a developer selected, 3 calls to `/sample/get?token=abc123`; after 35 s Trace ID `816e4c43…324d` unchanged |
+| 3 Turn-on dialog names node settings, restart, quickstart values | Pass | "Set these two node settings … then restart the Kong node"; `KONG_TRACING_INSTRUMENTATIONS=request,router,balancer,plugin_rewrite,plugin_access,plugin_header_filter`, `KONG_TRACING_SAMPLING_RATE=1`, endpoint `http://server:4000/api/v1/internal/traces/kong` |
+| 4 Test passes on the quickstart | Pass | "✓ Test passed — Kong delivered a test trace to the portal." in about 1 s |
+| 5 Test names the failure cause | Pass | Unreachable endpoint: "Kong can't reach the trace endpoint" (previous tester, re-seen as "Last test failed") |
+| 6 Latest call waterfall with Slowest | Pass | "GET /sample/get ⚠ 401 Unauthorized 14.3 ms total"; "⚠ Slowest: key-auth plugin — 9.76 ms, 68% of the call"; rows Request, Router, Plugin key-auth, Plugin opentelemetry; no query string |
+| 9 Non-admin cannot reach tracing | Pass | UI-signed-up developer: "You don't have access to Tracing"; `/api/v1/admin/tracing/latest` 403 problem+json |
+| Mobile 390×844 | Pass | No horizontal scroll (scrollWidth 390); waterfall stacks as cards with "⚠ Slowest" badge |
+| Keyboard | Pass (minor) | Tab → Edit settings → Enter → Tab to Test → Enter passes → Escape closes; focus then lands on the page body, not Edit settings |
 
 One row per user-visible criterion. Evidence is a short quote of what was on the screen.
 Name an image only for an open failure. On a retest, change only the failed rows.
@@ -484,3 +496,8 @@ return the spec to building. Earlier rounds go in `docs/specs/log/026.md`.
   - priority: high
   - create when the Linear limit allows
   - body: Reproduction on application commit 0292b45 at http://localhost:3001: run the focused apps/portal/e2e/tracing.test.ts AC4/6 journey against the rebuilt isolated quickstart. The live Test passes, the selected sample call reaches POST /v1/internal/traces/kong and renders a four-span waterfall with key-auth marked Slowest, but the latest trace stays Unknown / Path not known yet / No status instead of GET /sample/get / 401. The trace therefore lacks the method, path and status required by AC6; the test fails at the GET assertion.
+- **Bug** — Bug: Tracing API picker lists no APIs, so an API selection cannot be added (major)
+  - parent: none
+  - priority: high
+  - create when the Linear limit allows
+  - body: Steps: sign in as the seeded admin, open /admin/tracing, look at What's traced with Kind = API; then switch Kind to Developer and back to API. Expected: the Target picker lists the portal's APIs (the quickstart sample API) so the admin can add an API selection (story 1, AC1). Actual: the Target picker only shows 'Search APIs…'; the page's GET /api/v1/admin/apis answers 404. After switching Developer -> API the API picker shows the developer accounts; choosing one and clicking Add shows 'That api no longer exists. Pick another.' (POST /api/v1/admin/tracing/selections 404). Reload brings back the empty list. An admin cannot add an API selection from the UI. Developer selections work. Screen: 1114x812 desktop, Orca built-in browser, http://localhost:3001, commit 83cf246. Image: selection-picker-fail.png (local).
