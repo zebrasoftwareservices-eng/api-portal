@@ -21,6 +21,7 @@ import {
   instanceSettings,
   migrate,
   session,
+  tracingSelections,
   tryItTraces,
 } from '@portal/db';
 import { KongAdapter } from '@portal/adapter-kong';
@@ -372,8 +373,8 @@ it('027 sampling risk: five Try it calls at KONG_TRACING_SAMPLING_RATE=0.01 reco
     const traceId = String(response.headers['x-portal-trace-id']);
     expect(traceId).toMatch(/^[0-9a-f]{32}$/);
     traceIds.push(traceId);
-    // The plugin queue flushes in about a second. Count stored spans, not state ready:
-    // a parented Kong root leaves state waiting even after the batch arrives.
+    // Count stored spans. Kong 3.9 can apply tracing_sampling_rate over the
+    // sampled flag, so fewer than 5 arrivals is a finding, not a header failure.
     const arrived = await pollStored(traceId, developerCookie, 4_000);
     if (arrived) ready += 1;
   }
@@ -484,6 +485,29 @@ it('027 AC3/6 and failure paths: permissions, replacement, invalid input, and an
   const signedOut = await callTryIt();
   expect(signedOut.headers['x-portal-trace-state']).toBe('signed-out');
   expect(signedOut.headers['x-portal-trace-id']).toBeUndefined();
+
+  const [selection] = await connection.db.select().from(tracingSelections);
+  expect(selection?.id).toBeTruthy();
+  const removed = await server.inject({
+    method: 'DELETE',
+    url: `/api/v1/admin/tracing/selections/${selection!.id}`,
+    headers: { cookie: adminCookie },
+  });
+  expect(removed.statusCode, removed.body).toBe(204);
+  const off = await callTryIt(developerCookie);
+  expect(off.headers['x-portal-trace-state']).toBe('off');
+  expect(off.headers['x-portal-trace-id']).toBeUndefined();
+  expect(off.statusCode, off.body).not.toBe(401);
+  const restored = await server.inject({
+    method: 'POST',
+    url: '/api/v1/admin/tracing/selections',
+    headers: { cookie: adminCookie },
+    payload: { kind: 'api', targetId: apiId },
+  });
+  expect(restored.statusCode, restored.body).toBe(201);
+  const coveredAgain = await callTryIt(developerCookie);
+  expect(coveredAgain.headers['x-portal-trace-state']).toBe('traced');
+  expect(String(coveredAgain.headers['x-portal-trace-id'])).toMatch(/^[0-9a-f]{32}$/);
 
   const first = await callTryIt(developerCookie);
   const firstId = String(first.headers['x-portal-trace-id']);
