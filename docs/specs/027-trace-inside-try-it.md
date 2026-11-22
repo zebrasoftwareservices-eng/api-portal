@@ -1,7 +1,7 @@
 ---
 id: 027
 title: Trace inside Try it
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-22
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 027`
@@ -278,7 +278,18 @@ calls Kong. No CORS change is needed.
 - [ ] [qa] Playwright e2e on the quickstart: developer Try it shows the panel within 30 s (AC 1); an admin sees plugin names and the 026 page shows the same call (AC 5); tracing off shows the message without a spinner, with a settings link for the admin (AC 7); no spans gives "waiting" then "no trace arrived" (AC 8)
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/027-*.md`
+Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-it.md).
+- A **Trace** card (`TryItTracePanel`) sits directly under Scalar's Try it response and reuses
+  spec 026's summary, slowest line and `TraceWaterfall` read-only; the 026 API link is dropped.
+- States: off and unreachable and signed-out show at once with no spinner; waiting (static clock,
+  elapsed seconds, polls every 2 s); partial; ready; no trace arrived at 30 s with **Check again**;
+  replaced (404); error. "Your call only" hint explains that traces are private and one is kept.
+- Admins see plugin names, raw span names, and links to `/admin/tracing` (off, missing, footer);
+  only the admin "missing" copy names `tracing_instrumentations`. Developer copy names no Kong setting.
+- Accessibility: a labelled section after the response, one polite live region with a single
+  "Trace ready…" sentence, focus never moves on its own, the 026 table rules. At 375px (or a narrow
+  response column, by container query) the summary wraps, the trace ID is middle-truncated and
+  the waterfall uses 026's two-line rows. No new tokens.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
