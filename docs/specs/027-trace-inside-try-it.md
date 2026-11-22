@@ -315,6 +315,9 @@ Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-
   `X-Portal-Trace-State` and `X-Portal-Trace-Id` from that page fetch and mounts the panel under the
   response, including a Try it client rendered outside the reference root. QA should retest AC 1, 5, 7,
   and 8: after Send, `.try-it-trace` appears in the client.
+- Frontend retest: the rebuilt portal at http://localhost:3009 mounts the panel inside Scalar's API
+  Client dialog, in the Response region after the response body. The off and missing titles are also
+  in the live region, so the journey asserts the visible `strong`. That 027 journey passed.
 
 ## Test report  _(qa-tester)_
 Commit tested: `11596f2` · Portal: http://localhost:3009 (API http://127.0.0.1:4009, Kong http://localhost:18009). The stack is still up. Lint, typecheck, and `pnpm test` passed on this tree (lint 8/8, typecheck 14/14, portal 435, server 384, adapter-kong 77, db 11, sdk 16, theme 13). `pnpm test:e2e` was 95 passed, 2 skipped, 30 failed. The spec failure is the Try it panel. Later failures include `ECONNREFUSED 127.0.0.1:19009` after gateway tests stopped Kong, and they are not new 027 bugs. Kong was put back on the worktree ports after that run.

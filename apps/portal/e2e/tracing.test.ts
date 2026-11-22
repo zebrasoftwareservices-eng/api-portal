@@ -735,7 +735,7 @@ test('027 AC1/5/7/8: developer panel, admin plugin names, tracing off, and no sp
     await sendTryIt(developerPage);
     const developerOff = developerPage.locator('.try-it-trace').last();
     await expect(
-      developerOff.getByText('Tracing is off for this API', { exact: true }),
+      developerOff.locator('strong').getByText('Tracing is off for this API', { exact: true }),
     ).toBeVisible();
     await expect(developerOff.locator('.try-it-trace-skeleton')).toHaveCount(0);
     await expect(developerOff.getByText(/Waiting for the trace from Kong/)).toHaveCount(0);
@@ -744,7 +744,9 @@ test('027 AC1/5/7/8: developer panel, admin plugin names, tracing off, and no sp
     await fillApiKey(page, developerKey);
     await sendTryIt(page);
     const adminOff = page.locator('.try-it-trace').last();
-    await expect(adminOff.getByText('Tracing is off for this API', { exact: true })).toBeVisible();
+    await expect(
+      adminOff.locator('strong').getByText('Tracing is off for this API', { exact: true }),
+    ).toBeVisible();
     await expect(adminOff.locator('.try-it-trace-skeleton')).toHaveCount(0);
     await expect(adminOff.getByRole('link', { name: 'Open tracing settings' })).toHaveAttribute(
       'href',
@@ -776,10 +778,14 @@ test('027 AC1/5/7/8: developer panel, admin plugin names, tracing off, and no sp
     await expect(developerMissing.getByText(/Waiting for the trace from Kong/)).toBeVisible();
     await expect(adminMissing.getByText(/Waiting for the trace from Kong/)).toBeVisible();
     await expect(developerMissing.getByRole('table', { name: /Spans of your Try it call/ })).toHaveCount(0);
-    await expect(developerMissing.getByText('No trace arrived for this call')).toBeVisible({
+    await expect(
+      developerMissing.locator('strong').getByText('No trace arrived for this call'),
+    ).toBeVisible({
       timeout: 45_000,
     });
-    await expect(adminMissing.getByText('No trace arrived for this call')).toBeVisible({
+    await expect(
+      adminMissing.locator('strong').getByText('No trace arrived for this call'),
+    ).toBeVisible({
       timeout: 45_000,
     });
     await expect(developerMissing).not.toContainText('tracing_instrumentations');
