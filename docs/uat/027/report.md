@@ -1,40 +1,27 @@
 # User testing — 027 Trace inside Try it
 
-- Date: 2026-11-22
-- Commit walked: `e949d59` (the stack QA left up; portal images were already running)
-- Portal: http://localhost:3009
-- Desktop viewport: 1249×822 for the main trace, then 1280×800 for the keyboard pass
-- Mobile viewport: 390×844, mobile, no device scale
-- Accounts: test developer X (`uat-trace-x-027@example.com`), test developer Y (`uat-trace-y-027@example.com`), seeded admin. No keys are recorded here.
+Date: 2026-11-22
+Commit tested: `580becc`
+Portal: http://localhost:3009
+API: http://127.0.0.1:4009
+Kong proxy: http://localhost:18009
+Desktop walk in the built-in browser. Mobile pass: 390×844, scale 1.
+Console: the last 50 lines were Scalar info timings (`mergeObjects`, `addDocument`). No error line.
 
-Try it is Scalar's **Send** / **Test Request**. The trace card is under the response.
+Signed in as a developer with an app and a key for Sample HTTP API, then as a second developer, then as the portal admin. Try it is the **Test Request** control. Send is **Send get request to http://localhost:18009/sample/get**.
 
-| Story | Result | What was on the screen |
+| User story | Result | What was on the screen |
 | --- | --- | --- |
-| 1. Own trace under the response | Pass | Developer X, POST `/post` with a query, a custom header, and a body. Response 200. Panel: "Trace ready: POST /sample/post, 200, 25.772544 milliseconds. Slowest: Upstream try, 12.194816 milliseconds." Path has no query. Status 200 OK, 25.8 ms total. Trace ID `c9ff4555…995c9ae` matches the `traceparent` sent to Kong (`c9ff45553934fccbdb6f21f15995c9ae`). Rows: Request, Router, Plugin plugin (no plugin names), Upstream marked slowest. "Your call only." |
-| 2. Two people, each sees only their call | Pass | Y's GET showed "Trace ready: GET /sample/get, 200, 41.73952 milliseconds" and trace id `3d111ae45b13caf4ae3c78c8e1e8849a`. The panel did not show X's id or `/sample/post`. Plugin rows say plugin. One browser cannot hold two sessions, so the two Sends were one after another, not the same second. |
-| 3. Nobody else can fetch the trace | Pass | Signed in as Y, GET of X's trace id returned 404 problem+json, title "not found", detail "The requested resource was not found." No spans. Y's own id returned 200. `GET /api/v1/admin/tracing` returned 403 "forbidden". `GET /api/v1/admin/tracing/latest?api=sample` returned 403 "Administrator access is required." After "You're signed out.", X's id returned 401 problem+json, detail "Sign in to continue." |
-| 4. Secrets stay out of the trace | Pass | The call used `token=abc123`, header `X-Uat-Note`, and a JSON body. Those values were in the Try it response body. They were absent from the trace panel and from the owner's `GET /api/v1/try-it/traces/{id}` JSON. Span names were only request, router, plugin, and upstream. No client address and no upstream address. |
-| 5. Admin sees plugin names; 026 page shows the call | Pass | Admin Send of GET `/get` with a developer key. Panel: "Trace ready: GET /sample/get, 200, 32.228352 milliseconds." Plugin rows include "Plugin key-auth". Link "Open tracing page" goes to `/admin/tracing`. That page's "Latest traced call", filtered to Sample HTTP API, showed the same trace id `4b9ad3bc4f33c7f16b3570d1834d1214`, GET `/sample/get`, 200 OK. |
-| 6. The next call replaces the first | Pass | X's second Send: "Trace ready: GET /sample/get, 200, 13.808384 milliseconds." Trace id `77ca55d1…5812cb0`. The first id then returned 404 "not found". "Your call only" stayed on the panel. |
-| 7. Tracing off | Pass | After "Stop tracing sample", the next Send showed the panel at once: "Tracing is off for this API" and "Calls to this API aren't in a tracing selection." Admin link "Open tracing settings" goes to `/admin/tracing`. No "Waiting" and no spinner. Developer X: "Your call worked as usual. Calls to this API aren't traced for your account." No settings link and no `tracing_instrumentations`. The response was 200. |
-| 8. Tracing on, no spans | Pass | With the trace endpoint pointed at an unreachable address and sampling "1 (every call)", the panel showed "Waiting for the trace from Kong… 2 s", then at about 32 seconds "No trace arrived for this call" and "Check again". It did not show another person's trace. Developer copy: "Your call worked, but Kong didn't send its trace within 30 seconds." It names no Kong setting. Admin copy: "Kong didn't send spans within 30 seconds. Check that tracing_instrumentations is set on the Kong node, then run Test in the tracing settings." The link "Open tracing page" goes to `/admin/tracing` and does not open the settings dialog. |
-| 9. Kong does not answer | Pass | With tracing on for Sample HTTP API, Kong stopped, Send returned 503 "gateway unavailable", detail "The API gateway didn't respond. Try again in a moment." The panel said at once "The call didn't reach the gateway" and "Kong didn't answer, so there's no trace for this call. Try again in a moment." No waterfall and no 30 second wait. |
-| Mobile | Pass | 390×844. Admin GET became "Trace ready" with middle-truncated id `f3ab0a35…ce228b5`, "10.3 ms total", and the waterfall stacked under the summary. Shot: `success-mobile.png`. |
-| Keyboard | Pass | Tab moved through the API client and the trace card, including "Your call only", "Copy trace ID", and "Open tracing page". Tab landed on "Send get request to http://localhost:18009/sample/get". Enter sent a new call: "Trace ready: GET /sample/get, 200, 58.939136 milliseconds", id `2252994f…d198ce3`. Escape left the client open. |
+| 1. Own Try it trace under the response | Pass | "Trace ready: GET /sample/get, 200, 33.577728 milliseconds. Slowest: plugin, 5.044992 milliseconds." Path `/sample/get`, status 200, 33.6 ms, waterfall Request, Router, Plugin plugin (slowest). The panel's trace id `5813f60a747b7587764192bad9e91742` was the id the portal fetched and the id in the server line "Trace batch accepted". A later POST showed "Trace ready: POST /sample/post, 200, 15.802624 milliseconds. Slowest: Upstream try, 9.710592 milliseconds." That panel id `e007d5186099b5b5bc15d281bb572714` matched `X-Portal-Trace-Id`. The browser does not show the `traceparent` header; the server adds it. |
+| 2. Two people, each sees only their call | Pass | Y: "Trace ready: GET /sample/get, 200, 35.10528 milliseconds. Slowest: plugin, 11.600896 milliseconds." Trace id `ba04887c0a1de9ae57607dddb262db16`. The panel did not contain X's id `2045c540ba7f271aaaa8d982f6608e96`. The two Sends were one after another. One browser cookie jar cannot hold both sessions in the same second. |
+| 3. Another person, or signed out, cannot read a trace | Pass | With no cookie, X's trace returned 401 problem+json, title "unauthenticated", detail "Sign in to continue." Signed in as Y, the same kind of request for X's id returned 404 problem+json, title "not found", detail "The requested resource was not found.", and no span. As X, GET `/api/v1/admin/tracing`, GET `/api/v1/admin/tracing/latest`, POST selections, and POST test each returned 403 "Administrator access is required." |
+| 4. Query, headers, and body stay out of the trace | Pass | POST `/sample/post` with `token=abc123`, header `X-Uat-Note`, and a JSON body. The panel path was `/sample/post` with no query. Plugin rows were labelled "plugin". The panel and the owner's trace JSON contained none of the query token, the header value, the body text, or a plugin name. |
+| 5. Admin sees plugin names and the latest admin trace | Pass | "Trace ready: GET /sample/get, 200, 47.687424 milliseconds. Slowest: key-auth, 2.461952 milliseconds." Rows included "Plugin key-auth", "Plugin acl", and "Plugin opentelemetry". On Tracing, Latest traced call for Sample HTTP API showed the same id `959a3cbbb4d023b1053248d4bacc6acf`, "Received 24 seconds ago", GET `/sample/get`, 200, 47.7 ms. |
+| 6. A second call replaces the first | Pass | After the POST, the first id `5813f60a747b7587764192bad9e91742` returned 404 problem+json, title "not found". The panel said "Only your latest Try it call is kept." |
+| 7. Tracing off is immediate | Pass | After "Stop tracing sample", the admin panel said "Tracing is off for this API" and "Calls to this API aren't in a tracing selection." at once, with link "Open tracing settings" to `/admin/tracing`. No waiting spinner. The developer panel said "Tracing is off for this API" and "Your call worked as usual. Calls to this API aren't traced for your account." It named no Kong setting and had no spinner. |
+| 8. No spans: wait, then no trace arrived | Pass | Sample HTTP API was in the selection again. Kong settings were sampling rate "0 (no calls)" and trace endpoint `http://127.0.0.1:9/traces`, with "Applied to Kong". Developer: "Waiting for the trace from Kong… 8 s" through 30 s, then "No trace arrived for this call" and "Your call worked, but Kong didn't send its trace within 30 seconds." plus "Check again". No waterfall, no `tracing_instrumentations`, no link, and no other person's trace. Admin: waiting from "6 s", then "Kong didn't send spans within 30 seconds. Check that tracing_instrumentations is set on the Kong node, then run Test in the tracing settings." Link "Open tracing page" to `/admin/tracing`. |
+| 9. Kong down | Pass | With tracing off and Kong stopped, Send returned in about 2 seconds. The response was 503 problem+json, title "gateway unavailable", detail "The API gateway didn't respond. Try again in a moment." The panel said "The call didn't reach the gateway" and "Kong didn't answer, so there's no trace for this call. Try again in a moment." No waiting spinner and no waterfall. It did not say the call worked as usual. Kong was started again and became healthy. |
+| Mobile main journey | Pass | 390×844. "Trace ready: GET /sample/get, 200, 55.108608 milliseconds. Slowest: Upstream try, 5.493504 milliseconds." Trace id `7ca5b825…3e53fd2`. `success-mobile.png`. |
+| Keyboard main journey | Pass | From the key field, Tab reached "Test Request (get /get)", Enter opened the client, Tab reached Send, Enter sent. Focus stayed on Send. "Trace ready: GET /sample/get, 200, 33.767168 milliseconds. Slowest: Upstream try, 9.093632 milliseconds." Trace id `2045c540ba7f271aaaa8d982f6608e96`. Escape moved focus back to "Test Request (get /get)". |
 
-## Open bug retest
-
-Sampling rate shown as "0.01 (about 1% of calls)", Applied to Kong, endpoint restored to `http://server:4000/api/v1/internal/traces/kong`. Five keyed GET Sends each showed "Trace ready" by the time the panel was read, about 4 seconds after Send. Durations differed (57.8 ms, 14.6 ms, 12.8 ms, 20.2 ms, 25.1 ms), so they were five calls. The old result, 0 of 5 spans within 4 seconds, did not recur. The bug line is ticked. Setting the rate to "0 (no calls)" earlier in the same session still produced a ready waterfall on the next Send, which matches Try it forcing the sampled flag when Kong honors it.
-
-## Minor
-
-When tracing is off and Kong is stopped, a developer Send still returns 503 "The API gateway didn't respond", but the panel stays on "Tracing is off for this API" and "Your call worked as usual." It does not say the call did not reach the gateway. The same outage with tracing on does say that, at once. An admin in the off+down state also stays on the off copy ("Calls to this API aren't in a tracing selection.") and does not claim the call worked. This does not block the main journey. No Fix task.
-
-## Console
-
-`orca console --limit 50` after the keyboard Send returned 50 info lines and no error. One line: `addDocument: 31 ms`.
-
-## Shots
-
-`success-desktop.png` is the developer POST waterfall (no key on screen). `success-mobile.png` is the mobile trace card. No failure shot. The folder has those two images and this report.
+No blocker or major. No open bug. Screenshots: `success-desktop.png`, `success-mobile.png`. No failure image.

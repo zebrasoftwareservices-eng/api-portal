@@ -1,7 +1,7 @@
 ---
 id: 027
 title: Trace inside Try it
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-22
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 027`
@@ -350,17 +350,17 @@ Long notes go in `docs/specs/log/027.md`, not here.
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
-| 1. Own Try it trace under the response | Pass | "Trace ready: POST /sample/post, 200, 25.772544 milliseconds." Path `/sample/post`, trace id matched the traceparent. Plugin rows say plugin. |
-| 2. Two people, each sees only their call | Pass | Y's panel: "Trace ready: GET /sample/get, 200, 41.73952 milliseconds." It did not show X's trace id. The two Sends were one after another. |
-| 3. Another person, or signed out, cannot read a trace | Pass | Y got 404 "not found" for X's id. Signed out got 401 "Sign in to continue." Admin tracing returned 403. |
-| 4. Query, headers, and body stay out of the trace | Pass | The panel and the owner's trace had no `abc123`, no custom header, no body text, and no plugin name. |
-| 5. Admin sees plugin names and the latest admin trace | Pass | Panel showed "Plugin key-auth". Tracing page "Latest traced call" showed the same id `4b9ad3bc4f33c7f16b3570d1834d1214`. |
-| 6. A second call replaces the first | Pass | New panel "Trace ready: GET /sample/get". The first id then returned 404 "not found". |
-| 7. Tracing off is immediate | Pass | "Tracing is off for this API" at once, no waiting spinner. Admin link "Open tracing settings". Developer: "Your call worked as usual." |
-| 8. No spans: wait, then no trace arrived | Pass | Waiting "1 s", then at about 32 s "No trace arrived for this call" and "Check again". Admin copy names `tracing_instrumentations` and links to `/admin/tracing`. |
-| 9. Kong down | Pass | Status 503 "The API gateway didn't respond." Panel: "The call didn't reach the gateway." No waterfall. |
-| Mobile main journey | Pass | 390×844. Trace id `f3ab0a35…ce228b5`, "10.3 ms total", waterfall on screen. |
-| Keyboard main journey | Pass | Tab reached "Send get request", Enter showed a new "Trace ready" id `2252994f…d198ce3`. |
+| 1. Own Try it trace under the response | Pass | "Trace ready: GET /sample/get, 200, 33.577728 milliseconds. Slowest: plugin, 5.044992 milliseconds." Path `/sample/get`. Panel id matched the fetched trace. |
+| 2. Two people, each sees only their call | Pass | Y: "Trace ready: GET /sample/get, 200, 35.10528 milliseconds." Id `ba04887c0a1de9ae57607dddb262db16`. The Sends were one after another. |
+| 3. Another person, or signed out, cannot read a trace | Pass | Signed out: 401 "Sign in to continue." Y: 404 "not found". Developer admin routes: 403 "Administrator access is required." |
+| 4. Query, headers, and body stay out of the trace | Pass | Path `/sample/post` with no query. Rows say "plugin". The token, header, body, and plugin name were absent. |
+| 5. Admin sees plugin names and the latest admin trace | Pass | "Slowest: key-auth". Latest traced call showed the same id `959a3cbbb4d023b1053248d4bacc6acf`. |
+| 6. A second call replaces the first | Pass | The first id returned 404 "not found". "Only your latest Try it call is kept." |
+| 7. Tracing off is immediate | Pass | "Tracing is off for this API" at once. Admin link "Open tracing settings". Developer: "Your call worked as usual." |
+| 8. No spans: wait, then no trace arrived | Pass | Waiting through 30 s, then "No trace arrived for this call". Admin names `tracing_instrumentations` and links to `/admin/tracing`. |
+| 9. Kong down | Pass | 503 "The API gateway didn't respond." Panel: "The call didn't reach the gateway." No waterfall. |
+| Mobile main journey | Pass | 390×844. "Trace ready: GET /sample/get, 200, 55.108608 milliseconds." |
+| Keyboard main journey | Pass | Tab to Send, Enter. "Trace ready: GET /sample/get, 200, 33.767168 milliseconds." Focus stayed on Send. |
 
 One row per user-visible criterion. Evidence is a short quote of what was on the screen.
 Name an image only for an open failure. On a retest, change only the failed rows.
