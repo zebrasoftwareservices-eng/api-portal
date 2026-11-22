@@ -34,6 +34,28 @@ it('mounts the trace after Scalar response content when it is available', async 
   );
 });
 
+it('mounts the trace inside a Try it client outside the reference root', async () => {
+  const rootRef = createRef<HTMLDivElement>();
+  render(
+    <div>
+      <div ref={rootRef}>
+        <ScalarTracePortal rootRef={rootRef} response={response} isAdmin={false} />
+      </div>
+      <div className="scalar-client" role="dialog" />
+    </div>,
+  );
+  expect(screen.getByRole('heading', { name: 'Trace' })).toBeInTheDocument();
+  const client = document.querySelector('.scalar-client');
+  const section = document.createElement('div');
+  section.className = 'response-section-content';
+  section.setAttribute('role', 'tabpanel');
+  client?.append(section);
+  await waitFor(() =>
+    expect(section.querySelector('[data-portal-try-it-trace]')).not.toBeNull(),
+  );
+  expect(section).toContainElement(screen.getByRole('heading', { name: 'Trace' }));
+});
+
 it('uses the visible fallback when Scalar has no response container', () => {
   const rootRef = createRef<HTMLDivElement>();
   render(

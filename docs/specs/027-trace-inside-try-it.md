@@ -281,7 +281,7 @@ calls Kong. No CORS change is needed.
 - [x] [qa] Kong sampling check: with `KONG_TRACING_SAMPLING_RATE=0.01`, 5 traced Try it calls all get a trace; record the result in the Test report
 - [ ] [qa] Playwright e2e on the quickstart: developer Try it shows the panel within 30 s (AC 1); an admin sees plugin names and the 026 page shows the same call (AC 5); tracing off shows the message without a spinner, with a settings link for the admin (AC 7); no spans gives "waiting" then "no trace arrived" (AC 8)
 - [x] [backend] Fix: Try it trace never becomes ready
-- [ ] [frontend] Fix: Try it trace panel never mounts after a traced Send
+- [x] [frontend] Fix: Try it trace panel never mounts after a traced Send
 ## UX  _(ui-designer)_
 Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-it.md).
 - A **Trace** card (`TryItTracePanel`) sits directly under Scalar's Try it response and reuses
@@ -310,6 +310,11 @@ Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-
   bridge and mounts the React panel into Scalar's live `.response-section-content` with a DOM-observed
   portal; if Scalar changes that internal node, a visible below-reference fallback remains for UI
   designer and review verification.
+- Frontend fix: Scalar's Try it client calls the page `fetch`, not `configuration.fetch` (that option
+  only loads the OpenAPI document), so a traced Send never mounted the panel. The reference now reads
+  `X-Portal-Trace-State` and `X-Portal-Trace-Id` from that page fetch and mounts the panel under the
+  response, including a Try it client rendered outside the reference root. QA should retest AC 1, 5, 7,
+  and 8: after Send, `.try-it-trace` appears in the client.
 
 ## Test report  _(qa-tester)_
 Commit tested: `11596f2` · Portal: http://localhost:3009 (API http://127.0.0.1:4009, Kong http://localhost:18009). The stack is still up. Lint, typecheck, and `pnpm test` passed on this tree (lint 8/8, typecheck 14/14, portal 435, server 384, adapter-kong 77, db 11, sdk 16, theme 13). `pnpm test:e2e` was 95 passed, 2 skipped, 30 failed. The spec failure is the Try it panel. Later failures include `ECONNREFUSED 127.0.0.1:19009` after gateway tests stopped Kong, and they are not new 027 bugs. Kong was put back on the worktree ports after that run.

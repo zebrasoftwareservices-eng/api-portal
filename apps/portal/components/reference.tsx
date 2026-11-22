@@ -3,6 +3,7 @@
 import {
   Component,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -75,6 +76,7 @@ export function Reference({
     () => createScalarResponseBridge(onResponseReceived),
     [onResponseReceived],
   );
+  useEffect(() => responseBridge.install(), [responseBridge]);
   const document = useResource(() =>
     initialDocument
       ? Promise.resolve({ data: initialDocument })

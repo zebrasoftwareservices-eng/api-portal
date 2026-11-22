@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { Reference } from './reference';
 
@@ -81,4 +81,53 @@ it('uses an already loaded version document without fetching it again', async ()
   );
   await waitFor(() => expect(scalar).toHaveBeenCalled());
   expect(get).not.toHaveBeenCalled();
+});
+
+it('mounts the trace panel when Try it uses the page fetch', async () => {
+  const original = globalThis.fetch;
+  const windowFetch = window.fetch;
+  const traceId = '4bf92f3577b34da6a3ce929d0e0e4736';
+  const traced = new Response('{"ok":true}', {
+    status: 200,
+    headers: {
+      'X-Portal-Trace-State': 'traced',
+      'X-Portal-Trace-Id': traceId,
+    },
+  });
+  globalThis.fetch = vi.fn().mockResolvedValue(traced);
+  window.fetch = globalThis.fetch;
+  get.mockImplementation(async (path: string) => {
+    if (String(path).includes('try-it/traces')) {
+      return {
+        data: {
+          traceId,
+          state: 'waiting',
+          issuedAt: '2026-11-22T00:00:00.000Z',
+          trace: null,
+        },
+        response: { status: 200 },
+      };
+    }
+    return { data: { openapi: '3.1.0' } };
+  });
+  const view = render(
+    <Reference
+      documentUrl="/api/v1/apis/sample/openapi.json"
+      slug="sample"
+      initialDocument={{ openapi: '3.1.0' }}
+    />,
+  );
+  try {
+    await waitFor(() => expect(scalar).toHaveBeenCalled());
+    await globalThis.fetch(
+      new Request(`http://localhost/api/v1/try-it?scalar_url=http://kong/sample/get`),
+    );
+    expect(await screen.findByRole('heading', { name: 'Trace' })).toBeVisible();
+    expect(screen.getByText(/Waiting for the trace from Kong/)).toBeVisible();
+  } finally {
+    view.unmount();
+    globalThis.fetch = original;
+    window.fetch = windowFetch;
+    get.mockReset();
+  }
 });

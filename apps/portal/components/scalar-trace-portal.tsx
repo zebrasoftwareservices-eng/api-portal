@@ -48,6 +48,8 @@ export function ScalarTracePortal({
     attach();
     const observer = new MutationObserver(attach);
     observer.observe(root, { childList: true, subtree: true });
+    const body = document.body;
+    if (body && body !== root) observer.observe(body, { childList: true, subtree: true });
     const frame = window.requestAnimationFrame(attach);
     return () => {
       observer.disconnect();
@@ -61,8 +63,13 @@ export function ScalarTracePortal({
 }
 
 export function findScalarResponseContainer(root: HTMLElement) {
-  const containers = root.querySelectorAll<HTMLElement>(
-    '.response-section-content',
+  return (
+    lastMatch(root, '.response-section-content') ||
+    lastMatch(document, '.scalar-client .response-section-content')
   );
+}
+
+function lastMatch(scope: ParentNode, selector: string) {
+  const containers = scope.querySelectorAll<HTMLElement>(selector);
   return containers.item(containers.length - 1) || null;
 }
