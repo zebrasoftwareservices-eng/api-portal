@@ -281,6 +281,7 @@ calls Kong. No CORS change is needed.
 - [x] [qa] Kong sampling check: with `KONG_TRACING_SAMPLING_RATE=0.01`, 5 traced Try it calls all get a trace; record the result in the Test report
 - [ ] [qa] Playwright e2e on the quickstart: developer Try it shows the panel within 30 s (AC 1); an admin sees plugin names and the 026 page shows the same call (AC 5); tracing off shows the message without a spinner, with a settings link for the admin (AC 7); no spans gives "waiting" then "no trace arrived" (AC 8)
 - [x] [backend] Fix: Try it trace never becomes ready
+- [ ] [frontend] Fix: Try it trace panel never mounts after a traced Send
 ## UX  _(ui-designer)_
 Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-it.md).
 - A **Trace** card (`TryItTracePanel`) sits directly under Scalar's Try it response and reuses
@@ -311,27 +312,28 @@ Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-
   designer and review verification.
 
 ## Test report  _(qa-tester)_
-Commit tested: `5cd5615` · Portal: not started. The full pass was not run because AC 1 fails.
+Commit tested: `11596f2` · Portal: http://localhost:3009 (API http://127.0.0.1:4009, Kong http://localhost:18009). The stack is still up. Lint, typecheck, and `pnpm test` passed on this tree (lint 8/8, typecheck 14/14, portal 435, server 384, adapter-kong 77, db 11, sdk 16, theme 13). `pnpm test:e2e` was 95 passed, 2 skipped, 30 failed. The spec failure is the Try it panel. Later failures include `ECONNREFUSED 127.0.0.1:19009` after gateway tests stopped Kong, and they are not new 027 bugs. Kong was put back on the worktree ports after that run.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
-| 1 | `apps/server/src/try-it-trace.integration.test.ts` | Fail. At sampling rate 1 with a valid key, the trace id matches and 11 spans are stored, but state stays `waiting`. |
-| 2 | same file | Fail. Blocked by the same ready-state bug. The two calls get distinct portal trace ids. |
-| 3 | same file, AC3/6 | Pass. Other user 404, anonymous 401 problem+json, developer 403 on the spec 026 admin routes. |
-| 4 | same file, AC1-5 | Not completed. The test stops before the ready-trace secret checks. Waiting labels were request, router, plugin, and upstream. |
-| 5 | same file, AC1-5 | Fail. The trace never becomes ready, so plugin names and the spec 026 latest row were not asserted. |
-| 6 | same file, AC3/6 | Pass. Replaced id is 404, one row remains, a parallel pair keeps one row, and an expired session is 401. |
-| 7 | `apps/portal/components/try-it-trace-panel.test.tsx` | Partial. Signed-out copy passes in the unit test. The quickstart e2e was not run. |
-| 8 | same panel test | Partial. Developer missing copy passes. The 30 second browser wait was not run. |
+| 1 | `apps/server/src/try-it-trace.integration.test.ts`; `apps/portal/e2e/tracing.test.ts` | API pass. A keyed call at sampling rate 1 becomes `ready` with method, path `/sample/get`, status 200, and the trace id from `traceparent`. Browser fail. After Send returns `traced`, `.try-it-trace` never mounts and the fallback stays empty for 30 s. |
+| 2 | same integration file, AC1-5 | Pass. Two callers in the same second get different trace ids and only their own spans. |
+| 3 | same file, AC3/6 | Pass. Another user gets 404, an anonymous caller gets 401 problem+json, a developer gets 403 on the spec 026 admin routes, and a malformed id is rejected. |
+| 4 | same integration file; e2e API check in `tracing.test.ts` | API pass. `abc123`, the custom header, and `?` are absent from the owner JSON and the admin latest row. The browser panel did not render, so the on-screen check did not run. |
+| 5 | same integration file; e2e API check | API pass. The admin view contains `key-auth` and the admin latest row matches the trace id. A developer view has `plugin: null` and name equal to the label. The browser panel and the spec 026 page check in the UI test did not run. |
+| 6 | same file, AC3/6 | Pass. A replaced id is 404, one row remains, a parallel pair keeps one row, and an expired session is 401. |
+| 7 | integration AC3/6; `apps/server/src/app.test.ts`; `apps/portal/components/try-it-trace-panel.test.tsx`; e2e API check | API pass. Deleting the selection makes the next keyed call `off` with no trace id, and restoring it returns `traced`. A 429 is `off` with no trace id. Panel unit copy passes. The browser off message was not reached. |
+| 8 | `apps/server/src/tracing.test.ts`; panel unit test; e2e UI test | API pass for a late span moving `missing` to `ready`, and the developer missing copy passes in the unit test. The browser wait was not reached because the panel never mounted on the first Send. |
 | 9 | same integration file, AC9 | Pass. A hung upstream is 504 `traced` and keeps the row. A closed port is 503 `unreachable` and deletes the row. |
-| Sampling | same integration file | 0 of 5 keyed calls stored a span within 4 seconds at `KONG_TRACING_SAMPLING_RATE=0.01`. |
+| Sampling | same integration file | Open minor. `SAMPLING_SPANS 0/5` within 4 seconds at `KONG_TRACING_SAMPLING_RATE=0.01`. The quickstart default is 1, where spans arrive. No Fix task. |
 
 Long notes go in `docs/specs/log/027.md`, not here.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
-- [ ] Try it trace never becomes ready (major)
+- [x] Try it trace never becomes ready (major)
 - [ ] At `KONG_TRACING_SAMPLING_RATE=0.01`, 0 of 5 keyed Try it calls stored a span within 4 seconds. Kong's ratio sampler ignores the sampled flag. The quickstart default is 1, where spans do arrive. (minor)
+- [ ] Try it trace panel never mounts after a traced Send (major)
 
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
@@ -355,8 +357,8 @@ return the spec to building. Earlier rounds go in `docs/specs/log/027.md`.
 - [ ] Elango merged the PR
 
 ### Deferred Linear
-- **Bug** — Bug: Try it trace never becomes ready (major)
+- **Bug** — Bug: Try it trace panel never mounts after a traced Send (major)
   - parent: none
   - priority: high
   - create when the Linear limit allows
-  - body: Kong 3.9 with tracing instrumentations request, router, balancer, plugin_rewrite, plugin_access, and plugin_header_filter, and KONG_TRACING_SAMPLING_RATE=1. Portal tracing is applied to a key-auth service.  A signed-in Try it call with a valid apikey sends traceparent 00-<portalTraceId>-<portalSpanId>-01. Within about a second the try_it_traces row for that id contains the spans, and the trace id matches. GET /api/v1/try-it/traces/:id still returns state waiting. The request span's parentSpanId is the portal span id, and every other span's parent is the Kong request span. Ingest sets rootSpanId only when a span has parentSpanId null, so the row never becomes ready. After 30 seconds the state becomes missing and the panel says no trace arrived, even though the spans were stored.  Evidence from apps/server/src/try-it-trace.integration.test.ts: trace 827f6d7d0055ddae9aaa1557b47664a4 stored 11 spans while state was waiting. The request span parent was 08b9f560a261384f, and the router, plugin, and upstream spans were parented to the Kong request span.  Second cause of the same empty panel, when the caller sends no key: key-auth (priority 1250) answers 401 before the OpenTelemetry plugin (priority 14) runs its access phase, so Kong does not extract traceparent. Kong then exports a different trace id and the Try it row stays empty. A direct request whose traceparent id was cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd was echoed by Kong as 03686989c33b47653b5fdde56cb5f167.  AC 1, 2, 4, and 5 are not shown. AC 3, 6, and 9 passed in the same file. The full lint, typecheck, test, e2e, and quickstart pass was not started.
+  - body: Sign in as an admin, set the tracing sampling rate to 1, and select the sample API. Sign up a developer, create a key for sample, open /apis/sample, paste that key into Try it, and Send. The Try it response is 200 with X-Portal-Trace-State traced and a 32-hex X-Portal-Trace-Id. GET /api/v1/try-it/traces/{id} for that caller returns state ready with method GET, path /sample/get, and status 200. The page never mounts .try-it-trace. .try-it-trace-fallback stays empty, and the span table Spans of your Try it call is still absent after 30 seconds. Playwright apps/portal/e2e/tracing.test.ts:672 failed on that locator in the full e2e (35.9s). An earlier isolated run of the same Send logged the traced header and an empty fallback before the same timeout. The API companion in the same file passed in that e2e run, and the Kong integration AC 1-5 test passed, so this is the panel, not the ready-state bug. Scalar Send reaches /api/v1/try-it, but the React panel does not appear.
