@@ -180,6 +180,54 @@ it('027 AC6/8/9: renders waiting, replaced, and gateway-unreachable failure stat
   expect(loadTrace).toHaveBeenCalledTimes(2);
 });
 
+it('shows signed-out immediately without polling or a waterfall', () => {
+  const loadTrace = vi.fn();
+  render(
+    <TryItTracePanel
+      response={{ traceState: 'signed-out', responseStatus: 401, sequence: 9 }}
+      isAdmin={false}
+      loadTrace={loadTrace}
+    />,
+  );
+  expect(screen.getByText('Sign in to see traces', { selector: 'strong' })).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute(
+    'href',
+    expect.stringContaining('/sign-in'),
+  );
+  expect(loadTrace).not.toHaveBeenCalled();
+  expect(screen.queryByRole('table')).toBeNull();
+  expect(screen.queryByText(/Waiting for the trace from Kong/)).toBeNull();
+});
+
+it('027 AC8: developer missing copy names no Kong setting and has no settings link', async () => {
+  const loadTrace = vi.fn().mockResolvedValue({
+    data: {
+      traceId: trace.traceId,
+      state: 'missing',
+      issuedAt: '2026-11-20T00:00:00Z',
+      trace: null,
+    },
+  });
+  render(
+    <TryItTracePanel
+      response={{
+        traceState: 'traced',
+        traceId: trace.traceId,
+        responseStatus: 200,
+        sequence: 8,
+      }}
+      isAdmin={false}
+      loadTrace={loadTrace}
+    />,
+  );
+  expect(
+    await screen.findByText('No trace arrived for this call', { selector: 'strong' }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/Your call worked, but Kong didn't send its trace/)).toBeInTheDocument();
+  expect(screen.queryByText(/tracing_instrumentations/)).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Open tracing page' })).toBeNull();
+});
+
 it('shows role-specific missing guidance and checks again', async () => {
   const loadTrace = vi.fn().mockResolvedValue({
     data: {

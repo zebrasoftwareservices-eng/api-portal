@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page, type APIRequestContext } from '@playwright/test';
 
 const settings = {
   traceEndpoint: 'http://server:4000/api/v1/internal/traces/kong',
@@ -553,4 +553,201 @@ test('027 AC1/4/5/7 and sampling risk: Try it owns its trace, renders it, and ha
   await expect(panel.getByText('Tracing is off for this API', { exact: true }).first()).toBeVisible();
   await expect(panel.getByRole('link', { name: 'Open tracing settings' })).toBeVisible();
   await expect(panel.getByText(/Waiting for the trace from Kong/)).toHaveCount(0);
+});
+
+async function waitApplied(request: APIRequestContext) {
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get('/api/v1/admin/tracing')).json()).apply.status,
+      { timeout: 30_000 },
+    )
+    .toBe('applied');
+}
+
+async function openTryIt(target: Page) {
+  const proxy = process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000';
+  await target.goto('/apis/sample');
+  await target.getByRole('button', { name: /Test Request/ }).first().click();
+  await expect(
+    target.getByRole('button', {
+      name: `Send get request to ${proxy}/sample/get`,
+      exact: true,
+    }),
+  ).toBeVisible();
+}
+
+async function sendTryIt(target: Page) {
+  const proxy = process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000';
+  const pending = target.waitForResponse((response) =>
+    response.url().includes('/api/v1/try-it?'),
+  );
+  await target
+    .getByRole('button', {
+      name: `Send get request to ${proxy}/sample/get`,
+      exact: true,
+    })
+    .click();
+  return pending;
+}
+
+test('027 AC1/5/7/8: developer panel, admin plugin names, tracing off, and no spans', async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(180_000);
+  const request = page.request;
+  expect(
+    (
+      await request.post('/api/auth/sign-in/email', {
+        data: { email: 'admin@example.com', password: 'change-me-now' },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (await request.put('/api/v1/admin/tracing', { data: settings })).status(),
+  ).toBe(200);
+  const sample = (await (await request.get('/api/v1/apis')).json()).items.find(
+    (api: { slug: string }) => api.slug === 'sample',
+  );
+  expect(sample).toBeTruthy();
+  const selected = await request.post('/api/v1/admin/tracing/selections', {
+    data: { kind: 'api', targetId: sample.id },
+  });
+  expect([200, 201]).toContain(selected.status());
+  const selection = await selected.json();
+  await waitApplied(request);
+
+  const developerContext = await browser.newContext({
+    baseURL: test.info().project.use.baseURL,
+  });
+  const developerPage = await developerContext.newPage();
+  try {
+    expect(
+      (
+        await developerContext.request.post('/api/auth/sign-up/email', {
+          data: {
+            name: 'Try it trace QA',
+            email: `tryit-${crypto.randomUUID()}@example.com`,
+            password: 'QA-password-123',
+          },
+        })
+      ).ok(),
+    ).toBe(true);
+
+    await openTryIt(developerPage);
+    const developerCall = await sendTryIt(developerPage);
+    expect(developerCall.headers()['x-portal-trace-state']).toBe('traced');
+    const developerTraceId = developerCall.headers()['x-portal-trace-id']!;
+    expect(developerTraceId).toMatch(/^[0-9a-f]{32}$/);
+    const developerPanel = developerPage.locator('.try-it-trace').last();
+    await expect(
+      developerPanel.getByRole('table', { name: /Spans of your Try it call/ }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(developerPanel.getByLabel(`Trace ID ${developerTraceId}`)).toBeVisible();
+    await expect(developerPanel).toContainText('GET');
+    await expect(developerPanel).toContainText('/sample/get');
+    await expect(developerPanel).toContainText('401');
+    await expect(developerPanel).toContainText('ms total');
+    await expect(developerPanel).toContainText('Slowest');
+    await expect(developerPanel).not.toContainText('key-auth');
+    await expect(developerPanel).not.toContainText('tracing_instrumentations');
+    await expect(developerPanel.getByRole('link', { name: 'Open tracing page' })).toHaveCount(0);
+
+    await openTryIt(page);
+    const adminCall = await sendTryIt(page);
+    const adminTraceId = adminCall.headers()['x-portal-trace-id']!;
+    const adminPanel = page.locator('.try-it-trace').last();
+    await expect(adminPanel).toContainText('key-auth', { timeout: 30_000 });
+    await expect(adminPanel.getByRole('link', { name: 'Open tracing page' })).toHaveAttribute(
+      'href',
+      '/admin/tracing',
+    );
+    await expect
+      .poll(
+        async () =>
+          (
+            await (
+              await request.get(`/api/v1/admin/tracing/latest?apiId=${sample.id}`)
+            ).json()
+          ).trace?.traceId,
+        { timeout: 30_000 },
+      )
+      .toBe(adminTraceId);
+    await page.goto('/admin/tracing');
+    const latest = page.getByRole('main');
+    await expect(latest).toContainText(`Trace ID ${adminTraceId}`);
+    await expect(latest).toContainText('key-auth');
+    await expect(latest).toContainText('/sample/get');
+
+    expect(
+      (
+        await request.delete(`/api/v1/admin/tracing/selections/${selection.id}`)
+      ).status(),
+    ).toBe(204);
+    await waitApplied(request);
+    await openTryIt(developerPage);
+    await sendTryIt(developerPage);
+    const developerOff = developerPage.locator('.try-it-trace').last();
+    await expect(
+      developerOff.getByText('Tracing is off for this API', { exact: true }),
+    ).toBeVisible();
+    await expect(developerOff.locator('.try-it-trace-skeleton')).toHaveCount(0);
+    await expect(developerOff.getByText(/Waiting for the trace from Kong/)).toHaveCount(0);
+    await expect(developerOff.getByRole('link', { name: 'Open tracing settings' })).toHaveCount(0);
+    await openTryIt(page);
+    await sendTryIt(page);
+    const adminOff = page.locator('.try-it-trace').last();
+    await expect(adminOff.getByText('Tracing is off for this API', { exact: true })).toBeVisible();
+    await expect(adminOff.locator('.try-it-trace-skeleton')).toHaveCount(0);
+    await expect(adminOff.getByRole('link', { name: 'Open tracing settings' })).toHaveAttribute(
+      'href',
+      '/admin/tracing',
+    );
+
+    const restored = await request.post('/api/v1/admin/tracing/selections', {
+      data: { kind: 'api', targetId: sample.id },
+    });
+    expect([200, 201]).toContain(restored.status());
+    expect(
+      (
+        await request.put('/api/v1/admin/tracing', {
+          data: {
+            ...settings,
+            traceEndpoint: 'http://127.0.0.1:9/api/v1/internal/traces/kong',
+          },
+        })
+      ).status(),
+    ).toBe(200);
+    await waitApplied(request);
+    await openTryIt(developerPage);
+    await openTryIt(page);
+    await Promise.all([sendTryIt(developerPage), sendTryIt(page)]);
+    const developerMissing = developerPage.locator('.try-it-trace').last();
+    const adminMissing = page.locator('.try-it-trace').last();
+    await expect(developerMissing.getByText(/Waiting for the trace from Kong/)).toBeVisible();
+    await expect(adminMissing.getByText(/Waiting for the trace from Kong/)).toBeVisible();
+    await expect(developerMissing.getByRole('table', { name: /Spans of your Try it call/ })).toHaveCount(0);
+    await expect(developerMissing.getByText('No trace arrived for this call')).toBeVisible({
+      timeout: 45_000,
+    });
+    await expect(adminMissing.getByText('No trace arrived for this call')).toBeVisible({
+      timeout: 45_000,
+    });
+    await expect(developerMissing).not.toContainText('tracing_instrumentations');
+    await expect(developerMissing.getByText(/Waiting for the trace from Kong/)).toHaveCount(0);
+    await expect(adminMissing).toContainText('tracing_instrumentations');
+    await expect(adminMissing).toContainText(/run Test in the tracing settings/);
+    await expect(adminMissing.getByRole('link', { name: 'Open tracing page' })).toHaveAttribute(
+      'href',
+      '/admin/tracing',
+    );
+  } finally {
+    await request.put('/api/v1/admin/tracing', { data: settings });
+    await request.post('/api/v1/admin/tracing/selections', {
+      data: { kind: 'api', targetId: sample.id },
+    });
+    await waitApplied(request);
+    await developerContext.close();
+  }
 });
