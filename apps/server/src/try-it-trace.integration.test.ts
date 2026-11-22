@@ -554,7 +554,7 @@ it('027 AC3/6 and failure paths: permissions, replacement, invalid input, and an
   expect(expiredAdmin.statusCode).toBe(401);
 }, 60_000);
 
-it('027 AC9 and build notes: a refused gateway deletes the row, and a timeout keeps it traced', async () => {
+it('027 AC9 and build notes: a refused gateway deletes a traced row, keeps an older row when tracing is off, and a timeout stays traced', async () => {
   const hanging = createServer((socket) => {
     socket.on('error', () => undefined);
   });
@@ -586,4 +586,38 @@ it('027 AC9 and build notes: a refused gateway deletes the row, and a timeout ke
   expect(
     await connection.db.select().from(tryItTraces).where(eq(tryItTraces.userId, developerId)),
   ).toEqual([]);
-}, 30_000);
+
+  // Tracing off still has to say the call never reached Kong. An older row stays.
+  await connection.db.delete(tracingSelections);
+  const olderId = 'c'.repeat(32);
+  await connection.db.insert(tryItTraces).values({
+    userId: developerId,
+    traceId: olderId,
+    apiId,
+  });
+  const offAndDown = await callTryIt(developerCookie);
+  expect(offAndDown.statusCode, offAndDown.body).toBe(503);
+  expect(offAndDown.headers['content-type']).toContain('application/problem+json');
+  expect(offAndDown.json().type).toBe('/problems/gateway-unavailable');
+  expect(offAndDown.json().detail).toContain("didn't respond");
+  expect(offAndDown.headers['x-portal-trace-state']).toBe('unreachable');
+  expect(offAndDown.headers['x-portal-trace-id']).toBeUndefined();
+  const keptOlder = await connection.db
+    .select()
+    .from(tryItTraces)
+    .where(eq(tryItTraces.userId, developerId));
+  expect(keptOlder.map((row) => row.traceId)).toEqual([olderId]);
+
+  const signedOutDown = await callTryIt();
+  expect(signedOutDown.statusCode, signedOutDown.body).toBe(503);
+  expect(signedOutDown.headers['x-portal-trace-state']).toBe('signed-out');
+  expect(signedOutDown.headers['x-portal-trace-id']).toBeUndefined();
+  expect(
+    (
+      await connection.db
+        .select()
+        .from(tryItTraces)
+        .where(eq(tryItTraces.userId, developerId))
+    ).map((row) => row.traceId),
+  ).toEqual([olderId]);
+}, 45_000);

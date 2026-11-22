@@ -177,6 +177,9 @@ it('027 AC6/8/9: renders waiting, replaced, and gateway-unreachable failure stat
   expect(
     screen.getByText("The call didn't reach the gateway", { selector: 'strong' }),
   ).toBeInTheDocument();
+  expect(screen.queryByText(/Your call worked as usual/)).toBeNull();
+  expect(screen.queryByText(/Waiting for the trace from Kong/)).toBeNull();
+  expect(screen.queryByRole('table')).toBeNull();
   expect(loadTrace).toHaveBeenCalledTimes(2);
 });
 
