@@ -1,6 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 'use client';
-import { Component, useState, type ReactNode } from 'react';
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import dynamic from 'next/dynamic';
 import { Button } from '@portal/ui';
 import '@scalar/api-reference-react/style.css';
@@ -9,6 +17,9 @@ import { useResource } from './use-resource';
 import { referenceOptions } from '../lib/reference-options';
 import { referenceDocument } from '../lib/reference-document';
 import { useColorMode } from '../lib/use-color-mode';
+import { createScalarResponseBridge } from '../lib/scalar-response-bridge';
+import { type TryItResponseTrace } from './try-it-trace-panel';
+import { ScalarTracePortal } from './scalar-trace-portal';
 export const Scalar = dynamic(
   () => import('@scalar/api-reference-react').then((m) => m.ApiReferenceReact),
   { ssr: false, loading: () => <p role="status">Loading API reference…</p> },
@@ -37,14 +48,35 @@ export function Reference({
   slug,
   version,
   initialDocument,
+  isAdmin = false,
 }: {
   documentUrl: string;
   slug?: string;
   version?: string;
   initialDocument?: Record<string, unknown>;
+  isAdmin?: boolean;
 }) {
   const [attempt, setAttempt] = useState(0);
   const colorMode = useColorMode();
+  const [traceResponse, setTraceResponse] = useState<TryItResponseTrace>();
+  const scalarRoot = useRef<HTMLDivElement>(null);
+  const sequence = useRef(0);
+  const onResponseReceived = useCallback(({ response }: { response: Response }) => {
+    const traceState = response.headers.get('X-Portal-Trace-State');
+    if (!isTraceState(traceState)) return;
+    sequence.current += 1;
+    setTraceResponse({
+      traceState,
+      traceId: response.headers.get('X-Portal-Trace-Id') || undefined,
+      responseStatus: response.status,
+      sequence: sequence.current,
+    });
+  }, []);
+  const responseBridge = useMemo(
+    () => createScalarResponseBridge(onResponseReceived),
+    [onResponseReceived],
+  );
+  useEffect(() => responseBridge.install(), [responseBridge]);
   const document = useResource(() =>
     initialDocument
       ? Promise.resolve({ data: initialDocument })
@@ -72,19 +104,38 @@ export function Reference({
     );
   return (
     <ReferenceBoundary key={attempt} retry={() => setAttempt((n) => n + 1)}>
-      <Scalar
-        configuration={{
-          ...referenceOptions(document.data ?? {}),
-          content: referenceDocument(document.data ?? {}),
-          proxyUrl: '/api/v1/try-it',
-          theme: 'none',
-          hideDarkModeToggle: true,
-          forceDarkModeState: colorMode,
-          persistAuth: false,
-          agent: { disabled: true },
-          withDefaultFonts: false,
-        }}
-      />
+      <div className="reference-with-trace" ref={scalarRoot}>
+        <Scalar
+          configuration={{
+            ...referenceOptions(document.data ?? {}),
+            content: referenceDocument(document.data ?? {}),
+            proxyUrl: '/api/v1/try-it',
+            theme: 'none',
+            hideDarkModeToggle: true,
+            forceDarkModeState: colorMode,
+            persistAuth: false,
+            agent: { disabled: true },
+            withDefaultFonts: false,
+            fetch: responseBridge.fetch,
+          }}
+        />
+        <ScalarTracePortal
+          rootRef={scalarRoot}
+          response={traceResponse}
+          isAdmin={isAdmin}
+        />
+      </div>
     </ReferenceBoundary>
+  );
+}
+
+function isTraceState(
+  value: string | null,
+): value is TryItResponseTrace['traceState'] {
+  return (
+    value === 'traced' ||
+    value === 'off' ||
+    value === 'signed-out' ||
+    value === 'unreachable'
   );
 }

@@ -5,7 +5,13 @@ import {
   usageHeartbeat,
   usageHousekeeping,
 } from './usage.js';
-import { connect, migrate, instanceSettings, gateways } from '@portal/db';
+import {
+  connect,
+  migrate,
+  instanceSettings,
+  gateways,
+  tracingSettings,
+} from '@portal/db';
 import { eq, sql } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import PgBoss from 'pg-boss';
@@ -269,6 +275,17 @@ export async function start(config: Config) {
       {},
       { singletonKey: 'gateway-reconcile' },
     );
+    if ((await db.select({ id: tracingSettings.id }).from(tracingSettings).limit(1)).length)
+      await boss.send(
+        'tracing-apply',
+        {},
+        {
+          singletonKey: 'tracing-apply',
+          retryLimit: 20,
+          retryBackoff: true,
+          retryDelay: 5,
+        },
+      );
     if (seedPending)
       await boss.send(
         'seed-sample',

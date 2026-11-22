@@ -104,7 +104,10 @@ export default async function ApiPage({
             </p>
           }
         >
-          <Reference documentUrl={data.documentUrl} />
+          <Reference
+            documentUrl={data.documentUrl}
+            isAdmin={user?.role === 'admin'}
+          />
         </Suspense>
       </div>
     </ApiAccessProvider>

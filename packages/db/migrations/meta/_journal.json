@@ -85,6 +85,13 @@
       "when": 1795181610160,
       "tag": "0011_familiar_butterfly",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795346505716,
+      "tag": "0012_mixed_gertrude_yorkes",
+      "breakpoints": true
     }
   ]
 }

@@ -185,7 +185,7 @@ it('installs the server trace probe config on Kong 3.9', async () => {
             'http://server:4000/api/v1/internal/traces/kong',
           headers: { Authorization: 'Bearer trace-token' },
           propagation: {
-            extract: [],
+          extract: ['w3c'],
             inject: ['preserve'],
             default_format: 'w3c',
           },

@@ -164,6 +164,113 @@
 .span-bar.slowest {
   background: var(--portal-warning);
 }
+.reference-with-trace {
+  container-type: inline-size;
+}
+.scalar-try-it-trace-mount {
+  padding: 12px;
+}
+.try-it-trace-fallback:empty {
+  display: none;
+}
+.try-it-trace {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+  box-shadow: var(--portal-shadow-card);
+}
+.try-it-trace > section {
+  display: grid;
+  gap: 16px;
+}
+.try-it-trace-heading,
+.try-it-trace-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.try-it-trace-heading h3 {
+  margin: 0;
+  font-size: var(--portal-text-lg);
+}
+.try-it-trace-scope {
+  min-height: 24px;
+  min-width: 24px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.try-it-trace-scope-wrap {
+  position: relative;
+}
+.try-it-trace-scope-wrap [role='tooltip'] {
+  position: absolute;
+  z-index: 1;
+  inset-block-start: calc(100% + 4px);
+  inset-inline-end: 0;
+  width: min(260px, 75vw);
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  background: var(--popover);
+  box-shadow: var(--portal-shadow-card);
+}
+.try-it-trace-state {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.try-it-trace-state strong {
+  display: block;
+  margin-bottom: 4px;
+}
+.try-it-trace-state p {
+  margin-block: 0 8px;
+}
+.try-it-trace-state.destructive {
+  color: var(--destructive);
+}
+.try-it-trace-state.warning {
+  color: var(--portal-warning);
+  background: var(--portal-warning-subtle);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.try-it-trace-state .button {
+  margin-top: 8px;
+}
+.try-it-trace-waiting {
+  margin: 0;
+}
+.try-it-trace-skeleton {
+  display: block;
+  height: 28px;
+}
+.try-it-trace-footer {
+  color: var(--muted-foreground);
+}
+.try-it-trace .tracing-trace-id code {
+  overflow-wrap: anywhere;
+}
+@container (max-width: 640px) {
+  .try-it-trace-state {
+    display: grid;
+  }
+  .try-it-trace-state .actions,
+  .try-it-trace-state .button {
+    width: 100%;
+  }
+  .try-it-trace .tracing-summary {
+    justify-content: flex-start;
+  }
+  .try-it-trace .tracing-summary code {
+    flex-basis: calc(100% - 5rem);
+  }
+}
 @media (max-width: 767px) {
   .tracing-card-heading {
     align-items: stretch;

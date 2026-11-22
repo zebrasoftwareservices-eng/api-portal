@@ -149,6 +149,7 @@ export default async function Page({ params }: Props) {
             slug={slug}
             version={version}
             initialDocument={document.data}
+            isAdmin={user?.role === 'admin'}
           />
         </Suspense>
       </div>

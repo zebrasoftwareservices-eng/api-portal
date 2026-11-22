@@ -475,6 +475,30 @@ export const traceLatest = pgTable(
   },
   (t) => [check('trace_latest_id', sql`${t.traceId} ~ '^[0-9a-f]{32}$'`)],
 );
+export const tryItTraces = pgTable(
+  'try_it_traces',
+  {
+    userId: uuid('user_id')
+      .primaryKey()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    traceId: text('trace_id').notNull(),
+    apiId: uuid('api_id').references(() => apis.id, { onDelete: 'cascade' }),
+    issuedAt: time('issued_at').notNull().defaultNow(),
+    receivedAt: time('received_at'),
+    startedAt: time('started_at'),
+    rootSpanId: text('root_span_id'),
+    request: jsonb('request').$type<{
+      method: string;
+      path: string;
+      statusCode: number;
+    } | null>(),
+    spans: jsonb('spans').$type<StoredTraceSpan[]>().notNull().default([]),
+  },
+  (t) => [
+    uniqueIndex('try_it_traces_trace_id_unique').on(t.traceId),
+    check('try_it_traces_trace_id', sql`${t.traceId} ~ '^[0-9a-f]{32}$'`),
+  ],
+);
 export const credentials = pgTable(
   'credentials',
   {

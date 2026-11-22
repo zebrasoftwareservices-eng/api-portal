@@ -896,6 +896,8 @@ info: {}`,
           'application/problem+json',
         );
         expect(response.json().type).toBe('/problems/rate-limited');
+        expect(response.headers['x-portal-trace-state']).toBe('off');
+        expect(response.headers['x-portal-trace-id']).toBeUndefined();
         limited = true;
         break;
       }
