@@ -1,7 +1,7 @@
 ---
 id: 027
 title: Trace inside Try it
-status: building   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-22
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 027`
@@ -323,7 +323,7 @@ Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-
   in the live region, so the journey asserts the visible `strong`. That 027 journey passed.
 
 ## Test report  _(qa-tester)_
-Commit tested: `504ab45` · Portal: http://localhost:3009 (API http://127.0.0.1:4009, Kong http://localhost:18009). The stack is still up after `node scripts/worktree-compose.mjs up -d --build --wait`. Lint 8/8, typecheck 14/14, and `pnpm test` passed (portal 438, server 384, adapter-kong 77, db 11, sdk 16, theme 13). `pnpm test:e2e` was 108 passed, 2 skipped, 17 failed. Both spec 027 journeys passed. The 17 failures are outside this spec and are not a 027 bug. Four are `setup-gateways.test.ts` (`AC 1–7`, JSO-398, JSO-399, JSO-406): the default compose project cannot bind Mailpit on `127.0.0.1:8025` because this worktree holds it. The other 13 are `backlog-regressions.test.ts` JSO-223/JSO-228, `create-app-products.test.ts` 023, `account-security.test.ts` 007 M2 at 1280px and 390px, `access-requests.test.ts` 010, `journeys.ts` JSO-176/JSO-177/JSO-184 and JSO-219, `backlog-live.test.ts` JSO-189/JSO-190/JSO-191, `unified-journey.test.ts` 019 AC1, and `versions.test.ts` 012 AC1-4/6/9 plus the three mounted-ruleset cases.
+Commit tested: `686da55` (application fix `0f0f843`) · Portal: http://localhost:3009 (API http://127.0.0.1:4009, Kong admin http://127.0.0.1:19009, Kong proxy http://localhost:18009). The stack is still up after `node scripts/worktree-compose.mjs up -d --build --wait`. Lint 8/8, typecheck 14/14, and `pnpm test` passed (portal 438, server 385, adapter-kong 77, db 11, sdk 16, theme 13). `pnpm test:e2e` was 97 passed, 2 skipped, 28 failed. Both spec 027 journeys passed. The 28 failures are outside this spec and are not a 027 bug. Four are `setup-gateways.test.ts` (`AC 1–7`, JSO-398, JSO-399, JSO-406): the default compose project cannot bind Mailpit on `127.0.0.1:8025` because this worktree holds it. After another test recreated this worktree's Kong on host ports 8000 and 8001, later cases got `ECONNREFUSED` for `127.0.0.1:19009`. Those are `gateway.ts` (outage, seed, boot, JSO-169), `search.test.ts` 020, `products.test.ts` 009 AC1–8 and AC9–10, `agent-docs.test.ts` 021, `unified-journey.test.ts` 019 AC1,4,9, `backlog-live.test.ts` JSO-175, and `versions.test.ts` 012 hydration. The other failures match the earlier outside-spec set: `backlog-regressions.test.ts` JSO-223/JSO-228, `create-app-products.test.ts` 023, `account-security.test.ts` 007 M2 at 1280px and 390px, `access-requests.test.ts` 010, `journeys.ts` JSO-176/JSO-177/JSO-184 and JSO-219, `backlog-live.test.ts` JSO-189/JSO-190/JSO-191, `unified-journey.test.ts` 019 AC1, and `versions.test.ts` 012 AC1-4/6/9 plus the three mounted-ruleset cases. Kong is back on 18009 and 19009.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
@@ -335,7 +335,7 @@ Commit tested: `504ab45` · Portal: http://localhost:3009 (API http://127.0.0.1:
 | 6 | same file, AC3/6; panel unit test | Pass. A replaced id is 404, one row remains, a parallel pair keeps one row, and an expired session is 401. The panel says the trace was replaced. |
 | 7 | integration AC3/6; `apps/server/src/app.test.ts`; panel unit test; e2e | Pass. Tracing off returns `off` with no trace id and no spinner. The admin message links to tracing settings. A 429 is `off`. |
 | 8 | `apps/server/src/tracing.test.ts`; panel unit test; e2e | Pass. A late span moves `missing` to `ready`. The browser shows waiting, then "No trace arrived for this call". Developer copy names no Kong setting. Admin copy names `tracing_instrumentations` and links to the tracing page. |
-| 9 | same integration file, AC9; panel unit test | Pass. A hung upstream is 504 `traced` and keeps the row. A closed port is 503 `unreachable`, deletes the row, and the panel says the call did not reach the gateway without a waterfall. |
+| 9 | same integration file, AC9; `apps/server/src/tracing.test.ts`; panel unit test | Pass. A hung upstream is 504 `traced` and keeps the row. A closed port is 503 `unreachable` and deletes the row written for that call. With tracing off and Kong down, the same call is 503 `gateway-unavailable` and `unreachable`, an older row stays, and a signed-out caller stays `signed-out`. The panel says the call did not reach the gateway, with no waiting text and no waterfall. |
 | Sampling | same integration file | Open minor. `SAMPLING_SPANS 0/5` within 4 seconds at `KONG_TRACING_SAMPLING_RATE=0.01`. The quickstart default is 1, where spans arrive. No Fix task. |
 
 Long notes go in `docs/specs/log/027.md`, not here.
@@ -345,7 +345,7 @@ Long notes go in `docs/specs/log/027.md`, not here.
 - [x] Try it trace never becomes ready (major)
 - [x] At `KONG_TRACING_SAMPLING_RATE=0.01`, 0 of 5 keyed Try it calls stored a span within 4 seconds. Kong's ratio sampler ignores the sampled flag. The quickstart default is 1, where spans do arrive. (minor)
 - [x] Try it trace panel never mounts after a traced Send (major)
-- [ ] When tracing is off and Kong is down, a developer Try it response is 503 "The API gateway didn't respond" while the panel says "Your call worked as usual." It does not say the call did not reach the gateway. With tracing on, the same outage says that at once. (minor)
+- [x] When tracing is off and Kong is down, a developer Try it response is 503 "The API gateway didn't respond" while the panel says "Your call worked as usual." It does not say the call did not reach the gateway. With tracing on, the same outage says that at once. (minor)
 
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
