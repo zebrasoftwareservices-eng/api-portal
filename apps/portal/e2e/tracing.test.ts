@@ -440,3 +440,117 @@ test('026 AC1/6: a traced developer account keeps one latest trace per called AP
     await developerContext.close();
   }
 });
+
+test('027 AC1/4/5/7 and sampling risk: Try it owns its trace, renders it, and handles tracing off immediately', async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const request = page.request;
+  expect(
+    (
+      await request.post('/api/auth/sign-in/email', {
+        data: { email: 'admin@example.com', password: 'change-me-now' },
+      })
+    ).status(),
+  ).toBe(200);
+  expect(
+    (
+      await request.put('/api/v1/admin/tracing', {
+        data: { ...settings, samplingRate: 0.01 },
+      })
+    ).status(),
+  ).toBe(200);
+  const sample = (await (await request.get('/api/v1/apis')).json()).items.find(
+    (api: { slug: string }) => api.slug === 'sample',
+  );
+  expect(sample).toBeTruthy();
+  const selected = await request.post('/api/v1/admin/tracing/selections', {
+    data: { kind: 'api', targetId: sample.id },
+  });
+  expect([200, 201]).toContain(selected.status());
+  const selection = await selected.json();
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get('/api/v1/admin/tracing')).json()).apply
+          .status,
+      { timeout: 30_000 },
+    )
+    .toBe('applied');
+
+  const proxy = process.env.KONG_PROXY_PUBLIC_URL ?? 'http://localhost:8000';
+  const target =
+    '/api/v1/try-it?scalar_url=' +
+    encodeURIComponent(`${proxy}/sample/get?token=abc123`);
+  const traceIds: string[] = [];
+  for (let callNumber = 0; callNumber < 5; callNumber += 1) {
+    const response = await request.get(target, {
+      headers: { 'x-qa-custom': 'must-not-be-stored' },
+    });
+    expect(response.headers()['x-portal-trace-state']).toBe('traced');
+    const traceId = response.headers()['x-portal-trace-id']!;
+    expect(traceId).toMatch(/^[0-9a-f]{32}$/);
+    traceIds.push(traceId);
+    await expect
+      .poll(
+        async () => {
+          const read = await request.get(`/api/v1/try-it/traces/${traceId}`);
+          if (!read.ok()) return { state: `http-${read.status()}` };
+          return read.json();
+        },
+        { timeout: 30_000 },
+      )
+      .toMatchObject({
+        traceId,
+        state: 'ready',
+        trace: {
+          traceId,
+          request: { method: 'GET', path: '/sample/get', statusCode: 401 },
+        },
+      });
+  }
+  expect(new Set(traceIds).size).toBe(5);
+  const latest = await request.get(
+    `/api/v1/admin/tracing/latest?apiId=${sample.id}`,
+  );
+  expect(latest.status(), await latest.text()).toBe(200);
+  const latestBody = await latest.json();
+  expect(latestBody.trace.traceId).toBe(traceIds.at(-1));
+  expect(JSON.stringify(latestBody)).not.toContain('abc123');
+  expect(JSON.stringify(latestBody)).not.toContain('must-not-be-stored');
+
+  await page.goto('/apis/sample');
+  await page.getByRole('button', { name: /Test Request/ }).first().click();
+  const send = page.getByRole('button', {
+    name: `Send get request to ${proxy}/sample/get`,
+    exact: true,
+  });
+  await send.click();
+  const panel = page.locator('.try-it-trace');
+  await expect(panel.getByRole('table', { name: /Spans of your Try it call/ })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(panel).toContainText('/sample/get');
+  await expect(panel).toContainText('Trace ID');
+  await expect(panel.getByRole('link', { name: 'Open tracing page' })).toBeVisible();
+
+  expect(
+    (
+      await request.delete(
+        `/api/v1/admin/tracing/selections/${selection.id}`,
+      )
+    ).status(),
+  ).toBe(204);
+  await expect
+    .poll(
+      async () =>
+        (await (await request.get('/api/v1/admin/tracing')).json()).apply
+          .status,
+      { timeout: 30_000 },
+    )
+    .toBe('applied');
+  await send.click();
+  await expect(panel.getByText('Tracing is off for this API', { exact: true }).first()).toBeVisible();
+  await expect(panel.getByRole('link', { name: 'Open tracing settings' })).toBeVisible();
+  await expect(panel.getByText(/Waiting for the trace from Kong/)).toHaveCount(0);
+});

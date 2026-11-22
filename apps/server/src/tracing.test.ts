@@ -37,6 +37,7 @@ let connection: ReturnType<typeof connect>;
 let server: Awaited<ReturnType<typeof createApp>>['app'];
 let adminCookie = '';
 let developerCookie = '';
+let secondDeveloperCookie = '';
 const instanceId = uuidv7();
 const gatewayId = uuidv7();
 const apiId = uuidv7();
@@ -259,6 +260,16 @@ beforeAll(async () => {
     },
   });
   developerCookie = developer.headers['set-cookie']?.toString().split(';')[0] ?? '';
+  const secondDeveloper = await server.inject({
+    method: 'POST',
+    url: '/api/auth/sign-up/email',
+    payload: {
+      email: 'developer-y@example.com',
+      password: 'developer-y-password',
+      name: 'Developer Y',
+    },
+  });
+  secondDeveloperCookie = secondDeveloper.headers['set-cookie']?.toString().split(';')[0] ?? '';
 }, 120_000);
 
 beforeEach(async () => {
@@ -438,6 +449,38 @@ describe('tracing admin contract', () => {
 });
 
 describe('trace ingest and latest trace', () => {
+  it('027 AC1-3: isolates simultaneous Try it traces by owner and matches each forwarded traceparent', async () => {
+    await saveSettings();
+    const adminId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'admin')))[0]!.id;
+    await connection.db.insert(tracingSelections).values({
+      id: uuidv7(), kind: 'api', apiId, createdBy: adminId,
+    });
+    const url = '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get';
+    const [first, second] = await Promise.all([
+      server.inject({ url, headers: { cookie: developerCookie } }),
+      server.inject({ url, headers: { cookie: secondDeveloperCookie } }),
+    ]);
+    expect(first.statusCode, first.body).toBe(200);
+    expect(second.statusCode, second.body).toBe(200);
+    const firstId = first.headers['x-portal-trace-id'] as string;
+    const secondId = second.headers['x-portal-trace-id'] as string;
+    expect(firstId).toMatch(/^[0-9a-f]{32}$/);
+    expect(secondId).toMatch(/^[0-9a-f]{32}$/);
+    expect(firstId).not.toBe(secondId);
+    const forwardedTraceIds = proxyFetch.mock.calls
+      .slice(-2)
+      .map((call) => ((call[1]!.headers as Headers).get('traceparent') ?? '').split('-')[1]);
+    expect(forwardedTraceIds).toEqual(expect.arrayContaining([firstId, secondId]));
+
+    const rows = await connection.db.select().from(tryItTraces);
+    expect(rows.map((row) => row.traceId)).toEqual(expect.arrayContaining([firstId, secondId]));
+    expect((await server.inject({ url: `/api/v1/try-it/traces/${firstId}`, headers: { cookie: secondDeveloperCookie } })).statusCode).toBe(404);
+    expect((await server.inject({ url: `/api/v1/try-it/traces/${secondId}`, headers: { cookie: developerCookie } })).statusCode).toBe(404);
+    const anonymous = await server.inject({ url: `/api/v1/try-it/traces/${firstId}` });
+    expect(anonymous.statusCode).toBe(401);
+    expect(anonymous.headers['content-type']).toContain('application/problem+json');
+  });
+
   it('issues W3C context, drops browser context, replaces the current row, and reports transport states', async () => {
     await saveSettings();
     const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
@@ -548,6 +591,68 @@ describe('trace ingest and latest trace', () => {
 
     await connection.db.update(tryItTraces).set({ traceId: '9'.repeat(32), spans: [], rootSpanId: null, receivedAt: null, startedAt: null }).where(eq(tryItTraces.userId, developerId));
     expect((await server.inject({ url: `/api/v1/try-it/traces/${traceId}`, headers: { cookie: developerCookie } })).statusCode).toBe(404);
+  });
+
+  it('027 AC4-5: returns allowlisted fields, redacts developer plugin names, and preserves them for an admin owner', async () => {
+    await saveSettings();
+    const selectionId = uuidv7();
+    const adminId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'admin')))[0]!.id;
+    const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
+    await connection.db.insert(tracingSelections).values({ id: selectionId, kind: 'api', apiId, createdBy: adminId });
+    for (const [ownerId, cookie, traceId, plugin] of [
+      [developerId, developerCookie, 'd'.repeat(32), null],
+      [adminId, adminCookie, 'e'.repeat(32), 'key-auth'],
+    ] as const) {
+      await connection.db.insert(tryItTraces).values({ userId: ownerId, traceId, apiId });
+      const received = batch(traceId, selectionId, Date.now());
+      received.spans[0] = {
+        ...received.spans[0]!,
+        request: { method: 'POST', path: '/sample/get', statusCode: 201 },
+      };
+      expect((await ingest(received)).statusCode).toBe(200);
+      const response = await server.inject({
+        url: `/api/v1/try-it/traces/${traceId}`,
+        headers: { cookie },
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({
+        state: 'ready',
+        trace: {
+          traceId,
+          request: { method: 'POST', path: '/sample/get', statusCode: 201 },
+          spans: expect.arrayContaining([
+            expect.objectContaining({ label: 'plugin', plugin }),
+          ]),
+        },
+      });
+      for (const secret of ['abc123', 'client.ip', 'upstream.address', 'headers', 'body'])
+        expect(response.body).not.toContain(secret);
+      if (plugin === null) expect(response.body).not.toContain('key-auth');
+      else expect(response.body).toContain('key-auth');
+    }
+    expect((await connection.db.select().from(traceLatest))[0]).toMatchObject({ traceId: 'e'.repeat(32) });
+  });
+
+  it('027 AC6/8 and invalid-input paths: reports waiting, missing, late ready, replaced, and malformed ids', async () => {
+    await saveSettings();
+    const selectionId = uuidv7();
+    const adminId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'admin')))[0]!.id;
+    const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
+    await connection.db.insert(tracingSelections).values({ id: selectionId, kind: 'api', apiId, createdBy: adminId });
+    const traceId = '3'.repeat(32);
+    await connection.db.insert(tryItTraces).values({ userId: developerId, traceId, apiId });
+    const read = () => server.inject({ url: `/api/v1/try-it/traces/${traceId}`, headers: { cookie: developerCookie } });
+    expect((await read()).json().state).toBe('waiting');
+    await connection.db.update(tryItTraces).set({ issuedAt: new Date(Date.now() - 31_000) }).where(eq(tryItTraces.userId, developerId));
+    expect((await read()).json()).toMatchObject({ state: 'missing', trace: null });
+    expect((await ingest(batch(traceId, selectionId, Date.now()))).statusCode).toBe(200);
+    expect((await read()).json()).toMatchObject({ state: 'ready', trace: { traceId } });
+
+    await connection.db.update(tryItTraces).set({ traceId: '4'.repeat(32), spans: [], rootSpanId: null, receivedAt: null, startedAt: null }).where(eq(tryItTraces.userId, developerId));
+    expect((await read()).statusCode).toBe(404);
+    const malformed = await server.inject({ url: '/api/v1/try-it/traces/not-a-trace-id', headers: { cookie: developerCookie } });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.headers['content-type']).toContain('application/problem+json');
   });
 
   it('stores a matching Try it group even when no API resolves', async () => {

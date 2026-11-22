@@ -86,8 +86,98 @@ it('polls a traced response and renders the read-only waterfall', async () => {
     await screen.findByRole('table', { name: /Spans of your Try it call/ }),
   ).toBeInTheDocument();
   expect(screen.getByText('/orders/42')).toBeInTheDocument();
+  expect(screen.getByLabelText(`Trace ID ${trace.traceId}`)).toBeInTheDocument();
+  expect(
+    screen.getByText((_content, element) =>
+      Boolean(
+        element?.classList.contains('trace-status-success') &&
+          element.textContent?.includes('200 OK'),
+      ),
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByText('224 ms total')).toBeInTheDocument();
   expect(screen.getAllByText(/Slowest: Upstream try/)).toHaveLength(2);
   expect(screen.queryByRole('link', { name: 'Open tracing page' })).toBeNull();
+});
+
+it('027 AC5: shows plugin names and the tracing-page link to an admin', async () => {
+  const adminTrace: Trace = {
+    ...trace,
+    spans: [
+      ...trace.spans,
+      {
+        spanId: 'plugin',
+        parentSpanId: 'root',
+        name: 'kong.access.plugin.key-auth',
+        label: 'plugin',
+        plugin: 'key-auth',
+        startOffsetMs: 4,
+        durationMs: 8,
+        status: 'ok',
+        slowest: false,
+      },
+    ],
+  };
+  const loadTrace = vi.fn().mockResolvedValue({
+    data: {
+      traceId: trace.traceId,
+      state: 'ready',
+      issuedAt: '2026-11-20T00:00:00Z',
+      trace: adminTrace,
+    },
+  });
+  render(
+    <TryItTracePanel
+      response={{ traceState: 'traced', traceId: trace.traceId, responseStatus: 200, sequence: 2 }}
+      isAdmin
+      loadTrace={loadTrace}
+    />,
+  );
+  expect(await screen.findByText('key-auth')).toBeInTheDocument();
+  expect(screen.getByRole('link', { name: 'Open tracing page' })).toHaveAttribute('href', '/admin/tracing');
+});
+
+it('027 AC6/8/9: renders waiting, replaced, and gateway-unreachable failure states', async () => {
+  const loadTrace = vi.fn().mockResolvedValue({
+    data: {
+      traceId: trace.traceId,
+      state: 'waiting',
+      issuedAt: '2026-11-20T00:00:00Z',
+      trace: null,
+    },
+  });
+  const response = {
+    traceState: 'traced' as const,
+    traceId: trace.traceId,
+    responseStatus: 200,
+    sequence: 3,
+  };
+  const { rerender } = render(
+    <TryItTracePanel response={response} isAdmin={false} loadTrace={loadTrace} />,
+  );
+  expect(await screen.findByText(/Waiting for the trace from Kong/)).toBeInTheDocument();
+
+  loadTrace.mockResolvedValueOnce({ error: { status: 404 } });
+  rerender(
+    <TryItTracePanel
+      response={{ ...response, sequence: 4, traceId: '5'.repeat(32) }}
+      isAdmin={false}
+      loadTrace={loadTrace}
+    />,
+  );
+  expect(await screen.findByText('This trace was replaced')).toBeInTheDocument();
+
+  rerender(
+    <TryItTracePanel
+      response={{ traceState: 'unreachable', responseStatus: 503, sequence: 5 }}
+      isAdmin={false}
+      loadTrace={loadTrace}
+    />,
+  );
+  expect(
+    screen.getByText("The call didn't reach the gateway", { selector: 'strong' }),
+  ).toBeInTheDocument();
+  expect(loadTrace).toHaveBeenCalledTimes(2);
 });
 
 it('shows role-specific missing guidance and checks again', async () => {
