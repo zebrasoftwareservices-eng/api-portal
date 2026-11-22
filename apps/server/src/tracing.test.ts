@@ -524,6 +524,34 @@ describe('trace ingest and latest trace', () => {
     expect(await connection.db.select().from(tryItTraces)).toHaveLength(1);
   });
 
+  it('answers unreachable when tracing is off and Kong is down, without deleting an older row', async () => {
+    const url = '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get';
+    const reached = await server.inject({ url, headers: { cookie: developerCookie } });
+    expect(reached.statusCode, reached.body).toBe(200);
+    expect(reached.headers['x-portal-trace-state']).toBe('off');
+    expect(reached.headers['x-portal-trace-id']).toBeUndefined();
+    expect((proxyFetch.mock.calls.at(-1)![1]!.headers as Headers).get('traceparent')).toBeNull();
+
+    const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
+    const keptId = 'e'.repeat(32);
+    await connection.db.insert(tryItTraces).values({ userId: developerId, traceId: keptId, apiId });
+    proxyFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+    const unavailable = await server.inject({ url, headers: { cookie: developerCookie } });
+    expect(unavailable.statusCode).toBe(503);
+    expect(unavailable.json().type).toBe('/problems/gateway-unavailable');
+    expect(unavailable.headers['x-portal-trace-state']).toBe('unreachable');
+    expect(unavailable.headers['x-portal-trace-id']).toBeUndefined();
+    const rows = await connection.db.select().from(tryItTraces);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ userId: developerId, traceId: keptId });
+
+    proxyFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+    const signedOut = await server.inject(url);
+    expect(signedOut.statusCode).toBe(503);
+    expect(signedOut.headers['x-portal-trace-state']).toBe('signed-out');
+    expect(await connection.db.select().from(tryItTraces)).toHaveLength(1);
+  });
+
   it('covers signed-out, API, developer, and member-team Try it calls only when tracing is configured', async () => {
     const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
     const teamId = (await connection.db.select({ id: teamMembers.teamId }).from(teamMembers).where(eq(teamMembers.userId, developerId)).limit(1))[0]!.id;

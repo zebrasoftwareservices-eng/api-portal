@@ -169,8 +169,9 @@ calls Kong. No CORS change is needed.
 4. Every response from the route carries `X-Portal-Trace-State`. A `traced` response also carries
    `X-Portal-Trace-Id`. This includes the 400, 403, 413, 429 and 504 problems. A 400 or 429 is
    decided before step 2, so it is `off`.
-   - A transport failure (503 `gateway-unavailable`) deletes the row it just wrote and answers
-     `unreachable` (AC 9).
+   - A transport failure (503 `gateway-unavailable`) answers `unreachable` for every signed-in
+     caller, traced or not. It deletes the `try_it_traces` row only when this call wrote one.
+     A signed-out caller stays `signed-out` (AC 9).
    - A 504 timeout stays `traced`, because Kong received the call and may still export spans.
 5. Kong's `opentelemetry` plugin (portal tracing plugins only) now has
    `propagation.extract: ['w3c']`, so the exported spans carry the portal's trace id.
@@ -282,7 +283,7 @@ calls Kong. No CORS change is needed.
 - [x] [qa] Playwright e2e on the quickstart: developer Try it shows the panel within 30 s (AC 1); an admin sees plugin names and the 026 page shows the same call (AC 5); tracing off shows the message without a spinner, with a settings link for the admin (AC 7); no spans gives "waiting" then "no trace arrived" (AC 8)
 - [x] [backend] Fix: Try it trace never becomes ready
 - [x] [frontend] Fix: Try it trace panel never mounts after a traced Send
-- [ ] [backend] Fix: a Try it transport failure (503 `gateway-unavailable`) answers `X-Portal-Trace-State: unreachable` for every signed-in caller, not only a traced one; delete the row only when one was written (`apps/server/src/proxy.ts:259-271`); add a unit or integration test for tracing off + Kong down
+- [x] [backend] Fix: a Try it transport failure (503 `gateway-unavailable`) answers `X-Portal-Trace-State: unreachable` for every signed-in caller, not only a traced one; delete the row only when one was written (`apps/server/src/proxy.ts:259-271`); add a unit or integration test for tracing off + Kong down
 ## UX  _(ui-designer)_
 Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-it.md).
 - A **Trace** card (`TryItTracePanel`) sits directly under Scalar's Try it response and reuses
@@ -301,6 +302,7 @@ Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-
 
 - Backend: added the `try_it_traces` migration, W3C propagation and startup tracing apply, selection-aware Try it trace issuance/cleanup, ingest merging, and the owner-only trace read with developer redaction. QA should exercise both 503 (`unreachable`, row removed) and 504 (`traced`, row retained) proxy failures and confirm late spans can move a `missing` trace to `ready`.
 - Backend fix: a Try it trace becomes `ready` when the `kong` request span is stored, including when its parent is the portal span id. Child spans alone stay `waiting`. Kong 3.9 still exports a different trace id when key-auth exits before the OpenTelemetry access phase, because the plugin entity has no priority field; a call with no key can stay `missing`. Retest AC 1–5 with a valid key at sampling rate 1.
+- Backend fix: a 503 `gateway-unavailable` now sets `X-Portal-Trace-State: unreachable` for every signed-in caller, including when tracing is off. The `try_it_traces` row is deleted only when this call wrote one; an older row and a signed-out caller stay as they were. QA should retest AC 9 with tracing off and Kong down: the panel says the call did not reach the gateway, not that the call worked as usual.
 
 - Frontend: Scalar Try it responses now drive a role-aware Trace panel with waiting, partial,
   ready, missing, off, unreachable, signed-out, replaced and retry states. It reuses the spec 026

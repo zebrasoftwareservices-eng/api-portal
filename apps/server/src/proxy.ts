@@ -258,15 +258,19 @@ export async function registerProxy(
               'The gateway did not respond within 10 seconds.',
             );
           const trace = traceContext.get(request);
-          if (trace?.state === 'traced' && trace.traceId && viewer?.userId) {
-            await db
-              .delete(tryItTraces)
-              .where(
-                and(
-                  eq(tryItTraces.userId, viewer.userId),
-                  eq(tryItTraces.traceId, trace.traceId),
-                ),
-              );
+          // A signed-in caller always hears that Kong was not reached. Delete only
+          // the row this call wrote; an older trace, and a signed-out caller, stay.
+          if (viewer?.userId) {
+            if (trace?.state === 'traced' && trace.traceId) {
+              await db
+                .delete(tryItTraces)
+                .where(
+                  and(
+                    eq(tryItTraces.userId, viewer.userId),
+                    eq(tryItTraces.traceId, trace.traceId),
+                  ),
+                );
+            }
             traceContext.set(request, { state: 'unreachable' });
           }
           throw new Problem(
