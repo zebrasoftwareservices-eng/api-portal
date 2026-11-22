@@ -264,13 +264,13 @@ calls Kong. No CORS change is needed.
 - *Ingest volume.* No new load beyond Try it calls inside selections.
 
 ### Tasks
-- [ ] [backend] `packages/db`: add the `try_it_traces` table (columns, checks, unique `trace_id`, FKs with cascade) and generate the migration with `pnpm --filter @portal/db exec drizzle-kit generate`
-- [ ] [backend] `packages/adapter-kong`: `tracingConfig` propagation `extract: ['w3c']`; update adapter tests; the server queues one tracing apply at start when tracing settings exist
-- [ ] [backend] `apps/server/src/tracing.ts`: export a `tryItTraceState(db, viewer, apiId)` coverage helper (api, developer, or member-team selection; configured; adapter supports tracing) returning `traced | off | signed-out`
-- [ ] [backend] `apps/server/src/proxy.ts`: generate the trace id and span id; upsert the row before the call; add `traceparent`; drop any browser `traceparent` or `tracestate`; set `X-Portal-Trace-State` and `X-Portal-Trace-Id` on every response, problems included; on a 503 transport failure delete the row and answer `unreachable`; on a 504 keep `traced`
-- [ ] [backend] Ingest: inside the existing transaction, merge each trace-id group into the matching `try_it_traces` row (span-id merge, 1000 cap, `root_span_id`, `request`, `started_at`, `received_at`); keep the `trace_latest` behaviour; store a matching group even when no API resolves
-- [ ] [backend] `GET /api/v1/try-it/traces/:traceId`: session required (401); owner and current id, otherwise one 404; `state` waiting/ready/missing (30 s); `traceView` redaction for non-admins (`plugin: null`, `name = label`); regenerate `packages/sdk`
-- [ ] [backend] Unit tests: coverage helper, traceparent format and the dropping of browser headers, redaction, ingest merge into the Try it row and `trace_latest`, 404 for another user, replaced or unknown id
+- [x] [backend] `packages/db`: add the `try_it_traces` table (columns, checks, unique `trace_id`, FKs with cascade) and generate the migration with `pnpm --filter @portal/db exec drizzle-kit generate`
+- [x] [backend] `packages/adapter-kong`: `tracingConfig` propagation `extract: ['w3c']`; update adapter tests; the server queues one tracing apply at start when tracing settings exist
+- [x] [backend] `apps/server/src/tracing.ts`: export a `tryItTraceState(db, viewer, apiId)` coverage helper (api, developer, or member-team selection; configured; adapter supports tracing) returning `traced | off | signed-out`
+- [x] [backend] `apps/server/src/proxy.ts`: generate the trace id and span id; upsert the row before the call; add `traceparent`; drop any browser `traceparent` or `tracestate`; set `X-Portal-Trace-State` and `X-Portal-Trace-Id` on every response, problems included; on a 503 transport failure delete the row and answer `unreachable`; on a 504 keep `traced`
+- [x] [backend] Ingest: inside the existing transaction, merge each trace-id group into the matching `try_it_traces` row (span-id merge, 1000 cap, `root_span_id`, `request`, `started_at`, `received_at`); keep the `trace_latest` behaviour; store a matching group even when no API resolves
+- [x] [backend] `GET /api/v1/try-it/traces/:traceId`: session required (401); owner and current id, otherwise one 404; `state` waiting/ready/missing (30 s); `traceView` redaction for non-admins (`plugin: null`, `name = label`); regenerate `packages/sdk`
+- [x] [backend] Unit tests: coverage helper, traceparent format and the dropping of browser headers, redaction, ingest merge into the Try it row and `trace_latest`, 404 for another user, replaced or unknown id
 - [x] [frontend] `components/reference.tsx`: register a Scalar API-client plugin with `onResponseReceived` that reads `X-Portal-Trace-State` and `X-Portal-Trace-Id` and drives a React trace panel under the response
 - [x] [frontend] Trace panel: reuse spec 026's waterfall read-only; show method, path, status, total ms, labels and the slowest span; poll `getTryItTrace` every 2 s until `ready` or `missing`; states off (immediate), waiting, missing (after 30 s), unreachable (immediate), signed-out; admin copy names `tracing_instrumentations` and links to the tracing settings and Test; developer copy names no Kong setting (per the UX doc)
 - [ ] [qa] Integration (Testcontainers Kong + Postgres): AC 1 (the trace id equals the sent `traceparent`), AC 2 (two users at once), AC 3 (404 for another user, 401 anonymous, 026 admin endpoints 403), AC 4 (with `?token=abc123`, custom headers and a body: none appear; no plugin names for a developer), AC 6 (replaced id is 404), AC 9 (Kong down: `unreachable`, no row)
@@ -292,6 +292,8 @@ Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-
   the waterfall uses 026's two-line rows. No new tokens.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Backend: added the `try_it_traces` migration, W3C propagation and startup tracing apply, selection-aware Try it trace issuance/cleanup, ingest merging, and the owner-only trace read with developer redaction. QA should exercise both 503 (`unreachable`, row removed) and 504 (`traced`, row retained) proxy failures and confirm late spans can move a `missing` trace to `ready`.
 
 - Frontend: Scalar Try it responses now drive a role-aware Trace panel with waiting, partial,
   ready, missing, off, unreachable, signed-out, replaced and retry states. It reuses the spec 026

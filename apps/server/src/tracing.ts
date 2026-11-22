@@ -8,13 +8,16 @@ import {
   apis,
   apiVersions,
   apps,
+  gateways,
   gatewayConsumers,
   teams,
   traceLatest,
   tracingSelections,
   tracingSettings,
+  tryItTraces,
   user,
   type Database,
+  type StoredTraceSpan,
 } from '@portal/db';
 import {
   GatewayUnavailableError,
@@ -25,6 +28,7 @@ import {
 } from '@portal/adapter-sdk';
 import { decrypt, encrypt } from './crypto.js';
 import { requireUser, type Auth } from './auth.js';
+import type { Viewer } from './access-policy.js';
 import { normalizeUrl, requireEnabled, type GatewayConnection } from './gateway-connection.js';
 import { Problem, notFound } from './problem.js';
 
@@ -94,6 +98,38 @@ export async function resolveSelectionApps(
     .from(apps)
     .innerJoin(gatewayConsumers, eq(gatewayConsumers.appId, apps.id))
     .where(and(eq(apps.status, 'active'), condition));
+}
+
+export async function tryItTraceState(
+  db: Database,
+  viewer: Viewer,
+  apiId: string,
+): Promise<'traced' | 'off' | 'signed-out'> {
+  if (!viewer.userId) return 'signed-out';
+  const [settings, gateway, selection] = await Promise.all([
+    db.select({ id: tracingSettings.id }).from(tracingSettings).limit(1),
+    db
+      .select({ kind: gateways.kind })
+      .from(gateways)
+      .where(eq(gateways.enabled, true))
+      .limit(1),
+    db
+      .select({ id: tracingSelections.id })
+      .from(tracingSelections)
+      .where(
+        or(
+          eq(tracingSelections.apiId, apiId),
+          eq(tracingSelections.userId, viewer.userId),
+          viewer.teamIds.length
+            ? inArray(tracingSelections.teamId, viewer.teamIds)
+            : sql`false`,
+        ),
+      )
+      .limit(1),
+  ]);
+  return settings.length && gateway[0]?.kind === 'kong' && selection.length
+    ? 'traced'
+    : 'off';
 }
 
 export async function applyTracing(
@@ -211,8 +247,16 @@ async function tracingView(db: Database, connection: GatewayConnection) {
 }
 
 export function traceView(
-  row: typeof traceLatest.$inferSelect,
+  row: Pick<
+    typeof traceLatest.$inferSelect,
+    | 'traceId'
+    | 'receivedAt'
+    | 'startedAt'
+    | 'request'
+    | 'spans'
+  > & { rootSpanId: string | null },
   adapter: { classifySpan(name: string): { label: string; plugin?: string } },
+  redact = false,
 ) {
   const startedNs = BigInt(row.startedAt.getTime()) * 1_000_000n;
   const root = row.spans.find((span) => span.spanId === row.rootSpanId);
@@ -232,9 +276,9 @@ export function traceView(
       return {
         spanId: span.spanId,
         parentSpanId: span.parentSpanId,
-        name: span.name,
+        name: redact ? classification.label : span.name,
         label: classification.label,
-        plugin: classification.plugin ?? null,
+        plugin: redact ? null : (classification.plugin ?? null),
         startOffsetMs: Number(BigInt(span.startNs) - startedNs) / 1e6,
         durationMs: Number(BigInt(span.durationNs)) / 1e6,
         status: span.status === '2' ? 'error' : span.status === '1' ? 'ok' : 'unset',
@@ -251,6 +295,62 @@ export function registerTracing(
   connection: GatewayConnection,
   enqueueApply: () => Promise<unknown> = () => applyTracing(db, connection),
 ) {
+  server.get('/api/v1/try-it/traces/:traceId', async (request) => {
+    const current = await requireUser(auth, request);
+    const { traceId } = z
+      .object({ traceId: z.string().regex(/^[0-9a-f]{32}$/) })
+      .parse(request.params);
+    const [row] = await db
+      .select()
+      .from(tryItTraces)
+      .where(
+        and(
+          eq(tryItTraces.userId, current.id),
+          eq(tryItTraces.traceId, traceId),
+        ),
+      )
+      .limit(1);
+    if (!row) throw notFound();
+    const gateway = await connection.load();
+    const traceReady = Boolean(row.rootSpanId);
+    const state = traceReady
+      ? 'ready'
+      : Date.now() - row.issuedAt.getTime() >= 30_000
+        ? 'missing'
+        : 'waiting';
+    let api: { id: string; slug: string; name: string } | null = null;
+    if (row.apiId) {
+      const [found] = await db
+        .select({ id: apis.id, slug: apis.slug, name: apiVersions.title })
+        .from(apis)
+        .leftJoin(apiVersions, eq(apis.latestVersionId, apiVersions.id))
+        .where(eq(apis.id, row.apiId))
+        .limit(1);
+      if (found)
+        api = { id: found.id, slug: found.slug, name: found.name ?? found.slug };
+    }
+    const trace =
+      row.receivedAt && row.startedAt && gateway?.adapter
+        ? {
+            ...traceView(
+              {
+                ...row,
+                receivedAt: row.receivedAt,
+                startedAt: row.startedAt,
+              },
+              gateway.adapter,
+              current.role !== 'admin',
+            ),
+            api,
+          }
+        : null;
+    return {
+      traceId: row.traceId,
+      state,
+      issuedAt: row.issuedAt.toISOString(),
+      trace,
+    };
+  });
   server.get('/api/v1/admin/tracing', async (request) => {
     await requireUser(auth, request, true);
     return tracingView(db, connection);
@@ -462,8 +562,18 @@ export function registerTracing(
       for (const span of batch.spans) groups.set(span.traceId, [...(groups.get(span.traceId) ?? []), span]);
       const accepted = await db.transaction(async (tx) => {
         await tx.execute(sql`select pg_advisory_xact_lock(71833026)`);
-        const resolvedGroups: Array<{ traceId: string; spans: TraceBatch['spans']; scopeKey: string }> = [];
+        const resolvedGroups: Array<{
+          traceId: string;
+          spans: TraceBatch['spans'];
+          scopeKey?: string;
+          tryIt: typeof tryItTraces.$inferSelect | undefined;
+        }> = [];
         for (const [traceId, spans] of groups) {
+          const [tryIt] = await tx
+            .select()
+            .from(tryItTraces)
+            .where(eq(tryItTraces.traceId, traceId))
+            .for('update');
           const root = spans.find((span) => span.parentSpanId === null);
           let apiId = batch.resource.apiId;
           if (!apiId && root?.routePath) {
@@ -473,22 +583,47 @@ export function registerTracing(
             const [previous] = await tx.select({ apiId: traceLatest.apiId }).from(traceLatest).where(eq(traceLatest.traceId, traceId)).limit(1);
             apiId = previous?.apiId ?? undefined;
           }
-          if (apiId) resolvedGroups.push({ traceId, spans, scopeKey: apiId });
+          if (apiId || tryIt)
+            resolvedGroups.push({ traceId, spans, scopeKey: apiId, tryIt });
         }
         if (!resolvedGroups.length) throw new Problem(422, 'trace-not-selected', 'Trace does not match a published API.');
 
-        for (const { traceId, spans, scopeKey } of resolvedGroups) {
+        for (const { traceId, spans, scopeKey, tryIt } of resolvedGroups) {
           const root = spans.find((span) => span.parentSpanId === null);
           const started = new Date(Number(BigInt((root ?? spans[0]!).startNs) / 1_000_000n));
+          const merge = (
+            previous: StoredTraceSpan[],
+            incoming: TraceBatch['spans'],
+          ) => {
+            const merged = [...previous];
+            for (const span of incoming) {
+              const stored = { spanId: span.spanId, parentSpanId: span.parentSpanId, name: span.name, startNs: span.startNs, durationNs: span.durationNs, status: span.status };
+              const index = merged.findIndex((value) => value.spanId === span.spanId);
+              if (index >= 0) merged[index] = stored;
+              else if (merged.length < 1000) merged.push(stored);
+            }
+            return merged;
+          };
+          if (tryIt) {
+            await tx
+              .update(tryItTraces)
+              .set({
+                spans: merge(tryIt.spans, spans),
+                startedAt:
+                  tryIt.startedAt && tryIt.startedAt < started
+                    ? tryIt.startedAt
+                    : started,
+                receivedAt: new Date(),
+                rootSpanId: root?.spanId ?? tryIt.rootSpanId,
+                request: root?.request ?? tryIt.request,
+              })
+              .where(eq(tryItTraces.userId, tryIt.userId));
+          }
+          if (!scopeKey) continue;
           const [previous] = await tx.select().from(traceLatest).where(eq(traceLatest.scopeKey, scopeKey)).for('update');
           if (previous && previous.traceId !== traceId && previous.startedAt > started) continue;
           const sameTrace = previous?.traceId === traceId;
-          const merged = sameTrace ? [...previous.spans] : [];
-          for (const span of spans) {
-            const stored = { spanId: span.spanId, parentSpanId: span.parentSpanId, name: span.name, startNs: span.startNs, durationNs: span.durationNs, status: span.status };
-            const index = merged.findIndex((value) => value.spanId === span.spanId);
-            if (index >= 0) merged[index] = stored; else if (merged.length < 1000) merged.push(stored);
-          }
+          const merged = merge(sameTrace ? previous.spans : [], spans);
           const traceStarted = sameTrace && previous.startedAt < started ? previous.startedAt : started;
           await tx.insert(traceLatest).values({ scopeKey, traceId, apiId: scopeKey, startedAt: traceStarted, receivedAt: new Date(), rootSpanId: root?.spanId ?? previous?.rootSpanId ?? spans[0]!.spanId, request: root?.request ?? previous?.request ?? null, spans: merged }).onConflictDoUpdate({ target: traceLatest.scopeKey, set: { traceId, apiId: scopeKey, startedAt: traceStarted, receivedAt: new Date(), rootSpanId: root?.spanId ?? previous?.rootSpanId ?? spans[0]!.spanId, request: root?.request ?? previous?.request ?? null, spans: merged } });
         }

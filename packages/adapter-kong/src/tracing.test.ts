@@ -67,7 +67,7 @@ describe('Kong tracing', () => {
     expect(pluginConfig.traces_endpoint).toBe('http://server/traces');
     expect(pluginConfig.resource_attributes['portal.selections']).toBe('one,two');
     expect(pluginConfig.propagation).toEqual({
-      extract: [],
+      extract: ['w3c'],
       inject: ['preserve'],
       default_format: 'w3c',
     });

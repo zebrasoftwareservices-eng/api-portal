@@ -13,9 +13,11 @@ import {
   gateways,
   instanceSettings,
   migrate,
+  teamMembers,
   traceLatest,
   tracingSelections,
   tracingSettings,
+  tryItTraces,
   user,
 } from '@portal/db';
 import type {
@@ -28,7 +30,7 @@ import { KongAdapter } from '@portal/adapter-kong';
 import { createApp } from './app.js';
 import { loadConfig } from './config.js';
 import { decrypt } from './crypto.js';
-import { applyTracing } from './tracing.js';
+import { applyTracing, traceView, tryItTraceState } from './tracing.js';
 
 let container: StartedPostgreSqlContainer;
 let connection: ReturnType<typeof connect>;
@@ -45,6 +47,7 @@ let inspected: 'ok' | 'off' | 'unreachable' = 'ok';
 let proxyWorks = true;
 let parsedBatch: TraceBatch;
 const applied: TracingPlan[] = [];
+const proxyFetch = vi.fn(async () => new Response('{}', { status: 200 }));
 
 const classifier = new KongAdapter({
   adminUrl: 'http://unused',
@@ -230,6 +233,7 @@ beforeAll(async () => {
     db: connection.db,
     config: loadConfig({ DATABASE_URL: databaseUrl }),
     adapterFor: () => adapter,
+    proxyFetch: proxyFetch as typeof fetch,
     enqueueTracingApply: async () => undefined,
     logger: false,
   }));
@@ -262,6 +266,8 @@ beforeEach(async () => {
   proxyWorks = true;
   applied.length = 0;
   vi.clearAllMocks();
+  proxyFetch.mockImplementation(async () => new Response('{}', { status: 200 }));
+  await connection.db.delete(tryItTraces);
   await connection.db.delete(traceLatest);
   await connection.db.delete(tracingSelections);
   await connection.db.delete(tracingSettings);
@@ -432,6 +438,134 @@ describe('tracing admin contract', () => {
 });
 
 describe('trace ingest and latest trace', () => {
+  it('issues W3C context, drops browser context, replaces the current row, and reports transport states', async () => {
+    await saveSettings();
+    const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
+    await connection.db.insert(tracingSelections).values({
+      id: uuidv7(), kind: 'developer', userId: developerId,
+      createdBy: (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'admin')))[0]!.id,
+    });
+    const url = '/api/v1/try-it?scalar_url=http://localhost:8000/sample/get';
+    const first = await server.inject({
+      url,
+      headers: {
+        cookie: developerCookie,
+        traceparent: `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`,
+        tracestate: 'browser=value',
+      },
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    expect(first.headers['x-portal-trace-state']).toBe('traced');
+    expect(first.headers['x-portal-trace-id']).toMatch(/^[0-9a-f]{32}$/);
+    const forwarded = proxyFetch.mock.calls.at(-1)![1]!.headers as Headers;
+    expect(forwarded.get('traceparent')).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/);
+    expect(forwarded.get('traceparent')).not.toContain('a'.repeat(32));
+    expect(forwarded.get('tracestate')).toBeNull();
+    const firstId = first.headers['x-portal-trace-id'];
+
+    const second = await server.inject({ url, headers: { cookie: developerCookie } });
+    expect(second.headers['x-portal-trace-id']).not.toBe(firstId);
+    expect((await connection.db.select().from(tryItTraces))).toHaveLength(1);
+
+    proxyFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+    const unavailable = await server.inject({ url, headers: { cookie: developerCookie } });
+    expect(unavailable.statusCode).toBe(503);
+    expect(unavailable.headers['x-portal-trace-state']).toBe('unreachable');
+    expect(await connection.db.select().from(tryItTraces)).toHaveLength(0);
+
+    proxyFetch.mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'));
+    const timeout = await server.inject({ url, headers: { cookie: developerCookie } });
+    expect(timeout.statusCode).toBe(504);
+    expect(timeout.headers['x-portal-trace-state']).toBe('traced');
+    expect(timeout.headers['x-portal-trace-id']).toMatch(/^[0-9a-f]{32}$/);
+    expect(await connection.db.select().from(tryItTraces)).toHaveLength(1);
+  });
+
+  it('covers signed-out, API, developer, and member-team Try it calls only when tracing is configured', async () => {
+    const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
+    const teamId = (await connection.db.select({ id: teamMembers.teamId }).from(teamMembers).where(eq(teamMembers.userId, developerId)).limit(1))[0]!.id;
+    const viewer = { userId: developerId, admin: false, teamIds: [teamId], assignedProductIds: [] };
+    expect(await tryItTraceState(connection.db, { ...viewer, userId: null }, apiId)).toBe('signed-out');
+    expect(await tryItTraceState(connection.db, viewer, apiId)).toBe('off');
+    await saveSettings();
+    for (const values of [
+      { kind: 'api' as const, apiId },
+      { kind: 'developer' as const, userId: developerId },
+      { kind: 'team' as const, teamId },
+    ]) {
+      await connection.db.delete(tracingSelections);
+      await connection.db.insert(tracingSelections).values({
+        id: uuidv7(),
+        createdBy: (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'admin')))[0]!.id,
+        ...values,
+      });
+      expect(await tryItTraceState(connection.db, viewer, apiId)).toBe('traced');
+    }
+  });
+
+  it('redacts Kong plugin names for non-admin trace views', () => {
+    const view = traceView(
+      {
+        traceId: 'a'.repeat(32),
+        receivedAt: new Date(1000),
+        startedAt: new Date(1000),
+        rootSpanId: '1'.repeat(16),
+        request: null,
+        spans: [{
+          spanId: '1'.repeat(16), parentSpanId: null,
+          name: 'kong.access.plugin.key-auth', startNs: '1000000000',
+          durationNs: '1000', status: '1',
+        }],
+      },
+      classifier,
+      true,
+    );
+    expect(view.spans[0]).toMatchObject({ name: 'plugin', label: 'plugin', plugin: null });
+    expect(JSON.stringify(view)).not.toContain('key-auth');
+  });
+
+  it('merges matching Try it traces alongside trace_latest and protects current-row ownership', async () => {
+    await saveSettings();
+    const selectionId = uuidv7();
+    const adminId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'admin')))[0]!.id;
+    const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
+    await connection.db.insert(tracingSelections).values({ id: selectionId, kind: 'api', apiId, createdBy: adminId });
+    const traceId = '7'.repeat(32);
+    await connection.db.insert(tryItTraces).values({ userId: developerId, traceId, apiId });
+    expect((await ingest(batch(traceId, selectionId, Date.now()))).statusCode).toBe(200);
+    expect((await connection.db.select().from(tryItTraces))[0]).toMatchObject({
+      traceId, rootSpanId: 'root', request: { method: 'GET', path: '/sample/get', statusCode: 200 },
+    });
+    expect((await connection.db.select().from(traceLatest))[0]).toMatchObject({ traceId });
+
+    const own = await server.inject({ url: `/api/v1/try-it/traces/${traceId}`, headers: { cookie: developerCookie } });
+    expect(own.statusCode, own.body).toBe(200);
+    expect(own.json()).toMatchObject({ state: 'ready', trace: { traceId, api: { id: apiId } } });
+    expect(own.body).not.toContain('key-auth');
+    expect((await server.inject({ url: `/api/v1/try-it/traces/${traceId}`, headers: { cookie: adminCookie } })).statusCode).toBe(404);
+    expect((await server.inject({ url: `/api/v1/try-it/traces/${'8'.repeat(32)}`, headers: { cookie: developerCookie } })).statusCode).toBe(404);
+    expect((await server.inject({ url: `/api/v1/try-it/traces/${traceId}` })).statusCode).toBe(401);
+
+    await connection.db.update(tryItTraces).set({ traceId: '9'.repeat(32), spans: [], rootSpanId: null, receivedAt: null, startedAt: null }).where(eq(tryItTraces.userId, developerId));
+    expect((await server.inject({ url: `/api/v1/try-it/traces/${traceId}`, headers: { cookie: developerCookie } })).statusCode).toBe(404);
+  });
+
+  it('stores a matching Try it group even when no API resolves', async () => {
+    await saveSettings();
+    const selectionId = uuidv7();
+    const adminId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'admin')))[0]!.id;
+    const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
+    await connection.db.insert(tracingSelections).values({ id: selectionId, kind: 'developer', userId: developerId, createdBy: adminId });
+    const traceId = '6'.repeat(32);
+    await connection.db.insert(tryItTraces).values({ userId: developerId, traceId, apiId });
+    const unresolved = batch(traceId, selectionId, Date.now());
+    unresolved.resource = { instance: instanceId, selections: [selectionId] };
+    unresolved.spans[0] = { ...unresolved.spans[0]!, routePath: '/not-published' };
+    expect((await ingest(unresolved)).statusCode).toBe(200);
+    expect((await connection.db.select().from(tryItTraces))[0]!.spans).toHaveLength(3);
+    expect(await connection.db.select().from(traceLatest)).toHaveLength(0);
+  });
+
   it('AC8 failure paths: rejects unsupported media, missing tokens, and oversized batches', async () => {
     await saveSettings();
     parsedBatch = batch('f'.repeat(32), uuidv7(), Date.now());

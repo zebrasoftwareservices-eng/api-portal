@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import type { AdapterFor } from './gateway-connection.js';
-import type { Database } from '@portal/db';
+import { tryItTraces, type Database } from '@portal/db';
+import { and, eq } from 'drizzle-orm';
 import {
   publishedApis,
   baseUrl,
@@ -13,6 +15,7 @@ import { readLimited } from './import.js';
 import type { Auth } from './auth.js';
 import { loadViewer, canSeeApi } from './access-policy.js';
 import { notFound, Problem } from './problem.js';
+import { tryItTraceState } from './tracing.js';
 const LIMIT = 1024 * 1024;
 const blocked = new Set([
   'connection',
@@ -78,6 +81,13 @@ export async function registerProxy(
   let rateGeneration = 0;
   const resetToken = tryItResetToken(process.env, options.resetToken);
   await server.register(async (app) => {
+    const traceContext = new WeakMap<
+      object,
+      {
+        state: 'traced' | 'off' | 'signed-out' | 'unreachable';
+        traceId?: string;
+      }
+    >();
     await app.register(rateLimit, {
       max: 60,
       timeWindow: '1 minute',
@@ -100,11 +110,16 @@ export async function registerProxy(
       method: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
       url: '/api/v1/try-it',
       bodyLimit: LIMIT,
-      onSend: async (_req, reply, payload) => {
+      onSend: async (request, reply, payload) => {
+        const trace = traceContext.get(request) ?? { state: 'off' as const };
+        reply.header('X-Portal-Trace-State', trace.state);
+        if (trace.state === 'traced' && trace.traceId)
+          reply.header('X-Portal-Trace-Id', trace.traceId);
         if (reply.statusCode === 429) reply.type('application/problem+json');
         return payload;
       },
       handler: async (request, reply) => {
+        traceContext.set(request, { state: 'off' });
         const query = request.query as { scalar_url?: unknown };
         if (typeof query.scalar_url !== 'string')
           throw new Problem(
@@ -121,15 +136,14 @@ export async function registerProxy(
             'try-it-target-not-allowed',
             'The target URL is not part of a published API.',
           );
-        if (
-          options.auth &&
-          !(await canSeeApi(
-            db,
-            await loadViewer(db, options.auth, request),
-            target.row.api.id,
-          ))
-        )
-          throw notFound();
+        const viewer = options.auth
+          ? await loadViewer(db, options.auth, request)
+          : null;
+        if (viewer) {
+          const state = await tryItTraceState(db, viewer, target.row.api.id);
+          traceContext.set(request, { state });
+          if (!(await canSeeApi(db, viewer, target.row.api.id))) throw notFound();
+        }
         const names = new Set([
           'apikey',
           'accept',
@@ -160,6 +174,8 @@ export async function registerProxy(
           const value = request.headers[name];
           if (typeof value === 'string') headers.set(name, value);
         }
+        headers.delete('traceparent');
+        headers.delete('tracestate');
         const body = request.body as Buffer | undefined;
         if (body && body.length > LIMIT)
           throw new Problem(
@@ -167,6 +183,29 @@ export async function registerProxy(
             'payload-too-large',
             'The request body exceeds 1 MiB.',
           );
+        const context = traceContext.get(request);
+        if (context?.state === 'traced' && viewer?.userId) {
+          const traceId = randomBytes(16).toString('hex');
+          const spanId = randomBytes(8).toString('hex');
+          await db
+            .insert(tryItTraces)
+            .values({ userId: viewer.userId, traceId, apiId: target.row.api.id })
+            .onConflictDoUpdate({
+              target: tryItTraces.userId,
+              set: {
+                traceId,
+                apiId: target.row.api.id,
+                issuedAt: new Date(),
+                receivedAt: null,
+                startedAt: null,
+                rootSpanId: null,
+                request: null,
+                spans: [],
+              },
+            });
+          headers.set('traceparent', `00-${traceId}-${spanId}-01`);
+          traceContext.set(request, { state: 'traced', traceId });
+        }
         let response: Response;
         try {
           response = await fetcher(target.url, {
@@ -208,14 +247,28 @@ export async function registerProxy(
         } catch (error) {
           if (error instanceof Problem) throw error;
           if (
-            error instanceof Error &&
-            ['TimeoutError', 'AbortError'].includes(error.name)
+            typeof error === 'object' &&
+            error !== null &&
+            'name' in error &&
+            ['TimeoutError', 'AbortError'].includes(String(error.name))
           )
             throw new Problem(
               504,
               'try-it-timeout',
               'The gateway did not respond within 10 seconds.',
             );
+          const trace = traceContext.get(request);
+          if (trace?.state === 'traced' && trace.traceId && viewer?.userId) {
+            await db
+              .delete(tryItTraces)
+              .where(
+                and(
+                  eq(tryItTraces.userId, viewer.userId),
+                  eq(tryItTraces.traceId, trace.traceId),
+                ),
+              );
+            traceContext.set(request, { state: 'unreachable' });
+          }
           throw new Problem(
             503,
             'gateway-unavailable',

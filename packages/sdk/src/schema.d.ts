@@ -1976,8 +1976,48 @@ export interface paths {
          *     address and port, request id) is dropped before anything is stored or logged. Spans with
          *     the shown trace's id are merged by span id (a resent batch adds nothing); spans of a newer
          *     trace replace the shown trace; spans of an older trace are dropped. Up to 1 MB.
+         *
+         *     A trace id that matches a user's Try it trace (spec 027) is also merged into that user's
+         *     Try it trace by span id, under the same rules and the same 1000-span cap, in the same
+         *     transaction. The API's latest trace is updated as before.
          */
         post: operations["ingestKongTraces"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/try-it/traces/{traceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The `X-Portal-Trace-Id` of the caller's Try it response */
+                traceId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * The caller's own Try it trace
+         * @description Spec 027 AC 1-9, ADR 0019. Signed-in developers and portal admins. Returns the trace only
+         *     when `traceId` is the caller's current Try it trace; any other id (another person's trace,
+         *     the caller's replaced trace, an unknown id) is 404 with the same body, so the answer
+         *     reveals nothing about other people's calls. Each user has at most one Try it trace,
+         *     replaced by their next traced Try it call; there is no list.
+         *
+         *     `state` is `waiting` until the root span arrives, `ready` once it has, and `missing` when
+         *     30 seconds have passed since the call with no root span. Spans that arrive after `missing`
+         *     still turn it `ready`. The portal polls every 2 seconds and stops at `ready` or `missing`.
+         *
+         *     Holds only spec 026's allowlisted fields (no query string, client IP, upstream address,
+         *     header, body or other attribute). For a portal admin each plugin span has `plugin` and
+         *     Kong's span `name`. For anyone else `plugin` is null and `name` equals `label`, so the
+         *     operator's plugin list is never shown (spec 027 AC 4, 5).
+         */
+        get: operations["getTryItTrace"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2005,6 +2045,18 @@ export interface paths {
          *     No session needed. Rate-limited to 60 requests per minute per IP. Strips cookies,
          *     doesn't follow redirects, caps bodies at 1 MiB, 10 s timeout.
          *     POST, PUT, PATCH and DELETE behave the same way.
+         *
+         *     Trace context (spec 027, ADR 0019). When the caller is signed in and tracing is on for
+         *     this call (an API selection for the target API, a developer selection for the caller, or a
+         *     team selection for a team the caller belongs to, with tracing configured and supported),
+         *     the server generates a random trace id and parent span id, sends
+         *     `traceparent: 00-<traceId>-<spanId>-01` to Kong, and replaces the caller's one Try it trace
+         *     with an empty one for that trace id before forwarding. A `traceparent` or `tracestate`
+         *     from the browser is never forwarded. Every response, including the problem responses
+         *     below, carries `X-Portal-Trace-State`; a traced call also carries `X-Portal-Trace-Id`.
+         *     When Kong can't be reached (503 `gateway-unavailable`) the caller's Try it trace is
+         *     deleted and the state is `unreachable`. A 504 timeout keeps the state `traced`, because
+         *     Kong received the call and may still export its spans.
          */
         get: operations["tryItGet"];
         /** Forward a try-it request to the gateway (see GET) */
@@ -3420,6 +3472,18 @@ export interface components {
             /** @description Ordered by start, then by depth */
             spans: components["schemas"]["TraceSpan"][];
         };
+        TryItTrace: {
+            traceId: string;
+            /** @enum {string} */
+            state: "waiting" | "ready" | "missing";
+            /**
+             * Format: date-time
+             * @description When the Try it call was sent to Kong
+             */
+            issuedAt: string;
+            /** @description Null until the first span arrives */
+            trace: components["schemas"]["Trace"] | null;
+        };
     };
     responses: {
         /** @description Request body or parameters failed validation (`/problems/validation`) */
@@ -3621,7 +3685,16 @@ export interface components {
         ThemeAssetKind: "logo" | "favicon";
     };
     requestBodies: never;
-    headers: never;
+    headers: {
+        /**
+         * @description Spec 027. Whether this Try it call is traced: `traced` (a `traceparent` was sent to Kong),
+         *     `off` (tracing is off, not configured or not supported for this call), `signed-out` (no
+         *     session, so no trace), `unreachable` (Kong could not be reached).
+         */
+        PortalTraceState: "traced" | "off" | "signed-out" | "unreachable";
+        /** @description Spec 027. Only when `X-Portal-Trace-State` is `traced`. Fetch it with `GET /v1/try-it/traces/{traceId}`. */
+        PortalTraceId: string;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -6798,6 +6871,32 @@ export interface operations {
             };
         };
     };
+    getTryItTrace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The `X-Portal-Trace-Id` of the caller's Try it response */
+                traceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's Try it trace */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TryItTrace"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     tryItGet: {
         parameters: {
             query: {
@@ -6818,6 +6917,8 @@ export interface operations {
             /** @description The gateway's response, passed through unchanged */
             default: {
                 headers: {
+                    "X-Portal-Trace-State": components["headers"]["PortalTraceState"];
+                    "X-Portal-Trace-Id": components["headers"]["PortalTraceId"];
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -6848,6 +6949,8 @@ export interface operations {
             /** @description The gateway's response, passed through unchanged */
             default: {
                 headers: {
+                    "X-Portal-Trace-State": components["headers"]["PortalTraceState"];
+                    "X-Portal-Trace-Id": components["headers"]["PortalTraceId"];
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -6878,6 +6981,8 @@ export interface operations {
             /** @description The gateway's response, passed through unchanged */
             default: {
                 headers: {
+                    "X-Portal-Trace-State": components["headers"]["PortalTraceState"];
+                    "X-Portal-Trace-Id": components["headers"]["PortalTraceId"];
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -6908,6 +7013,8 @@ export interface operations {
             /** @description The gateway's response, passed through unchanged */
             default: {
                 headers: {
+                    "X-Portal-Trace-State": components["headers"]["PortalTraceState"];
+                    "X-Portal-Trace-Id": components["headers"]["PortalTraceId"];
                     [name: string]: unknown;
                 };
                 content?: never;
@@ -6938,6 +7045,8 @@ export interface operations {
             /** @description The gateway's response, passed through unchanged */
             default: {
                 headers: {
+                    "X-Portal-Trace-State": components["headers"]["PortalTraceState"];
+                    "X-Portal-Trace-Id": components["headers"]["PortalTraceId"];
                     [name: string]: unknown;
                 };
                 content?: never;

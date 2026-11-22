@@ -1054,7 +1054,7 @@ export class KongAdapter implements GatewayAdapter {
         ...(apiId ? { 'portal.api_id': apiId } : {}),
       },
       propagation: {
-        extract: [],
+        extract: ['w3c'],
         inject: ['preserve'],
         default_format: 'w3c',
       },
