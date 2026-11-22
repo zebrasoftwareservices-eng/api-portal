@@ -1,7 +1,7 @@
 ---
 id: 027
 title: Trace inside Try it
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-22
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 027`
@@ -340,12 +340,24 @@ Long notes go in `docs/specs/log/027.md`, not here.
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 - [x] Try it trace never becomes ready (major)
-- [ ] At `KONG_TRACING_SAMPLING_RATE=0.01`, 0 of 5 keyed Try it calls stored a span within 4 seconds. Kong's ratio sampler ignores the sampled flag. The quickstart default is 1, where spans do arrive. (minor)
+- [x] At `KONG_TRACING_SAMPLING_RATE=0.01`, 0 of 5 keyed Try it calls stored a span within 4 seconds. Kong's ratio sampler ignores the sampled flag. The quickstart default is 1, where spans do arrive. (minor)
 - [x] Try it trace panel never mounts after a traced Send (major)
+- [ ] When tracing is off and Kong is down, a developer Try it response is 503 "The API gateway didn't respond" while the panel says "Your call worked as usual." It does not say the call did not reach the gateway. With tracing on, the same outage says that at once. (minor)
 
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
+| 1. Own Try it trace under the response | Pass | "Trace ready: POST /sample/post, 200, 25.772544 milliseconds." Path `/sample/post`, trace id matched the traceparent. Plugin rows say plugin. |
+| 2. Two people, each sees only their call | Pass | Y's panel: "Trace ready: GET /sample/get, 200, 41.73952 milliseconds." It did not show X's trace id. The two Sends were one after another. |
+| 3. Another person, or signed out, cannot read a trace | Pass | Y got 404 "not found" for X's id. Signed out got 401 "Sign in to continue." Admin tracing returned 403. |
+| 4. Query, headers, and body stay out of the trace | Pass | The panel and the owner's trace had no `abc123`, no custom header, no body text, and no plugin name. |
+| 5. Admin sees plugin names and the latest admin trace | Pass | Panel showed "Plugin key-auth". Tracing page "Latest traced call" showed the same id `4b9ad3bc4f33c7f16b3570d1834d1214`. |
+| 6. A second call replaces the first | Pass | New panel "Trace ready: GET /sample/get". The first id then returned 404 "not found". |
+| 7. Tracing off is immediate | Pass | "Tracing is off for this API" at once, no waiting spinner. Admin link "Open tracing settings". Developer: "Your call worked as usual." |
+| 8. No spans: wait, then no trace arrived | Pass | Waiting "1 s", then at about 32 s "No trace arrived for this call" and "Check again". Admin copy names `tracing_instrumentations` and links to `/admin/tracing`. |
+| 9. Kong down | Pass | Status 503 "The API gateway didn't respond." Panel: "The call didn't reach the gateway." No waterfall. |
+| Mobile main journey | Pass | 390×844. Trace id `f3ab0a35…ce228b5`, "10.3 ms total", waterfall on screen. |
+| Keyboard main journey | Pass | Tab reached "Send get request", Enter showed a new "Trace ready" id `2252994f…d198ce3`. |
 
 One row per user-visible criterion. Evidence is a short quote of what was on the screen.
 Name an image only for an open failure. On a retest, change only the failed rows.
