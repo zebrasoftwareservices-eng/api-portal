@@ -1,7 +1,7 @@
 ---
 id: 027
 title: Trace inside Try it
-status: draft   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-22
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 027`
@@ -146,12 +146,136 @@ Elango, 2026-11-22.
 <!-- Sections below are filled by later stages. -->
 
 ## Technical design  _(tech-lead)_
-Components · API contract · Data model · Adapter calls · Risks
+ADR 0019 (new) builds on ADR 0003 (the Try it proxy) and ADR 0018 (Kong pushes traces). The design
+uses the PM's proposed answers to the open questions. Changing an answer changes only the step
+named beside it.
+
+**How a call gets its trace.** Try it already goes through `/api/v1/try-it`, so the browser never
+calls Kong. No CORS change is needed.
+1. The proxy resolves the target API (as today) and the viewer (`loadViewer`).
+2. It decides the trace state:
+   - `signed-out`: no session (open question 6).
+   - `off`: tracing is not configured, the adapter doesn't support it, or no selection covers the
+     call. A selection covers the call if it is an `api` selection for the target API, a
+     `developer` selection for the caller, or a `team` selection for a team the caller belongs to
+     (open question 1).
+   - `traced`: otherwise.
+3. If the state is `traced`, the proxy does three things:
+   - generates `traceId` (16 random bytes, hex) and `spanId` (8 bytes, hex);
+   - upserts the caller's `try_it_traces` row (new trace id, empty spans, `issued_at = now()`) and
+     commits before calling Kong, which deletes the previous trace (AC 6);
+   - adds `traceparent: 00-<traceId>-<spanId>-01` to the forwarded headers. A browser
+     `traceparent` or `tracestate` is never forwarded.
+4. Every response from the route carries `X-Portal-Trace-State`. A `traced` response also carries
+   `X-Portal-Trace-Id`. This includes the 400, 403, 413, 429 and 504 problems. A 400 or 429 is
+   decided before step 2, so it is `off`.
+   - A transport failure (503 `gateway-unavailable`) deletes the row it just wrote and answers
+     `unreachable` (AC 9).
+   - A 504 timeout stays `traced`, because Kong received the call and may still export spans.
+5. Kong's `opentelemetry` plugin (portal tracing plugins only) now has
+   `propagation.extract: ['w3c']`, so the exported spans carry the portal's trace id.
+6. Ingest (`POST /v1/internal/traces/kong`) keeps all of its 026 checks. Inside the existing
+   transaction and advisory lock, it also merges each trace-id group into the matching
+   `try_it_traces` row by span id. The 1000-span cap and newer/older rules are the same. A group
+   that matches a Try it row is stored even when no API can be resolved for it. The API's
+   `trace_latest` is still updated as before (AC 5, open question 5).
+7. The panel reads `X-Portal-Trace-*` from Scalar's API-client plugin hook
+   `onResponseReceived({ response })` (`@scalar/types` `apiClientPluginSchema`). If the state is
+   `traced`, it polls `GET /api/v1/try-it/traces/{traceId}` every 2 s until `ready` or `missing`.
+
+**Components**
+- `apps/server`:
+  - `proxy.ts`: trace state, traceparent, row upsert and delete, response headers.
+  - `tracing.ts`: selection-coverage helper, the Try it merge in ingest, and the new GET route
+    with role redaction. `traceView` gains a redact option.
+  - Registration order: the proxy needs `auth` (already passed) and the tracing connection.
+- `packages/adapter-kong`: `tracingConfig` changes `extract` to `['w3c']`. The next tracing
+  apply rewrites existing plugins idempotently (deep-equal check, stable ids, `PUT`).
+- `packages/db`: the new `try_it_traces` table and a migration.
+- `apps/portal`:
+  - `components/reference.tsx`: a Scalar API-client plugin with the `onResponseReceived` hook.
+  - A React trace panel under the response that reuses spec 026's waterfall component, in a
+    read-only variant.
+  - Copy differs by role (an admin gets the setting names and links). The UI designer owns layout
+    and copy.
+- `packages/sdk`: regenerate for the new operation.
+- Nothing changes in `packages/adapter-sdk`; the interface is unchanged.
+
+**API contract** (`apps/server/openapi.yaml`, already updated)
+- `/v1/try-it` (all methods): the description now covers the trace context. Every response
+  carries `X-Portal-Trace-State` (`traced | off | signed-out | unreachable`). A traced response
+  also carries `X-Portal-Trace-Id` (32 hex). Both are in `components/headers`.
+- `GET /v1/try-it/traces/{traceId}` (`getTryItTrace`, tags try-it and tracing, session
+  required) returns `200 TryItTrace`:
+  - Fields: `{ traceId, state: waiting|ready|missing, issuedAt, trace: Trace|null }`.
+  - `ready` means the root span arrived. `missing` means no root span 30 s after `issuedAt`
+    (open question 4). A late root span turns it `ready`.
+  - Errors: `400` (bad id pattern), `401` (signed out, AC 3), and `404` for any id that is not
+    the caller's current row (another person's, replaced, or unknown; one body, AC 3 and 6).
+  - Portal admin (`role = 'admin'`): `plugin` and Kong's `name` are kept.
+  - Anyone else: `plugin: null`, and `name` is the same as `label` (AC 4, 5; open question 2).
+  - `api` is filled from `try_it_traces.api_id`.
+- `POST /v1/internal/traces/kong`: the description adds the Try it merge. The status codes stay
+  the same.
+- Spec 026's admin endpoints are unchanged and still answer 403 to non-admins (AC 3).
+
+**Data model** (`packages/db/src/schema.ts`, migration via `pnpm --filter @portal/db exec drizzle-kit generate`)
+`try_it_traces`:
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `user_id` | uuid | PK, FK `user.id`, on delete cascade |
+| `trace_id` | text | not null, unique index, check `^[0-9a-f]{32}$` |
+| `api_id` | uuid | null, FK `apis.id`, on delete cascade |
+| `issued_at` | timestamptz | not null, default now() |
+| `received_at` | timestamptz | null |
+| `started_at` | timestamptz | null |
+| `root_span_id` | text | null |
+| `request` | jsonb | null, `{ method, path, statusCode }` |
+| `spans` | jsonb | not null, default `[]`, `StoredTraceSpan[]` |
+
+- It stores only 026's allowlisted fields: no query string, IP, upstream, headers or bodies.
+- There is at most one row per user and no history (AC 6).
+- Rows are only ever replaced, so no cleanup job is needed.
+
+**Adapter calls**
+- No new Kong calls. `applyTracing` rewrites portal tracing plugins whose config differs.
+  Changing `extract` makes the first apply after upgrade `PUT` each one, using stable ids. That
+  is idempotent, tagged `portal-tracing`, and failures follow the existing apply status.
+- Upgrade: queue one tracing apply at server start when settings exist. The apply is already
+  queued on settings and selection changes, so it only needs to run once at boot. Without it,
+  Kong keeps `extract: []`, and Try it calls show "no trace arrived" until the next apply.
+
+**Risks and tests**
+- *Kong ignores the incoming `sampled` flag.* `tracing_sampling_rate` might win over the flag.
+  QA tests against the quickstart Kong with `KONG_TRACING_SAMPLING_RATE=0.01`: 5 traced Try it
+  calls must all get a trace. If they don't, record a finding. The fallback is the AC 8 message,
+  not a wrong trace.
+- *Cross-user leak.* Covered by AC 2 and AC 3 integration tests: two users at once; a guessed id
+  answered 404 to another user and 401 to an anonymous caller; a replaced id answered 404.
+- *Spoofed trace ids from outside Try it.* `extract: ['w3c']` accepts any client's
+  `traceparent` on traced routes. Ids are 128-bit random and shown only to their owner (ADR 0019).
+  A client can force sampling, but only inside an admin's selection.
+- *Plugin names reaching a developer.* A unit test on the redacted `traceView` checks that a
+  non-admin response contains no `kong.*.plugin.<name>` text. QA checks the e2e JSON too (AC 4).
+- *Coverage approximation.* A developer or team selection covers the apps of that developer or
+  team. The proxy can't see which app's key is pasted, so a covered user calling with someone
+  else's key gets `traced` and then `missing`. This is acceptable and needs no extra test.
+- *Ingest volume.* No new load beyond Try it calls inside selections.
 
 ### Tasks
-- [ ] [backend] …
-- [ ] [frontend] …
-- [ ] [qa] …
+- [ ] [backend] `packages/db`: add the `try_it_traces` table (columns, checks, unique `trace_id`, FKs with cascade) and generate the migration with `pnpm --filter @portal/db exec drizzle-kit generate`
+- [ ] [backend] `packages/adapter-kong`: `tracingConfig` propagation `extract: ['w3c']`; update adapter tests; the server queues one tracing apply at start when tracing settings exist
+- [ ] [backend] `apps/server/src/tracing.ts`: export a `tryItTraceState(db, viewer, apiId)` coverage helper (api, developer, or member-team selection; configured; adapter supports tracing) returning `traced | off | signed-out`
+- [ ] [backend] `apps/server/src/proxy.ts`: generate the trace id and span id; upsert the row before the call; add `traceparent`; drop any browser `traceparent` or `tracestate`; set `X-Portal-Trace-State` and `X-Portal-Trace-Id` on every response, problems included; on a 503 transport failure delete the row and answer `unreachable`; on a 504 keep `traced`
+- [ ] [backend] Ingest: inside the existing transaction, merge each trace-id group into the matching `try_it_traces` row (span-id merge, 1000 cap, `root_span_id`, `request`, `started_at`, `received_at`); keep the `trace_latest` behaviour; store a matching group even when no API resolves
+- [ ] [backend] `GET /api/v1/try-it/traces/:traceId`: session required (401); owner and current id, otherwise one 404; `state` waiting/ready/missing (30 s); `traceView` redaction for non-admins (`plugin: null`, `name = label`); regenerate `packages/sdk`
+- [ ] [backend] Unit tests: coverage helper, traceparent format and the dropping of browser headers, redaction, ingest merge into the Try it row and `trace_latest`, 404 for another user, replaced or unknown id
+- [ ] [frontend] `components/reference.tsx`: register a Scalar API-client plugin with `onResponseReceived` that reads `X-Portal-Trace-State` and `X-Portal-Trace-Id` and drives a React trace panel under the response
+- [ ] [frontend] Trace panel: reuse spec 026's waterfall read-only; show method, path, status, total ms, labels and the slowest span; poll `getTryItTrace` every 2 s until `ready` or `missing`; states off (immediate), waiting, missing (after 30 s), unreachable (immediate), signed-out; admin copy names `tracing_instrumentations` and links to the tracing settings and Test; developer copy names no Kong setting (per the UX doc)
+- [ ] [qa] Integration (Testcontainers Kong + Postgres): AC 1 (the trace id equals the sent `traceparent`), AC 2 (two users at once), AC 3 (404 for another user, 401 anonymous, 026 admin endpoints 403), AC 4 (with `?token=abc123`, custom headers and a body: none appear; no plugin names for a developer), AC 6 (replaced id is 404), AC 9 (Kong down: `unreachable`, no row)
+- [ ] [qa] Kong sampling check: with `KONG_TRACING_SAMPLING_RATE=0.01`, 5 traced Try it calls all get a trace; record the result in the Test report
+- [ ] [qa] Playwright e2e on the quickstart: developer Try it shows the panel within 30 s (AC 1); an admin sees plugin names and the 026 page shows the same call (AC 5); tracing off shows the message without a spinner, with a settings link for the admin (AC 7); no spans gives "waiting" then "no trace arrived" (AC 8)
 
 ## UX  _(ui-designer)_
 Summary + link to `docs/design/027-*.md`

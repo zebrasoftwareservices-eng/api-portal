@@ -2882,6 +2882,10 @@ paths:
         address and port, request id) is dropped before anything is stored or logged. Spans with
         the shown trace's id are merged by span id (a resent batch adds nothing); spans of a newer
         trace replace the shown trace; spans of an older trace are dropped. Up to 1 MB.
+
+        A trace id that matches a user's Try it trace (spec 027) is also merged into that user's
+        Try it trace by span id, under the same rules and the same 1000-span cap, in the same
+        transaction. The API's latest trace is updated as before.
       security:
         - traceIngestToken: []
       requestBody:
@@ -2917,6 +2921,42 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
 
+  /v1/try-it/traces/{traceId}:
+    parameters:
+      - name: traceId
+        in: path
+        required: true
+        description: The `X-Portal-Trace-Id` of the caller's Try it response
+        schema: { type: string, pattern: '^[0-9a-f]{32}$' }
+    get:
+      tags: [try-it, tracing]
+      operationId: getTryItTrace
+      summary: The caller's own Try it trace
+      description: |
+        Spec 027 AC 1-9, ADR 0019. Signed-in developers and portal admins. Returns the trace only
+        when `traceId` is the caller's current Try it trace; any other id (another person's trace,
+        the caller's replaced trace, an unknown id) is 404 with the same body, so the answer
+        reveals nothing about other people's calls. Each user has at most one Try it trace,
+        replaced by their next traced Try it call; there is no list.
+
+        `state` is `waiting` until the root span arrives, `ready` once it has, and `missing` when
+        30 seconds have passed since the call with no root span. Spans that arrive after `missing`
+        still turn it `ready`. The portal polls every 2 seconds and stops at `ready` or `missing`.
+
+        Holds only spec 026's allowlisted fields (no query string, client IP, upstream address,
+        header, body or other attribute). For a portal admin each plugin span has `plugin` and
+        Kong's span `name`. For anyone else `plugin` is null and `name` equals `label`, so the
+        operator's plugin list is never shown (spec 027 AC 4, 5).
+      responses:
+        '200':
+          description: The caller's Try it trace
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TryItTrace' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /v1/try-it:
     parameters:
       - name: scalar_url
@@ -2938,6 +2978,18 @@ paths:
         No session needed. Rate-limited to 60 requests per minute per IP. Strips cookies,
         doesn't follow redirects, caps bodies at 1 MiB, 10 s timeout.
         POST, PUT, PATCH and DELETE behave the same way.
+
+        Trace context (spec 027, ADR 0019). When the caller is signed in and tracing is on for
+        this call (an API selection for the target API, a developer selection for the caller, or a
+        team selection for a team the caller belongs to, with tracing configured and supported),
+        the server generates a random trace id and parent span id, sends
+        `traceparent: 00-<traceId>-<spanId>-01` to Kong, and replaces the caller's one Try it trace
+        with an empty one for that trace id before forwarding. A `traceparent` or `tracestate`
+        from the browser is never forwarded. Every response, including the problem responses
+        below, carries `X-Portal-Trace-State`; a traced call also carries `X-Portal-Trace-Id`.
+        When Kong can't be reached (503 `gateway-unavailable`) the caller's Try it trace is
+        deleted and the state is `unreachable`. A 504 timeout keeps the state `traced`, because
+        Kong received the call and may still export its spans.
       security: []
       responses:
         '400': { $ref: '#/components/responses/TryItNotAllowed' }
@@ -2947,6 +2999,9 @@ paths:
         '504': { $ref: '#/components/responses/TryItTimeout' }
         default:
           description: The gateway's response, passed through unchanged
+          headers:
+            X-Portal-Trace-State: { $ref: '#/components/headers/PortalTraceState' }
+            X-Portal-Trace-Id: { $ref: '#/components/headers/PortalTraceId' }
     post:
       tags: [try-it]
       operationId: tryItPost
@@ -2965,6 +3020,9 @@ paths:
         '504': { $ref: '#/components/responses/TryItTimeout' }
         default:
           description: The gateway's response, passed through unchanged
+          headers:
+            X-Portal-Trace-State: { $ref: '#/components/headers/PortalTraceState' }
+            X-Portal-Trace-Id: { $ref: '#/components/headers/PortalTraceId' }
     put:
       tags: [try-it]
       operationId: tryItPut
@@ -2983,6 +3041,9 @@ paths:
         '504': { $ref: '#/components/responses/TryItTimeout' }
         default:
           description: The gateway's response, passed through unchanged
+          headers:
+            X-Portal-Trace-State: { $ref: '#/components/headers/PortalTraceState' }
+            X-Portal-Trace-Id: { $ref: '#/components/headers/PortalTraceId' }
     patch:
       tags: [try-it]
       operationId: tryItPatch
@@ -3001,6 +3062,9 @@ paths:
         '504': { $ref: '#/components/responses/TryItTimeout' }
         default:
           description: The gateway's response, passed through unchanged
+          headers:
+            X-Portal-Trace-State: { $ref: '#/components/headers/PortalTraceState' }
+            X-Portal-Trace-Id: { $ref: '#/components/headers/PortalTraceId' }
     delete:
       tags: [try-it]
       operationId: tryItDelete
@@ -3019,6 +3083,9 @@ paths:
         '504': { $ref: '#/components/responses/TryItTimeout' }
         default:
           description: The gateway's response, passed through unchanged
+          headers:
+            X-Portal-Trace-State: { $ref: '#/components/headers/PortalTraceState' }
+            X-Portal-Trace-Id: { $ref: '#/components/headers/PortalTraceId' }
 
 components:
   securitySchemes:
@@ -3109,6 +3176,16 @@ components:
       required: true
       schema: { type: string, enum: [logo, favicon] }
 
+  headers:
+    PortalTraceState:
+      description: |
+        Spec 027. Whether this Try it call is traced: `traced` (a `traceparent` was sent to Kong),
+        `off` (tracing is off, not configured or not supported for this call), `signed-out` (no
+        session, so no trace), `unreachable` (Kong could not be reached).
+      schema: { type: string, enum: [traced, off, signed-out, unreachable] }
+    PortalTraceId:
+      description: Spec 027. Only when `X-Portal-Trace-State` is `traced`. Fetch it with `GET /v1/try-it/traces/{traceId}`.
+      schema: { type: string, pattern: '^[0-9a-f]{32}$' }
   responses:
     ValidationError:
       description: Request body or parameters failed validation (`/problems/validation`)
@@ -4964,6 +5041,19 @@ components:
           maxItems: 1000
           description: Ordered by start, then by depth
           items: { $ref: '#/components/schemas/TraceSpan' }
+
+    TryItTrace:
+      type: object
+      required: [traceId, state, issuedAt, trace]
+      properties:
+        traceId: { type: string, pattern: '^[0-9a-f]{32}$' }
+        state: { type: string, enum: [waiting, ready, missing] }
+        issuedAt: { type: string, format: date-time, description: When the Try it call was sent to Kong }
+        trace:
+          description: Null until the first span arrives
+          oneOf:
+            - { $ref: '#/components/schemas/Trace' }
+            - { type: 'null' }
 
 security:
   - sessionCookie: []
