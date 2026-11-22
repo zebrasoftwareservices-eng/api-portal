@@ -1,7 +1,7 @@
 ---
 id: 027
 title: Trace inside Try it
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-22
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 027`
@@ -370,10 +370,10 @@ Earlier rounds go in `docs/specs/log/027.md`. The full report is `docs/uat/027/r
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/027.md`.
 
-Reviewed `git diff main...HEAD` at `6f57b64`. The code is unchanged since the tested commit `504ab45`, whose full suite passed for this spec, so the suite was not re-run. Contract, table, migration, adapter `extract: ['w3c']`, boot-time apply, ingest merge and the owner-only GET with role redaction match the design. ACs 1–8 are implemented and tested.
+Reviewed `git diff main...HEAD` at `39098fa`. Since the tested commit `686da55`, whose full suite passed for this spec (lint, typecheck, `pnpm test`, and both spec 027 e2e journeys), only docs changed, so the suite was not re-run; the 28 e2e failures are outside this spec. Contract, table, migration, adapter `extract: ['w3c']`, boot-time apply, ingest merge and the owner-only GET with role redaction match the design. ACs 1–9 are implemented and tested. No blocking findings.
 
-- **blocking** — `apps/server/src/proxy.ts:259-271`: on a transport failure the proxy sets `unreachable` only when the call was `traced`. With tracing off (or no selection) the 503 keeps `off`, and the panel tells the developer "Your call worked as usual" about a call that failed. The design says every 503 `gateway-unavailable` answers `unreachable`, and AC 9 has no tracing condition. Fix: for any signed-in viewer set `unreachable` in the catch; delete the `try_it_traces` row only when the state was `traced`. This is the open minor bug in Bugs; the fix closes it.
-- **suggestion** — `apps/server/src/proxy.ts:143-145`: the trace state is set before `canSeeApi` and before the 413 body check (`:183`). A 404 for an API the caller can't see, or a 413, then says `traced` with no `X-Portal-Trace-Id`, which hints that a hidden API is in a tracing selection and leaves the panel with no state to show. Set `traced` only after the row is written; report `off` before that.
+- **verified** — `apps/server/src/proxy.ts:261-275`: the last round's blocking finding is fixed. Every signed-in 503 `gateway-unavailable` now answers `unreachable`, and the row is deleted only when this call wrote it. `try-it-trace.integration.test.ts` (tracing off + Kong down, older row kept) and the panel test cover it.
+- **suggestion** — `apps/server/src/proxy.ts:142-145`: the trace state is set before `canSeeApi` and before the 413 body check (`:180`). A 404 for an API the caller can't see, or a 413, then says `traced` with no `X-Portal-Trace-Id`, which hints that a hidden API is in a tracing selection and leaves the panel with no state to show. Set `traced` only after the row is written; report `off` before that.
 - **suggestion** — `apps/server/src/tracing.ts:127-132`: `tryItTraceState` checks for any enabled Kong gateway, not the target API's gateway. Fine for one gateway; revisit when multi-gateway lands.
 
 ## Definition of Done
