@@ -177,8 +177,11 @@ calls Kong. No CORS change is needed.
 6. Ingest (`POST /v1/internal/traces/kong`) keeps all of its 026 checks. Inside the existing
    transaction and advisory lock, it also merges each trace-id group into the matching
    `try_it_traces` row by span id. The 1000-span cap and newer/older rules are the same. A group
-   that matches a Try it row is stored even when no API can be resolved for it. The API's
-   `trace_latest` is still updated as before (AC 5, open question 5).
+   that matches a Try it row is stored even when no API can be resolved for it. The root is an
+   unparented span, or the `kong` request span whose parent is the portal span id from
+   `traceparent` (Kong does not export that parent). `ready` follows that root, so a parented
+   request span does not stay `waiting`. The API's `trace_latest` is still updated as before
+   (AC 5, open question 5), using the same root.
 7. The panel reads `X-Portal-Trace-*` from Scalar's API-client plugin hook
    `onResponseReceived({ response })` (`@scalar/types` `apiClientPluginSchema`). If the state is
    `traced`, it polls `GET /api/v1/try-it/traces/{traceId}` every 2 s until `ready` or `missing`.
@@ -208,7 +211,8 @@ calls Kong. No CORS change is needed.
 - `GET /v1/try-it/traces/{traceId}` (`getTryItTrace`, tags try-it and tracing, session
   required) returns `200 TryItTrace`:
   - Fields: `{ traceId, state: waiting|ready|missing, issuedAt, trace: Trace|null }`.
-  - `ready` means the root span arrived. `missing` means no root span 30 s after `issuedAt`
+  - `ready` means the root span arrived: an unparented span, or the `kong` request span whose
+    parent is the portal span id. `missing` means no root span 30 s after `issuedAt`
     (open question 4). A late root span turns it `ready`.
   - Errors: `400` (bad id pattern), `401` (signed out, AC 3), and `404` for any id that is not
     the caller's current row (another person's, replaced, or unknown; one body, AC 3 and 6).
@@ -276,7 +280,7 @@ calls Kong. No CORS change is needed.
 - [x] [qa] Integration (Testcontainers Kong + Postgres): AC 1 (the trace id equals the sent `traceparent`), AC 2 (two users at once), AC 3 (404 for another user, 401 anonymous, 026 admin endpoints 403), AC 4 (with `?token=abc123`, custom headers and a body: none appear; no plugin names for a developer), AC 6 (replaced id is 404), AC 9 (Kong down: `unreachable`, no row)
 - [x] [qa] Kong sampling check: with `KONG_TRACING_SAMPLING_RATE=0.01`, 5 traced Try it calls all get a trace; record the result in the Test report
 - [ ] [qa] Playwright e2e on the quickstart: developer Try it shows the panel within 30 s (AC 1); an admin sees plugin names and the 026 page shows the same call (AC 5); tracing off shows the message without a spinner, with a settings link for the admin (AC 7); no spans gives "waiting" then "no trace arrived" (AC 8)
-- [ ] [backend] Fix: Try it trace never becomes ready
+- [x] [backend] Fix: Try it trace never becomes ready
 ## UX  _(ui-designer)_
 Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-it.md).
 - A **Trace** card (`TryItTracePanel`) sits directly under Scalar's Try it response and reuses
@@ -294,6 +298,7 @@ Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-
 ## Build notes  _(backend-developer, frontend-developer)_
 
 - Backend: added the `try_it_traces` migration, W3C propagation and startup tracing apply, selection-aware Try it trace issuance/cleanup, ingest merging, and the owner-only trace read with developer redaction. QA should exercise both 503 (`unreachable`, row removed) and 504 (`traced`, row retained) proxy failures and confirm late spans can move a `missing` trace to `ready`.
+- Backend fix: a Try it trace becomes `ready` when the `kong` request span is stored, including when its parent is the portal span id. Child spans alone stay `waiting`. Kong 3.9 still exports a different trace id when key-auth exits before the OpenTelemetry access phase, because the plugin entity has no priority field; a call with no key can stay `missing`. Retest AC 1–5 with a valid key at sampling rate 1.
 
 - Frontend: Scalar Try it responses now drive a role-aware Trace panel with waiting, partial,
   ready, missing, off, unreachable, signed-out, replaced and retry states. It reuses the spec 026

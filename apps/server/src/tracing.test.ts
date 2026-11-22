@@ -593,6 +593,64 @@ describe('trace ingest and latest trace', () => {
     expect((await server.inject({ url: `/api/v1/try-it/traces/${traceId}`, headers: { cookie: developerCookie } })).statusCode).toBe(404);
   });
 
+  it('becomes ready when Kong parents the request span to the portal span id', async () => {
+    await saveSettings();
+    const selectionId = uuidv7();
+    const adminId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'admin')))[0]!.id;
+    const developerId = (await connection.db.select({ id: user.id }).from(user).where(eq(user.role, 'developer')))[0]!.id;
+    await connection.db.insert(tracingSelections).values({ id: selectionId, kind: 'api', apiId, createdBy: adminId });
+    const traceId = 'c'.repeat(32);
+    const portalSpanId = 'd'.repeat(16);
+    await connection.db.insert(tryItTraces).values({ userId: developerId, traceId, apiId });
+    const startedMs = Date.now();
+    const parented = batch(traceId, selectionId, startedMs);
+    parented.spans[0] = {
+      ...parented.spans[0]!,
+      spanId: 'request',
+      parentSpanId: portalSpanId,
+      name: 'kong',
+      request: { method: 'POST', path: '/qa-trace', statusCode: 201 },
+    };
+    parented.spans[1] = { ...parented.spans[1]!, parentSpanId: 'request' };
+    parented.spans[2] = { ...parented.spans[2]!, parentSpanId: 'request' };
+    const children = { ...parented, spans: parented.spans.slice(1) };
+    expect((await ingest(children)).statusCode).toBe(200);
+    const waiting = await server.inject({
+      url: `/api/v1/try-it/traces/${traceId}`,
+      headers: { cookie: developerCookie },
+    });
+    expect(waiting.json()).toMatchObject({ state: 'waiting' });
+    expect((await connection.db.select().from(tryItTraces))[0]).toMatchObject({ rootSpanId: null });
+
+    expect((await ingest(parented)).statusCode).toBe(200);
+    const ready = await server.inject({
+      url: `/api/v1/try-it/traces/${traceId}`,
+      headers: { cookie: developerCookie },
+    });
+    expect(ready.statusCode, ready.body).toBe(200);
+    expect(ready.json()).toMatchObject({
+      state: 'ready',
+      trace: {
+        traceId,
+        durationMs: 40,
+        request: { method: 'POST', path: '/qa-trace', statusCode: 201 },
+        spans: expect.arrayContaining([
+          expect.objectContaining({ spanId: 'request', label: 'request', parentSpanId: portalSpanId }),
+          expect.objectContaining({ spanId: 'plugin', label: 'plugin' }),
+        ]),
+      },
+    });
+    expect((await connection.db.select().from(tryItTraces))[0]).toMatchObject({
+      rootSpanId: 'request',
+      request: { method: 'POST', path: '/qa-trace', statusCode: 201 },
+    });
+    expect((await connection.db.select().from(traceLatest))[0]).toMatchObject({
+      traceId,
+      rootSpanId: 'request',
+      request: { method: 'POST', path: '/qa-trace', statusCode: 201 },
+    });
+  });
+
   it('027 AC4-5: returns allowlisted fields, redacts developer plugin names, and preserves them for an admin owner', async () => {
     await saveSettings();
     const selectionId = uuidv7();

@@ -33,6 +33,23 @@ import { normalizeUrl, requireEnabled, type GatewayConnection } from './gateway-
 import { Problem, notFound } from './problem.js';
 
 export const TRACING_REQUIRE_PASSING_TEST = false;
+
+/**
+ * The root is an unparented span, or Kong's request span. Try it sends a
+ * traceparent whose span id Kong uses as the parent of `kong` and does not
+ * export, so that request span has no parent in the batch.
+ */
+export function traceRoot<T extends { spanId: string; parentSpanId: string | null; name: string }>(
+  spans: readonly T[],
+): T | undefined {
+  const unparented = spans.find((span) => span.parentSpanId === null);
+  if (unparented) return unparented;
+  const known = new Set(spans.map((span) => span.spanId));
+  return spans.find(
+    (span) => span.name === 'kong' && span.parentSpanId !== null && !known.has(span.parentSpanId),
+  );
+}
+
 export const traceScopeKey = (batch: TraceBatch) => {
   if (!batch.resource.apiId) throw new Error('Trace batch API scope was not resolved.');
   return batch.resource.apiId;
@@ -574,7 +591,7 @@ export function registerTracing(
             .from(tryItTraces)
             .where(eq(tryItTraces.traceId, traceId))
             .for('update');
-          const root = spans.find((span) => span.parentSpanId === null);
+          const root = traceRoot(spans);
           let apiId = batch.resource.apiId;
           if (!apiId && root?.routePath) {
             const [api] = await tx.select({ id: apis.id }).from(apis).where(eq(apis.routePath, root.routePath)).limit(1);
@@ -589,7 +606,7 @@ export function registerTracing(
         if (!resolvedGroups.length) throw new Problem(422, 'trace-not-selected', 'Trace does not match a published API.');
 
         for (const { traceId, spans, scopeKey, tryIt } of resolvedGroups) {
-          const root = spans.find((span) => span.parentSpanId === null);
+          const root = traceRoot(spans);
           const started = new Date(Number(BigInt((root ?? spans[0]!).startNs) / 1_000_000n));
           const merge = (
             previous: StoredTraceSpan[],
