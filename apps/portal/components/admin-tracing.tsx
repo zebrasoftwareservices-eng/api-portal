@@ -1158,9 +1158,11 @@ const reason: Record<number, string> = {
 export function TraceWaterfall({
   trace,
   maxRows = 200,
+  variant = 'admin',
 }: {
   trace: Trace;
   maxRows?: number;
+  variant?: 'admin' | 'try-it';
 }) {
   const [all, setAll] = useState(false);
   const spans = all ? trace.spans : trace.spans.slice(0, maxRows);
@@ -1189,7 +1191,9 @@ export function TraceWaterfall({
     <div className="table-wrap">
       <Table className="trace-waterfall">
         <caption className="sr-only">
-          Spans of the latest traced call, in start order
+          {variant === 'try-it'
+            ? 'Spans of your Try it call, in start order'
+            : 'Spans of the latest traced call, in start order'}
         </caption>
         <thead>
           <tr>

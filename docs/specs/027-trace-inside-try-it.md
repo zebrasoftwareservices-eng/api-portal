@@ -271,8 +271,8 @@ calls Kong. No CORS change is needed.
 - [ ] [backend] Ingest: inside the existing transaction, merge each trace-id group into the matching `try_it_traces` row (span-id merge, 1000 cap, `root_span_id`, `request`, `started_at`, `received_at`); keep the `trace_latest` behaviour; store a matching group even when no API resolves
 - [ ] [backend] `GET /api/v1/try-it/traces/:traceId`: session required (401); owner and current id, otherwise one 404; `state` waiting/ready/missing (30 s); `traceView` redaction for non-admins (`plugin: null`, `name = label`); regenerate `packages/sdk`
 - [ ] [backend] Unit tests: coverage helper, traceparent format and the dropping of browser headers, redaction, ingest merge into the Try it row and `trace_latest`, 404 for another user, replaced or unknown id
-- [ ] [frontend] `components/reference.tsx`: register a Scalar API-client plugin with `onResponseReceived` that reads `X-Portal-Trace-State` and `X-Portal-Trace-Id` and drives a React trace panel under the response
-- [ ] [frontend] Trace panel: reuse spec 026's waterfall read-only; show method, path, status, total ms, labels and the slowest span; poll `getTryItTrace` every 2 s until `ready` or `missing`; states off (immediate), waiting, missing (after 30 s), unreachable (immediate), signed-out; admin copy names `tracing_instrumentations` and links to the tracing settings and Test; developer copy names no Kong setting (per the UX doc)
+- [x] [frontend] `components/reference.tsx`: register a Scalar API-client plugin with `onResponseReceived` that reads `X-Portal-Trace-State` and `X-Portal-Trace-Id` and drives a React trace panel under the response
+- [x] [frontend] Trace panel: reuse spec 026's waterfall read-only; show method, path, status, total ms, labels and the slowest span; poll `getTryItTrace` every 2 s until `ready` or `missing`; states off (immediate), waiting, missing (after 30 s), unreachable (immediate), signed-out; admin copy names `tracing_instrumentations` and links to the tracing settings and Test; developer copy names no Kong setting (per the UX doc)
 - [ ] [qa] Integration (Testcontainers Kong + Postgres): AC 1 (the trace id equals the sent `traceparent`), AC 2 (two users at once), AC 3 (404 for another user, 401 anonymous, 026 admin endpoints 403), AC 4 (with `?token=abc123`, custom headers and a body: none appear; no plugin names for a developer), AC 6 (replaced id is 404), AC 9 (Kong down: `unreachable`, no row)
 - [ ] [qa] Kong sampling check: with `KONG_TRACING_SAMPLING_RATE=0.01`, 5 traced Try it calls all get a trace; record the result in the Test report
 - [ ] [qa] Playwright e2e on the quickstart: developer Try it shows the panel within 30 s (AC 1); an admin sees plugin names and the 026 page shows the same call (AC 5); tracing off shows the message without a spinner, with a settings link for the admin (AC 7); no spans gives "waiting" then "no trace arrived" (AC 8)
@@ -292,6 +292,16 @@ Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-
   the waterfall uses 026's two-line rows. No new tokens.
 
 ## Build notes  _(backend-developer, frontend-developer)_
+
+- Frontend: Scalar Try it responses now drive a role-aware Trace panel with waiting, partial,
+  ready, missing, off, unreachable, signed-out, replaced and retry states. It reuses the spec 026
+  waterfall, polls `getTryItTrace` every two seconds, pauses while hidden, and includes the specified
+  admin/developer copy, links, live announcements and narrow-container layout.
+- Scalar's installed React wrapper does not expose its `response.section` plugin slot. The frontend
+  therefore keeps the `onResponseReceived`-shaped plugin behind a tested `configuration.fetch`
+  bridge and mounts the React panel into Scalar's live `.response-section-content` with a DOM-observed
+  portal; if Scalar changes that internal node, a visible below-reference fallback remains for UI
+  designer and review verification.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
