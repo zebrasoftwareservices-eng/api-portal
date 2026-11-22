@@ -1,7 +1,7 @@
 ---
 id: 027
 title: Trace inside Try it
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-22
 linear:            # the one feature issue, e.g. JSO-117 — filled by `node scripts/factory.mjs linear-init 027`
@@ -282,6 +282,7 @@ calls Kong. No CORS change is needed.
 - [x] [qa] Playwright e2e on the quickstart: developer Try it shows the panel within 30 s (AC 1); an admin sees plugin names and the 026 page shows the same call (AC 5); tracing off shows the message without a spinner, with a settings link for the admin (AC 7); no spans gives "waiting" then "no trace arrived" (AC 8)
 - [x] [backend] Fix: Try it trace never becomes ready
 - [x] [frontend] Fix: Try it trace panel never mounts after a traced Send
+- [ ] [backend] Fix: a Try it transport failure (503 `gateway-unavailable`) answers `X-Portal-Trace-State: unreachable` for every signed-in caller, not only a traced one; delete the row only when one was written (`apps/server/src/proxy.ts:259-271`); add a unit or integration test for tracing off + Kong down
 ## UX  _(ui-designer)_
 Design: [docs/design/027-trace-inside-try-it.md](../design/027-trace-inside-try-it.md).
 - A **Trace** card (`TryItTracePanel`) sits directly under Scalar's Try it response and reuses
@@ -366,6 +367,12 @@ Earlier rounds go in `docs/specs/log/027.md`. The full report is `docs/uat/027/r
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/027.md`.
+
+Reviewed `git diff main...HEAD` at `6f57b64`. The code is unchanged since the tested commit `504ab45`, whose full suite passed for this spec, so the suite was not re-run. Contract, table, migration, adapter `extract: ['w3c']`, boot-time apply, ingest merge and the owner-only GET with role redaction match the design. ACs 1–8 are implemented and tested.
+
+- **blocking** — `apps/server/src/proxy.ts:259-271`: on a transport failure the proxy sets `unreachable` only when the call was `traced`. With tracing off (or no selection) the 503 keeps `off`, and the panel tells the developer "Your call worked as usual" about a call that failed. The design says every 503 `gateway-unavailable` answers `unreachable`, and AC 9 has no tracing condition. Fix: for any signed-in viewer set `unreachable` in the catch; delete the `try_it_traces` row only when the state was `traced`. This is the open minor bug in Bugs; the fix closes it.
+- **suggestion** — `apps/server/src/proxy.ts:143-145`: the trace state is set before `canSeeApi` and before the 413 body check (`:183`). A 404 for an API the caller can't see, or a 413, then says `traced` with no `X-Portal-Trace-Id`, which hints that a hidden API is in a tracing selection and leaves the panel with no state to show. Set `traced` only after the row is written; report `off` before that.
+- **suggestion** — `apps/server/src/tracing.ts:127-132`: `tryItTraceState` checks for any enabled Kong gateway, not the target API's gateway. Fine for one gateway; revisit when multi-gateway lands.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
