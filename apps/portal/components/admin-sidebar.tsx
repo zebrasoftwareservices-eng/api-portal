@@ -21,6 +21,8 @@ const admin = [
   ['/admin/settings/mail', 'Mail'],
   ['/admin/settings/accounts', 'Accounts'],
   ['/admin/theme', 'Theme'],
+  ['/admin/pages', 'Pages'],
+  ['/admin/navigation', 'Navigation'],
 ] as const;
 
 function currentHref(pathname: string) {

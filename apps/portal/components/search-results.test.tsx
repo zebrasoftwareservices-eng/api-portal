@@ -56,7 +56,7 @@ it('shows the start hint and rejects blank submission without making a request',
   render(<SearchResults term="" initial={{ kind: 'start' }} />);
   const input = screen.getByRole('searchbox');
   expect(input).toHaveFocus();
-  expect(screen.getByText(/Search API names/)).toBeVisible();
+  expect(screen.getByText(/page titles/)).toBeVisible();
   fireEvent.submit(screen.getByRole('search'));
   expect(input).toHaveAttribute('aria-invalid', 'true');
   expect(input).toHaveAccessibleDescription('Enter a search term.');
@@ -95,6 +95,31 @@ it('searches the sample document in the browser without an API call', async () =
   ).toBeVisible();
   expect(screen.getByRole('status')).toHaveTextContent('1 result');
   expect(mocks.get).not.toHaveBeenCalled();
+});
+it('links a page result to its page and keeps the demo hint free of pages', () => {
+  render(
+    <SearchResults
+      term="start"
+      initial={{
+        kind: 'success',
+        results: {
+          truncated: false,
+          items: [{ kind: 'page', page: { slug: 'getting-started', title: 'Getting started', description: 'Sign up and call the API.' } }],
+        },
+      }}
+    />,
+  );
+  const link = screen.getByRole('link', { name: /Getting started/ });
+  expect(link).toHaveAttribute('href', '/pages/getting-started');
+  expect(link).toHaveTextContent('Sign up and call the API.');
+  render(
+    <SearchResults
+      term=""
+      initial={{ kind: 'start' }}
+      demoApi={{ slug: 'orders', title: 'Orders', version: '1', document: {} }}
+    />,
+  );
+  expect(screen.getByText('Search API names, paths like /orders/{id}, or what an operation does.')).toBeVisible();
 });
 it('shows a calm empty state with a catalog link', () => {
   render(

@@ -126,8 +126,9 @@ export function SearchResults({
       </form>
       {state.kind === 'start' && (
         <p className="muted">
-          Search API names, paths like /orders/&#123;id&#125;, or what an
-          operation does.
+          {demoApi
+            ? 'Search API names, paths like /orders/{id}, or what an operation does.'
+            : 'Search API names, paths like /orders/{id}, what an operation does, or page titles.'}
         </p>
       )}
       {state.kind === 'loading' && <SearchLoading />}

@@ -280,21 +280,21 @@ None. Nothing here reads or writes the gateway, and no reconcile job changes.
   built-ins, invalid stored JSON. Integration tests for criteria 7, 8 and 9 and for concurrent saves.
 - [x] [backend] Add pages to `GET /v1/search` through `readablePages`. Integration test for
   criterion 5 signed out, as a developer and as an admin, and that bodies aren't matched.
-- [ ] [frontend] Add `react-markdown` and `remark-gfm` and build `markdown-body.tsx` with the URL
+- [x] [frontend] Add `react-markdown` and `remark-gfm` and build `markdown-body.tsx` with the URL
   rules. Unit tests with the payload table (criterion 6).
-- [ ] [frontend] Build `/pages/[slug]` with metadata, its 404 with Sign in, its error page, and
+- [x] [frontend] Build `/pages/[slug]` with metadata, its 404 with Sign in, its error page, and
   `/page-preview/[pageId]` (not 200 from the admin API gives the 404). Set `htmlLimitedBots`. Tests
   for criteria 4 and 10, including that empty fields leave the tags out.
-- [ ] [frontend] Load navigation in the root layout and render the header, mobile menu and footer
+- [x] [frontend] Load navigation in the root layout and render the header, mobile menu and footer
   links, with the fallback and demo behaviour. Tests that the default matches today's markup for
   visitor, developer and admin (criterion 1) and for criterion 7's order.
-- [ ] [frontend] Build Admin → Pages: list, create, edit, preview link, publish, unpublish, delete,
+- [x] [frontend] Build Admin → Pages: list, create, edit, preview link, publish, unpublish, delete,
   the confirmations that name header and footer links, and field errors by pointer that keep what
   was typed (criteria 2, 3, 8, 9). Add the sidebar entry.
-- [ ] [frontend] Build Admin → Navigation: add page and external links, hide built-ins, reorder by
+- [x] [frontend] Build Admin → Navigation: add page and external links, hide built-ins, reorder by
   keyboard as well as pointer, remove, save, Reset to default, field errors by pointer (criteria 7,
   8, 9). Add the sidebar entry.
-- [ ] [frontend] Show page results in search, with copy that covers APIs, endpoints and pages
+- [x] [frontend] Show page results in search, with copy that covers APIs, endpoints and pages
   (criterion 5).
 - [ ] [frontend] Add a short admin guide in `docs/guides/` on pages, visibility and navigation.
 - [ ] [qa] End-to-end tests for criteria 1–10 against the compose stack, with the leak, 404 parity
@@ -324,6 +324,8 @@ One new token: `--portal-prose-max-width`.
 
 ## Build notes  _(backend-developer, frontend-developer)_
 Backend added `pages` and `navigation_settings` in migration `0013_flashy_excalibur`. An upgrade with no rows keeps the default header (`apis`, `my-apps`) and an empty footer, and that read does not look up a session. `readablePages` is the only SQL filter for the public page, navigation links and search, so a draft or a signed-in-only page is the same 404 as an unknown slug and is absent from search. Every pages and navigation response sends `Cache-Control: private, no-store`. Slug conflicts are `/problems/page-slug-taken` at `/slug`; navigation errors point at the item (`/header/2/url`, `/header/2/pageId`) and a missing or repeated built-in points at `/header`. Deleting a page does not rewrite the navigation row: the link drops on the next read. Invalid stored JSON is logged as `navigation-invalid` and served as the default.
+
+Frontend renders pages with `react-markdown` and `remark-gfm` (`skipHtml`, no rehype). Links keep `http`, `https`, `mailto` and same-portal paths; images keep absolute `https` with no credentials. `htmlLimitedBots` is `/.*/`. The root layout loads navigation with a 1.5s timeout and falls back to the default. A demo build does not fetch it, and `isDefault` keeps today's header markup, the Powered-by footer line, and the admin top bar. Existing CSS already hides `.desktop-nav` below 1024px, so that breakpoint was not changed and the design's gap under 1024px is empty. Admin page and navigation calls use `quietApi` so a 401 or 403 does not wipe the form. Saved header links show to admins only outside `/admin`, from 1024px, and never include My apps. `@portal/portal` lint, typecheck and 475 tests passed. `docs/guides/pages.md` and the `pnpm-lock.yaml` entries for `react-markdown` and `remark-gfm` are in the worktree. The frontend guard does not allow those two paths, so they are not in this commit. CI uses a frozen lockfile and will fail until a role that owns the lockfile commits it.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`

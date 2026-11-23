@@ -6,6 +6,7 @@ export default async function config(): Promise<NextConfig> {
   const demo = demoEnabled(process.env);
   return {
     output: 'standalone',
+    htmlLimitedBots: /.*/,
     transpilePackages: ['@portal/sdk', '@portal/theme', '@portal/ui'],
     env: {
       PORTAL_DEMO_ACTIVE: demo ? 'true' : 'false',

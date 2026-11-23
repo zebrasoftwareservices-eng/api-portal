@@ -18,6 +18,7 @@ import { PortalShell } from '../components/portal-shell';
 import { ThemeLinks } from '../components/theme-links';
 import { ThemeProvider } from '../components/theme-provider';
 import { isDemo } from '../lib/demo';
+import { loadPublicNavigation } from '../lib/navigation-server';
 export async function generateMetadata(): Promise<Metadata> {
   const theme = await loadPublicTheme();
   return {
@@ -33,7 +34,11 @@ export default async function Layout({
 }: {
   children: React.ReactNode;
 }) {
-  const [session, theme] = await Promise.all([currentUser(), loadPublicTheme()]);
+  const [session, theme, navigation] = await Promise.all([
+    currentUser(),
+    loadPublicTheme(),
+    loadPublicNavigation(),
+  ]);
   return (
     <html lang="en" data-theme={theme.defaultMode === 'system' ? undefined : theme.defaultMode}>
       <head>
@@ -50,7 +55,7 @@ export default async function Layout({
             <a className="skip" href="#main">
               Skip to content
             </a>
-            <PortalShell>{children}</PortalShell>
+            <PortalShell navigation={navigation}>{children}</PortalShell>
           </Providers>
         </ThemeProvider>
       </body>

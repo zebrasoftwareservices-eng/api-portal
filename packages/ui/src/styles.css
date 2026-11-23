@@ -39,6 +39,7 @@
   --portal-text-lg: 18px;
   --portal-text-2xl: 24px;
   --portal-text-3xl: 30px;
+  --portal-prose-max-width: 720px;
   --portal-page-max-width: 1200px;
   --portal-page-gutter: 16px;
   --portal-header-height: 56px;
