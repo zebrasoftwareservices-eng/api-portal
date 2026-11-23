@@ -296,7 +296,7 @@ None. Nothing here reads or writes the gateway, and no reconcile job changes.
   8, 9). Add the sidebar entry.
 - [x] [frontend] Show page results in search, with copy that covers APIs, endpoints and pages
   (criterion 5).
-- [ ] [frontend] Add a short admin guide in `docs/guides/` on pages, visibility and navigation.
+- [x] [frontend] Add a short admin guide in `docs/guides/` on pages, visibility and navigation.
 - [ ] [qa] End-to-end tests for criteria 1–10 against the compose stack, with the leak, 404 parity
   and script checks from the risk table, and the raw-HTML metadata check with a plain user agent.
 - [ ] [qa] Run the upgrade smoke test and the quickstart under five minutes with no pages and no
