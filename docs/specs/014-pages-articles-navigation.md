@@ -1,7 +1,7 @@
 ---
 id: 014
 title: Pages and navigation managed in the admin UI
-status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-23
 linear: JSO-242
@@ -303,7 +303,24 @@ None. Nothing here reads or writes the gateway, and no reconcile job changes.
   saved navigation, and the demo e2e (criterion 1).
 
 ## UX  _(ui-designer)_
-Summary + link to `docs/design/014-*.md`
+Full design: [`docs/design/014-pages-articles-navigation.md`](../design/014-pages-articles-navigation.md).
+One new token: `--portal-prose-max-width`.
+
+- **Open question decided:** admins see the saved header and footer links on pages outside `/admin`,
+  never inside it, and never **My apps**. With the default navigation their top bar is today's.
+  Header links show to admins from 1024px, because spec 024's drawer isn't changed.
+- **Pages** (Admin → Pages): a list and one editor with a Publishing panel. Drafts get **Publish**,
+  **Save draft** and **Preview** (the last save). Published pages get **Save changes** (live at once),
+  **View page** and **Unpublish**. Unpublish asks only when links are affected; Delete always asks.
+  Both name each header or footer link.
+- **Navigation** (Admin → Navigation): one ordered list per area, with Move up and Move down buttons
+  and no drag. Built-ins have a Show switch. Saving with no changes sends nothing, so an untouched
+  default is never stored.
+- **Header**: with more than 4 links, 3 show and the rest go in **More**. 3 or more links use the
+  mobile menu below 1024px. The default navigation keeps today's markup and breakpoints.
+- **404**: one page for every slug. Signed-out visitors also get **Sign in** and one fixed sentence.
+- **Search**: page rows and the `/search` help text. The header search label stays as it is
+  (criterion 1).
 
 ## Build notes  _(backend-developer, frontend-developer)_
 
