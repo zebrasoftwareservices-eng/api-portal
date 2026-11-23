@@ -268,17 +268,17 @@ None. Nothing here reads or writes the gateway, and no reconcile job changes.
 | `SearchResult` becoming a union breaks callers | TypeScript finds them: `search-result-row.tsx`, `search-results.tsx`, `packages/sdk/src/search.ts`. |
 
 ### Tasks
-- [ ] [backend] Add `pages` and `navigation_settings` to the Drizzle schema with the checks above and
+- [x] [backend] Add `pages` and `navigation_settings` to the Drizzle schema with the checks above and
   generate one migration. Upgrade from the previous release leaves both empty.
-- [ ] [backend] Regenerate `packages/sdk` types, export `DEFAULT_NAVIGATION`, and extend
+- [x] [backend] Regenerate `packages/sdk` types, export `DEFAULT_NAVIGATION`, and extend
   `searchCatalog` with the optional `pages` argument (title and description; scores as documented).
   Unit tests, including unchanged results without pages.
-- [ ] [backend] Build `pages.ts`: `readablePages`, the public read and the admin CRUD, with the body
+- [x] [backend] Build `pages.ts`: `readablePages`, the public read and the admin CRUD, with the body
   checks, pointers, `page-slug-taken`, 404 parity and cache headers. Integration tests for criteria
   2, 3, 4 and 9, including 401 and 403 on every admin route with nothing changed.
-- [ ] [backend] Build `navigation.ts`: per-caller resolution, save, reset, unknown and missing
+- [x] [backend] Build `navigation.ts`: per-caller resolution, save, reset, unknown and missing
   built-ins, invalid stored JSON. Integration tests for criteria 7, 8 and 9 and for concurrent saves.
-- [ ] [backend] Add pages to `GET /v1/search` through `readablePages`. Integration test for
+- [x] [backend] Add pages to `GET /v1/search` through `readablePages`. Integration test for
   criterion 5 signed out, as a developer and as an admin, and that bodies aren't matched.
 - [ ] [frontend] Add `react-markdown` and `remark-gfm` and build `markdown-body.tsx` with the URL
   rules. Unit tests with the payload table (criterion 6).
@@ -323,6 +323,7 @@ One new token: `--portal-prose-max-width`.
   (criterion 1).
 
 ## Build notes  _(backend-developer, frontend-developer)_
+Backend added `pages` and `navigation_settings` in migration `0013_flashy_excalibur`. An upgrade with no rows keeps the default header (`apis`, `my-apps`) and an empty footer, and that read does not look up a session. `readablePages` is the only SQL filter for the public page, navigation links and search, so a draft or a signed-in-only page is the same 404 as an unknown slug and is absent from search. Every pages and navigation response sends `Cache-Control: private, no-store`. Slug conflicts are `/problems/page-slug-taken` at `/slug`; navigation errors point at the item (`/header/2/url`, `/header/2/pageId`) and a missing or repeated built-in points at `/header`. Deleting a page does not rewrite the navigation row: the link drops on the next read. Invalid stored JSON is logged as `navigation-invalid` and served as the default.
 
 ## Test report  _(qa-tester)_
 Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`

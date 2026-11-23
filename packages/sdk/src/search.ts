@@ -9,6 +9,11 @@ export interface SearchApi {
   description?: string | null;
   document: unknown;
 }
+export interface SearchPage {
+  slug: string;
+  title: string;
+  description?: string | null;
+}
 const verbs = [
   'get',
   'put',
@@ -28,13 +33,20 @@ export function searchCatalog(
   apis: readonly SearchApi[],
   term: string,
   limit = 20,
+  pages: readonly SearchPage[] = [],
 ): SearchResults {
   const query = normalize(term);
   if (!query) return { items: [], truncated: false };
   const tokens = query.split(' ');
   const matches = (text: string) =>
     tokens.every((token) => text.includes(token));
-  const ranked: { result: SearchResult; score: number }[] = [];
+  const ranked: {
+    result: SearchResult;
+    score: number;
+    title: string;
+    path: string;
+    method: string;
+  }[] = [];
   for (const row of apis) {
     const api = { slug: row.slug, title: row.title, version: row.version };
     const title = normalize(row.title);
@@ -42,6 +54,9 @@ export function searchCatalog(
       ranked.push({
         result: { kind: 'api', api },
         score: title === query ? 90 : matches(title) ? 50 : 30,
+        title: row.title,
+        path: '',
+        method: '',
       });
     const paths = object(row.document) ? row.document.paths : undefined;
     if (!object(paths)) continue;
@@ -51,7 +66,7 @@ export function searchCatalog(
         const op = item[verb];
         if (!object(op)) continue;
         const method = verb.toUpperCase() as NonNullable<
-          SearchResult['method']
+          components['schemas']['CatalogSearchResult']['method']
         >;
         const methodPath = normalize(`${method} ${path}`);
         const normalizedPath = normalize(path);
@@ -84,16 +99,37 @@ export function searchCatalog(
                 : matches(methodPath)
                   ? 60
                   : 40,
+          title: row.title,
+          path,
+          method,
         });
       }
     }
   }
+  for (const page of pages) {
+    const title = normalize(page.title);
+    if (!matches(normalize(`${page.title} ${page.description ?? ''}`))) continue;
+    ranked.push({
+      result: {
+        kind: 'page',
+        page: {
+          slug: page.slug,
+          title: page.title,
+          description: page.description ?? null,
+        },
+      },
+      score: title === query ? 90 : matches(title) ? 50 : 30,
+      title: page.title,
+      path: '',
+      method: '',
+    });
+  }
   ranked.sort(
     (a, b) =>
       b.score - a.score ||
-      a.result.api.title.localeCompare(b.result.api.title) ||
-      (a.result.path ?? '').localeCompare(b.result.path ?? '') ||
-      (a.result.method ?? '').localeCompare(b.result.method ?? ''),
+      a.title.localeCompare(b.title) ||
+      a.path.localeCompare(b.path) ||
+      a.method.localeCompare(b.method),
   );
   const count = Math.max(0, Math.trunc(limit));
   return {

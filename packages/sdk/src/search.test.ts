@@ -156,3 +156,26 @@ it('visits exactly the eight HTTP operation keys and skips path metadata', () =>
     methods.map((method) => method.toUpperCase()).sort(),
   );
 });
+
+it('adds page title and description matches without searching bodies', () => {
+  const pages = [
+    { slug: 'guide', title: 'Getting started', description: 'First API call' },
+    { slug: 'exact', title: 'First API call', description: null },
+  ];
+  expect(searchCatalog([], 'first api call', 20, pages).items).toEqual([
+    {
+      kind: 'page',
+      page: { slug: 'exact', title: 'First API call', description: null },
+    },
+    {
+      kind: 'page',
+      page: {
+        slug: 'guide',
+        title: 'Getting started',
+        description: 'First API call',
+      },
+    },
+  ]);
+  expect(searchCatalog([api], 'orders')).toEqual(searchCatalog([api], 'orders', 20, []));
+  expect(searchCatalog([], 'secret body', 20, pages).items).toEqual([]);
+});

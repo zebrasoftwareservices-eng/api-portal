@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import rateLimit from '@fastify/rate-limit';
-import type { Database } from '@portal/db';
+import { pages, type Database } from '@portal/db';
 import { searchCatalog } from '@portal/sdk';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
@@ -8,6 +8,7 @@ import { loadViewer, type Viewer } from './access-policy.js';
 import type { Auth } from './auth.js';
 import { publishedApis } from './catalog.js';
 import { Problem } from './problem.js';
+import { readablePages } from './pages.js';
 const querySchema = z.object({
   q: z
     .string()
@@ -64,9 +65,18 @@ export async function registerSearch(
               : 'Limit must be an integer from 1 to 50.';
           throw new Problem(400, 'validation', detail);
         }
-        const rows = await publishedApis(db, viewers.get(request)!, {
+        const viewer = viewers.get(request)!;
+        const rows = await publishedApis(db, viewer, {
           documents: true,
         });
+        const pageRows = await db
+          .select({
+            slug: pages.slug,
+            title: pages.title,
+            description: pages.description,
+          })
+          .from(pages)
+          .where(readablePages(viewer));
         return searchCatalog(
           rows.map(({ api, version }) => ({
             slug: api.slug,
@@ -77,6 +87,7 @@ export async function registerSearch(
           })),
           parsed.data.q,
           parsed.data.limit,
+          pageRows,
         );
       },
     );
