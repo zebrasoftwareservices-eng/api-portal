@@ -85,6 +85,8 @@ tags:
     description: Per-app usage meter, admin insights and Kong usage ingest (spec 011, ADR 0011)
   - name: theme
     description: Portal branding, served at runtime (spec 013, ADR 0016)
+  - name: content
+    description: Markdown pages and the header and footer links (spec 014, ADR 0020)
   - name: tracing
     description: Kong trace settings, selections, the latest trace and Kong trace ingest (spec 026, ADR 0018)
 
@@ -231,18 +233,23 @@ paths:
     get:
       tags: [catalog]
       operationId: searchCatalog
-      summary: Search published APIs and their operations
+      summary: Search published APIs, their operations and pages
       description: |
         Spec 020, ADR 0012. Matches the term against the latest version of every API the public
         catalog shows the caller (`GET /v1/apis` uses the same visibility check, so search results
         are always a subset of the catalog). Searched fields: API title and description; each
-        operation's method, path, summary and operationId. Schemas, older versions and docs pages
-        are not searched.
+        operation's method, path, summary and operationId. Schemas and older versions are not
+        searched.
+
+        Published pages are searched too, on title and description only, never the body (spec 014,
+        ADR 0020). A signed-out caller gets public pages; any signed-in caller also gets
+        signed-in-only pages. Drafts are never returned, to admins either.
 
         Matching ignores case. The term is trimmed, runs of whitespace collapse to one, and it is
         split on spaces into tokens; a result matches when every token occurs as a plain substring
         (no wildcards, so `{}/*%_` match literally). Results are ordered by score (exact path,
-        then path, then title, then summary), then API title, then path.
+        then path, then title, then summary), then API or page title, then path. A page scores
+        like an API: exact title, then title, then description.
 
         An empty term (after trimming) or one over 100 characters is refused with
         `/problems/validation`. Anonymous callers are limited to 60 searches a minute per client
@@ -261,7 +268,7 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
       responses:
         '200':
-          description: Matching APIs and operations, best first. Empty `items` when nothing matched.
+          description: Matching APIs, operations and pages, best first. Empty `items` when nothing matched.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SearchResults' }
@@ -2518,6 +2525,219 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '413': { $ref: '#/components/responses/PayloadTooLarge' }
 
+  /v1/pages/{slug}:
+    get:
+      tags: [content]
+      operationId: getPage
+      summary: One published page
+      description: |
+        Spec 014, ADR 0020. A draft, a signed-in-only page requested without a session, an unknown
+        slug and a malformed slug all give the same 404 (same status, headers and body apart from
+        `instance`, which echoes the request path). Drafts are 404 to admins too; they preview
+        with `GET /v1/admin/pages/{pageId}`. Any signed-in account, whatever its role, reads
+        signed-in-only pages. The body is Markdown source, never HTML.
+      security:
+        - {}
+        - sessionCookie: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          description: Not validated; anything that isn't a readable page's slug is a 404.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The page
+          headers:
+            Cache-Control:
+              schema: { type: string, example: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicPage' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/navigation:
+    get:
+      tags: [content]
+      operationId: getNavigation
+      summary: The header and footer links this caller may see
+      description: |
+        Spec 014, ADR 0020. The portal's root layout calls it on every server render. Nothing saved
+        gives the default: header `apis` then `my-apps`, empty footer, `isDefault: true`.
+        Hidden built-ins are left out, and so are links to drafts, to deleted pages and, for a
+        signed-out caller, to signed-in-only pages. The order is the saved order.
+        `my-apps` is in the list for every caller when not hidden; the portal shows it only to
+        signed-in developers, as before. Sign in, Sign up, search and the account menu are not
+        navigation items.
+      security:
+        - {}
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Navigation for this caller
+          headers:
+            Cache-Control:
+              schema: { type: string, example: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicNavigation' }
+
+  /v1/admin/pages:
+    get:
+      tags: [admin, content]
+      operationId: listPages
+      summary: Every page, drafts included, most recently updated first
+      responses:
+        '200':
+          description: Pages without their bodies
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PageSummary' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [admin, content]
+      operationId: createPage
+      summary: Create a page, as a draft or already published
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PageWrite' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location:
+              schema: { type: string }
+              description: /api/v1/admin/pages/{pageId}
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/PageSlugTaken' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+
+  /v1/admin/pages/{pageId}:
+    parameters:
+      - $ref: '#/components/parameters/PageId'
+    get:
+      tags: [admin, content]
+      operationId: getPageForAdmin
+      summary: One page with its body, for the editor and the preview
+      description: |
+        `navigation` lists the links to this page. Read it again just before asking the admin to
+        confirm an unpublish or a delete, so the dialog names the links that are there now.
+      responses:
+        '200':
+          description: The page
+          headers:
+            Cache-Control:
+              schema: { type: string, example: 'private, no-store' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [admin, content]
+      operationId: savePage
+      summary: Replace the page; publish and unpublish are `status`
+      description: |
+        Replaces every field in one write; the last save wins. Saving a published page changes what
+        readers get on the next page load. A new slug takes effect at once: the old URL is a 404
+        and navigation links follow, because they hold the page ID. On any error nothing changes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PageWrite' }
+      responses:
+        '200':
+          description: Saved
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageDetail' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/PageSlugTaken' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+    delete:
+      tags: [admin, content]
+      operationId: deletePage
+      summary: Delete the page; links to it disappear with it
+      responses:
+        '204':
+          description: Deleted
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/admin/navigation:
+    get:
+      tags: [admin, content]
+      operationId: getNavigationSettings
+      summary: The editable header and footer
+      description: |
+        Includes hidden built-ins and links to drafts. Links to deleted pages are already left out.
+        Every built-in is in the header exactly once, including one added by a later release.
+      responses:
+        '200':
+          description: Navigation settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NavigationSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [admin, content]
+      operationId: saveNavigation
+      summary: Save the whole header and footer in one atomic write
+      description: |
+        Array order is display order. Every built-in must be in the header exactly once (hide it
+        with `hidden`), and built-ins can't be in the footer. Links to drafts are allowed; they
+        show once the page is published. On any error nothing is saved and `errors[].pointer` names
+        the field, for example `/header/2/url`, `/footer/0/label` or `/header/1/pageId` (a page
+        that doesn't exist). The last save wins.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveNavigationRequest' }
+      responses:
+        '200':
+          description: Saved; live on the next page load
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NavigationSettings' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [admin, content]
+      operationId: resetNavigation
+      summary: Reset to default
+      description: Removes the saved header and footer. Pages are untouched. Idempotent.
+      responses:
+        '200':
+          description: Reset; the response is the default navigation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NavigationSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /v1/apps/{appId}/usage:
     get:
       tags: [usage]
@@ -3170,6 +3390,12 @@ components:
       required: true
       schema: { type: string, format: uuid }
 
+    PageId:
+      name: pageId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
     ThemeAssetKind:
       name: kind
       in: path
@@ -3275,6 +3501,13 @@ components:
         Kong refused the key because its app isn't subscribed to this API
         (`/problems/api-access-denied`). `title` and `detail` hold the copy from the UX design.
         Responses from the upstream service, including its own 403s, are not rewritten.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PageSlugTaken:
+      description: |
+        Another page has this slug (`/problems/page-slug-taken`). `errors[0].pointer` is `/slug`.
+        Nothing was saved.
       content:
         application/problem+json:
           schema: { $ref: '#/components/schemas/Problem' }
@@ -3946,6 +4179,175 @@ components:
             - $ref: '#/components/schemas/ThemeAssetUpload'
             - type: 'null'
 
+    PageStatus: { type: string, enum: [draft, published] }
+    PageVisibility: { type: string, enum: [public, signed-in], description: '`signed-in` is any signed-in account, whatever its role' }
+    PublicPage:
+      type: object
+      required: [slug, title, body, description, seoTitle, ogImageUrl, visibility, updatedAt]
+      properties:
+        slug: { $ref: '#/components/schemas/Slug' }
+        title: { type: string }
+        body: { type: string, description: Markdown source }
+        description: { type: [string, 'null'] }
+        seoTitle: { type: [string, 'null'] }
+        ogImageUrl: { type: [string, 'null'] }
+        visibility: { $ref: '#/components/schemas/PageVisibility' }
+        updatedAt: { type: string, format: date-time }
+    PageWrite:
+      type: object
+      additionalProperties: false
+      description: |
+        Strings other than `body` are trimmed. `description`, `seoTitle` and `ogImageUrl` sent
+        empty, null or not at all are stored as null. A NUL character in any field is refused.
+      required: [title, slug, body, visibility, status]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        slug: { $ref: '#/components/schemas/Slug' }
+        body: { type: string, maxLength: 100000, description: 'Markdown; may be empty' }
+        visibility: { $ref: '#/components/schemas/PageVisibility' }
+        status: { $ref: '#/components/schemas/PageStatus' }
+        description: { type: [string, 'null'], maxLength: 300, description: 'Used for search results, the meta description and `og:description`' }
+        seoTitle: { type: [string, 'null'], maxLength: 120 }
+        ogImageUrl: { type: [string, 'null'], maxLength: 2048, description: 'Absolute `https` URL without credentials' }
+    PageLinkRef:
+      type: object
+      description: A saved header or footer link to the page
+      required: [area, label]
+      properties:
+        area: { type: string, enum: [header, footer] }
+        label: { type: string }
+    PageSummary:
+      type: object
+      required: [id, slug, title, visibility, status, navigation, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { $ref: '#/components/schemas/Slug' }
+        title: { type: string }
+        visibility: { $ref: '#/components/schemas/PageVisibility' }
+        status: { $ref: '#/components/schemas/PageStatus' }
+        navigation:
+          type: array
+          items: { $ref: '#/components/schemas/PageLinkRef' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PageDetail:
+      allOf:
+        - $ref: '#/components/schemas/PageSummary'
+        - type: object
+          required: [body, description, seoTitle, ogImageUrl]
+          properties:
+            body: { type: string }
+            description: { type: [string, 'null'] }
+            seoTitle: { type: [string, 'null'] }
+            ogImageUrl: { type: [string, 'null'] }
+
+    NavigationBuiltinKey: { type: string, enum: [apis, my-apps] }
+    NavigationLabel: { type: string, minLength: 1, maxLength: 60, description: Trimmed; one line }
+    NavigationUrl: { type: string, minLength: 1, maxLength: 2048, description: 'Absolute `https` URL without credentials' }
+    PublicNavigation:
+      type: object
+      required: [isDefault, header, footer]
+      properties:
+        isDefault: { type: boolean }
+        header:
+          type: array
+          items: { $ref: '#/components/schemas/PublicNavigationItem' }
+        footer:
+          type: array
+          items: { $ref: '#/components/schemas/PublicNavigationItem' }
+    PublicNavigationItem:
+      oneOf:
+        - type: object
+          required: [kind, key]
+          properties:
+            kind: { type: string, enum: [builtin] }
+            key: { $ref: '#/components/schemas/NavigationBuiltinKey' }
+        - type: object
+          required: [kind, label, href]
+          properties:
+            kind: { type: string, enum: [page, link] }
+            label: { type: string }
+            href: { type: string, description: '`/pages/{slug}` for a page, the saved `https` URL for a link' }
+    NavigationBuiltin:
+      type: object
+      additionalProperties: false
+      required: [kind, key, hidden]
+      properties:
+        kind: { type: string, enum: [builtin] }
+        key: { $ref: '#/components/schemas/NavigationBuiltinKey' }
+        hidden: { type: boolean }
+    NavigationPageLink:
+      type: object
+      additionalProperties: false
+      required: [kind, label, pageId]
+      properties:
+        kind: { type: string, enum: [page] }
+        label: { $ref: '#/components/schemas/NavigationLabel' }
+        pageId: { type: string, format: uuid }
+    NavigationExternalLink:
+      type: object
+      additionalProperties: false
+      required: [kind, label, url]
+      properties:
+        kind: { type: string, enum: [link] }
+        label: { $ref: '#/components/schemas/NavigationLabel' }
+        url: { $ref: '#/components/schemas/NavigationUrl' }
+    SaveNavigationRequest:
+      type: object
+      additionalProperties: false
+      required: [header, footer]
+      properties:
+        header:
+          type: array
+          maxItems: 12
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/NavigationBuiltin'
+              - $ref: '#/components/schemas/NavigationPageLink'
+              - $ref: '#/components/schemas/NavigationExternalLink'
+        footer:
+          type: array
+          maxItems: 20
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/NavigationPageLink'
+              - $ref: '#/components/schemas/NavigationExternalLink'
+    NavigationSettingsPageLink:
+      type: object
+      required: [kind, label, pageId, page]
+      properties:
+        kind: { type: string, enum: [page] }
+        label: { type: string }
+        pageId: { type: string, format: uuid }
+        page:
+          type: object
+          description: The page as it is now, so the editor can say who will see the link
+          required: [slug, title, visibility, status]
+          properties:
+            slug: { $ref: '#/components/schemas/Slug' }
+            title: { type: string }
+            visibility: { $ref: '#/components/schemas/PageVisibility' }
+            status: { $ref: '#/components/schemas/PageStatus' }
+    NavigationSettings:
+      type: object
+      required: [isDefault, header, footer, updatedAt]
+      properties:
+        isDefault: { type: boolean }
+        header:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/NavigationBuiltin'
+              - $ref: '#/components/schemas/NavigationSettingsPageLink'
+              - $ref: '#/components/schemas/NavigationExternalLink'
+        footer:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/NavigationSettingsPageLink'
+              - $ref: '#/components/schemas/NavigationExternalLink'
+        updatedAt: { type: [string, 'null'], format: date-time, description: null when nothing is saved }
+
     SearchResults:
       type: object
       required: [items, truncated]
@@ -3957,6 +4359,24 @@ components:
           type: boolean
           description: True when more results matched than `limit`.
     SearchResult:
+      description: Tell the two apart by `kind`.
+      oneOf:
+        - $ref: '#/components/schemas/CatalogSearchResult'
+        - $ref: '#/components/schemas/PageSearchResult'
+    PageSearchResult:
+      type: object
+      description: A published page the caller may read; link to `/pages/{page.slug}` (spec 014).
+      required: [kind, page]
+      properties:
+        kind: { type: string, enum: [page] }
+        page:
+          type: object
+          required: [slug, title, description]
+          properties:
+            slug: { $ref: '#/components/schemas/Slug' }
+            title: { type: string }
+            description: { type: [string, 'null'] }
+    CatalogSearchResult:
       type: object
       required: [kind, api]
       description: |

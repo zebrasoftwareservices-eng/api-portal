@@ -1,7 +1,7 @@
 ---
 id: 014
 title: Pages and navigation managed in the admin UI
-status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
+status: designed   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-23
 linear: JSO-242
@@ -132,12 +132,175 @@ developers, and reorder the navigation, with each change live without a rebuild 
 <!-- Sections below are filled by later stages. -->
 
 ## Technical design  _(tech-lead)_
-Components · API contract · Data model · Adapter calls · Risks
+Decisions that outlive this spec are in
+`docs/adr/0020-pages-are-markdown-in-postgres-rendered-without-raw-html.md`.
+
+### Components
+| Where | What and why |
+| --- | --- |
+| `packages/db` | `pages` and `navigation_settings` tables, one generated migration. |
+| `apps/server/src/pages.ts` (new) | `GET /v1/pages/{slug}` and admin CRUD. Also exports `readablePages(viewer)`, the only SQL condition that decides who reads a page. The public page, navigation and search all use it. |
+| `apps/server/src/navigation.ts` (new) | Public navigation resolved per caller, admin read, save and reset. |
+| `apps/server/src/search.ts`, `packages/sdk/src/search.ts` | Pages join the search candidates. `searchCatalog` takes an optional fourth argument, `pages`, so the demo call is unchanged. |
+| `packages/sdk` | Regenerated types. `DEFAULT_NAVIGATION` (header `apis`, `my-apps`; empty footer) is exported here so the server and the portal's fallback share it. |
+| `apps/portal/components/markdown-body.tsx` (new) | The one Markdown renderer, used by the public page and the preview. |
+| `apps/portal/app/pages/[slug]` (new) | `page.tsx`, `not-found.tsx`, `error.tsx`. No `loading.tsx`: a loading boundary would send a 200 before the 404 is known. |
+| `apps/portal/app/page-preview/[pageId]` (new) | Saved-draft preview. It is outside `/admin`, so it has the portal's theme, and outside `/pages`, so no slug can collide with it. |
+| `apps/portal/app/admin/pages` (list, `new`, `[pageId]`), `app/admin/navigation` (new) | Editors. Two entries in `admin-sidebar.tsx`. |
+| `app/layout.tsx`, `header.tsx`, `portal-shell.tsx`, new `lib/navigation-server.ts` | Load navigation with the caller's cookie next to the theme, pass it down, render header links and footer links. |
+| `next.config.ts` | `htmlLimitedBots: /.*/`. Next 16 otherwise streams `<title>`, description and Open Graph tags into the body for most user agents, and criterion 10 needs them in the fetched HTML's head. |
+
+New dependencies, portal only: `react-markdown` (Markdown to React elements with no HTML string;
+MIT) and `remark-gfm` (tables in Markdown; MIT). Nothing new in compose, Helm or configuration.
+
+### API contract
+Written in `apps/server/openapi.yaml`, tag `content`. Errors are problem+json.
+
+| Operation | Success | Errors |
+| --- | --- | --- |
+| `GET /v1/pages/{slug}` (session optional) | 200 `PublicPage` | 404 |
+| `GET /v1/navigation` (session optional) | 200 `PublicNavigation` | |
+| `GET /v1/search` (extended) | `SearchResult` is now `CatalogSearchResult` (`api`, `operation`) or `PageSearchResult` (`page`) | unchanged |
+| `GET /v1/admin/pages` | 200 `{ items: PageSummary[] }` | 401, 403 |
+| `POST /v1/admin/pages` | 201 `PageDetail` | 400, 401, 403, 409 `page-slug-taken`, 413 |
+| `GET /v1/admin/pages/{pageId}` | 200 `PageDetail` | 401, 403, 404 |
+| `PUT /v1/admin/pages/{pageId}` (replace; `status` publishes and unpublishes) | 200 `PageDetail` | 400, 401, 403, 404, 409, 413 |
+| `DELETE /v1/admin/pages/{pageId}` | 204 | 401, 403, 404 |
+| `GET`, `PUT`, `DELETE /v1/admin/navigation` (read, replace, reset) | 200 `NavigationSettings` | 400 (`PUT`), 401, 403 |
+
+Rules for handlers:
+- Authorize before reading the body or parameters, with `requireUser(auth, request, true)`. An
+  invalid `pageId` UUID is a 404.
+- Every public and admin response here sends `Cache-Control: private, no-store`.
+- **404 parity (criterion 4).** `GET /v1/pages/{slug}` never validates the slug and throws the same
+  `notFound()` in every case. It only asks whether there is a session; it doesn't look at role, team
+  or email verification. Admins get 404 for a draft here too.
+- **Body checks.** Limits are in `PageWrite`. `title`, `seoTitle`, `description` and labels are one
+  line. Refuse U+0000 in every string, because Postgres text can't hold it and would turn it into a
+  500. `https` URLs are parsed with `new URL`: protocol `https:`, no username or password.
+- **Pointers.** Use `z.discriminatedUnion('kind', …)` so a navigation error points at
+  `/header/2/url`, not at the item. A missing page is a 400 at `/header/2/pageId`; a missing or
+  repeated built-in is a 400 at `/header`.
+- A slug collision comes from the unique index (`pgCode(error) === '23505'`), not a prior read, with
+  `errors: [{ pointer: '/slug', … }]`. Add the `page-slug-taken` title to `problem.ts`.
+
+`description` is one field: it feeds search, the meta description and `og:description`.
+
+### Data model
+One migration, generated with drizzle-kit. No data is seeded; no rows means today's portal.
+
+`pages`
+| Column | Type |
+| --- | --- |
+| `id` | uuid primary key (UUIDv7) |
+| `slug` | text, unique; check: the `Slug` pattern and 2–64 characters |
+| `title` | text not null; check: 1–120 after `btrim` |
+| `body` | text not null default `''`; check: at most 100,000 characters |
+| `description`, `seo_title`, `og_image_url` | text, null when empty |
+| `visibility` | text not null; check `public`, `signed-in` |
+| `status` | text not null default `draft`; check `draft`, `published` |
+| `created_by`, `updated_by` | uuid, references `user`, `on delete set null` |
+| `created_at`, `updated_at` | timestamptz |
+
+`navigation_settings`: `id` smallint primary key, default 1, check `id = 1`; `header` jsonb not null;
+`footer` jsonb not null; `updated_by`; `updated_at`. The arrays are stored in the request's shape.
+
+Reading navigation: no row gives `DEFAULT_NAVIGATION` with `isDefault: true`, without a session
+lookup. Otherwise parse the JSON with the request schema; if it doesn't parse, log a warning with
+`event: 'navigation-invalid'` and serve the default, as `theme.ts` does. Drop unknown built-in keys
+before parsing, so a downgrade doesn't lose the rest, and append missing ones at the end, visible.
+Load the linked pages in one query and drop links whose page is gone. The public view also drops
+hidden built-ins and pages outside `readablePages(viewer)`. Deleting a page doesn't rewrite the row.
+
+Saving upserts the row in one statement, after checking in the same transaction that every `pageId`
+exists. A page deleted between that check and the write is dropped on read, so no lock is needed.
+
+### Portal behaviour
+- **Page.** `GET /v1/pages/{slug}` through `serverClient()`, wrapped in React `cache` so
+  `generateMetadata` and the page share one call. 404 calls `notFound()`; a 5xx shows the existing
+  unavailable page. The page title is the `h1`; a `#` heading in the body becomes `h2`. In demo
+  builds call `notFound()` before any fetch.
+- **Metadata.** Title: `{ absolute: seoTitle }`, or the page title through the portal's template.
+  Description: the value, or `null`, so the root layout's default isn't inherited. `openGraph`:
+  `title` is `seoTitle` or the page title, `description` and `images` only when set, `type: article`.
+  Signed-in-only pages and previews set `robots: { index: false, follow: false }`. For a 404 return
+  only `title: 'Page not found'`, the same for every slug. The layout reads cookies, so Next already
+  answers `private, no-cache, no-store`.
+- **404.** `app/pages/[slug]/not-found.tsx` shows **Sign in** when the session state is `signed-out`
+  and it isn't a demo build. It is a plain `<a href={signInLink(pathname)}>`; `safeNext` and the sign-in form
+  already return the visitor there, and an admin with a `next` too.
+- **Markdown.** `skipHtml`, `remark-gfm`, no rehype plugins. Override `urlTransform`: parse with
+  `new URL(value, 'https://portal.invalid')`, which also normalises `java\tscript:`. Links keep
+  `http:`, `https:` and `mailto:`; images keep only absolute `https:`. For a refused URL return
+  `undefined` and let the `a` and `img` components render the text or the alt text alone, never an
+  empty `href` or `src`. Images get `loading="lazy"` and `referrerPolicy="no-referrer"`. External
+  links get `rel="noopener noreferrer"`. Tables and code blocks scroll inside their own container.
+- **Header and footer.** Only the links move. Brand, search, Sign in, Sign up and the account menu
+  stay fixed after them, on desktop and in the mobile menu. `apis` and `my-apps` keep today's label,
+  link, `aria-current` and role rule (`my-apps` only for signed-in developers). Footer links go
+  beside the existing "Powered by" line, which stays. Link URLs come from the server only; still
+  render nothing whose `href` isn't `https:` or under `/pages/`.
+- **Fallback.** Navigation load copies `fetchPublicTheme`: 1.5 s timeout, any failure gives
+  `DEFAULT_NAVIGATION`. Demo builds never fetch.
+- **Admins and criterion 1.** The admin topbar has no nav links today. Whatever the ui-designer
+  decides about the open question, a default navigation (`isDefault`) must leave it as it is, and
+  `/admin` never shows the edited links. The data is in the layout for every caller, so either
+  answer needs no API change.
+- **Confirm before unpublish or delete.** Fetch the page again when the dialog opens and list its
+  `navigation` entries (area and label). With no entries, unpublish needs no confirmation; delete
+  always does.
+- **Search row.** A page result links to `/pages/{slug}` and shows its description when it has one.
+
+### Adapter calls
+None. Nothing here reads or writes the gateway, and no reconcile job changes.
+
+### Risks and how to test them
+| Risk | Guard and test |
+| --- | --- |
+| A signed-in-only page or a draft leaks in HTML, React payload, metadata, navigation or search | One SQL condition. Integration test with unique marker strings in title, description and body; e2e fetches the raw HTML of the page, `/`, `/search` and the 404 signed out and asserts no marker. |
+| The 404 reveals that a page exists | Compare the two API 404s field by field, and the two HTML 404s after removing the slug. |
+| Script runs from Markdown | Renderer unit tests over a payload table: raw tags (block and inline), attributes, entity-encoded, mixed-case and whitespace-split schemes, reference links, autolinks, image URLs. e2e asserts no dialog, `<script>` or `<iframe>` inside the article, in preview and published. |
+| The default portal changes | Header, footer and sidebar tests for visitor, developer and admin with `DEFAULT_NAVIGATION`; the upgrade smoke test; existing e2e unchanged. |
+| Server slow or down takes the header down | Fallback unit test: timeout, 500, malformed JSON. |
+| Two admins save at once | Last save wins, one statement. Concurrent `PUT` test: the result is one of the two bodies, never a mix. |
+| A pathological body (deep nesting) fails to render | It breaks only that page, behind `error.tsx`; the admin area shows source, so it can be fixed. Not guarded further. |
+| `htmlLimitedBots` delays first byte on pages with slow metadata | Catalog, product and page metadata share a cached call with the page, so nothing new blocks. |
+| `SearchResult` becoming a union breaks callers | TypeScript finds them: `search-result-row.tsx`, `search-results.tsx`, `packages/sdk/src/search.ts`. |
 
 ### Tasks
-- [ ] [backend] …
-- [ ] [frontend] …
-- [ ] [qa] …
+- [ ] [backend] Add `pages` and `navigation_settings` to the Drizzle schema with the checks above and
+  generate one migration. Upgrade from the previous release leaves both empty.
+- [ ] [backend] Regenerate `packages/sdk` types, export `DEFAULT_NAVIGATION`, and extend
+  `searchCatalog` with the optional `pages` argument (title and description; scores as documented).
+  Unit tests, including unchanged results without pages.
+- [ ] [backend] Build `pages.ts`: `readablePages`, the public read and the admin CRUD, with the body
+  checks, pointers, `page-slug-taken`, 404 parity and cache headers. Integration tests for criteria
+  2, 3, 4 and 9, including 401 and 403 on every admin route with nothing changed.
+- [ ] [backend] Build `navigation.ts`: per-caller resolution, save, reset, unknown and missing
+  built-ins, invalid stored JSON. Integration tests for criteria 7, 8 and 9 and for concurrent saves.
+- [ ] [backend] Add pages to `GET /v1/search` through `readablePages`. Integration test for
+  criterion 5 signed out, as a developer and as an admin, and that bodies aren't matched.
+- [ ] [frontend] Add `react-markdown` and `remark-gfm` and build `markdown-body.tsx` with the URL
+  rules. Unit tests with the payload table (criterion 6).
+- [ ] [frontend] Build `/pages/[slug]` with metadata, its 404 with Sign in, its error page, and
+  `/page-preview/[pageId]` (not 200 from the admin API gives the 404). Set `htmlLimitedBots`. Tests
+  for criteria 4 and 10, including that empty fields leave the tags out.
+- [ ] [frontend] Load navigation in the root layout and render the header, mobile menu and footer
+  links, with the fallback and demo behaviour. Tests that the default matches today's markup for
+  visitor, developer and admin (criterion 1) and for criterion 7's order.
+- [ ] [frontend] Build Admin → Pages: list, create, edit, preview link, publish, unpublish, delete,
+  the confirmations that name header and footer links, and field errors by pointer that keep what
+  was typed (criteria 2, 3, 8, 9). Add the sidebar entry.
+- [ ] [frontend] Build Admin → Navigation: add page and external links, hide built-ins, reorder by
+  keyboard as well as pointer, remove, save, Reset to default, field errors by pointer (criteria 7,
+  8, 9). Add the sidebar entry.
+- [ ] [frontend] Show page results in search, with copy that covers APIs, endpoints and pages
+  (criterion 5).
+- [ ] [frontend] Add a short admin guide in `docs/guides/` on pages, visibility and navigation.
+- [ ] [qa] End-to-end tests for criteria 1–10 against the compose stack, with the leak, 404 parity
+  and script checks from the risk table, and the raw-HTML metadata check with a plain user agent.
+- [ ] [qa] Run the upgrade smoke test and the quickstart under five minutes with no pages and no
+  saved navigation, and the demo e2e (criterion 1).
 
 ## UX  _(ui-designer)_
 Summary + link to `docs/design/014-*.md`
