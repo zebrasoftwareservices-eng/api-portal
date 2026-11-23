@@ -13,9 +13,14 @@ linear: JSO-242
 Portal admins write and publish Markdown pages (guides, about, terms), choose who can read each
 one, and edit the header and footer links, all from the admin UI and without a developer.
 
-JSO-242 asks for more than one pull request can hold. This spec is the first of two. Articles and
-landing page sections move to a follow-up spec that builds on this one (see Out of scope and the
-first open question).
+JSO-242 asks for more than one pull request can hold, so it is split in two (Elango, 2026-11-23).
+This spec ships pages and navigation. Spec 028 (`articles-landing-page`), built after this one,
+ships articles, landing page sections and image uploads.
+
+**Merging this spec closes JSO-242.** Its remaining scope is carried by spec 028, not by JSO-242.
+JSO-242's "Done when" is only partly met here: the guide, the reordered navigation and the hidden
+signed-in-only page ship now; publishing a landing page and an article waits for spec 028. Spec 028
+has no Linear feature issue yet and needs one before work on it starts.
 
 ## Problem
 A company that installs the portal can brand it (spec 013) but can't add its own words. A getting
@@ -88,13 +93,13 @@ developers, and reorder the navigation, with each change live without a rebuild 
     marked `noindex` and can't be stored by a shared cache.
 
 ## Out of scope
-**Follow-up spec, after this one** (number not reserved; needs its own Linear issue):
+**Moved to spec 028** (reserved in `docs/roadmap.md`, Needs 014; no Linear feature issue yet):
 - **Articles**: tags (news, release notes, events), drafts, publishing and article lists.
 - **Landing page sections**: hero, features, featured products and latest articles. The latest
   articles section needs articles, so the two ship together. Until then the home page is unchanged.
+- **Uploading images.** Here, page images and the Open Graph image are `https` URLs.
 
 **Not in this spec:**
-- **Uploading images.** Page images and the Open Graph image are `https` URLs (see Open questions).
 - **A visual (WYSIWYG) editor, raw HTML, embeds, scripts and custom components.** Markdown with
   preview proves the value, and spec 013 ruled out script injection.
 - **Visibility by team, product or role.** Public or signed-in only. Spec 015 owns a fully private
@@ -105,23 +110,21 @@ developers, and reorder the navigation, with each change live without a rebuild 
 - **Nested menus, icons, and a page tree or guide sidebar.** Header and footer are flat lists.
 - **Changing the admin sidebar** beyond adding entries for Pages and Navigation. Spec 024 owns it.
 - **Search inside page bodies.** Search matches titles and descriptions, like spec 020's fields.
-- **Pages in `/llms.txt` and Markdown versions of pages** (see Open questions). No page appears in
-  agent output in this spec, so a signed-in-only page can't leak there.
+- **Pages in `/llms.txt` and Markdown versions of pages.** A small follow-up, number not reserved.
+  No page appears in agent output in this spec, so a signed-in-only page can't leak there.
 - **A sitemap, translations, comments, and importing pages from Git.**
 - **Content in the static Vercel demo** (spec 002). It has no backend and keeps its header.
 
 ## Open questions
-- [ ] Is the split right: pages and navigation here, then articles and landing page sections in the
-  next spec? Recommended, because all five areas of JSO-242 don't fit one pull request. If yes,
-  merging this spec closes JSO-242, the Sprint 6 demo and JSO-242's "Done when" (landing page and
-  article) are met only after the follow-up, and the roadmap needs a row for it. — Elango
-- [ ] Should admins upload images instead of pasting an `https` URL? Recommended: URLs only here,
-  uploads with the follow-up spec. — Elango
-- [ ] Should published public pages also appear in `/llms.txt` with a Markdown version? Spec 021
-  left them to this spec. Recommended: a small follow-up, to keep this one pull request. — Elango
-- [ ] Should a signed-out visitor who opens a signed-in-only page get a 404 with **Sign in**
-  (criterion 4), or go straight to sign-in? Recommended: the 404, so the page's existence stays
-  hidden. — Elango
+- [x] Is the split right: pages and navigation here, then articles and landing page sections in the
+  next spec? **Decided (Elango, 2026-11-23): yes.** Spec 028 carries the rest. Merging this spec
+  closes JSO-242, and the Sprint 6 demo in `docs/roadmap.md` loses its landing page and article.
+- [x] Should admins upload images instead of pasting an `https` URL? **Decided (Elango,
+  2026-11-23): `https` URLs only here.** Uploads go with spec 028.
+- [x] Should published public pages also appear in `/llms.txt` with a Markdown version? **Decided
+  (Elango, 2026-11-23): later, in a small follow-up.** Not in this spec.
+- [x] Should a signed-out visitor who opens a signed-in-only page get a 404 with **Sign in**, or go
+  straight to sign-in? **Decided (Elango, 2026-11-23): the 404 with Sign in**, as criterion 4 says.
 - [ ] Do signed-in admins, who have spec 024's sidebar, also see the edited header and footer links
   on public pages? Recommended: yes on public pages, no in the admin area. — ui-designer
 

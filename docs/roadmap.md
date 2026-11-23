@@ -1,6 +1,6 @@
 # Roadmap — sprint plan
 
-Last updated: 2026-11-08 · Owner: Elango · Linear project: **API Portal** (one milestone per sprint)
+Last updated: 2026-11-23 · Owner: Elango · Linear project: **API Portal** (one milestone per sprint)
 
 ## What this plan rests on
 
@@ -57,14 +57,18 @@ node scripts/factory.mjs next
 | 5      | 020  | api-search                           | pending | —                                      | Search across APIs and endpoints                                                 |
 | 5      | 021  | agent-ready-docs                     | pending | 012                                    | Agent-ready docs: Markdown pages, llms.txt, spec downloads and code samples      |
 | 6      | 013  | theme-editor                         | JSO-241 | —                                      | Theme editor: logo, colours, fonts and custom CSS                                |
-| 6      | 014  | pages-articles-navigation            | JSO-242 | —                                      | Pages, articles and navigation managed in the admin UI                           |
+| 6      | 014  | pages-articles-navigation            | JSO-242 | —                                      | Pages and navigation managed in the admin UI                                     |
 | 7      | 015  | portal-governance                    | JSO-243 | 009                                    | Portal governance: staff roles, registration approval, private portal, audit log |
 | 7      | 016  | production-install-helm              | JSO-244 | —                                      | Production install: hardened compose, Helm chart, backups and upgrades           |
+| 7      | 028  | articles-landing-page                | pending | 014; Elango: create its Linear issue   | Articles, landing page sections and image uploads (Linear issue does not exist yet) |
 | 8      | 017  | aws-api-gateway-adapter              | JSO-245 | 005, 009                               | AWS API Gateway adapter: API keys and usage plans                                |
 | 8      | 018  | oauth-client-credentials             | JSO-246 | 009                                    | OAuth 2.0 client credentials through an external identity provider               |
 
 Specs 020 and 021 were split out of 012 on 2026-11-08. Their Linear feature issues are pending (the Linear workspace
 is at its free issue limit); put the key in the Linear column once each issue exists, and `start` works as usual.
+
+Spec 028 was split out of 014 on 2026-11-23 (Elango). Its Linear feature issue does not exist yet: create it and put
+the key in the Linear column before starting it. Merging 014 closes JSO-242; 028 carries the rest of its scope.
 
 Already shipped: **v0.1** — spec 001 (Kong quickstart) and spec 002 (static demo mode on Vercel).
 
@@ -187,20 +191,22 @@ downloads), split out of 012. Start them when 011 and 012 reach testing; whateve
 
 ## Sprint 6 · v0.7 — Branding and content · 14–18 Dec
 
-**Goal:** a company makes the portal its own without code.
+**Goal:** a company brands the portal and publishes its own pages and navigation without code.
 **Features:** 013 (JSO-241) · 014 (JSO-242).
+**Split (2026-11-23):** 014 is pages and navigation. Articles, landing page sections and image uploads moved to
+028 in Sprint 7, so this sprint's goal and demo no longer include a landing page or an article.
 
 **Demo on Friday**
 
 1. Change logo, colours and font: the live portal updates without a rebuild; broken CSS can't lock out admins.
-2. Publish a landing page, a guide and an article; reorder the navigation.
+2. Publish a guide; reorder the navigation.
 3. A signed-in-only page is hidden from visitors and from search.
 
-| Role                     | 013 Theme editor           | 014 Pages, articles, navigation       |
+| Role                     | 013 Theme editor           | 014 Pages and navigation              |
 | ------------------------ | -------------------------- | ------------------------------------- |
 | Product manager (Claude) | Theme settings             | Content flows and visibility          |
 | Tech lead (Claude)       | Theme model, safe mode     | Content model, Markdown sanitising    |
-| UI designer (Claude)     | Editor and preview         | Editors, landing sections, nav editor |
+| UI designer (Claude)     | Editor and preview         | Page editor, nav editor               |
 | Backend (Codex)          | Theme API, export/import   | Content API, SEO metadata             |
 | Frontend (Codex)         | Editor, token injection    | Editors, public rendering             |
 | QA (Codex)               | Visual and contrast checks | Visibility and sanitising tests       |
@@ -211,12 +217,14 @@ downloads), split out of 012. Start them when 011 and 012 reach testing; whateve
 
 **Goal:** companies can govern the portal and run it in production.
 **Features:** 015 (JSO-243) · 016 (JSO-244).
+**Extra feature:** 028 (Linear issue not created yet), the second half of 014, started once 014 is done.
 
 **Demo on Friday**
 
 1. A product owner edits only their products; with approval on, sign-ups wait; the audit log shows key revokes.
 2. Install on a clean Linux VM from the guide in under 30 minutes; upgrade from v0.7 keeps data.
 3. Helm chart passes the CI smoke test.
+4. Publish a landing page and an article from the admin UI (028).
 
 | Role                     | 015 Portal governance                 | 016 Production install                      |
 | ------------------------ | ------------------------------------- | ------------------------------------------- |
@@ -275,6 +283,7 @@ Billing and paid plans · multi-tenant hosting · a hosted SaaS · a built-in fo
 | Approval of access requests, catalog visibility levels               | Sprint 4       |
 | Usage meter, admin insights, time to first API call                  | Sprint 5       |
 | Versions, changelog, code samples, search, llms.txt                  | Sprint 5       |
-| Theme, custom CSS, pages, articles, navigation                       | Sprint 6       |
+| Theme, custom CSS, pages, navigation                                 | Sprint 6       |
+| Articles, landing page sections, image uploads                       | Sprint 7       |
 | Staff roles, registration approval, private portal, audit log        | Sprint 7       |
 | Several gateways in one catalog, OAuth 2.0 credentials               | Sprint 8       |
