@@ -1,7 +1,7 @@
 ---
 id: 014
 title: Pages and navigation managed in the admin UI
-status: draft   # draft → ready → designed → building → testing → uat → review → approved → done
+status: ready   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-23
 linear: JSO-242
