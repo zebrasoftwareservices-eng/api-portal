@@ -331,7 +331,7 @@ Frontend renders pages with `react-markdown` and `remark-gfm` (`skipHtml`, no re
 A pre-upgrade restore drops public relations and foreign keys that the dump does not contain before `pg_restore --clean`. `pages` and `navigation_settings` go away with the foreign keys that blocked `user_pkey`, and the rows from the dump are loaded again. `@portal/db` lint, typecheck and 14 tests passed. QA should rerun `node deploy/upgrade-smoke.mjs`; this change was not run through the upgrade smoke.
 
 ## Test report  _(qa-tester)_
-Commit tested: `a1e044b` plus the test edits in this commit · Portal: http://localhost:3012 (API http://127.0.0.1:4012, Kong proxy http://localhost:18012). The worktree stack is still up.
+Commit tested: `3a067b8` · Portal: http://localhost:3012 (API http://127.0.0.1:4012, Kong proxy http://localhost:18012). The worktree stack is still up.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
