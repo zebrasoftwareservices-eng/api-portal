@@ -329,7 +329,7 @@ Backend added `pages` and `navigation_settings` in migration `0013_flashy_excali
 Frontend renders pages with `react-markdown` and `remark-gfm` (`skipHtml`, no rehype). Links keep `http`, `https`, `mailto` and same-portal paths; images keep absolute `https` with no credentials. `htmlLimitedBots` is `/.*/`. The root layout loads navigation with a 1.5s timeout and falls back to the default. A demo build does not fetch it, and `isDefault` keeps today's header markup, the Powered-by footer line, and the admin top bar. Existing CSS already hides `.desktop-nav` below 1024px, so that breakpoint was not changed and the design's gap under 1024px is empty. Admin page and navigation calls use `quietApi` so a 401 or 403 does not wipe the form. Saved header links show to admins only outside `/admin`, from 1024px, and never include My apps. `@portal/portal` lint, typecheck and 475 tests passed. `docs/guides/pages.md` and the `pnpm-lock.yaml` entries for `react-markdown` and `remark-gfm` are in the worktree. The frontend guard does not allow those two paths, so they are not in this commit. CI uses a frozen lockfile and will fail until a role that owns the lockfile commits it.
 
 ## Test report  _(qa-tester)_
-Commit tested: `ff72c5f` plus the uncommitted QA tests in this report's commit · Portal: http://localhost:3012 (API http://127.0.0.1:4012, Kong proxy http://localhost:18012). The worktree stack is still up.
+Commit tested: `93b689a` (QA tests on `ff72c5f`; suites ran on that tree) · Portal: http://localhost:3012 (API http://127.0.0.1:4012, Kong proxy http://localhost:18012). The worktree stack is still up.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
