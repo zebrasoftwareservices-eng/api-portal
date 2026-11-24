@@ -286,3 +286,17 @@ test('019 AC10: demo catalog and API never check app access', async ({
   }
   expect(appRequests).toEqual([]);
 });
+
+test('014 AC1: demo keeps today\'s header and does not serve a managed page', async ({ page }) => {
+  await page.goto('/');
+  await expect(
+    page.getByRole('navigation', { name: 'Main navigation', exact: true }).getByRole('link'),
+  ).toHaveText(['APIs', 'Run the quickstart']);
+  await expect(page.locator('footer').getByRole('navigation')).toHaveCount(0);
+  await expect(page.locator('footer')).toContainText('Powered by Developer Portal');
+  const response = await page.goto('/pages/getting-started');
+  expect(response?.status()).toBe(404);
+  await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Sign in', exact: true })).toHaveCount(0);
+  expect((await page.request.get('/api/v1/pages/getting-started')).status()).toBe(404);
+});

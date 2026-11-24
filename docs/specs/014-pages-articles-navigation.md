@@ -1,7 +1,7 @@
 ---
 id: 014
 title: Pages and navigation managed in the admin UI
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-23
 linear: JSO-242
@@ -297,11 +297,12 @@ None. Nothing here reads or writes the gateway, and no reconcile job changes.
 - [x] [frontend] Show page results in search, with copy that covers APIs, endpoints and pages
   (criterion 5).
 - [x] [frontend] Add a short admin guide in `docs/guides/` on pages, visibility and navigation.
-- [ ] [qa] End-to-end tests for criteria 1–10 against the compose stack, with the leak, 404 parity
+- [x] [qa] End-to-end tests for criteria 1–10 against the compose stack, with the leak, 404 parity
   and script checks from the risk table, and the raw-HTML metadata check with a plain user agent.
-- [ ] [qa] Run the upgrade smoke test and the quickstart under five minutes with no pages and no
+- [x] [qa] Run the upgrade smoke test and the quickstart under five minutes with no pages and no
   saved navigation, and the demo e2e (criterion 1).
-
+- [ ] [frontend] Fix: Unknown and hidden API pages return HTTP 200
+- [ ] [backend] Fix: Pre-upgrade restore cannot drop user_pkey
 ## UX  _(ui-designer)_
 Full design: [`docs/design/014-pages-articles-navigation.md`](../design/014-pages-articles-navigation.md).
 One new token: `--portal-prose-max-width`.
@@ -328,17 +329,28 @@ Backend added `pages` and `navigation_settings` in migration `0013_flashy_excali
 Frontend renders pages with `react-markdown` and `remark-gfm` (`skipHtml`, no rehype). Links keep `http`, `https`, `mailto` and same-portal paths; images keep absolute `https` with no credentials. `htmlLimitedBots` is `/.*/`. The root layout loads navigation with a 1.5s timeout and falls back to the default. A demo build does not fetch it, and `isDefault` keeps today's header markup, the Powered-by footer line, and the admin top bar. Existing CSS already hides `.desktop-nav` below 1024px, so that breakpoint was not changed and the design's gap under 1024px is empty. Admin page and navigation calls use `quietApi` so a 401 or 403 does not wipe the form. Saved header links show to admins only outside `/admin`, from 1024px, and never include My apps. `@portal/portal` lint, typecheck and 475 tests passed. `docs/guides/pages.md` and the `pnpm-lock.yaml` entries for `react-markdown` and `remark-gfm` are in the worktree. The frontend guard does not allow those two paths, so they are not in this commit. CI uses a frozen lockfile and will fail until a role that owns the lockfile commits it.
 
 ## Test report  _(qa-tester)_
-Commit tested: `<sha>` · Portal: `<url from worktree-compose env>`
+Commit tested: `ff72c5f` plus the uncommitted QA tests in this report's commit · Portal: http://localhost:3012 (API http://127.0.0.1:4012, Kong proxy http://localhost:18012). The worktree stack is still up.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
+| 1 | `apps/portal/e2e/pages-navigation.test.ts`, `apps/portal/components/header.test.tsx`, `deploy/e2e-demo/demo.test.ts`, `packages/db/src/pages-migration.test.ts` | pass |
+| 2 | `pages-navigation.test.ts`, `apps/server/src/content.test.ts`, `apps/portal/components/admin-pages.test.tsx` | pass |
+| 3 | `pages-navigation.test.ts`, `content.test.ts` | pass |
+| 4 | `pages-navigation.test.ts`, `content.test.ts`, `apps/portal/lib/page-metadata.test.ts` | pass |
+| 5 | `pages-navigation.test.ts`, `content.test.ts` | pass |
+| 6 | `pages-navigation.test.ts`, `apps/portal/components/markdown-body.test.tsx` | pass |
+| 7 | `pages-navigation.test.ts`, `content.test.ts`, `header-navigation.test.tsx`, `admin-navigation.test.tsx` | pass |
+| 8 | `pages-navigation.test.ts`, `content.test.ts`, `admin-pages.test.tsx` | pass |
+| 9 | `pages-navigation.test.ts`, `content.test.ts` | pass |
+| 10 | `pages-navigation.test.ts`, `page-metadata.test.ts` | pass |
 
-Long notes go in `docs/specs/log/014.md`, not here.
+Lint 8/8 and typecheck 14/14 passed. `pnpm test` failed one existing Kong revocation assertion (expected 401, got 200); `admin-revocation.test.ts` then passed 6/6 on its own. `pnpm test:e2e` was 108 passed, 2 skipped, 22 failed. Criteria 2–10 passed in that run. AC1 failed there because the catalog section heading is also "APIs"; the locator now uses the level-1 title in `#main`, and that file then passed 5/5. Quickstart reached `/setup` in 19.9s with an empty catalog. `pnpm test:e2e:demo` passed `014 AC1`. Upgrade smoke failed on the pre-upgrade restore (major below). No open bugs were on the board before this run.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] …
+- [ ] Unknown and hidden API pages return HTTP 200 (major)
+- [ ] Pre-upgrade restore cannot drop user_pkey (major)
 
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
@@ -360,3 +372,15 @@ return the spec to building. Earlier rounds go in `docs/specs/log/014.md`.
 - [ ] API contract, README and docs updated
 - [ ] Tech-lead review has no blocking findings
 - [ ] Elango merged the PR
+
+### Deferred Linear
+- **Bug** — Bug: Unknown and hidden API pages return HTTP 200 (major)
+  - parent: JSO-242
+  - priority: high
+  - create when the Linear limit allows
+  - body: On the worktree portal http://localhost:3012, GET /apis/nope returns HTTP 200 with title Developer Portal. The HTML is the apis/loading.tsx skeleton plus NEXT_HTTP_ERROR_FALLBACK;404. The API GET /api/v1/apis/nope is 404. The same 200 happens for a hidden API page whose API returns 404 (access-4e9aa4d2-a05e-4423-a74e-d3c6810a55f2); the slug appears only as the requested route. Playwright backlog-regressions JSO-223 and access-requests visibility checks both expected 404 and received 200. /pages/does-not-exist and /products/nope still return 404. This branch adds htmlLimitedBots: /.*/ and an async root layout that loads navigation, so the API route flushes loading.tsx before notFound().
+- **Bug** — Bug: Pre-upgrade restore cannot drop user_pkey (major)
+  - parent: JSO-242
+  - priority: high
+  - create when the Linear limit allows
+  - body: node deploy/upgrade-smoke.mjs failed while restoring the pre-upgrade dump onto the upgraded database. pg_restore --clean stopped with: cannot drop constraint user_pkey on table public.user because navigation_settings_updated_by_user_id_fk, pages_created_by_user_id_fk and pages_updated_by_user_id_fk depend on it. The candidate server had already become healthy and written a post-upgrade dump. The baseline was merge-base 650c9ae. The script then removed the api-portal stack. Forward quickstart on an empty database reached /setup in 19.9s.

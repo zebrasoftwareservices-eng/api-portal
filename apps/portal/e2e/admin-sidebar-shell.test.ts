@@ -48,6 +48,8 @@ test('024 AC 1–3, 6, 9–10: admin shell navigation and invalid account limits
     'Mail',
     'Accounts',
     'Theme',
+    'Pages',
+    'Navigation',
   ]);
   await expect(sidebar.getByRole('link', { name: 'Gateways' })).toHaveAttribute(
     'aria-current',
