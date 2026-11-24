@@ -149,6 +149,8 @@ test('JSO-223 JSO-228 unknown API returns HTTP 404 and default title', async ({
   page,
 }) => {
   const response = await page.goto('/apis/nope');
-  expect.soft(response!.status()).toBe(404);
+  expect(response!.status()).toBe(404);
   await expect(page).toHaveTitle('Developer Portal');
+  await expect(page.getByRole('heading', { name: 'Page not found', exact: true })).toBeVisible();
+  expect(await response!.text()).not.toContain('api-index-skeleton');
 });

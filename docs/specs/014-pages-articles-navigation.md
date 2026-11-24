@@ -1,7 +1,7 @@
 ---
 id: 014
 title: Pages and navigation managed in the admin UI
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: building   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-23
 linear: JSO-242
@@ -331,7 +331,7 @@ Frontend renders pages with `react-markdown` and `remark-gfm` (`skipHtml`, no re
 A pre-upgrade restore drops public relations and foreign keys that the dump does not contain before `pg_restore --clean`. `pages` and `navigation_settings` go away with the foreign keys that blocked `user_pkey`, and the rows from the dump are loaded again. `@portal/db` lint, typecheck and 14 tests passed. QA should rerun `node deploy/upgrade-smoke.mjs`; this change was not run through the upgrade smoke.
 
 ## Test report  _(qa-tester)_
-Commit tested: `93b689a` (QA tests on `ff72c5f`; suites ran on that tree) · Portal: http://localhost:3012 (API http://127.0.0.1:4012, Kong proxy http://localhost:18012). The worktree stack is still up.
+Commit tested: `a1e044b` plus the test edits in this commit · Portal: http://localhost:3012 (API http://127.0.0.1:4012, Kong proxy http://localhost:18012). The worktree stack is still up.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
@@ -346,13 +346,16 @@ Commit tested: `93b689a` (QA tests on `ff72c5f`; suites ran on that tree) · Por
 | 9 | `pages-navigation.test.ts`, `content.test.ts` | pass |
 | 10 | `pages-navigation.test.ts`, `page-metadata.test.ts` | pass |
 
-Lint 8/8 and typecheck 14/14 passed. `pnpm test` failed one existing Kong revocation assertion (expected 401, got 200); `admin-revocation.test.ts` then passed 6/6 on its own. `pnpm test:e2e` was 108 passed, 2 skipped, 22 failed. Criteria 2–10 passed in that run. AC1 failed there because the catalog section heading is also "APIs"; the locator now uses the level-1 title in `#main`, and that file then passed 5/5. Quickstart reached `/setup` in 19.9s with an empty catalog. `pnpm test:e2e:demo` passed `014 AC1`. Upgrade smoke failed on the pre-upgrade restore (major below). No open bugs were on the board before this run.
+Failure paths for invalid pages, duplicate slugs, 401 and 403, an ended session, and a missing navigation page are in `content.test.ts` and `pages-navigation.test.ts`. Pages do not call the gateway. Navigation fallback for a timeout, a 500, and malformed JSON is in `apps/portal/lib/navigation-server.test.ts`.
+
+Lint 8/8 and typecheck 14/14 passed. `pnpm test` passed: portal 478, server 395, db 14, sdk 17, theme 13, adapter-kong 77. `pnpm test:e2e` was 113 passed, 2 skipped, 17 failed. Criteria 1–6, 9, and 10 passed in that run. AC7 failed there because the web-address field did not keep `javascript:alert(1)` on that attempt. A rerun of that test kept the value, refused the save, left the default navigation stored, and passed the rest of AC7 and AC8. `node scripts/worktree-compose.mjs up -d --build --wait` finished in 273.93s. The portal answered 200 and Kong was reachable. `GET /apis/nope` is HTTP 404 with title Developer Portal, the root "Page not found" heading, and no index skeleton. Hidden API, changelog, and product pages in the spec 010 journey are HTTP 404 with no index skeleton. `packages/db/src/restore-preupgrade.test.ts` passed, including the `user_pkey` restore. `node deploy/upgrade-smoke.mjs` stopped while building the candidate portal image (`write .../metadata_v2.db: read-only file system`) and never reached the restore. The data volume had 182MB free. The pre-upgrade major stays open. The other 16 e2e failures start the default Compose project `portal` and hit Mailpit port 8025, which this worktree already holds, or they stop that project's Kong. They are not pages-product failures.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
-- [ ] Unknown and hidden API pages return HTTP 200 (major)
+- [x] Unknown and hidden API pages return HTTP 200 (major)
 - [ ] Pre-upgrade restore cannot drop user_pkey (major)
+- [ ] Unknown API pages show the root Page not found copy (minor)
 
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |

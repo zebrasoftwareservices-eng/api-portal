@@ -376,7 +376,9 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
     ]) {
       const response = await anonymous.get(path);
       expect.soft(response.status(), `${visibility}: ${path}`).toBe(404);
-      expect.soft(await response.text()).toContain('Page not found');
+      const html = await response.text();
+      expect.soft(html, path).toContain('Page not found');
+      expect.soft(html, path).not.toContain('api-index-skeleton');
     }
   }
   for (const path of [
@@ -384,7 +386,9 @@ test('010 AC1–13: approval, outage, unchanged plan key, Manual assignment and 
     `/apis/unknown-${slug}`,
     `/apis/unknown-${slug}/changelog`,
   ]) {
-    expect.soft((await anonymous.get(path)).status(), path).toBe(404);
+    const response = await anonymous.get(path);
+    expect.soft(response.status(), path).toBe(404);
+    expect.soft(await response.text(), path).not.toContain('api-index-skeleton');
   }
   for (const path of [
     `/products/${slug}`,
