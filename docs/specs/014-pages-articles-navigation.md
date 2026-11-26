@@ -1,7 +1,7 @@
 ---
 id: 014
 title: Pages and navigation managed in the admin UI
-status: testing   # draft → ready → designed → building → testing → uat → review → approved → done
+status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-23
 linear: JSO-242
@@ -331,7 +331,7 @@ Frontend renders pages with `react-markdown` and `remark-gfm` (`skipHtml`, no re
 A pre-upgrade restore drops public relations and foreign keys that the dump does not contain before `pg_restore --clean`. `pages` and `navigation_settings` go away with the foreign keys that blocked `user_pkey`, and the rows from the dump are loaded again. `@portal/db` lint, typecheck and 14 tests passed. QA should rerun `node deploy/upgrade-smoke.mjs`; this change was not run through the upgrade smoke.
 
 ## Test report  _(qa-tester)_
-Commit tested: `3a067b8` · Portal: http://localhost:3012 (API http://127.0.0.1:4012, Kong proxy http://localhost:18012). The worktree stack is still up.
+Commit tested: `c01946a` · Portal: http://localhost:3012 (API http://127.0.0.1:4012, Kong proxy http://localhost:18012, Kong admin http://127.0.0.1:19012). The running images were built from `9c7119f`. The worktree stack is still up. `GET /api/v1/health` is ok and Kong 3.9.5 is reachable.
 
 | Criterion | Test file | Result |
 | --- | --- | --- |
@@ -341,20 +341,20 @@ Commit tested: `3a067b8` · Portal: http://localhost:3012 (API http://127.0.0.1:
 | 4 | `pages-navigation.test.ts`, `content.test.ts`, `apps/portal/lib/page-metadata.test.ts` | pass |
 | 5 | `pages-navigation.test.ts`, `content.test.ts` | pass |
 | 6 | `pages-navigation.test.ts`, `apps/portal/components/markdown-body.test.tsx` | pass |
-| 7 | `pages-navigation.test.ts`, `content.test.ts`, `header-navigation.test.tsx`, `admin-navigation.test.tsx` | pass |
+| 7 | `pages-navigation.test.ts`, `content.test.ts`, `apps/portal/components/header-navigation.test.tsx`, `apps/portal/components/admin-navigation.test.tsx` | pass |
 | 8 | `pages-navigation.test.ts`, `content.test.ts`, `admin-pages.test.tsx` | pass |
-| 9 | `pages-navigation.test.ts`, `content.test.ts` | pass |
+| 9 | `pages-navigation.test.ts`, `content.test.ts`, `admin-navigation.test.tsx` | pass |
 | 10 | `pages-navigation.test.ts`, `page-metadata.test.ts` | pass |
 
-Failure paths for invalid pages, duplicate slugs, 401 and 403, an ended session, and a missing navigation page are in `content.test.ts` and `pages-navigation.test.ts`. Pages do not call the gateway. Navigation fallback for a timeout, a 500, and malformed JSON is in `apps/portal/lib/navigation-server.test.ts`.
+Failure paths for invalid pages, duplicate slugs, 401 and 403, and a missing navigation page stay in `content.test.ts` and `pages-navigation.test.ts`. `content.test.ts` also covers a repeated save, a missing delete, a concurrent slug race, and an unsigned session. A `javascript:` address stays in the form and is not saved (`admin-navigation.test.tsx` and the AC7 browser test). An ended session returns 401 for page and navigation writes in the AC9 browser test. Pages do not call the gateway, so a gateway-unreachable path does not apply. Navigation fallback for a timeout, a 500, and malformed JSON is in `apps/portal/lib/navigation-server.test.ts`.
 
-Lint 8/8 and typecheck 14/14 passed. `pnpm test` passed: portal 478, server 395, db 14, sdk 17, theme 13, adapter-kong 77. `pnpm test:e2e` was 113 passed, 2 skipped, 17 failed. Criteria 1–6, 9, and 10 passed in that run. AC7 failed there because the web-address field did not keep `javascript:alert(1)` on that attempt. A rerun of that test kept the value, refused the save, left the default navigation stored, and passed the rest of AC7 and AC8. `node scripts/worktree-compose.mjs up -d --build --wait` finished in 273.93s. The portal answered 200 and Kong was reachable. `GET /apis/nope` is HTTP 404 with title Developer Portal, the root "Page not found" heading, and no index skeleton. Hidden API, changelog, and product pages in the spec 010 journey are HTTP 404 with no index skeleton. `packages/db/src/restore-preupgrade.test.ts` passed, including the `user_pkey` restore. `node deploy/upgrade-smoke.mjs` stopped while building the candidate portal image (`write .../metadata_v2.db: read-only file system`) and never reached the restore. The data volume had 182MB free. The pre-upgrade major stays open. The other 16 e2e failures start the default Compose project `portal` and hit Mailpit port 8025, which this worktree already holds, or they stop that project's Kong. They are not pages-product failures.
+Lint 8/8 and typecheck 14/14 passed. `pnpm test` passed: portal 479, server 396, db 14, sdk 17, theme 13, adapter-kong 77. `pnpm test:e2e` was 105 passed, 2 skipped, 25 failed. All five `pages-navigation.test.ts` journeys passed, covering criteria 1–10. `node scripts/worktree-compose.mjs up -d --build --wait` finished in 118.76s. `node deploy/upgrade-smoke.mjs` passed, including backup, restore, and rollback, and `packages/db/src/restore-preupgrade.test.ts` passed inside `pnpm test`, so the pre-upgrade major is closed. `GET /apis/nope` is HTTP 404 with title Developer Portal, the root "Page not found" heading, no "API not found" copy, and no index skeleton. That minor stays open and has no Fix task. `pnpm test:e2e:demo` was not part of this pass. The other 25 browser failures are outside this spec: setup tests bind Mailpit on 127.0.0.1:8025, which this worktree already holds; gateway, search, products, versions, agent docs, and later journey cases hit Kong admin on 127.0.0.1:19012 after a gateway test left Kong down, or they call the default API port 4000. Account security still looks for a navigation named "Admin section"; the live shell is "Admin" and criterion 1 passed. None of these is a new pages blocker or major.
 
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
 - [x] Unknown and hidden API pages return HTTP 200 (major)
-- [ ] Pre-upgrade restore cannot drop user_pkey (major)
+- [x] Pre-upgrade restore cannot drop user_pkey (major)
 - [ ] Unknown API pages show the root Page not found copy (minor)
 
 ## User testing  _(user-tester)_
