@@ -350,6 +350,27 @@ Failure paths for invalid pages, duplicate slugs, 401 and 403, and a missing nav
 
 Lint 8/8 and typecheck 14/14 passed. `pnpm test` passed: portal 479, server 396, db 14, sdk 17, theme 13, adapter-kong 77. `pnpm test:e2e` was 105 passed, 2 skipped, 25 failed. All five `pages-navigation.test.ts` journeys passed, covering criteria 1–10. `node scripts/worktree-compose.mjs up -d --build --wait` finished in 118.76s. `node deploy/upgrade-smoke.mjs` passed, including backup, restore, and rollback, and `packages/db/src/restore-preupgrade.test.ts` passed inside `pnpm test`, so the pre-upgrade major is closed. `GET /apis/nope` is HTTP 404 with title Developer Portal, the root "Page not found" heading, no "API not found" copy, and no index skeleton. That minor stays open and has no Fix task. `pnpm test:e2e:demo` was not part of this pass. The other 25 browser failures are outside this spec: setup tests bind Mailpit on 127.0.0.1:8025, which this worktree already holds; gateway, search, products, versions, agent docs, and later journey cases hit Kong admin on 127.0.0.1:19012 after a gateway test left Kong down, or they call the default API port 4000. Account security still looks for a navigation named "Admin section"; the live shell is "Admin" and criterion 1 passed. None of these is a new pages blocker or major.
 
+Retest commit `a800aa6`. Running images were built from `9c7119f`. Portal http://localhost:3012, Kong admin http://127.0.0.1:19012, healthy. `node deploy/upgrade-smoke.mjs` passed again, including restore, so the pre-upgrade major stays closed. `setup-gateways.test.ts` cannot use this stack: it runs `docker compose down -v` and `up` on project `portal` and binds Mailpit on 127.0.0.1:8025. `versions.test.ts` AC7–8 runs `docker compose run` without the worktree project or image, and that server never returned HTTP 200.
+
+| Test | Result | Cause |
+| --- | --- | --- |
+| 024 AC 1–3, 6, 9–10 | pass | Sidebar list includes Pages and Navigation. The sample card is matched by `href="/apis/sample"`. |
+| JSO-176 import and title fallbacks | pass | Ran on this stack. |
+| JSO-219 sign-up | pass | Fields stay disabled until hydration. |
+| JSO-219 sign-in | fail | Admin sign-in landed on `/admin/apps`, not `/dashboard`. |
+| JSO-169, gateway outage, AC6 | pass | Passed with `KONG_ADMIN_PORT=19012` so Compose kept the worktree Kong port. |
+| sample seed convergence | fail | Snapshot and the one sample API survived a server restart. `docker compose logs` then exited ENOBUFS before the secret scan. |
+| 007 M2 at 1280px and 390px | fail | No navigation named "Admin section". The shell is navigation "Admin". |
+| 023 AC1–9 | fail | `/dashboard/apps/new` rendered the admin Apps table, so the "Needs a plan" row was absent. |
+| JSO-189 `/dashboard` | pass | Outage recovered. |
+| JSO-189 `/` | expected fail | Document reload, already marked `test.fail`. |
+| JSO-189 `/apis/sample` | fail | Stopped server showed "APIs unavailable", not "We can't reach the portal server". |
+| 019 AC1 | fail | Admin catalog has no "Main navigation" links. The header is "Admin account". |
+| 012 AC5 and the hydration failure path | pass | Ran after Kong was back on port 19012. |
+| 012 AC1–4, 6, 9 | fail | Admin app create returned 403 `/problems/admin-not-developer`. |
+
+No new blocker or major comes from 014. Status stays uat.
+
 ### Bugs
 <!-- Track every finding here. `node scripts/factory.mjs linear issue <id> bug|review` adds a key for a blocker or major only. -->
 <!-- Examples: - [ ] Revoke leaves the Kong credential (minor); - [ ] JSO-140 Revoke leaves the Kong credential (major) -->
