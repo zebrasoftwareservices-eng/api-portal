@@ -4,6 +4,7 @@ import type { components } from '@portal/sdk';
 import { operationAnchor } from '../lib/operation-anchor';
 export type SearchResult = components['schemas']['SearchResult'];
 export function searchResultHref(result: SearchResult) {
+  if (result.kind === 'page') return `/pages/${encodeURIComponent(result.page.slug)}`;
   const base = `/apis/${encodeURIComponent(result.api.slug)}`;
   return result.kind === 'api'
     ? base
@@ -16,6 +17,19 @@ export function SearchResultRow({
   result: SearchResult;
   href: string;
 }) {
+  if (result.kind === 'page') {
+    return (
+      <li>
+        <a className="search-result" href={href}>
+          <Badge>Page</Badge>
+          <span className="search-result-title">{result.page.title}</span>
+          {result.page.description && (
+            <span className="search-result-detail muted clamp">{result.page.description}</span>
+          )}
+        </a>
+      </li>
+    );
+  }
   const description = result.summary || result.operationId;
   return (
     <li>
@@ -24,9 +38,7 @@ export function SearchResultRow({
           <>
             <Badge>API</Badge>
             <span className="search-result-title">{result.api.title}</span>
-            <span className="search-result-detail muted">
-              Version {result.api.version}
-            </span>
+            <span className="search-result-detail muted">Version {result.api.version}</span>
           </>
         ) : (
           <>

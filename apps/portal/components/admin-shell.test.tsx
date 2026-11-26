@@ -33,6 +33,15 @@ describe('admin shell', () => {
     expect(within(nav).getByRole('link', { name: 'Tracing' })).toHaveAttribute('aria-current', 'page');
     expect(within(nav).getByRole('button', { name: 'Admin' })).toHaveAttribute('aria-expanded', 'false');
   });
+  it('adds Pages and Navigation at the end of the Admin group', () => {
+    mocks.pathname = '/admin/pages';
+    render(<AdminSidebar />);
+    const nav = screen.getByRole('navigation', { name: 'Admin' });
+    const labels = within(nav).getAllByRole('link').map((link) => link.textContent);
+    expect(labels.slice(-2)).toEqual(['Pages', 'Navigation']);
+    expect(within(nav).getByRole('link', { name: 'Pages' })).toHaveAttribute('aria-current', 'page');
+    expect(within(nav).getByRole('link', { name: 'Navigation' })).toHaveAttribute('href', '/admin/navigation');
+  });
   it('expands the Admin group on child pages', async () => {
     mocks.pathname = '/admin/settings/accounts';
     render(<AdminSidebar />);

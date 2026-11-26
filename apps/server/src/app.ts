@@ -37,6 +37,8 @@ import { sql } from 'drizzle-orm';
 import { createRequire } from 'node:module';
 import { Problem } from './problem.js';
 import { registerTracing } from './tracing.js';
+import { registerPages } from './pages.js';
+import { registerNavigation } from './navigation.js';
 const fastifyRequire = createRequire(import.meta.url);
 const { stdSerializers } = createRequire(fastifyRequire.resolve('fastify'))(
   'pino',
@@ -235,6 +237,8 @@ export async function createApp(options: AppOptions) {
     options.enqueueReconcile ?? (async () => {}),
   );
   registerCatalog(app, db, auth);
+  await registerPages(app, db, auth);
+  await registerNavigation(app, db, auth);
   registerAgentDocs(app, db, auth, config.PORTAL_PUBLIC_URL);
   await registerSearch(app, db, auth);
   registerImport(app, db, auth, connection, linter);

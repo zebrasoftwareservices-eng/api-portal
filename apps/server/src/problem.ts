@@ -69,6 +69,7 @@ function titles() {
     'gateway-service-already-linked':
       'This service already has a published API',
     'admin-not-developer': 'A portal admin is not a developer',
+    'page-slug-taken': 'Page URL already in use',
   });
 }
 export function problemTitle(code: string) {

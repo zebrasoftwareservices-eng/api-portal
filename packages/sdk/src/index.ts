@@ -8,4 +8,10 @@ export function createClient(
   return openapiFetch<paths>({ credentials: 'include', ...options });
 }
 export { searchCatalog } from './search.js';
-export type { SearchApi, SearchResult, SearchResults } from './search.js';
+export type { SearchApi, SearchPage, SearchResult, SearchResults } from './search.js';
+export { DEFAULT_NAVIGATION } from './navigation.js';
+export type {
+  NavigationSettings,
+  PublicNavigation,
+  SaveNavigationRequest,
+} from './navigation.js';

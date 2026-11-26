@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { cache } from 'react';
 import { notFound } from 'next/navigation';
+import { apiBySlug } from './api-server';
 import { serverClient } from './server';
 import { isDemo } from './demo';
 import { demoData } from './demo-data';
@@ -17,7 +18,7 @@ export const changelogBySlug = cache(async (slug: string) => {
   } else {
     const client = await serverClient();
     const [detail, changelog] = await Promise.all([
-      client.GET('/v1/apis/{slug}', { params: { path: { slug } } }),
+      apiBySlug(slug),
       client.GET('/v1/apis/{slug}/changelog', { params: { path: { slug } } }),
     ]);
     if (detail.error?.status === 404 || changelog.error?.status === 404)

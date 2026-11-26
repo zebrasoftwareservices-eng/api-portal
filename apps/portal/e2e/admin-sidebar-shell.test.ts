@@ -48,6 +48,8 @@ test('024 AC 1–3, 6, 9–10: admin shell navigation and invalid account limits
     'Mail',
     'Accounts',
     'Theme',
+    'Pages',
+    'Navigation',
   ]);
   await expect(sidebar.getByRole('link', { name: 'Gateways' })).toHaveAttribute(
     'aria-current',
@@ -61,9 +63,9 @@ test('024 AC 1–3, 6, 9–10: admin shell navigation and invalid account limits
 
   await page.goto('/apis');
   await expect(page.getByRole('heading', { name: 'APIs', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: /View reference for Sample HTTP API/ })).toHaveAttribute(
-    'href',
-    '/apis/sample',
+  await expect(page.locator('a[href="/apis/sample"]')).toHaveAttribute(
+    'aria-label',
+    'View reference for Sample HTTP API',
   );
   await expect(page.getByText('Products', { exact: true })).toHaveCount(1);
   await sidebar.getByRole('link', { name: 'Products' }).click();

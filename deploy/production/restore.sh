@@ -16,8 +16,13 @@ if [ "$assume_yes" = false ]; then
 fi
 docker compose stop server portal
 restore_sql=$(mktemp)
-trap 'rm -f "$restore_sql"' EXIT INT TERM
+list=$(mktemp)
+trap 'rm -f "$restore_sql" "$list"' EXIT INT TERM
 printf 'DROP SCHEMA IF EXISTS pgboss CASCADE;\n' > "$restore_sql"
+# The archive does not know about relations added after it was taken.
+# Drop those, and foreign keys that would block user_pkey, before --clean.
+docker compose exec -T postgres pg_restore --list < "$file" > "$list"
+sh ./restore-prelude.sh < "$list" >> "$restore_sql"
 docker compose exec -T postgres pg_restore --clean --if-exists --no-owner --file=- < "$file" >> "$restore_sql"
 docker compose exec -T postgres psql -U portal -d portal --single-transaction --set ON_ERROR_STOP=1 < "$restore_sql"
 printf 'Restored %s. Set the desired PORTAL_VERSION, then run docker compose up -d.\n' "$file"

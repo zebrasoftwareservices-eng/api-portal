@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { Button, CodeValue, PageHeader } from '@portal/ui';
 import { signedInUser, serverClient } from '../../../../../lib/server';
+import { apiBySlug } from '../../../../../lib/api-server';
 import { isDemo } from '../../../../../lib/demo';
 import { demoData } from '../../../../../lib/demo-data';
 import { DemoReference } from '../../../../../components/demo-reference';
@@ -31,11 +32,7 @@ export async function generateMetadata({ params }: Props) {
     ? slug === 'sample'
       ? demoData().api
       : undefined
-    : (
-        await (
-          await serverClient()
-        ).GET('/v1/apis/{slug}', { params: { path: { slug } } })
-      ).data;
+    : (await apiBySlug(slug)).data;
   return {
     title:
       data && data.versions.some((v) => v.version === version)
@@ -86,7 +83,7 @@ export default async function Page({ params }: Props) {
   }
   const client = await serverClient();
   const [{ data, error }, user] = await Promise.all([
-    client.GET('/v1/apis/{slug}', { params: { path: { slug } } }),
+    apiBySlug(slug),
     signedInUser(),
   ]);
   if (error?.status === 404) notFound();

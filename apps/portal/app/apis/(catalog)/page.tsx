@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Card, EmptyState, PageHeader } from '@portal/ui';
-import { serverClient, signedInUser } from '../../lib/server';
+import { serverClient, signedInUser } from '../../../lib/server';
 export const metadata = { title: 'APIs' };
 export default async function ApisPage() {
   const [client, user] = await Promise.all([serverClient(), signedInUser()]);

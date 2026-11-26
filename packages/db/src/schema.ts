@@ -756,3 +756,53 @@ export const themeAssets = pgTable(
     check('theme_asset_byte_size', sql`${t.byteSize} between 1 and 524288`),
   ],
 );
+
+export const pages = pgTable(
+  'pages',
+  {
+    id: uuid('id').primaryKey(),
+    slug: text('slug').notNull().unique(),
+    title: text('title').notNull(),
+    body: text('body').notNull().default(''),
+    description: text('description'),
+    seoTitle: text('seo_title'),
+    ogImageUrl: text('og_image_url'),
+    visibility: text('visibility')
+      .notNull()
+      .$type<'public' | 'signed-in'>(),
+    status: text('status').notNull().default('draft').$type<'draft' | 'published'>(),
+    createdBy: uuid('created_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    updatedBy: uuid('updated_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    check(
+      'page_slug',
+      sql`length(${t.slug}) between 2 and 64 and ${t.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`,
+    ),
+    check('page_title', sql`length(btrim(${t.title})) between 1 and 120`),
+    check('page_body', sql`length(${t.body}) <= 100000`),
+    check('page_visibility', sql`${t.visibility} in ('public','signed-in')`),
+    check('page_status', sql`${t.status} in ('draft','published')`),
+    index('page_updated_idx').on(t.updatedAt.desc()),
+  ],
+);
+
+export const navigationSettings = pgTable(
+  'navigation_settings',
+  {
+    id: smallint('id').primaryKey().default(1),
+    header: jsonb('header').$type<unknown[]>().notNull(),
+    footer: jsonb('footer').$type<unknown[]>().notNull(),
+    updatedBy: uuid('updated_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    updatedAt: updated(),
+  },
+  (t) => [check('navigation_settings_singleton', sql`${t.id} = 1`)],
+);

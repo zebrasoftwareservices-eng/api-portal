@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { beforeEach, expect, it, vi } from 'vitest';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import ProductLayout from '../app/products/[slug]/layout';
+import ApiLayout from '../app/apis/[slug]/layout';
 import ChangelogLayout from '../app/apis/[slug]/changelog/layout';
 const m = vi.hoisted(() => ({ get: vi.fn(), user: vi.fn() }));
 vi.mock('../lib/server', () => ({
@@ -18,7 +21,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   m.user.mockResolvedValue(null);
 });
-it.each([ProductLayout, ChangelogLayout])(
+it.each([ProductLayout, ApiLayout, ChangelogLayout])(
   'rejects invisible and missing resources before returning the loading boundary',
   async (layout) => {
     let resolve!: (value: unknown) => void;
@@ -46,7 +49,7 @@ it.each([ProductLayout, ChangelogLayout])(
     expect(m.user).not.toHaveBeenCalled();
   },
 );
-it.each([ProductLayout, ChangelogLayout])(
+it.each([ProductLayout, ApiLayout, ChangelogLayout])(
   'returns visible content after validation',
   async (layout) => {
     m.get.mockResolvedValue({ data: { items: [] } });
@@ -66,4 +69,10 @@ it('checks the changelog endpoint as well as API detail before streaming', async
       children: null,
     }),
   ).rejects.toThrow('NOT_FOUND');
+});
+it('keeps the API index loading boundary off the slug segment', () => {
+  const apis = resolve(__dirname, '../app/apis');
+  expect(existsSync(resolve(apis, 'loading.tsx'))).toBe(false);
+  expect(existsSync(resolve(apis, '(catalog)/loading.tsx'))).toBe(true);
+  expect(existsSync(resolve(apis, '(catalog)/page.tsx'))).toBe(true);
 });

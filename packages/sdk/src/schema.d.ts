@@ -137,17 +137,22 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Search published APIs and their operations
+         * Search published APIs, their operations and pages
          * @description Spec 020, ADR 0012. Matches the term against the latest version of every API the public
          *     catalog shows the caller (`GET /v1/apis` uses the same visibility check, so search results
          *     are always a subset of the catalog). Searched fields: API title and description; each
-         *     operation's method, path, summary and operationId. Schemas, older versions and docs pages
-         *     are not searched.
+         *     operation's method, path, summary and operationId. Schemas and older versions are not
+         *     searched.
+         *
+         *     Published pages are searched too, on title and description only, never the body (spec 014,
+         *     ADR 0020). A signed-out caller gets public pages; any signed-in caller also gets
+         *     signed-in-only pages. Drafts are never returned, to admins either.
          *
          *     Matching ignores case. The term is trimmed, runs of whitespace collapse to one, and it is
          *     split on spaces into tokens; a result matches when every token occurs as a plain substring
          *     (no wildcards, so `{}/*%_` match literally). Results are ordered by score (exact path,
-         *     then path, then title, then summary), then API title, then path.
+         *     then path, then title, then summary), then API or page title, then path. A page scores
+         *     like an API: exact title, then title, then description.
          *
          *     An empty term (after trimming) or one over 100 characters is refused with
          *     `/problems/validation`. Anonymous callers are limited to 60 searches a minute per client
@@ -1689,6 +1694,137 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/pages/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One published page
+         * @description Spec 014, ADR 0020. A draft, a signed-in-only page requested without a session, an unknown
+         *     slug and a malformed slug all give the same 404 (same status, headers and body apart from
+         *     `instance`, which echoes the request path). Drafts are 404 to admins too; they preview
+         *     with `GET /v1/admin/pages/{pageId}`. Any signed-in account, whatever its role, reads
+         *     signed-in-only pages. The body is Markdown source, never HTML.
+         */
+        get: operations["getPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/navigation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The header and footer links this caller may see
+         * @description Spec 014, ADR 0020. The portal's root layout calls it on every server render. Nothing saved
+         *     gives the default: header `apis` then `my-apps`, empty footer, `isDefault: true`.
+         *     Hidden built-ins are left out, and so are links to drafts, to deleted pages and, for a
+         *     signed-out caller, to signed-in-only pages. The order is the saved order.
+         *     `my-apps` is in the list for every caller when not hidden; the portal shows it only to
+         *     signed-in developers, as before. Sign in, Sign up, search and the account menu are not
+         *     navigation items.
+         */
+        get: operations["getNavigation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every page, drafts included, most recently updated first */
+        get: operations["listPages"];
+        put?: never;
+        /** Create a page, as a draft or already published */
+        post: operations["createPage"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/pages/{pageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pageId: components["parameters"]["PageId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * One page with its body, for the editor and the preview
+         * @description `navigation` lists the links to this page. Read it again just before asking the admin to
+         *     confirm an unpublish or a delete, so the dialog names the links that are there now.
+         */
+        get: operations["getPageForAdmin"];
+        /**
+         * Replace the page; publish and unpublish are `status`
+         * @description Replaces every field in one write; the last save wins. Saving a published page changes what
+         *     readers get on the next page load. A new slug takes effect at once: the old URL is a 404
+         *     and navigation links follow, because they hold the page ID. On any error nothing changes.
+         */
+        put: operations["savePage"];
+        post?: never;
+        /** Delete the page; links to it disappear with it */
+        delete: operations["deletePage"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/navigation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The editable header and footer
+         * @description Includes hidden built-ins and links to drafts. Links to deleted pages are already left out.
+         *     Every built-in is in the header exactly once, including one added by a later release.
+         */
+        get: operations["getNavigationSettings"];
+        /**
+         * Save the whole header and footer in one atomic write
+         * @description Array order is display order. Every built-in must be in the header exactly once (hide it
+         *     with `hidden`), and built-ins can't be in the footer. Links to drafts are allowed; they
+         *     show once the page is published. On any error nothing is saved and `errors[].pointer` names
+         *     the field, for example `/header/2/url`, `/footer/0/label` or `/header/1/pageId` (a page
+         *     that doesn't exist). The last save wins.
+         */
+        put: operations["saveNavigation"];
+        post?: never;
+        /**
+         * Reset to default
+         * @description Removes the saved header and footer. Pages are untouched. Idempotent.
+         */
+        delete: operations["resetNavigation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/apps/{appId}/usage": {
         parameters: {
             query?: never;
@@ -2604,17 +2740,159 @@ export interface components {
             logo: components["schemas"]["ThemeAssetUpload"] | null;
             favicon: components["schemas"]["ThemeAssetUpload"] | null;
         };
+        /** @enum {string} */
+        PageStatus: "draft" | "published";
+        /**
+         * @description `signed-in` is any signed-in account, whatever its role
+         * @enum {string}
+         */
+        PageVisibility: "public" | "signed-in";
+        PublicPage: {
+            slug: components["schemas"]["Slug"];
+            title: string;
+            /** @description Markdown source */
+            body: string;
+            description: string | null;
+            seoTitle: string | null;
+            ogImageUrl: string | null;
+            visibility: components["schemas"]["PageVisibility"];
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * @description Strings other than `body` are trimmed. `description`, `seoTitle` and `ogImageUrl` sent
+         *     empty, null or not at all are stored as null. A NUL character in any field is refused.
+         */
+        PageWrite: {
+            title: string;
+            slug: components["schemas"]["Slug"];
+            /** @description Markdown; may be empty */
+            body: string;
+            visibility: components["schemas"]["PageVisibility"];
+            status: components["schemas"]["PageStatus"];
+            /** @description Used for search results, the meta description and `og:description` */
+            description?: string | null;
+            seoTitle?: string | null;
+            /** @description Absolute `https` URL without credentials */
+            ogImageUrl?: string | null;
+        };
+        /** @description A saved header or footer link to the page */
+        PageLinkRef: {
+            /** @enum {string} */
+            area: "header" | "footer";
+            label: string;
+        };
+        PageSummary: {
+            /** Format: uuid */
+            id: string;
+            slug: components["schemas"]["Slug"];
+            title: string;
+            visibility: components["schemas"]["PageVisibility"];
+            status: components["schemas"]["PageStatus"];
+            navigation: components["schemas"]["PageLinkRef"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PageDetail: components["schemas"]["PageSummary"] & {
+            body: string;
+            description: string | null;
+            seoTitle: string | null;
+            ogImageUrl: string | null;
+        };
+        /** @enum {string} */
+        NavigationBuiltinKey: "apis" | "my-apps";
+        /** @description Trimmed; one line */
+        NavigationLabel: string;
+        /** @description Absolute `https` URL without credentials */
+        NavigationUrl: string;
+        PublicNavigation: {
+            isDefault: boolean;
+            header: components["schemas"]["PublicNavigationItem"][];
+            footer: components["schemas"]["PublicNavigationItem"][];
+        };
+        PublicNavigationItem: {
+            /** @enum {string} */
+            kind: "builtin";
+            key: components["schemas"]["NavigationBuiltinKey"];
+        } | {
+            /** @enum {string} */
+            kind: "page" | "link";
+            label: string;
+            /** @description `/pages/{slug}` for a page, the saved `https` URL for a link */
+            href: string;
+        };
+        NavigationBuiltin: {
+            /** @enum {string} */
+            kind: "builtin";
+            key: components["schemas"]["NavigationBuiltinKey"];
+            hidden: boolean;
+        };
+        NavigationPageLink: {
+            /** @enum {string} */
+            kind: "page";
+            label: components["schemas"]["NavigationLabel"];
+            /** Format: uuid */
+            pageId: string;
+        };
+        NavigationExternalLink: {
+            /** @enum {string} */
+            kind: "link";
+            label: components["schemas"]["NavigationLabel"];
+            url: components["schemas"]["NavigationUrl"];
+        };
+        SaveNavigationRequest: {
+            header: (components["schemas"]["NavigationBuiltin"] | components["schemas"]["NavigationPageLink"] | components["schemas"]["NavigationExternalLink"])[];
+            footer: (components["schemas"]["NavigationPageLink"] | components["schemas"]["NavigationExternalLink"])[];
+        };
+        NavigationSettingsPageLink: {
+            /** @enum {string} */
+            kind: "page";
+            label: string;
+            /** Format: uuid */
+            pageId: string;
+            /** @description The page as it is now, so the editor can say who will see the link */
+            page: {
+                slug: components["schemas"]["Slug"];
+                title: string;
+                visibility: components["schemas"]["PageVisibility"];
+                status: components["schemas"]["PageStatus"];
+            };
+        };
+        NavigationSettings: {
+            isDefault: boolean;
+            header: (components["schemas"]["NavigationBuiltin"] | components["schemas"]["NavigationSettingsPageLink"] | components["schemas"]["NavigationExternalLink"])[];
+            footer: (components["schemas"]["NavigationSettingsPageLink"] | components["schemas"]["NavigationExternalLink"])[];
+            /**
+             * Format: date-time
+             * @description null when nothing is saved
+             */
+            updatedAt: string | null;
+        };
         SearchResults: {
             items: components["schemas"]["SearchResult"][];
             /** @description True when more results matched than `limit`. */
             truncated: boolean;
+        };
+        /** @description Tell the two apart by `kind`. */
+        SearchResult: components["schemas"]["CatalogSearchResult"] | components["schemas"]["PageSearchResult"];
+        /** @description A published page the caller may read; link to `/pages/{page.slug}` (spec 014). */
+        PageSearchResult: {
+            /** @enum {string} */
+            kind: "page";
+            page: {
+                slug: components["schemas"]["Slug"];
+                title: string;
+                description: string | null;
+            };
         };
         /**
          * @description `kind: api` is an API whose title or description matched; link to `/apis/{api.slug}`.
          *     `kind: operation` is one operation of the API's latest version; `method`, `path` and
          *     `summary` are set and the portal links to that operation in the reference.
          */
-        SearchResult: {
+        CatalogSearchResult: {
             /** @enum {string} */
             kind: "api" | "operation";
             api: {
@@ -3630,6 +3908,18 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /**
+         * @description Another page has this slug (`/problems/page-slug-taken`). `errors[0].pointer` is `/slug`.
+         *     Nothing was saved.
+         */
+        PageSlugTaken: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
         /** @description Request body over the limit (`/problems/payload-too-large`) */
         PayloadTooLarge: {
             headers: {
@@ -3682,6 +3972,7 @@ export interface components {
         ProductId: string;
         PlanId: string;
         RequestId: string;
+        PageId: string;
         ThemeAssetKind: "logo" | "favicon";
     };
     requestBodies: never;
@@ -3882,7 +4173,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Matching APIs and operations, best first. Empty `items` when nothing matched. */
+            /** @description Matching APIs, operations and pages, best first. Empty `items` when nothing matched. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -6482,6 +6773,259 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             413: components["responses"]["PayloadTooLarge"];
+        };
+    };
+    getPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Not validated; anything that isn't a readable page's slug is a 404. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicPage"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getNavigation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Navigation for this caller */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicNavigation"];
+                };
+            };
+        };
+    };
+    listPages: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Pages without their bodies */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["PageSummary"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    createPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageWrite"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            201: {
+                headers: {
+                    /** @description /api/v1/admin/pages/{pageId} */
+                    Location?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["PageSlugTaken"];
+            413: components["responses"]["PayloadTooLarge"];
+        };
+    };
+    getPageForAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pageId: components["parameters"]["PageId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page */
+            200: {
+                headers: {
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    savePage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pageId: components["parameters"]["PageId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PageWrite"];
+            };
+        };
+        responses: {
+            /** @description Saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PageDetail"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["PageSlugTaken"];
+            413: components["responses"]["PayloadTooLarge"];
+        };
+    };
+    deletePage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pageId: components["parameters"]["PageId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getNavigationSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Navigation settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NavigationSettings"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    saveNavigation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveNavigationRequest"];
+            };
+        };
+        responses: {
+            /** @description Saved; live on the next page load */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NavigationSettings"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    resetNavigation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reset; the response is the default navigation */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NavigationSettings"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getAppUsage: {

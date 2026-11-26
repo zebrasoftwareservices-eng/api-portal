@@ -2,7 +2,8 @@
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { CodeValue, PageHeader } from '@portal/ui';
-import { serverClient, signedInUser } from '../../../lib/server';
+import { signedInUser } from '../../../lib/server';
+import { apiBySlug } from '../../../lib/api-server';
 import {
   ApiAccessProvider,
   ApiAccessAction,
@@ -24,10 +25,7 @@ export async function generateMetadata({
       return { title: { absolute: 'Developer Portal' } };
     return { title: demoData().api.title };
   }
-  const client = await serverClient();
-  const { data } = await client.GET('/v1/apis/{slug}', {
-    params: { path: await params },
-  });
+  const { data } = await apiBySlug((await params).slug);
   return { title: data?.title || { absolute: 'Developer Portal' } };
 }
 export default async function ApiPage({
@@ -67,9 +65,8 @@ export default async function ApiPage({
       </div>
     );
   }
-  const client = await serverClient();
   const [{ data, error }, user] = await Promise.all([
-    client.GET('/v1/apis/{slug}', { params: { path: { slug } } }),
+    apiBySlug(slug),
     signedInUser(),
   ]);
   if (error?.status === 404) notFound();
