@@ -49,6 +49,24 @@ it('starts from APIs and My apps and does not store an untouched default', async
   expect(mocks.put).not.toHaveBeenCalled();
 });
 
+it('refuses a javascript URL, keeps the typed address, and does not save', async () => {
+  const user = userEvent.setup();
+  render(<AdminNavigation />);
+  await screen.findByText('No footer links.');
+  const header = screen.getByRole('region', { name: 'Header' });
+  await user.click(within(header).getByRole('button', { name: 'Add external link' }));
+  const row = within(header).getAllByRole('group').at(-1);
+  if (!row) throw new Error('expected a new header link');
+  const address = within(row).getByLabelText(/^Web address/);
+  await user.type(within(row).getByLabelText(/^Label/), 'Bad');
+  await user.type(address, 'javascript:alert(1)');
+  await user.click(screen.getByRole('button', { name: 'Save navigation' }));
+  expect(screen.getByRole('link', { name: /full https:\/\/ address/ })).toBeInTheDocument();
+  expect(address).toHaveValue('javascript:alert(1)');
+  expect(within(row).getByLabelText(/^Label/)).toHaveValue('Bad');
+  expect(mocks.put).not.toHaveBeenCalled();
+});
+
 it('refuses an empty label and keeps the row', async () => {
   const user = userEvent.setup();
   render(<AdminNavigation />);

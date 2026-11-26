@@ -697,3 +697,54 @@ it('searches titles and descriptions the caller may read and skips bodies and dr
     'public-guide',
   ]);
 });
+
+it('failure paths: a repeated save, a missing delete, a slug race, and an ended session change nothing', async () => {
+  const created = await call('POST', '/api/v1/admin/pages', {
+    viewer: 'admin',
+    payload: write({ slug: 'repeat-save', status: 'published', body: 'once' }),
+  });
+  expect(created.statusCode).toBe(201);
+  const id = created.json().id as string;
+  const payload = write({ slug: 'repeat-save', status: 'published', body: 'once' });
+  const again = await call('PUT', `/api/v1/admin/pages/${id}`, { viewer: 'admin', payload });
+  expect(again.statusCode).toBe(200);
+  expect(again.json()).toMatchObject({ id, body: 'once', slug: 'repeat-save' });
+  const stored = await connection.db.select().from(pages);
+  expect(stored).toHaveLength(1);
+
+  const missing = await call('DELETE', `/api/v1/admin/pages/${uuidv7()}`, { viewer: 'admin' });
+  expect(missing.statusCode).toBe(404);
+  expect(missing.json().type).toBe('/problems/not-found');
+  expect(missing.headers['cache-control']).toBe('private, no-store');
+  expect(await connection.db.select().from(pages)).toEqual(stored);
+
+  const duplicate = await Promise.all([
+    call('POST', '/api/v1/admin/pages', {
+      viewer: 'admin',
+      payload: write({ slug: 'race-slug', title: 'Race' }),
+    }),
+    call('POST', '/api/v1/admin/pages', {
+      viewer: 'admin',
+      payload: write({ slug: 'race-slug', title: 'Race' }),
+    }),
+  ]);
+  expect(duplicate.map((response) => response.statusCode).sort()).toEqual([201, 409]);
+  const raced = await connection.db.select().from(pages);
+  expect(raced.filter((row) => row.slug === 'race-slug')).toHaveLength(1);
+
+  const ended: Array<['POST' | 'PUT' | 'DELETE', string, unknown]> = [
+    ['POST', '/api/v1/admin/pages', write({ slug: 'ended-session' })],
+    ['PUT', `/api/v1/admin/pages/${id}`, payload],
+    ['DELETE', `/api/v1/admin/pages/${id}`, undefined],
+    ['PUT', '/api/v1/admin/navigation', { header: [apis, myApps], footer: [] }],
+    ['DELETE', '/api/v1/admin/navigation', undefined],
+  ];
+  for (const [method, url, body] of ended) {
+    const response = await call(method, url, { payload: body });
+    expect(response.statusCode, `${method} ${url}`).toBe(401);
+    expect(response.headers['content-type']).toContain('application/problem+json');
+    expect(response.json().type).toBe('/problems/unauthenticated');
+  }
+  expect(await connection.db.select().from(pages)).toEqual(raced);
+  expect(await connection.db.select().from(navigationSettings)).toEqual([]);
+});

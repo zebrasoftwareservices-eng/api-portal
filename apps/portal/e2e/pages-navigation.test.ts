@@ -482,8 +482,8 @@ test('014 AC7 and AC8: saved navigation order, filtered links, unpublish and res
     await bad.getByLabel('Web address').fill('javascript:alert(1)');
     await page.getByRole('button', { name: 'Save navigation', exact: true }).click();
     await expect(page.getByRole('link', { name: /full https:\/\/ address/ })).toBeVisible();
-    const kept = await bad.getByLabel('Web address').inputValue();
-    expect(['javascript:alert(1)', '']).toContain(kept);
+    await expect(bad.getByLabel('Web address')).toHaveValue('javascript:alert(1)');
+    await expect(bad.getByLabel('Label')).toHaveValue('Bad');
     expect((await (await context.request.get('/api/v1/admin/navigation')).json()).isDefault).toBe(true);
     await bad.getByRole('button', { name: /^Remove / }).click();
 
@@ -612,6 +612,7 @@ test('014 AC9: missing permission, an ended session and a duplicate slug change 
       },
     });
     expect(created.status()).toBe(201);
+    const pageId = (await created.json()).id as string;
     const beforePages = await (await admin.request.get('/api/v1/admin/pages')).text();
     const beforeNav = await (await admin.request.get('/api/v1/admin/navigation')).text();
     const write = {
@@ -631,7 +632,7 @@ test('014 AC9: missing permission, an ended session and a duplicate slug change 
     await signUp(developer.request, email, 'QA-password-123');
     expect((await developer.request.post('/api/v1/admin/pages', { data: write })).status()).toBe(403);
     expect((await developer.request.get('/api/v1/admin/pages')).status()).toBe(403);
-    expect((await developer.request.delete(`/api/v1/admin/pages/${(await created.json()).id}`)).status()).toBe(403);
+    expect((await developer.request.delete(`/api/v1/admin/pages/${pageId}`)).status()).toBe(403);
     const missing = await admin.request.put('/api/v1/admin/navigation', {
       data: {
         header: [
@@ -656,6 +657,10 @@ test('014 AC9: missing permission, an ended session and a duplicate slug change 
     const ended = await admin.request.post('/api/v1/admin/pages', { data: { ...write, slug: `ended-${id}` } });
     expect(ended.status()).toBe(401);
     expect(ended.headers()['content-type'] ?? '').toContain('application/problem+json');
+    expect((await admin.request.put(`/api/v1/admin/pages/${pageId}`, { data: write })).status()).toBe(401);
+    expect((await admin.request.delete(`/api/v1/admin/pages/${pageId}`)).status()).toBe(401);
+    expect((await admin.request.put('/api/v1/admin/navigation', { data: { header: [], footer: [] } })).status()).toBe(401);
+    expect((await admin.request.delete('/api/v1/admin/navigation')).status()).toBe(401);
     await signIn(admin.request, adminUser.email, adminUser.password);
     const pages = await (await admin.request.get('/api/v1/admin/pages')).json();
     expect(pages.items.some((item: { slug: string }) => item.slug === `ended-${id}`)).toBe(false);
