@@ -1,7 +1,7 @@
 ---
 id: 014
 title: Pages and navigation managed in the admin UI
-status: uat   # draft → ready → designed → building → testing → uat → review → approved → done
+status: review   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-23
 linear: JSO-242
@@ -381,6 +381,16 @@ No new blocker or major comes from 014. Status stays uat.
 ## User testing  _(user-tester)_
 | User story | Result | Evidence |
 | --- | --- | --- |
+| 1. Default header, footer and catalog | pass | "APIs", "Search APIs and endpoints", "Sign in", "Sign up", and "Powered by Developer Portal · Apache 2.0". Sample HTTP API was on the catalog. |
+| 2. Draft, preview, and a 404 for everyone else | pass | Preview: "Preview. Only admins can see this draft." and "Get a key". Signed-out `/pages/uat-getting-started` was 404 before publish. |
+| 3. Publish, render Markdown, and a live edit | pass | "Start here before you call the API. Updated for readers." with a list, a table, a code block, and "Portal mark". |
+| 4. Signed-in-only page is a 404 until sign-in | pass | Signed out: "Page not found" and "Sign in". After sign-in, the same URL showed "UAT partner notes". |
+| 5. Search hides drafts and signed-in-only pages | pass | Signed out, "zephyrlane" was "No results". Signed in, it returned only "UAT partner notes". |
+| 6. Unsafe Markdown does not run | pass | The page showed "Hello safe text." The article had no script, iframe, or `javascript:` URL. |
+| 7. Header and footer edits, then reset | pass | Visitors saw "APIs", "Status", "UAT getting started". Reset restored "APIs" and "No footer links." |
+| 8. Hidden links, then unpublish names them | pass | Signed out, the header omitted "UAT partner notes". Unpublish said "Header: UAT getting started" and "Footer: UAT getting started", then the URL was 404. |
+| 9. Invalid saves stay on the form; other roles get 401 or 403 | pass | "Enter a title." and "Another page already uses this slug." A developer write returned "Administrator access is required." |
+| 10. Search and link-preview tags | pass | Title "Share card for search" and `og:image` `https://placehold.co/1200x630/png`. The signed-in page was `noindex, nofollow`. |
 
 One row per user-visible criterion. Evidence is a short quote of what was on the screen.
 Name an image only for an open failure. On a retest, change only the failed rows.
