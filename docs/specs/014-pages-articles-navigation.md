@@ -1,7 +1,7 @@
 ---
 id: 014
 title: Pages and navigation managed in the admin UI
-status: review   # draft → ready → designed → building → testing → uat → review → approved → done
+status: approved   # draft → ready → designed → building → testing → uat → review → approved → done
 owner: product-manager
 created: 2026-11-23
 linear: JSO-242
@@ -399,6 +399,25 @@ Earlier rounds go in `docs/specs/log/014.md`. The full report is `docs/uat/014/r
 ## Review  _(tech-lead)_
 `blocking` findings get a Fix task. `suggestion` findings do not, and they do not
 return the spec to building. Earlier rounds go in `docs/specs/log/014.md`.
+
+Reviewed `932e206` against `origin/main` (`650c9ae`). Local `main` is stale and still shows spec 027 in `git diff main...HEAD`. That is not 014's diff. The Test report names `c01946a` and `a800aa6`, and later commits are docs only, so the suite was not re-run. **CI is not a second run for this branch.** The `check` job fails at `scripts/linear-model.test.mjs` on `main` too, so it never reached lint, typecheck or unit tests. QA's local runs are the only full run. Elango should see CI reach those steps, or run them, before merging.
+
+No blocking findings. Criteria 1–10 are implemented and tested. The server matches the contract and data model: one `readablePages` condition (`apps/server/src/pages.ts:66`) feeds the page read, navigation and search. 404 parity holds. Responses are `private, no-store`. Errors are problem+json with pointers. Markdown renders with `skipHtml` and no rehype plugins, so no raw HTML passes through. No gateway calls.
+
+**Remaining e2e failures.** None of them comes from 014. `git diff origin/main...HEAD` doesn't change what any of these tests assert:
+- 019 AC1 and 007 M2: `origin/main` already labels the admin header `Admin account` and the sidebar `Admin`. Spec 024 did that, and 014 doesn't rename either. The admin topbar still has no `Main navigation` when navigation is the default.
+- JSO-219 admin sign-in to `/admin/apps`, 023 `/dashboard/apps/new` showing admin Apps, and 012 admin app create returning 403 `admin-not-developer`: these follow ADR 0017 and spec 024 (an admin is not a developer). 014 doesn't touch sign-in, dashboard or app routes.
+- JSO-189 `/apis/sample` showing "APIs unavailable": `app/apis/error.tsx` already catches an outage there on `origin/main` (spec 024, `b3b5f85`). The new `[slug]/layout.tsx` throws into that same boundary.
+
+These tests are stale against spec 024 and need a separate test fix.
+
+**Restore prelude** (`deploy/production/restore-prelude.sh`, `restore.sh:23-25`). It is scoped to the `public` schema of the database being restored, and names are quoted with `format('%I')`. If a name is misread from the archive list, the worst case is a drop that `pg_restore` immediately recreates from the archive. The other schemas are untouched. `drizzle` stays with `pg_restore --clean`, and `pgboss` is dropped as before. Running it inside `--single-transaction` means a failure changes nothing. A release download includes the prelude. If the prelude is missing, `set -e` stops before psql runs.
+
+Suggestions (no Fix task):
+- suggestion: `docs/install/production.md:32` should say that a restore now also drops `public` tables, views and sequences the backup doesn't contain, including any an operator added by hand.
+- suggestion: `apps/portal/app/apis/[slug]/layout.tsx:21`: `notFound()` thrown from the layout bypasses `app/apis/[slug]/not-found.tsx`. That causes the open minor (root "Page not found" copy). Moving that file to `app/apis/not-found.tsx` restores "API not found".
+- suggestion: `apps/server/src/pages.ts:183` reads `navigation_settings` once per page in the admin list. Read it once and pass it to `summary`.
+- suggestion: `apps/portal/components/portal-shell.tsx:35` keys footer links by `href`. Two links to the same address warn about duplicate keys, so key them by index as the header does.
 
 ## Definition of Done
 - [ ] Every acceptance criterion has a passing automated test
